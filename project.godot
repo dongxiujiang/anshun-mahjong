@@ -1,0 +1,51 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+_config_version=5
+
+[application]
+
+config/name="安顺麻将·捉鸡"
+config/name_localized={
+"en": "Anshun Mahjong"
+}
+run/main_scene="res://scenes/MainMenu.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+GameConfig="*res://scripts/autoload/GameConfig.gd"
+Network="*res://scripts/autoload/Network.gd"
+MCPRuntimeServer="*res://addons/godot_mcp_toolkit/runtime/mcp_runtime_server.gd"
+
+[display]
+
+window/size/viewport_width=1440
+window/size/viewport_height=1520
+window/size/window_width_override=900
+window/size/window_height_override=950
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=5
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_mcp_toolkit/plugin.cfg")
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
