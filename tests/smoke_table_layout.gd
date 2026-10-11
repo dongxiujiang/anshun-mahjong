@@ -27,7 +27,7 @@ func _run() -> void:
 	await _test_anchored_rows()
 	await _test_current_scores()
 	_build_midgame()
-	for dimensions in [Vector2i(1440, 1520), Vector2i(1440, 1000), Vector2i(1280, 720), Vector2i(960, 540), Vector2i(1080, 1080), Vector2i(1080, 1920)]:
+	for dimensions in [Vector2i(1440, 1520), Vector2i(1440, 1000), Vector2i(1280, 720), Vector2i(960, 540), Vector2i(1920, 1080), Vector2i(2400, 1080), Vector2i(1280, 800), Vector2i(1080, 1080), Vector2i(1080, 1920)]:
 		root.size = dimensions
 		await process_frame
 		await process_frame
@@ -48,6 +48,7 @@ func _run() -> void:
 		await RenderingServer.frame_post_draw
 		_expect(root.get_texture().get_image().save_png("res://docs/table_result.png") == OK)
 	await _test_draw_results()
+	await _test_landscape_stretch()
 	_test_next_round()
 	if not failed:
 		print("[smoke_table_layout] selection, ready, kong, sync, layout, settlement passed")
@@ -239,19 +240,36 @@ func _control_rect(control: Control) -> Rect2:
 	var last := transform * control.size
 	return Rect2(first.min(last), first.max(last) - first.min(last))
 
+func _check_hand_anchor(seat: int) -> void:
+	var first: TileView = table.hand_box[seat].get_child(0)
+	var drawn: TileView = table.draw_box[seat].get_child(0)
+	var right := drawn.position.x + drawn.size.x
+	_expect(is_equal_approx(-first.position.x, right), "Hands and draw must stay centered as melds shorten the hand")
+
 func _check_layout() -> void:
 	var viewport_rect := Rect2(Vector2.ZERO, Vector2(root.size))
+	_expect(table._landscape, "Every window ratio must keep the landscape table")
 	_expect(table.PLAYER_TILE_UNIT > table.TILE_UNIT, "Player tiles must be larger than wall and river tiles")
+	_expect(table.OWN_PLAYER_TILE_UNIT > table.PLAYER_TILE_UNIT, "Only the local player's non-discard tiles are enlarged")
+	if table.action_bar.visible:
+		var row: Dictionary = table._hand_layout(table.human_seat)
+		var draw_right: float = table._table_center().x + row.draw_x + TileView.BASE_W * table.OWN_PLAYER_TILE_UNIT
+		var draw_top: float = table._table_center().y + table._seat_metrics(table.human_seat).hand_y
+		_expect(is_equal_approx(table.action_bar.position.x + table.action_bar.size.x, draw_right), "Actions must align above the right edge of the draw slot")
+		_expect(table.action_bar.position.y + table.action_bar.size.y < draw_top, "Actions must sit above the draw slot")
+		for button in table.action_bar.get_children():
+			_expect(button.custom_minimum_size == Vector2(118, 84), "Turn and response buttons must keep the larger touch target")
 	var tiles: Array = []
 	for seat in 4:
-		for wall_tile in table.wall_box[seat].get_children():
-			_expect(wall_tile.size.is_equal_approx(Vector2(52.8, 70.4)), "Wall tiles must keep their original dimensions")
+		_expect(not table.wall_box[seat].visible and table.wall_box[seat].get_child_count() == 0, "Wall visuals must be removed without removing wall logic")
 		var river: ScrollContainer = table.discard_scroll[seat]
-		_expect(river.position == Vector2(-180, 180) and river.size == Vector2(360, 228), "River size and placement must stay unchanged")
+		var river_metrics: Dictionary = table._seat_metrics(seat)
+		_expect(river.position == river_metrics.river_position and river.size == river_metrics.river_size, "River size and placement must match the current orientation")
+		_expect(river.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_SHOW_NEVER and not river.get_v_scroll_bar().visible, "Discard scrollbars must remain hidden even when the river is full")
 		for box in [table.hand_box[seat], table.draw_box[seat], table.meld_box[seat], table.chicken_box[seat]] + table.discard_box[seat]:
 			for tile in box.get_children():
 				var player_tile: bool = box == table.hand_box[seat] or box == table.draw_box[seat] or box == table.meld_box[seat] or box == table.chicken_box[seat]
-				var expected_unit: float = table.PLAYER_TILE_UNIT if player_tile else table.TILE_UNIT
+				var expected_unit: float = (table.OWN_PLAYER_TILE_UNIT if seat == table.human_seat else table.PLAYER_TILE_UNIT) if player_tile else table.TILE_UNIT
 				_expect(tile.size.is_equal_approx(Vector2(TileView.BASE_W, TileView.BASE_H) * expected_unit), "Tile size must match its table zone")
 				if not player_tile:
 					_expect(tile.size.is_equal_approx(Vector2(52.8, 70.4)), "Discarded tiles must keep their original dimensions")
@@ -266,6 +284,8 @@ func _check_layout() -> void:
 				for other in tiles:
 					_expect(not rect.grow(-0.5).intersects(other.grow(-0.5)), "Face/hand tiles must not overlap: seat %d tile %s rect %s / %s" % [seat, tile.tile, rect, other])
 				for label in table.center_labels.values() + table.avatars.values() + [table.center_info, table.action_bar, table.status_label]:
+					if not label.visible or label.size.x < 1.0 or label.size.y < 1.0:
+						continue
 					_expect(not rect.grow(-0.5).intersects(_control_rect(label).grow(-0.5)), "Tiles must not cover scores or controls: %s %s / %s %s" % [tile.get_path(), rect, label.get_path(), _control_rect(label)])
 				for wall_seat in 4:
 					for wall_tile in table.wall_box[wall_seat].get_children():
@@ -289,10 +309,7 @@ func _check_layout() -> void:
 func _test_anchored_rows() -> void:
 	_new_fixture()
 	root.size = Vector2i(1440, 1520)
-	var full_left := 0.0
-	var fixed_right := 0.0
-	var fixed_draw := Vector2.ZERO
-	var expected_size := Vector2.ZERO
+	var expected_sizes := {}
 	for meld_count in 5:
 		for seat in 4:
 			var player: PlayerState = table.round.players[seat]
@@ -307,23 +324,19 @@ func _test_anchored_rows() -> void:
 		table._refresh()
 		await process_frame
 		await process_frame
-		if meld_count == 0:
-			var first: TileView = table.hand_box[0].get_child(0)
-			var last: TileView = table.hand_box[0].get_child(12)
-			full_left = first.position.x
-			fixed_right = last.position.x + last.size.x
-			fixed_draw = table.draw_box[0].get_child(0).position
-			expected_size = first.size
 		for seat in 4:
 			var first: TileView = table.hand_box[seat].get_child(0)
 			var last: TileView = table.hand_box[seat].get_child(table.hand_box[seat].get_child_count() - 1)
-			_expect(is_equal_approx(first.position.x - full_left, meld_count * 3 * (expected_size.x + table.TILE_GAP)), "After a pung, the hand must shorten from the left by three tile slots")
-			_expect(is_equal_approx(last.position.x + last.size.x, fixed_right), "Hand right edge must stay fixed after melds")
-			_expect(table.draw_box[seat].get_child(0).position.is_equal_approx(fixed_draw), "Draw slot must stay fixed after melds")
-			_expect(first.size.is_equal_approx(expected_size), "A shorter hand must retain its enlarged tile size")
+			var drawn: TileView = table.draw_box[seat].get_child(0)
+			if meld_count == 0:
+				expected_sizes[seat] = first.size
+			_check_hand_anchor(seat)
+			_expect(is_equal_approx(drawn.position.x - (last.position.x + last.size.x), table.DRAW_GAP), "The reserved draw slot stays separated by the original gap")
+			_expect(first.size.is_equal_approx(expected_sizes[seat]), "A shorter hand must retain its tile size")
 			if meld_count > 0:
 				var meld_tile: TileView = table.meld_box[seat].get_child(0)
-				_expect(meld_tile.position.x == table.EXPOSED_LEFT_X, "Melds must start at the fixed left table edge")
+				var metrics: Dictionary = table._seat_metrics(seat)
+				_expect(is_equal_approx(meld_tile.position.x, metrics.left) or meld_tile.position.y < metrics.hand_y, "Melds start at the edge or wrap inward when a centered hand occupies that row")
 		_check_layout()
 		if rendering and meld_count in [0, 1, 4]:
 			await RenderingServer.frame_post_draw
@@ -344,8 +357,9 @@ func _test_anchored_rows() -> void:
 	await process_frame
 	for seat in 4:
 		var chicken: TileView = table.chicken_box[seat].get_child(0)
-		_expect(chicken.position.x > table.meld_box[seat].get_child(2).position.x and chicken.position.x < table.meld_box[seat].get_child(3).position.x, "A chicken played between melds must keep its place between them")
-		_expect(table.draw_box[seat].get_child(0).position.is_equal_approx(fixed_draw), "Draw slot must stay fixed with interleaved chickens")
+		var groups: Array = table._exposed_layouts[seat]
+		_expect(groups[0].has("meld") and groups[1].has("chicken") and groups[2].has("meld"), "A chicken played between melds must retain its place even when a row wraps")
+		_check_hand_anchor(seat)
 	_check_layout()
 	if rendering:
 		await RenderingServer.frame_post_draw
@@ -356,7 +370,7 @@ func _test_anchored_rows() -> void:
 	table.round = synced_round
 	table._refresh()
 	for seat in 4:
-		_expect(table.chicken_box[seat].get_child(0).position.x < table.meld_box[seat].get_child(3).position.x, "Client sync must preserve chickens between melds")
+		_expect(table._exposed_layouts[seat][1].has("chicken"), "Client sync must preserve chickens between melds")
 	_check_layout()
 	table.round = original_round
 	# Stress all four directions: no melds through four kongs plus every chicken.
@@ -375,10 +389,12 @@ func _test_anchored_rows() -> void:
 		table._refresh()
 		_check_layout()
 		for seat in 4:
-			_expect(table.draw_box[seat].get_child(0).position.is_equal_approx(fixed_draw), "Overflow must never move the draw slot")
+			_check_hand_anchor(seat)
 			if meld_count == 0:
-				_expect(table.chicken_box[seat].get_child(0).position.x == table.EXPOSED_LEFT_X, "The first chicken must start at the table edge even without melds")
-	print("[layout] fixed table-edge groups, right-aligned hands, fixed draws and overflow passed")
+				var group: Dictionary = table._exposed_layouts[seat][0]
+				var metrics: Dictionary = table._seat_metrics(seat)
+				_expect(is_equal_approx(group.origin.x, metrics.left) or group.origin.y < metrics.hand_y, "Chickens start at the edge or wrap inward without displacing the centered hand")
+	print("[layout] table-edge groups, centered hands, separate draws and overflow passed")
 
 func _test_charge_chickens() -> void:
 	for card in ["tiao1", "tong8"]:
@@ -672,6 +688,80 @@ func _test_next_round() -> void:
 	_expect(not table.round_label.text.contains("鸡分 ×2"), "The active multiplier stays inside settlement details")
 	_expect(not table.result_layer.visible)
 	_expect(table.round.phase == "playing")
+
+func _physical_rect(control: Control) -> Rect2:
+	return root.get_screen_transform() * _control_rect(control)
+
+func _test_landscape_stretch() -> void:
+	# Match the real Android canvas settings, including aspect expansion.
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	root.content_scale_size = Vector2i(2280, 1280)
+	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	_build_midgame()
+	for dimensions in [Vector2i(1280, 720), Vector2i(960, 540), Vector2i(1920, 1080), Vector2i(2400, 1080), Vector2i(1280, 800)]:
+		root.size = dimensions
+		await process_frame
+		await process_frame
+		_expect(table._landscape, "The production canvas must select landscape on Android screen ratios")
+		var screen_rect := Rect2(Vector2.ZERO, Vector2(dimensions))
+		var scaled_surface := _physical_rect(table.surface)
+		_expect(screen_rect.grow(0.01).encloses(scaled_surface), "The scaled table must fit the physical screen")
+		for seat in 4:
+			for box in [table.hand_box[seat], table.draw_box[seat], table.meld_box[seat], table.chicken_box[seat]]:
+				for tile in box.get_children():
+					_expect(screen_rect.encloses(_physical_rect(tile)), "All player tiles must fit the physical Android screen")
+		for control in [table._speed_bar, table._sound_button, table._back_button, table.action_bar]:
+			_expect(screen_rect.encloses(_physical_rect(control)), "Landscape controls must remain inside the physical screen")
+		if rendering:
+			await RenderingServer.frame_post_draw
+			_expect(root.get_texture().get_image().save_png("res://docs/android_table_%dx%d.png" % [dimensions.x, dimensions.y]) == OK)
+	_test_result()
+	table.round.last_result = ScoringEngine.settle(table.round)
+	table._show_result()
+	for dimensions in [Vector2i(1280, 720), Vector2i(960, 540), Vector2i(1080, 1920), Vector2i(2400, 1080), Vector2i(1280, 800)]:
+		root.size = dimensions
+		await process_frame
+		await process_frame
+		var screen_rect := Rect2(Vector2.ZERO, Vector2(dimensions))
+		_expect(screen_rect.encloses(_physical_rect(table._result_panel)), "The settlement must fit the physical screen after rotation")
+		var rows: Array[Rect2] = []
+		for seat in 4:
+			var row: Control = table._result_panel.get_node("ResultSeat%d" % seat)
+			var rect := _control_rect(row)
+			_expect(_control_rect(table._result_panel).encloses(rect), "Each settlement row must fit the card")
+			var scroll: ScrollContainer = row.get_node("Details/ScoreGroups")
+			for group in scroll.get_node("Groups").get_children():
+				_expect(group.size.x <= scroll.size.x, "Score groups must fit each landscape settlement column")
+			for other in rows:
+				_expect(not rect.intersects(other), "Settlement rows must not overlap after rotation")
+			rows.append(rect)
+		var toggle: Button
+		var next: Button
+		for child in table._result_panel.get_children():
+			if child is Button and child.text == "看牌桌":
+				toggle = child
+			elif child is Button and child.text == "下一局":
+				next = child
+		_expect(toggle != null and next != null, "The settlement must preserve both navigation controls")
+		if toggle != null:
+			_expect(_physical_rect(toggle).is_equal_approx(_physical_rect(table._result_restore)), "View table and view settlement must share the same physical button position")
+		if next != null:
+			_expect(screen_rect.encloses(_physical_rect(next)), "The next round button must remain fully visible")
+		if rendering:
+			await RenderingServer.frame_post_draw
+			_expect(root.get_texture().get_image().save_png("res://docs/android_result_%dx%d.png" % [dimensions.x, dimensions.y]) == OK)
+	table._toggle_result_panel(false)
+	root.size = Vector2i(1080, 1920)
+	await process_frame
+	await process_frame
+	_expect(table._result_restore.visible and not table._result_panel.visible, "A hidden settlement must stay hidden after rotation")
+	table._toggle_result_panel(true)
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
+	root.content_scale_size = Vector2i.ZERO
+	root.size = Vector2i(1440, 1520)
+	await process_frame
+	await process_frame
+	print("[layout] Android canvas scaling, landscape controls, settlement rotation and toggle passed")
 
 func _test_current_scores() -> void:
 	_new_fixture()

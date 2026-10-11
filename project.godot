@@ -29,13 +29,15 @@ MCPRuntimeServer="*res://addons/godot_mcp_toolkit/runtime/mcp_runtime_server.gd"
 
 [display]
 
-window/size/viewport_width=1440
-window/size/viewport_height=1520
-window/size/window_width_override=900
-window/size/window_height_override=950
+window/size/viewport_width=2280
+window/size/viewport_height=1280
+window/size/window_width_override=1280
+window/size/window_height_override=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-window/handheld/orientation=5
+# Android uses the device's landscape sensor orientation. This keeps the table
+# horizontal on phones and tablets while allowing a 180° landscape rotation.
+window/handheld/orientation=4
 
 [editor_plugins]
 

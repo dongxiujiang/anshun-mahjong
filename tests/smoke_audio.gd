@@ -364,7 +364,7 @@ func _test_ui() -> void:
 			await RenderingServer.frame_post_draw
 			t.expect(root.get_texture().get_image().save_png("res://docs/audio_settings.png") == OK, "保存声音面板实际截图")
 	# 再用工程真实的画布拉伸设置验证，防止桌面截图正确但手机二次缩小。
-	root.content_scale_size = Vector2i(1440, 1520)
+	root.content_scale_size = Vector2i(2280, 1280)
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 	for dimensions in [Vector2i(900, 950), Vector2i(360, 640), Vector2i(640, 360)]:
 		root.size = dimensions

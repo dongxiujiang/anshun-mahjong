@@ -280,7 +280,7 @@ func _test_ui() -> void:
 		t.expect(root.get_texture().get_image().save_png("res://docs/settlement_reference.png") == OK, "保存参考结算界面")
 	table._toggle_result_panel(false)
 	t.expect(table._result_restore.visible and not table._result_panel.visible, "看牌桌可收起结算")
-	t.expect(table._result_restore.get_global_rect().position.is_equal_approx(table._result_panel.get_global_rect().position + table.RESULT_TOGGLE_LOCAL_POSITION * table.surface.scale), "查看结算与看牌桌在同一位置")
+	t.expect(table._result_restore.get_global_rect().position.is_equal_approx(table._result_panel.get_global_rect().position + table._result_toggle_position() * table.surface.scale), "查看结算与看牌桌在同一位置")
 	table._toggle_result_panel(true)
 	# 最大同分组需要换行/滚动，不能缩小牌面或越过明细区。
 	var many: Array = []
@@ -307,7 +307,7 @@ func _test_ui() -> void:
 		table.human_seat = human
 		table._show_result()
 		var own: Control = table._result_panel.get_node("ResultSeat%d" % human)
-		t.expect(own.position.y == 108 and own.get_node("SeatName").text == "你", "联机换座位后自己的行始终第一行")
+		t.expect(own.position.y == 112 and own.get_node("SeatName").text == "你", "联机换座位后自己的行始终第一行")
 	# 来源牌位置覆盖上/对/下家；暗杠和加杠全部竖放。
 	for source_offset in [1, 2, 3]:
 		for owner in 4:

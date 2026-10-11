@@ -2,25 +2,26 @@ extends Control
 
 signal quit_to_menu
 
-const DESIGN_SIZE := Vector2(1440, 1520)
+## The table is deliberately designed in landscape.  Both the desktop build and
+## Android use this same canvas so a device rotation never switches to the old
+## portrait table.
+const DESIGN_SIZE := Vector2(2280, 1280)
+## Reference origin for the small center-panel labels authored before landscape.
 const TABLE_CENTER := Vector2(720, 760)
+const LANDSCAPE_SIZE := Vector2(2280, 1280)
+const LANDSCAPE_CENTER := Vector2(1140, 650)
+const LANDSCAPE_RESULT_SIZE := Vector2(2200, 1232)
 const TILE_UNIT := 1.1
 const PLAYER_TILE_UNIT := 1.35
+const OWN_PLAYER_TILE_UNIT := 1.60
 ## 结算卡片里的牌图单独放大，便于看清是哪张牌。
 const RESULT_TILE_UNIT := 1.6
 const RESULT_CARD_SIZE := Vector2(1320, 1496)
 const RESULT_TOGGLE_SIZE := Vector2(132, 54)
 const RESULT_TOGGLE_LOCAL_POSITION := Vector2(1166, 22)
 const TILE_GAP := 4.0
-const EXPOSED_LEFT_X := -674.0
-const PLAYER_RIGHT_X := 550.0
-const HAND_ROW_Y := 594.0
-const EXPOSED_OVERFLOW_X := -564.0
-const EXPOSED_OVERFLOW_Y := 492.0
-const EXPOSED_OVERFLOW_RIGHT_X := 472.0
 const EXPOSED_HAND_GAP := 36.0
 const DRAW_GAP := 24.0
-const RIVER_COLUMNS := 6
 const RIVER_POSITION := Vector2(-180, 180)
 const RIVER_SIZE := Vector2(360, 228)
 const ROTATIONS := [0.0, -PI / 2.0, PI, PI / 2.0]
@@ -67,6 +68,12 @@ var _status_labels := {}
 var _exposed_layouts := {}
 var _sound_settings: SoundSettings
 var _audio_round: RoundState
+var _landscape := false
+var _speed_bar: HBoxContainer
+var _speed_label: Label
+var _sound_button: Button
+var _back_button: Button
+var _remaining_label: Label
 
 func _ready() -> void:
 	AudioManager.begin_table(self)
@@ -213,12 +220,13 @@ func _build_static_ui() -> void:
 	_label(surface, "捉鸡  /  万 · 条 · 筒", Vector2(222, 28), Vector2(250, 30), 16, MUTED)
 	round_label = _label(surface, "", Vector2(570, 28), Vector2(300, 30), 16, MUTED)
 	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_label(surface, "AI速度", Vector2(950, 24), Vector2(82, 32), 15, MUTED)
+	_speed_label = _label(surface, "AI速度", Vector2(950, 24), Vector2(82, 32), 15, MUTED)
 	var speed_bar := HBoxContainer.new()
 	speed_bar.position = Vector2(1030, 20)
 	speed_bar.size = Vector2(250, 40)
 	speed_bar.add_theme_constant_override("separation", 6)
 	surface.add_child(speed_bar)
+	_speed_bar = speed_bar
 	for item in [["快1秒", "fast"], ["中2秒", "medium"], ["慢3秒", "slow"]]:
 		var speed_key: String = item[1]
 		var speed_button := _button(item[0], func(): _set_ai_speed(speed_key), Vector2(72, 36))
@@ -233,10 +241,12 @@ func _build_static_ui() -> void:
 	sound_button.add_theme_font_size_override("font_size", 17)
 	sound_button.position = Vector2(1287, 20)
 	surface.add_child(sound_button)
+	_sound_button = sound_button
 	var back := _button("←", _on_quit, Vector2(48, 42))
 	back.position = Vector2(1354, 20)
 	back.tooltip_text = "返回大厅"
 	surface.add_child(back)
+	_back_button = back
 	for seat in 4:
 		var station := Control.new()
 		station.name = "SeatRoot%d" % seat
@@ -260,7 +270,10 @@ func _build_static_ui() -> void:
 		river.position = RIVER_POSITION
 		river.size = RIVER_SIZE
 		river.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		river.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+		# Keep the larger river usable on touch screens without drawing a scrollbar
+		# over the tiles.  The wheel/touch scrolling behavior remains available.
+		river.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+		wall_box[seat].hide()
 		station.add_child(river)
 		discard_scroll[seat] = river
 		var river_content := _box(river)
@@ -283,7 +296,8 @@ func _build_static_ui() -> void:
 		wind.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		wind_labels[seat] = wind
 		wind.hide()
-	_label(surface, "余牌", Vector2(680, 705), Vector2(80, 24), 14, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_remaining_label = _label(surface, "余牌", Vector2(680, 705), Vector2(80, 24), 14, MUTED)
+	_remaining_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	center_info = _label(surface, "", Vector2(664, 733), Vector2(112, 58), 40)
 	center_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	action_bar = HBoxContainer.new()
@@ -303,23 +317,135 @@ func _build_static_ui() -> void:
 func _layout() -> void:
 	if surface == null:
 		return
-	var factor := minf(size.x / DESIGN_SIZE.x, size.y / DESIGN_SIZE.y)
+	var available := _usable_rect()
+	# The product layout is always landscape, including square and portrait
+	# windows used by editor previews.  The canvas simply letterboxes there.
+	var changed := not _landscape
+	_landscape = true
+	var design := _design_size()
+	var factor := minf(available.size.x / design.x, available.size.y / design.y)
+	surface.size = design
 	surface.scale = Vector2.ONE * factor
-	surface.position = (size - DESIGN_SIZE * factor) / 2.0
+	surface.position = available.position + (available.size - design * factor) / 2.0
+	result_layer.size = design
+	for seat in 4:
+		seat_roots[seat].position = _table_center()
+		seat_roots[seat].show()
+		var metrics := _seat_metrics(seat)
+		# Release the previous content width before shrinking the scroll container.
+		# Otherwise its minimum size keeps the wider landscape river in portrait.
+		var content: Control = discard_scroll[seat].get_child(0)
+		content.custom_minimum_size.x = metrics.river_size.x - 16
+		discard_scroll[seat].position = metrics.river_position
+		discard_scroll[seat].size = metrics.river_size
+	var delta := _table_center() - TABLE_CENTER
+	_remaining_label.position = Vector2(680, 705) + delta
+	center_info.position = Vector2(664, 733) + delta
+	round_label.position.x = (design.x - round_label.size.x) / 2.0
+	_speed_label.position.x = design.x - (624 if _landscape else 490)
+	_speed_bar.position = Vector2(design.x - (532 if _landscape else 410), 12 if _landscape else 20)
+	_speed_bar.size = Vector2(330 if _landscape else 250, 60 if _landscape else 40)
+	for button in _speed_buttons.values():
+		button.custom_minimum_size = Vector2(102, 60) if _landscape else Vector2(72, 36)
+		button.add_theme_font_size_override("font_size", 20 if _landscape else 14)
+	_sound_button.position = Vector2(design.x - (186 if _landscape else 153), 12 if _landscape else 20)
+	_sound_button.custom_minimum_size = Vector2(86, 60) if _landscape else Vector2(60, 40)
+	_sound_button.size = _sound_button.custom_minimum_size
+	_back_button.position = Vector2(design.x - (88 if _landscape else 86), 12 if _landscape else 20)
+	_back_button.custom_minimum_size = Vector2(60, 60) if _landscape else Vector2(48, 42)
+	_back_button.size = _back_button.custom_minimum_size
+	# Actions sit immediately above the local player's draw slot.
+	_layout_actions()
+	status_label.position = Vector2(60, design.y - 54)
+	if round != null and changed:
+		# Rebuild after the resize notification, even if nobody is taking a turn.
+		_refresh_layout_contents.call_deferred()
 	queue_redraw()
+
+func _refresh_layout_contents() -> void:
+	var had_result := _result_panel != null and is_instance_valid(_result_panel) and _result_shown
+	var showing_result := had_result and _result_panel.visible
+	_refresh()
+	if had_result and round.phase == "settled":
+		_show_result()
+		_toggle_result_panel(showing_result)
+	if _result_restore != null and is_instance_valid(_result_restore):
+		_result_restore.position = panel_position_for_result_toggle()
+
+func _usable_rect() -> Rect2:
+	var bounds := Rect2(Vector2.ZERO, size)
+	if OS.has_feature("android"):
+		var safe := Rect2(DisplayServer.get_display_safe_area())
+		if safe.has_area():
+			var transform := get_viewport().get_screen_transform() * get_global_transform()
+			bounds = bounds.intersection(transform.affine_inverse() * safe)
+	return bounds
+
+func _design_size() -> Vector2:
+	return LANDSCAPE_SIZE
+
+func _table_center() -> Vector2:
+	return LANDSCAPE_CENTER
+
+func _table_bounds() -> Rect2:
+	return Rect2(24, 80, 2232, 1120) if _landscape else Rect2(24, 72, 1392, 1376)
+
+func _seat_metrics(seat: int) -> Dictionary:
+	var side := _relative_seat(seat) % 2 == 1
+	return {"hand_y": 1010.0 if side else (430.0 if seat == human_seat else 458.0),
+		"left": -494.0 if side else -1000.0, "overflow_x": -544.0 if side else -1000.0,
+		"overflow_right": 530.0 if side else 1000.0,
+		# Side-player discard zones are wider in their local axis.  Tile units stay
+		# at TILE_UNIT; only the available area grows.
+		"river_position": Vector2(-300, 390) if side else Vector2(-350, 180),
+		"river_size": Vector2(720, 170) if side else Vector2(700, 150), "river_columns": 12}
+
+func _player_tile_unit(seat: int) -> float:
+	return OWN_PLAYER_TILE_UNIT if seat == human_seat else PLAYER_TILE_UNIT
+
+## 手牌与独立摸牌位整体居中；预留摸牌位，摸打时整排不会来回跳动。
+func _hand_layout(seat: int) -> Dictionary:
+	var player: PlayerState = round.players[seat]
+	var width := TileView.BASE_W * _player_tile_unit(seat)
+	var count := player.concealed.size() - (1 if player.just_drew != "" and player.concealed.has(player.just_drew) else 0)
+	var span := maxf(0.0, count * (width + TILE_GAP) - TILE_GAP)
+	var right := (span + DRAW_GAP + width) / 2.0
+	return {"draw_x": right - width, "hand_x": right - width - DRAW_GAP - span, "count": count}
+
+func _layout_actions() -> void:
+	if action_bar == null:
+		return
+	var right := _table_center().x + 574.0
+	var top := _table_center().y + float(_seat_metrics(human_seat).hand_y)
+	if round != null and round.players.size() == 4:
+		right = _table_center().x + float(_hand_layout(human_seat).draw_x) + TileView.BASE_W * OWN_PLAYER_TILE_UNIT
+	# The rightmost action aligns with the right edge of the drawn tile.  The row
+	# grows leftwards as optional actions appear, keeping all actions above it.
+	var count := action_bar.get_child_count()
+	action_bar.visible = count > 0
+	action_bar.size = Vector2(maxi(1, count) * 118 + maxi(0, count - 1) * 12, 84)
+	action_bar.position = Vector2(right - action_bar.size.x, top - 98.0)
+
+func _result_card_size() -> Vector2:
+	return LANDSCAPE_RESULT_SIZE if _landscape else RESULT_CARD_SIZE
+
+func _result_toggle_position() -> Vector2:
+	return Vector2(LANDSCAPE_RESULT_SIZE.x - 154, 22) if _landscape else RESULT_TOGGLE_LOCAL_POSITION
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color("#141d1b"))
 	if surface == null:
 		return
 	draw_set_transform(surface.position, 0.0, surface.scale)
-	draw_style_box(_style(Color("#293430"), Color("#42524b"), 8, 2), Rect2(24, 72, 1392, 1376))
-	draw_style_box(_style(Color("#174f3c"), Color("#688275"), 8, 1), Rect2(42, 80, 1356, 1360))
+	var bounds := _table_bounds()
+	var delta := _table_center() - TABLE_CENTER
+	draw_style_box(_style(Color("#293430"), Color("#42524b"), 8, 2), bounds)
+	draw_style_box(_style(Color("#174f3c"), Color("#688275"), 8, 1), bounds.grow(-12))
 	if _felt != null:
-		draw_texture_rect(_felt, Rect2(62, 119, 1316, 1282), false, Color(0.58, 0.8, 0.66, 0.07))
-	draw_style_box(_style(Color(0, 0, 0, 0), Color("#39725a"), 8, 1), Rect2(65, 122, 1310, 1275))
-	draw_line(Vector2(30, 68), Vector2(1410, 68), Color("#38453f"), 1)
-	draw_style_box(_style(Color("#15382e"), Color("#618373"), 8, 2), Rect2(636, 676, 168, 168))
+		draw_texture_rect(_felt, bounds.grow(-38), false, Color(0.58, 0.8, 0.66, 0.07))
+	draw_style_box(_style(Color(0, 0, 0, 0), Color("#39725a"), 8, 1), bounds.grow(-40))
+	draw_line(Vector2(30, 68), Vector2(_design_size().x - 30, 68), Color("#38453f"), 1)
+	draw_style_box(_style(Color("#15382e"), Color("#618373"), 8, 2), Rect2(Vector2(636, 676) + delta, Vector2(168, 168)))
 	if round == null:
 		return
 	for seat in 4:
@@ -333,7 +459,7 @@ func _draw() -> void:
 			var badge := Rect2(avatar.position + Vector2(39, -8), Vector2(24, 24))
 			draw_style_box(_style(Color("#b84b43"), Color("#edb29a"), 4, 1), badge)
 			draw_string(TileView._font(), badge.position + Vector2(4, 18), "庄", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, INK)
-	_draw_die(int(round.round_meta.get("die", 1)), Vector2(702, 798))
+	_draw_die(int(round.round_meta.get("die", 1)), Vector2(702, 798) + delta)
 
 func _draw_die(value: int, pos: Vector2) -> void:
 	draw_style_box(_style(Color("#f1f3e9"), Color("#b2bfb3"), 5, 1), Rect2(pos, Vector2(36, 36)))
@@ -355,6 +481,8 @@ func _relative_seat(seat: int) -> int:
 func _refresh() -> void:
 	if round == null:
 		return
+	if not _landscape:
+		_layout()
 	if round.phase != "settled":
 		_result_shown = false
 		result_layer.hide()
@@ -363,6 +491,7 @@ func _refresh() -> void:
 		# 新一局开始前把结算层的状态复位，避免遮罩残留挡住牌桌。
 		result_layer.mouse_filter = Control.MOUSE_FILTER_STOP
 	_selected_tile = null
+	_layout_actions()
 	_prepare_exposed_layouts()
 	for seat in 4:
 		_refresh_seat(seat)
@@ -385,8 +514,8 @@ func _refresh_seat(seat: int) -> void:
 	var status_positions := [
 		Vector2(500, 1312), Vector2(1140, 1072), Vector2(500, 1152), Vector2(20, 1072),
 	]
-	avatars[seat].position = avatar_positions[relative]
-	center_labels[seat].position = label_positions[relative]
+	avatars[seat].position = avatar_positions[relative] + _table_center() - TABLE_CENTER
+	center_labels[seat].position = label_positions[relative] + _table_center() - TABLE_CENTER
 	_status_labels[seat].position = status_positions[relative]
 	_status_labels[seat].size = Vector2(320, 84)
 	center_labels[seat].size = Vector2(70, 110) if relative == 1 or relative == 3 else Vector2(164, 64)
@@ -412,20 +541,20 @@ func _refresh_seat(seat: int) -> void:
 	var has_draw := player.just_drew != "" and cards.has(player.just_drew)
 	if has_draw:
 		cards.erase(player.just_drew)
-	var width := TileView.BASE_W * PLAYER_TILE_UNIT
-	var height := TileView.BASE_H * PLAYER_TILE_UNIT
-	# Both ends stay fixed: exposed tiles grow from the left table edge; the hand
-	# shrinks toward its right edge as tiles move into melds. Reserve the draw slot
-	# even between draws so taking/discarding a tile cannot recenter the whole row.
-	var draw_x := PLAYER_RIGHT_X - width
-	var hand_right := draw_x - DRAW_GAP
-	var hand_span := maxf(0.0, cards.size() * (width + TILE_GAP) - TILE_GAP)
-	var hand_x := hand_right - hand_span
+	var player_unit := _player_tile_unit(seat)
+	var width := TileView.BASE_W * player_unit
+	var height := TileView.BASE_H * player_unit
+	# Exposed tiles grow from the left table edge.  The horizontal players' hand
+	# and reserved draw slot are centered together without changing tile sizes.
+	var metrics := _seat_metrics(seat)
+	var row := _hand_layout(seat)
+	var draw_x: float = row.draw_x
+	var hand_x: float = row.hand_x
 	for group in _exposed_layouts.get(seat, []):
 		var group_origin: Vector2 = group.origin
 		if group.has("chicken"):
 			var chicken: Dictionary = group.chicken
-			var tile := _make_tile(chicken.tile, true, PLAYER_TILE_UNIT)
+			var tile := _make_tile(chicken.tile, true, player_unit)
 			tile.set_meta("charge_chicken", chicken.charge)
 			tile.set_highlight(chicken.latest)
 			if chicken.charge:
@@ -443,7 +572,7 @@ func _refresh_seat(seat: int) -> void:
 			charge_index = int(layout.sideways) if int(layout.sideways) >= 0 else 0
 		var up: bool = round.is_meld_revealed(seat, group.meld_index)
 		for index in count:
-			var tile := _make_tile(meld.tile if up else "", up, PLAYER_TILE_UNIT)
+			var tile := _make_tile(meld.tile if up else "", up, player_unit)
 			tile.set_meta("charge_chicken", index == charge_index)
 			if index == charge_index:
 				tile.tooltip_text = "冲锋鸡 · " + _cn(meld.tile)
@@ -455,17 +584,17 @@ func _refresh_seat(seat: int) -> void:
 	_clear_box(draw_box[seat])
 	var own := seat == human_seat
 	var x := hand_x
-	var y := HAND_ROW_Y
+	var y: float = metrics.hand_y
 	var reveal := own or round.phase == "settled"
 	for card in cards:
-		var tile := _make_tile(card if reveal else "", reveal, PLAYER_TILE_UNIT)
+		var tile := _make_tile(card if reveal else "", reveal, player_unit)
 		_put_tile(hand_box[seat], tile, Vector2(x, y))
 		if own:
 			tile.gui_input.connect(_on_human_tile_gui.bind(tile))
 			tile.set_meta("drawn", false)
 		x += width + TILE_GAP
 	if has_draw:
-		var drawn := _make_tile(player.just_drew if reveal else "", reveal, PLAYER_TILE_UNIT)
+		var drawn := _make_tile(player.just_drew if reveal else "", reveal, player_unit)
 		_put_tile(draw_box[seat], drawn, Vector2(draw_x, y))
 		drawn.set_meta("drawn", true)
 		if own:
@@ -496,38 +625,44 @@ func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> 
 		x += (height if index == sideways else width) + gap
 	return {"positions": positions, "size": Vector2(x - gap, height), "sideways": sideways}
 
-## 先安排四家所有牌组，按真实牌面矩形检查手牌、牌墙和相邻牌组，给叠放明杠留足高度。
+## 先安排四家所有牌组，避开手牌、弃牌区和按钮，给叠放明杠留足高度。
 func _prepare_exposed_layouts() -> void:
 	_exposed_layouts.clear()
 	# 联机客户端可能尚未收到四家数据，等待期间不规划牌组。
 	if round.players.size() != 4:
 		return
 	var occupied: Array[Rect2] = []
-	var width := TileView.BASE_W * PLAYER_TILE_UNIT
-	var height := TileView.BASE_H * PLAYER_TILE_UNIT
+	if action_bar.visible:
+		occupied.append(Rect2(action_bar.position, action_bar.size))
+	# The score avatars remain in the center after the wall is hidden; exposed
+	# groups may now use that free space but must never cover the center panel.
+	for control in avatars.values() + center_labels.values() + [center_info, _remaining_label]:
+		occupied.append(Rect2(control.position, control.size).grow(6.0))
+	occupied.append(Rect2(Vector2(1056, 566), Vector2(168, 168)).grow(6.0))
 	for seat in 4:
-		var transform := Transform2D(ROTATIONS[_relative_seat(seat)], TABLE_CENTER)
+		var player_unit := _player_tile_unit(seat)
+		var width := TileView.BASE_W * player_unit
+		var height := TileView.BASE_H * player_unit
+		var transform := Transform2D(ROTATIONS[_relative_seat(seat)], _table_center())
+		var metrics := _seat_metrics(seat)
 		var player: PlayerState = round.players[seat]
 		var hand_count := player.concealed.size() - (1 if player.just_drew != "" and player.concealed.has(player.just_drew) else 0)
-		var draw_x := PLAYER_RIGHT_X - width
-		var hand_x := draw_x - DRAW_GAP - maxf(0, hand_count * (width + TILE_GAP) - TILE_GAP)
+		var row := _hand_layout(seat)
+		var draw_x: float = row.draw_x
+		var hand_x: float = row.hand_x
 		for index in hand_count:
-			occupied.append(transform * Rect2(Vector2(hand_x + index * (width + TILE_GAP), HAND_ROW_Y), Vector2(width, height)))
-		occupied.append(transform * Rect2(Vector2(draw_x, HAND_ROW_Y), Vector2(width, height)))
-		occupied.append(transform * Rect2(RIVER_POSITION, RIVER_SIZE))
-		var stacks := _wall_stacks(seat)
-		var wall_step := TileView.BASE_W * TILE_UNIT + TILE_GAP
-		for index in stacks.size():
-			for layer in int(stacks[index]):
-				var wall_pos := Vector2((stacks.size() / 2.0 - index - 1.0) * wall_step, 416.0 - layer * 7.0)
-				occupied.append(transform * Rect2(wall_pos, Vector2(TileView.BASE_W, TileView.BASE_H) * TILE_UNIT))
+			occupied.append(transform * Rect2(Vector2(hand_x + index * (width + TILE_GAP), metrics.hand_y), Vector2(width, height)))
+		occupied.append(transform * Rect2(Vector2(draw_x, metrics.hand_y), Vector2(width, height)))
+		occupied.append(transform * Rect2(metrics.river_position, metrics.river_size))
 	for seat in 4:
-		var transform := Transform2D(ROTATIONS[_relative_seat(seat)], TABLE_CENTER)
+		var player_unit := _player_tile_unit(seat)
+		var width := TileView.BASE_W * player_unit
+		var height := TileView.BASE_H * player_unit
+		var transform := Transform2D(ROTATIONS[_relative_seat(seat)], _table_center())
+		var metrics := _seat_metrics(seat)
 		var player: PlayerState = round.players[seat]
-		var hand_count := player.concealed.size() - (1 if player.just_drew != "" and player.concealed.has(player.just_drew) else 0)
-		var hand_left := PLAYER_RIGHT_X - width - DRAW_GAP - maxf(0, hand_count * (width + TILE_GAP) - TILE_GAP)
-		var row_index := 0
-		var next_x := EXPOSED_LEFT_X
+		var hand_left: float = _hand_layout(seat).hand_x
+		var next_x: float = metrics.left
 		var plans: Array = []
 		for group in _exposed_groups(seat):
 			var layout: Dictionary
@@ -537,14 +672,17 @@ func _prepare_exposed_layouts() -> void:
 			else:
 				var meld: Dictionary = group.meld.duplicate()
 				meld["charge_marker"] = round.is_charge_meld(seat, group.meld_index)
-				layout = _meld_tile_layout(meld, seat, PLAYER_TILE_UNIT, TILE_GAP)
+				layout = _meld_tile_layout(meld, seat, player_unit, TILE_GAP)
 			var origin := Vector2.ZERO
 			var rects: Array[Rect2] = []
 			var placed := false
-			while row_index < 6 and not placed:
-				var bottom := HAND_ROW_Y + height if row_index == 0 else EXPOSED_OVERFLOW_Y + height - (row_index - 1) * (height + 14.0)
-				var right := hand_left - EXPOSED_HAND_GAP if row_index == 0 else EXPOSED_OVERFLOW_RIGHT_X
-				var x := next_x
+			var row_index := 0
+			while row_index < 20 and not placed:
+				# Scan inward for free space, checking every tile's actual bounds;
+				# opposite-player kongs include their upper sideways tile.
+				var bottom: float = metrics.hand_y + height if row_index == 0 else metrics.hand_y - 16.0 - (row_index - 1) * 24.0
+				var right: float = hand_left - EXPOSED_HAND_GAP if row_index == 0 else metrics.overflow_right
+				var x: float = next_x if row_index == 0 else metrics.overflow_x
 				while x + float(layout.size.x) <= right:
 					origin = Vector2(x, bottom - float(layout.size.y))
 					rects = _exposed_rects(layout, origin, transform, width, height)
@@ -554,7 +692,6 @@ func _prepare_exposed_layouts() -> void:
 					x += TILE_GAP
 				if not placed:
 					row_index += 1
-					next_x = EXPOSED_OVERFLOW_X
 			if not placed:
 				push_error("碰杠/鸡牌区域无法容纳当前牌组")
 			group["origin"] = origin
@@ -576,7 +713,7 @@ func _exposed_rects(layout: Dictionary, origin: Vector2, transform: Transform2D,
 	return rects
 
 func _exposed_space_clear(rects: Array[Rect2], occupied: Array[Rect2]) -> bool:
-	var bounds := Rect2(Vector2(24, 72), Vector2(1392, 1376))
+	var bounds := _table_bounds()
 	for rect in rects:
 		if not bounds.encloses(rect):
 			return false
@@ -616,6 +753,8 @@ func _exposed_groups(seat: int) -> Array:
 
 func _refresh_discards(seat: int) -> void:
 	var player: PlayerState = round.players[seat]
+	var metrics := _seat_metrics(seat)
+	var columns: int = metrics.river_columns
 	for box in discard_box[seat]:
 		_clear_box(box)
 	var width := TileView.BASE_W * TILE_UNIT
@@ -627,12 +766,14 @@ func _refresh_discards(seat: int) -> void:
 		var tile := _make_tile(player.discards[index], true)
 		var latest: bool = round.last_discard.get("seat", -1) == seat and round.last_discard.get("tile", "") == tile.tile and index == player.discards.size() - 1
 		tile.set_highlight(latest)
-		var row_index := regular_index / RIVER_COLUMNS
-		_put_tile(discard_box[seat][row_index], tile, Vector2(4 + (regular_index % RIVER_COLUMNS) * (width + TILE_GAP), 4 + row_index * (height + TILE_GAP)))
+		var row_index := regular_index / columns
+		_put_tile(discard_box[seat][row_index], tile, Vector2(4 + (regular_index % columns) * (width + TILE_GAP), 4 + row_index * (height + TILE_GAP)))
 		regular_index += 1
 	var river: ScrollContainer = discard_scroll[seat]
 	var content: Control = river.get_child(0)
-	content.custom_minimum_size = Vector2(344, maxf(RIVER_SIZE.y, ceili(regular_index / float(RIVER_COLUMNS)) * (height + TILE_GAP) + 8))
+	content.custom_minimum_size = Vector2(metrics.river_size.x - 16, maxf(metrics.river_size.y, ceili(regular_index / float(columns)) * (height + TILE_GAP) + 8))
+	river.position = metrics.river_position
+	river.size = metrics.river_size
 	var river_key := ",".join(player.discards)
 	if river.get_meta("cards", "") != river_key:
 		river.set_meta("cards", river_key)
@@ -657,13 +798,7 @@ func _wall_stacks(seat: int) -> Array:
 func _refresh_walls() -> void:
 	for seat in 4:
 		_clear_box(wall_box[seat])
-		var stacks := _wall_stacks(seat)
-		var step := TileView.BASE_W * TILE_UNIT + TILE_GAP
-		for index in stacks.size():
-			var x := (stacks.size() / 2.0 - index - 1.0) * step
-			for layer in int(stacks[index]):
-				var tile := _make_tile("", false)
-				_put_tile(wall_box[seat], tile, Vector2(x, 416.0 - layer * 7.0))
+		wall_box[seat].hide()
 
 func _refresh_center() -> void:
 	center_info.text = str(_sum_wall()) if not round.players.is_empty() else "--"
@@ -889,13 +1024,13 @@ func _show_result() -> void:
 	_clear_box(result_layer)
 	var shade := ColorRect.new()
 	shade.color = Color(0.02, 0.06, 0.04, 0.72)
-	shade.size = DESIGN_SIZE
+	shade.size = _design_size()
 	result_layer.add_child(shade)
 	_result_shade = shade
 	var panel := Panel.new()
 	panel.name = "SettlementCard"
-	panel.position = (DESIGN_SIZE - RESULT_CARD_SIZE) / 2.0
-	panel.size = RESULT_CARD_SIZE
+	panel.position = (_design_size() - _result_card_size()) / 2.0
+	panel.size = _result_card_size()
 	panel.add_theme_stylebox_override("panel", _style(Color("#22392f"), Color("#739383"), 10, 1))
 	result_layer.add_child(panel)
 	_result_panel = panel
@@ -923,18 +1058,18 @@ func _show_result() -> void:
 		var own_points := float(round_points[seat]) if round_points.size() == 4 else 0.0
 		var row := Control.new()
 		row.name = "ResultSeat%d" % seat
-		row.position = Vector2(42, 108 + row_index * 326)
-		row.size = Vector2(1236, 318)
+		row.position = Vector2(32 + (row_index % 2) * 1080, 112 + (row_index / 2) * 520) if _landscape else Vector2(42, 108 + row_index * 326)
+		row.size = Vector2(1056, 510) if _landscape else Vector2(1236, 318)
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		panel.add_child(row)
-		_label(row, _seat_name(seat), Vector2(0, 12), Vector2(164, 60), 42).name = "SeatName"
-		_label(row, "%.0f分" % player.score, Vector2(206, 12), Vector2(250, 60), 40).name = "TotalScore"
-		var own_label := _label(row, "本局%.0f分" % own_points, Vector2(472, 12), Vector2(290, 60), 40)
+		_label(row, _seat_name(seat), Vector2(0, 12), Vector2(110, 60) if _landscape else Vector2(164, 60), 34 if _landscape else 42).name = "SeatName"
+		_label(row, "%.0f分" % player.score, Vector2(118 if _landscape else 206, 12), Vector2(164 if _landscape else 250, 60), 32 if _landscape else 40).name = "TotalScore"
+		var own_label := _label(row, "本局%.0f分" % own_points, Vector2(300 if _landscape else 472, 12), Vector2(260 if _landscape else 290, 60), 32 if _landscape else 40)
 		own_label.name = "RoundPoints"
 		own_label.tooltip_text = "本人的得分点合计；明杠基础4分只向放杠者收，单独列在杠牌组内"
 		var payments := ScoringEngine.relative_payments(pairs, seat)
 		for index in 3:
-			var x := 786.0 + index * 150.0
+			var x := (588.0 if _landscape else 786.0) + index * 150.0
 			var direction: String = ["上家", "对家", "下家"][index]
 			var amount := float(payments[index])
 			var direction_label := _label(row, direction, Vector2(x, 0), Vector2(140, 26), 18, MUTED)
@@ -948,10 +1083,10 @@ func _show_result() -> void:
 		_draw_result_details(row, seat, first, list, winner)
 	var eye := _button("看牌桌", func(): _toggle_result_panel(false), RESULT_TOGGLE_SIZE)
 	eye.tooltip_text = "隐藏结算卡片，查看牌桌上的牌"
-	eye.position = RESULT_TOGGLE_LOCAL_POSITION
+	eye.position = _result_toggle_position()
 	panel.add_child(eye)
 	var next := _button("下一局" if _net_mode() != "client" else "返回大厅", _next_round if _net_mode() != "client" else _on_quit, Vector2(300, 52), true)
-	next.position = Vector2((RESULT_CARD_SIZE.x - 300) / 2.0, RESULT_CARD_SIZE.y - 78)
+	next.position = Vector2((_result_card_size().x - 300) / 2.0, _result_card_size().y - 78)
 	panel.add_child(next)
 	_ensure_restore_button()
 	_toggle_result_panel(true)
@@ -962,17 +1097,17 @@ func _draw_result_details(row: Control, seat: int, status: String, list: Array, 
 	var background := Panel.new()
 	background.name = "Details"
 	background.position = Vector2(0, 76)
-	background.size = Vector2(1236, 242)
+	background.size = Vector2(1056, 434) if _landscape else Vector2(1236, 242)
 	background.add_theme_stylebox_override("panel", _style(Color("#1b3027"), Color.TRANSPARENT, 6))
 	row.add_child(background)
-	var state := _label(background, status if status != "" else "未叫牌", Vector2(22, 65), Vector2(162, 112), 24, GOLD if seat == winner else INK)
+	var state := _label(background, status if status != "" else "未叫牌", Vector2(12, 12) if _landscape else Vector2(22, 65), Vector2(132, 400) if _landscape else Vector2(162, 112), 24, GOLD if seat == winner else INK)
 	state.name = "CallStatus"
 	state.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	state.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var scroll := ScrollContainer.new()
 	scroll.name = "ScoreGroups"
-	scroll.position = Vector2(194, 8)
-	scroll.size = Vector2(1024, 226)
+	scroll.position = Vector2(152, 8) if _landscape else Vector2(194, 8)
+	scroll.size = Vector2(886, 418) if _landscape else Vector2(1024, 226)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	background.add_child(scroll)
@@ -988,7 +1123,7 @@ func _draw_result_details(row: Control, seat: int, status: String, list: Array, 
 			var kind := str(item.get("kind", ""))
 			var item_category := "kong" if kind == "kong" else ("chicken" if kind in ["chicken", "charge", "flip"] else "text")
 			if item_category == category:
-				_draw_result_group(flow, item, seat, 1000.0)
+				_draw_result_group(flow, item, seat, 862.0 if _landscape else 1000.0)
 
 func _result_sideways_index(item: Dictionary, seat: int) -> int:
 	if item.get("kind", "") == "charge":
@@ -1087,6 +1222,7 @@ func _draw_result_group(flow: HFlowContainer, item: Dictionary, seat: int, max_w
 func _ensure_restore_button() -> void:
 	# _clear_box 会把旧按钮排队释放，所以失效的引用必须重建，否则收不起卡片后就唤不回来。
 	if _result_restore != null and is_instance_valid(_result_restore):
+		_result_restore.position = panel_position_for_result_toggle()
 		return
 	_result_restore = _button("查看结算", func(): _toggle_result_panel(true), RESULT_TOGGLE_SIZE, true)
 	_result_restore.position = panel_position_for_result_toggle()
@@ -1096,7 +1232,7 @@ func _ensure_restore_button() -> void:
 	surface.add_child(_result_restore)
 
 func panel_position_for_result_toggle() -> Vector2:
-	return (DESIGN_SIZE - RESULT_CARD_SIZE) / 2.0 + RESULT_TOGGLE_LOCAL_POSITION
+	return (_design_size() - _result_card_size()) / 2.0 + _result_toggle_position()
 
 ## 眼睛开关：隐藏卡片露出牌桌，再点一次回来。
 func _toggle_result_panel(show_card: bool) -> void:
@@ -1187,14 +1323,17 @@ func _button(text: String, callback: Callable, dimensions: Vector2, primary: boo
 	return button
 
 func _add_action(text: String, callback: Callable, primary: bool = false, tooltip: String = "") -> Button:
-	var button := _button(text, callback, Vector2(82, 54), primary)
+	var button := _button(text, callback, Vector2(118, 84), primary)
+	button.add_theme_font_size_override("font_size", 28)
 	button.tooltip_text = tooltip
 	action_bar.add_child(button)
+	_layout_actions()
 	return button
 
 func _clear_actions() -> void:
 	if action_bar != null:
 		_clear_box(action_bar)
+		_layout_actions()
 
 func _clear_box(box: Node) -> void:
 	# Detach immediately: consecutive synchronous state updates share a frame.
