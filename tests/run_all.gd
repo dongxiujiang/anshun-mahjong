@@ -9,6 +9,7 @@ const SUITES: Array[String] = [
 	"res://tests/smoke_wall.gd",
 	"res://tests/smoke_logic.gd",
 	"res://tests/smoke_scoring.gd",
+	"res://tests/settlement_card.gd",
 	"res://tests/smoke_ready.gd",
 	"res://tests/rules_complete.gd",
 	"res://tests/rules_update.gd",
@@ -29,11 +30,19 @@ func _run() -> void:
 	var passed := 0
 	print("════ 全部测试 共 %d 套 ════" % SUITES.size())
 	for suite in SUITES:
-		var args := ["--headless", "--path", project, "--script", suite, "--quit"]
+		# --quit 只跑一帧，会把异步UI测试中途退出误判成通过。
+		var args := ["--headless", "--path", project, "--script", suite, "--quit-after", "10000"]
 		var output: Array = []
 		var code := OS.execute(godot, args, output, true)
 		var text := "".join(output)
 		var name := suite.get_file()
+		var completed := false
+		for line in text.split("\n"):
+			if line.begins_with("[%s]" % name.get_basename()) and (line.contains("通过") or line.contains("passed") or line.contains("0 failures")):
+				completed = true
+		if code == 0 and (not completed or text.contains("SCRIPT ERROR:") or text.contains("\nERROR:")):
+			code = 1
+			text += "\n测试未完整结束，或输出中包含脚本错误。\n"
 		if code == 0:
 			passed += 1
 		else:
@@ -44,5 +53,6 @@ func _run() -> void:
 	print("════ 结果: 通过 %d / 失败 %d ════" % [passed, failed.size()])
 	if failed.is_empty():
 		quit(0)
+		return
 	print("失败套件: %s" % ", ".join(failed))
 	quit(1)

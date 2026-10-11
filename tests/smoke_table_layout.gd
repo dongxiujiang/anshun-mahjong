@@ -38,7 +38,7 @@ func _run() -> void:
 			_expect(snapshot.save_png(path) == OK)
 			print("[layout] screenshot ", path)
 	await _test_dense_discards()
-	_test_meld_markers()
+	await _test_meld_markers()
 	_test_result()
 	await process_frame
 	await process_frame
@@ -183,6 +183,12 @@ func _test_network_reset() -> void:
 	network.reset()
 	_expect(network.net_node.get_parent() == network)
 	_expect(network.net_node.get_path() == NodePath("/root/Network/Net"))
+	var active_round: RoundState = table.round
+	table.round = RoundState.new()
+	table._refresh()
+	_expect(table._exposed_layouts.is_empty(), "Waiting for a client sync must not index missing player data")
+	table.round = active_round
+	table._refresh()
 
 func _build_midgame() -> void:
 	_new_fixture()
@@ -494,13 +500,52 @@ func _test_meld_markers() -> void:
 			player.melds = [{"kind": "kong" if kind == "concealed" else kind, "tile": "tong8", "from_seat": source, "concealed": kind == "concealed"}]
 			table._refresh()
 			var rotated := 0
-			var expected_index: int = {1: 2, 2: 1, 3: 0}.get(source) if kind == "kong" else 3
+			var expected_index: int = {1: 3, 2: 3, 3: 0}.get(source) if kind == "kong" else -1
 			for index in table.meld_box[0].get_child_count():
 				var tile: TileView = table.meld_box[0].get_child(index)
 				if not is_zero_approx(tile.rotation):
 					rotated += 1
-					_expect(index == expected_index, "Kong must rotate the source or self-added fourth tile")
-			_expect(rotated == (1 if kind in ["kong", "add_kong"] else 0), "Only exposed/added kongs should have a sideways tile")
+					_expect(index == expected_index, "Only exposed kong source tiles may rotate")
+			_expect(rotated == (1 if kind == "kong" else 0), "Only exposed kongs should have a sideways tile; self kongs stay upright")
+	# 四向桌面和本地换座位均需容纳对家上横的两行明杠。
+	_new_fixture()
+	for owner in 4:
+		table.round.players[owner].melds = []
+		for offset in [1, 2, 3]:
+			table.round.players[owner].melds.append({"kind": "kong", "tile": "wan%d" % offset, "from_seat": posmod(owner + offset, 4)})
+		table.round.players[owner].concealed = ["tong3", "tong4", "tong5", "tong9", "tong9"]
+		table.round.players[owner].just_drew = "tong9"
+	for human in 4:
+		table.human_seat = human
+		table._refresh()
+		await process_frame
+		await process_frame
+		_check_layout()
+		for owner in 4:
+			var above: TileView = table.meld_box[owner].get_child(7)
+			var below: TileView = table.meld_box[owner].get_child(5)
+			_expect(above.position.y < below.position.y, "Opposite source must lie above the middle upright tile")
+	# 截图分别展示下家右横、上家左横、对家上横、自有暗杠/加杠四竖。
+	table.human_seat = 0
+	for entry in [[0, 1], [3, 3], [2, 2]]:
+		var owner: int = entry[0]
+		table.round.players[owner].melds = [{"kind": "kong", "tile": "tong2", "from_seat": posmod(owner + int(entry[1]), 4)}]
+		table.round.players[owner].concealed = ["wan1", "wan2", "wan3", "tiao2", "tiao3", "tiao4", "tong7", "tong8", "tong9", "wan9", "wan9"]
+		table.round.players[owner].just_drew = "wan9"
+	table.round.players[1].melds = [{"kind": "kong", "tile": "tiao9", "concealed": true}, {"kind": "add_kong", "tile": "wan7", "from_seat": 2}]
+	table.round.players[1].concealed = ["wan1", "wan2", "wan3", "tong1", "tong2", "tong3", "wan9", "wan9"]
+	table.round.players[1].just_drew = "wan9"
+	table.round.phase = "settled"
+	table._result_shown = true
+	table._refresh()
+	table.result_layer.hide()
+	root.size = Vector2i(1440, 1520)
+	await process_frame
+	await process_frame
+	_check_layout()
+	if rendering:
+		await RenderingServer.frame_post_draw
+		_expect(root.get_texture().get_image().save_png("res://docs/table_kong_arrangements.png") == OK)
 	_build_midgame()
 
 func _test_result() -> void:
@@ -513,8 +558,8 @@ func _test_result() -> void:
 	table._refresh()
 	table._show_result()
 	_expect(table.result_layer.visible)
-	var flip_tile: TileView = table.result_layer.get_child(1).get_child(2)
-	_expect(flip_tile.size.is_equal_approx(Vector2(TileView.BASE_W, TileView.BASE_H) * table.TILE_UNIT), "Settlement chicken tile must match table tiles")
+	var flip_tile: TileView = table._result_panel.get_node("FlippedChickenTile")
+	_expect(flip_tile.size.is_equal_approx(Vector2(TileView.BASE_W, TileView.BASE_H) * table.RESULT_TILE_UNIT), "Settlement chicken tile must match result card tiles")
 
 func _test_draw_results() -> void:
 	_new_fixture()
@@ -535,7 +580,7 @@ func _test_draw_results() -> void:
 	await process_frame
 	await process_frame
 	_expect(table.round.last_result.deltas == [24.0, 12.0, -16.0, -20.0], "Visible draw result must match chicken and kong payer rules")
-	_expect(table.result_layer.visible and table.status_label.text == "牌墙摸完 · 查叫", "Mixed draw shows the checking settlement")
+	_expect(table.result_layer.visible and not table.status_label.visible and table.status_label.text == "", "Mixed draw keeps table status text hidden")
 	if rendering:
 		await RenderingServer.frame_post_draw
 		_expect(root.get_texture().get_image().save_png("res://docs/rules_draw_result.png") == OK)
@@ -552,7 +597,7 @@ func _test_draw_results() -> void:
 	table.round._penzu()
 	await process_frame
 	await process_frame
-	_expect(table.round.next_chicken_multiplier == 2 and table.status_label.text == "四家叫牌 · 流局", "All-called draw displays its separate result and next multiplier")
+	_expect(table.round.next_chicken_multiplier == 2 and not table.status_label.visible and table.status_label.text == "", "All-called draw keeps table status text hidden")
 	if rendering:
 		await RenderingServer.frame_post_draw
 		_expect(root.get_texture().get_image().save_png("res://docs/rules_all_called.png") == OK)
@@ -563,7 +608,7 @@ func _test_next_round() -> void:
 	table.new_game()
 	_expect(table.round.players[0].score == 224.0)
 	_expect(table.round.round_meta.chicken_multiplier == 2, "Next game carries the chicken multiplier")
-	_expect(table.round_label.text.contains("鸡分 ×2"), "The active multiplier must be visible")
+	_expect(not table.round_label.text.contains("鸡分 ×2"), "The active multiplier stays inside settlement details")
 	_expect(not table.result_layer.visible)
 	_expect(table.round.phase == "playing")
 

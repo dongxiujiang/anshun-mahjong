@@ -35,6 +35,7 @@ func _run() -> void:
 	_test_scoring()
 	_test_turns()
 	_test_rob()
+	_test_discard_win_restrictions()
 	_test_wall_and_patterns()
 	_test_private_sync()
 	if not failed:
@@ -146,11 +147,10 @@ func _test_turns() -> void:
 	round.players[1].concealed = ["wan2", "wan2", "tong5"]
 	round.players[2].concealed = ["wan1", "wan3", "wan4", "wan5", "wan6", "tiao1", "tiao2", "tiao3", "tong1", "tong2", "tong3", "wan9", "wan9"]
 	round.submit_turn(0, {"discard": "wan2"})
-	expect(round._awaiting_response.get("seat", -1) == 2, "Hu must take priority over earlier-seat pong")
-	expect(not round.submit_response(1, "wan2", {"action": "pong"}), "Only prompted seat can respond")
+	expect(round._awaiting_response.get("seat", -1) == 1, "Normal discard win is unavailable without a permitted exception")
+	expect(not round.submit_response(1, "wan2", {"action": "win"}), "Plain hand cannot win another player's discard")
 	expect(not round.submit_response(2, "wan3", {"action": "win"}), "Reject stale response tile")
-	round.submit_response(2, "wan2", {"action": "pass"})
-	expect(round._awaiting_response.get("seat", -1) == 1, "Pong available after win passes")
+	round.submit_response(1, "wan2", {"action": "pong"})
 	round.players[1].ready = true
 	expect(not round.submit_response(1, "wan2", {"action": "pong"}), "Ready player cannot change hand by pong")
 
@@ -179,6 +179,47 @@ func _test_rob() -> void:
 	round.submit_response(1, "wan9", {"action": "pass"})
 	expect(round.players[0].melds[0].kind == "add_kong", "Passed rob completes added kong")
 	expect(round.wall.remaining == before - 1 and round.awaiting and round.current_turn == 0, "Kong replacement requests a new discard")
+
+func _test_discard_win_restrictions() -> void:
+	var normal := fixture()
+	var thirteen := WIN.duplicate()
+	thirteen.erase("wan9")
+	normal.players[1].concealed = thirteen
+	expect(not normal.can_win_on_discard(1, 0, "wan9"), "Plain hand cannot win another player's discard")
+	normal.players[1].melds = [{"kind": "kong", "tile": "tong9", "concealed": true}]
+	normal.players[1].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao1", "tiao2", "tiao3", "wan9"]
+	expect(normal.can_win_on_discard(1, 0, "wan9"), "Own concealed kong permits discard win")
+	normal.players[1].melds = [{"kind": "kong", "tile": "tong9", "from_seat": 0}]
+	expect(not normal.can_win_on_discard(1, 0, "wan9"), "Claimed exposed kong does not count as own kong")
+	normal.players[1].ready = true
+	expect(normal.can_win_on_discard(1, 0, "wan9"), "Ready winner can win another player's discard")
+	normal.players[1].ready = false
+	normal.players[0].ready = true
+	expect(normal.can_win_on_discard(1, 0, "wan9"), "Discard from a ready player bypasses hand pattern restriction")
+
+	var seven := fixture()
+	seven.players[1].concealed = ["wan1", "wan1", "wan2", "wan2", "wan3", "wan3", "wan4", "wan4", "wan5", "wan5", "wan6", "wan6", "wan9"]
+	expect(seven.can_win_on_discard(1, 0, "wan9"), "Seven pairs permits discard win")
+	var triplets := fixture()
+	triplets.players[1].concealed = ["wan1", "wan1", "wan1", "wan2", "wan2", "wan2", "tiao3", "tiao3", "tiao3", "tong4", "tong4", "tong4", "wan9"]
+	expect(triplets.can_win_on_discard(1, 0, "wan9"), "All triplets permits discard win")
+	var flush := fixture()
+	flush.players[1].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "wan7", "wan8", "wan9", "wan2", "wan3", "wan4", "wan9"]
+	expect(flush.can_win_on_discard(1, 0, "wan9"), "Flush permits discard win")
+
+	var source_ready := fixture()
+	source_ready.players[1].concealed = thirteen.duplicate()
+	source_ready.players[0].ready = true
+	source_ready.last_discard = {"seat": 0, "tile": "wan9"}
+	expect(source_ready.can_win_on_discard(1, 0, "wan9"), "Ready source permits ordinary discard win")
+	var after_kong := fixture()
+	after_kong.players[1].concealed = thirteen.duplicate()
+	after_kong.last_discard = {"seat": 0, "tile": "wan9", "after_kong": true, "kong_kind": "add_kong"}
+	expect(after_kong.can_win_on_discard(1, 0, "wan9"), "Post-kong discard permits ordinary discard win")
+	var rob := fixture()
+	rob.players[1].concealed = thirteen.duplicate()
+	rob._pending_kong = {"seat": 0, "tile": "wan9", "index": 0}
+	expect(rob.can_win_on_discard(1, 0, "wan9", "rob"), "Robbed added kong permits discard win")
 
 func _test_wall_and_patterns() -> void:
 	var expected := [2, 32, 6, 90, 10, 40]

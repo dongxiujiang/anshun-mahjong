@@ -1,5 +1,5 @@
 extends SceneTree
-## 计分单测：确定性构造结算，验证多退少补与鸡分。
+## 计分单测：确定性构造结算，验证鸡分差额与鸡分。
 ## 运行： godot --headless --script res://tests/smoke_scoring.gd
 
 const H := preload("res://tests/test_harness.gd")

@@ -125,6 +125,24 @@ func _test_chicken_values() -> void:
 	var r := fixture()
 	r.players[0].concealed = ["tiao9", "tiao1", "tiao2", "tong8"]
 	check(ScoringEngine.chicken_profile(r, 0, "tiao1").total == 8.0, "Wrap-nine and two each score one, tiao1 four and tong8 two")
+	# 金鸡只由翻牌三张中的幺鸡/八筒触发；翻到普通牌时三张都只是翻鸡+1。
+	r.players[0].concealed = ["tiao1", "tong8", "wan1", "wan9", "wan2"]
+	var no_gold := ScoringEngine.chicken_profile(r, 0, "wan1")
+	check(no_gold.held == 4.0, "幺鸡和八筒不在翻牌三张时各按普通鸡2分")
+	check(no_gold.flipped == 3.0, "翻牌三张普通牌各按翻鸡+1")
+	var tiao_gold := ScoringEngine.chicken_profile(r, 0, "tiao9")
+	check(tiao_gold.held == 6.0, "翻牌三张含幺鸡时幺鸡按金鸡4分、八筒仍按普通鸡2分")
+	r.players[0].concealed = ["wan2", "wan2", "wan2", "wan4"]
+	var repeated_flip := ScoringEngine.chicken_profile(r, 0, "wan1")
+	var repeated_item: Dictionary = {}
+	for item in repeated_flip.items:
+		if item.get("tile", "") == "wan2":
+			repeated_item = item
+	check(repeated_item.get("label", "") == "翻鸡" and repeated_item.get("amount", 0.0) == 3.0, "三张相同翻鸡应显示总分3而不是单张1")
+	var settled := ScoringEngine.settle(r)
+	for seat_items in settled.items:
+		for item in seat_items:
+			check(item.get("kind", "") != "net", "结算卡片不应显示补付或差额条目")
 
 func _test_win_payments() -> void:
 	var r := fixture()

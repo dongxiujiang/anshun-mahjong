@@ -30,6 +30,8 @@ func expect(condition: bool, message: String = "") -> bool:
 func finish(name: String) -> int:
 	if failures == 0:
 		print("[%s] 通过 (%d 项断言)" % [name, checks])
+		# Windows 的 OS.execute 可能错解中文编码，汇总器使用 ASCII 完成标记。
+		print("[%s] passed (%d checks)" % [name, checks])
 		return 0
 	print("[%s] 失败: %d/%d 项断言未通过" % [name, failures, checks])
 	for text in _messages:

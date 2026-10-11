@@ -6,6 +6,11 @@ const DESIGN_SIZE := Vector2(1440, 1520)
 const TABLE_CENTER := Vector2(720, 760)
 const TILE_UNIT := 1.1
 const PLAYER_TILE_UNIT := 1.35
+## 结算卡片里的牌图单独放大，便于看清是哪张牌。
+const RESULT_TILE_UNIT := 1.6
+const RESULT_CARD_SIZE := Vector2(1320, 1496)
+const RESULT_TOGGLE_SIZE := Vector2(132, 54)
+const RESULT_TOGGLE_LOCAL_POSITION := Vector2(1166, 22)
 const TILE_GAP := 4.0
 const EXPOSED_LEFT_X := -674.0
 const PLAYER_RIGHT_X := 550.0
@@ -55,6 +60,11 @@ var _result_shown := false
 var _felt: NoiseTexture2D
 var _connection_dialog: AcceptDialog
 var _speed_buttons := {}
+var _result_panel: Control
+var _result_shade: ColorRect
+var _result_restore: Button
+var _status_labels := {}
+var _exposed_layouts := {}
 
 func _ready() -> void:
 	_build_static_ui()
@@ -104,6 +114,8 @@ func new_game() -> void:
 	_selected_tile = null
 	if result_layer != null:
 		result_layer.hide()
+	if _result_restore != null and is_instance_valid(_result_restore):
+		_result_restore.hide()
 	_round_number += 1
 	round = RoundState.new()
 	round.next_chicken_multiplier = chicken_multiplier
@@ -229,6 +241,10 @@ func _build_static_ui() -> void:
 		avatar.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		avatars[seat] = avatar
 		center_labels[seat] = _label(surface, "", Vector2.ZERO, Vector2(164, 78), 19)
+		_status_labels[seat] = _label(surface, "", Vector2.ZERO, Vector2(300, 74), 17, GOLD)
+		_status_labels[seat].horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_status_labels[seat].mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_status_labels[seat].hide()
 		var wind := _label(surface, WINDS[seat], Vector2.ZERO, Vector2(32, 32), 19, MUTED)
 		wind.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		wind.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -245,6 +261,7 @@ func _build_static_ui() -> void:
 	surface.add_child(action_bar)
 	status_label = _label(surface, "", Vector2(60, 1464), Vector2(710, 30), 20, MUTED)
 	status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	status_label.hide()
 	result_layer = _box(surface)
 	result_layer.size = DESIGN_SIZE
 	result_layer.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -308,7 +325,12 @@ func _refresh() -> void:
 	if round.phase != "settled":
 		_result_shown = false
 		result_layer.hide()
+		if _result_restore != null and is_instance_valid(_result_restore):
+			_result_restore.hide()
+		# 新一局开始前把结算层的状态复位，避免遮罩残留挡住牌桌。
+		result_layer.mouse_filter = Control.MOUSE_FILTER_STOP
 	_selected_tile = null
+	_prepare_exposed_layouts()
 	for seat in 4:
 		_refresh_seat(seat)
 	_refresh_walls()
@@ -325,22 +347,25 @@ func _refresh_seat(seat: int) -> void:
 	seat_roots[seat].rotation = ROTATIONS[relative]
 	var avatar_positions := [Vector2(622, 854), Vector2(814, 682), Vector2(770, 606), Vector2(578, 794)]
 	var label_positions := [Vector2(682, 854), Vector2(810, 742), Vector2(602, 606), Vector2(566, 678)]
+	# Reserved positions for the hidden per-seat status labels. Settlement details
+	# are shown only in the result card so the active table stays uncluttered.
+	var status_positions := [
+		Vector2(500, 1312), Vector2(1140, 1072), Vector2(500, 1152), Vector2(20, 1072),
+	]
 	avatars[seat].position = avatar_positions[relative]
 	center_labels[seat].position = label_positions[relative]
+	_status_labels[seat].position = status_positions[relative]
+	_status_labels[seat].size = Vector2(320, 84)
 	center_labels[seat].size = Vector2(70, 110) if relative == 1 or relative == 3 else Vector2(164, 64)
 	center_labels[seat].autowrap_mode = TextServer.AUTOWRAP_OFF
 	center_labels[seat].horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if seat >= round.players.size():
 		center_labels[seat].text = "等待入座"
+		_status_labels[seat].hide()
 		return
 	var player: PlayerState = round.players[seat]
 	var title: String = ["你", "下家", "对家", "上家"][relative]
-	var tags := "已听" if player.ready else ""
-	if player.charge_chicken:
-		tags += (" · " if tags != "" else "") + "冲锋鸡"
-	center_labels[seat].text = "%s\n%.0f 分" % [title, player.score] if relative == 1 or relative == 3 else "%s · %.0f 分" % [title, player.score]
-	if tags != "":
-		center_labels[seat].text += "\n" + (tags.replace(" · ", "\n") if relative == 1 or relative == 3 else tags)
+	center_labels[seat].text = title
 	var label_font_size := 15 if relative == 1 or relative == 3 else 17
 	for line in center_labels[seat].text.split("\n"):
 		while label_font_size > 10 and TileView._font().get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, label_font_size).x > center_labels[seat].size.x:
@@ -363,49 +388,26 @@ func _refresh_seat(seat: int) -> void:
 	var hand_right := draw_x - DRAW_GAP
 	var hand_span := maxf(0.0, cards.size() * (width + TILE_GAP) - TILE_GAP)
 	var hand_x := hand_right - hand_span
-	var row_end := hand_x - EXPOSED_HAND_GAP
-	var meld_x := EXPOSED_LEFT_X
-	var meld_y := HAND_ROW_Y
-	for group in _exposed_groups(seat):
+	for group in _exposed_layouts.get(seat, []):
+		var group_origin: Vector2 = group.origin
 		if group.has("chicken"):
 			var chicken: Dictionary = group.chicken
 			var tile := _make_tile(chicken.tile, true, PLAYER_TILE_UNIT)
-			var tile_width := height if chicken.charge else width
-			if meld_x + tile_width > row_end:
-				meld_x = EXPOSED_OVERFLOW_X
-				meld_y = EXPOSED_OVERFLOW_Y
-				row_end = EXPOSED_OVERFLOW_RIGHT_X
 			tile.set_meta("charge_chicken", chicken.charge)
 			tile.set_highlight(chicken.latest)
 			if chicken.charge:
 				tile.rotation = -PI / 2.0
-				_put_tile(chicken_box[seat], tile, Vector2(meld_x, meld_y + height))
+				_put_tile(chicken_box[seat], tile, group_origin + Vector2(0, height))
 				tile.tooltip_text = "冲锋鸡 · " + _cn(chicken.tile)
 			else:
-				_put_tile(chicken_box[seat], tile, Vector2(meld_x, meld_y))
-			meld_x += tile_width + TILE_GAP
+				_put_tile(chicken_box[seat], tile, group_origin)
 			continue
 		var meld: Dictionary = group.meld
 		var count := 3 if meld.kind == "pung" else 4
-		# Only an exposed kong marks its source; the added fourth tile marks a self upgrade.
-		var marks_source: bool = meld.kind == "kong" and meld.has("from_seat") and not meld.get("concealed", false)
-		var source: int = posmod(int(meld.get("from_seat", seat)) - seat, 4) if marks_source else -1
-		var claimed: int = {1: 2, 2: 1, 3: 0}.get(source, -1)
-		if meld.kind == "add_kong":
-			claimed = 3
+		var layout: Dictionary = group.layout
 		var charge_index := -1
 		if round.is_charge_meld(seat, group.meld_index):
-			charge_index = claimed if marks_source else 0
-		var sideways: Array = []
-		if claimed >= 0:
-			sideways.append(claimed)
-		if charge_index >= 0 and not sideways.has(charge_index):
-			sideways.append(charge_index)
-		var group_width := count * (width + TILE_GAP) - TILE_GAP + (height - width) * sideways.size()
-		if meld_x + group_width > row_end:
-			meld_x = EXPOSED_OVERFLOW_X
-			meld_y = EXPOSED_OVERFLOW_Y
-			row_end = EXPOSED_OVERFLOW_RIGHT_X
+			charge_index = int(layout.sideways) if int(layout.sideways) >= 0 else 0
 		for index in count:
 			var up: bool = not (meld.get("concealed", false) and index in [0, 3] and round.phase != "settled")
 			if meld.get("concealed", false) and seat != human_seat and round.phase != "settled":
@@ -415,14 +417,9 @@ func _refresh_seat(seat: int) -> void:
 			if index == charge_index:
 				tile.tooltip_text = "冲锋鸡 · " + _cn(meld.tile)
 				tile.set_highlight(true)
-			if index in sideways:
+			if index == int(layout.sideways):
 				tile.rotation = -PI / 2.0
-				_put_tile(meld_box[seat], tile, Vector2(meld_x, meld_y + height))
-				meld_x += height + TILE_GAP
-			else:
-				_put_tile(meld_box[seat], tile, Vector2(meld_x, meld_y))
-				meld_x += width + TILE_GAP
-		meld_x += 10.0
+			_put_tile(meld_box[seat], tile, group_origin + Vector2(layout.positions[index]))
 	_clear_box(hand_box[seat])
 	_clear_box(draw_box[seat])
 	var own := seat == human_seat
@@ -443,6 +440,125 @@ func _refresh_seat(seat: int) -> void:
 		if own:
 			drawn.gui_input.connect(_on_human_tile_gui.bind(drawn))
 	_refresh_discards(seat)
+
+## 牌桌和结算共用的碰杠布局。暗杠/加杠四竖；明杠下家右横、上家左横、对家上横。
+func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> Dictionary:
+	var width := TileView.BASE_W * unit
+	var height := TileView.BASE_H * unit
+	var kind := str(meld.get("kind", ""))
+	var count := 3 if kind == "pung" else 4
+	var source := posmod(int(meld.get("from_seat", -1)) - seat, 4)
+	var exposed: bool = kind == "kong" and not meld.get("concealed", false) and int(meld.get("from_seat", -1)) in range(4)
+	var sideways := int({1: 3, 2: 3, 3: 0}.get(source, -1)) if exposed else -1
+	if kind == "pung" and meld.get("charge_marker", false):
+		sideways = 0
+	var positions: Array = []
+	if exposed and source == 2:
+		var span := 3 * width + 2 * gap
+		for index in 3:
+			positions.append(Vector2(index * (width + gap), width + gap))
+		positions.append(Vector2((span - height) / 2.0, width))
+		return {"positions": positions, "size": Vector2(span, width + gap + height), "sideways": sideways}
+	var x := 0.0
+	for index in count:
+		positions.append(Vector2(x, height if index == sideways else 0.0))
+		x += (height if index == sideways else width) + gap
+	return {"positions": positions, "size": Vector2(x - gap, height), "sideways": sideways}
+
+## 先安排四家所有牌组，按真实牌面矩形检查手牌、牌墙和相邻牌组，给叠放明杠留足高度。
+func _prepare_exposed_layouts() -> void:
+	_exposed_layouts.clear()
+	# 联机客户端可能尚未收到四家数据，等待期间不规划牌组。
+	if round.players.size() != 4:
+		return
+	var occupied: Array[Rect2] = []
+	var width := TileView.BASE_W * PLAYER_TILE_UNIT
+	var height := TileView.BASE_H * PLAYER_TILE_UNIT
+	for seat in 4:
+		var transform := Transform2D(ROTATIONS[_relative_seat(seat)], TABLE_CENTER)
+		var player: PlayerState = round.players[seat]
+		var hand_count := player.concealed.size() - (1 if player.just_drew != "" and player.concealed.has(player.just_drew) else 0)
+		var draw_x := PLAYER_RIGHT_X - width
+		var hand_x := draw_x - DRAW_GAP - maxf(0, hand_count * (width + TILE_GAP) - TILE_GAP)
+		for index in hand_count:
+			occupied.append(transform * Rect2(Vector2(hand_x + index * (width + TILE_GAP), HAND_ROW_Y), Vector2(width, height)))
+		occupied.append(transform * Rect2(Vector2(draw_x, HAND_ROW_Y), Vector2(width, height)))
+		occupied.append(transform * Rect2(RIVER_POSITION, RIVER_SIZE))
+		var stacks := _wall_stacks(seat)
+		var wall_step := TileView.BASE_W * TILE_UNIT + TILE_GAP
+		for index in stacks.size():
+			for layer in int(stacks[index]):
+				var wall_pos := Vector2((stacks.size() / 2.0 - index - 1.0) * wall_step, 416.0 - layer * 7.0)
+				occupied.append(transform * Rect2(wall_pos, Vector2(TileView.BASE_W, TileView.BASE_H) * TILE_UNIT))
+	for seat in 4:
+		var transform := Transform2D(ROTATIONS[_relative_seat(seat)], TABLE_CENTER)
+		var player: PlayerState = round.players[seat]
+		var hand_count := player.concealed.size() - (1 if player.just_drew != "" and player.concealed.has(player.just_drew) else 0)
+		var hand_left := PLAYER_RIGHT_X - width - DRAW_GAP - maxf(0, hand_count * (width + TILE_GAP) - TILE_GAP)
+		var row_index := 0
+		var next_x := EXPOSED_LEFT_X
+		var plans: Array = []
+		for group in _exposed_groups(seat):
+			var layout: Dictionary
+			if group.has("chicken"):
+				var charge: bool = group.chicken.charge
+				layout = {"positions": [Vector2(0, height if charge else 0)], "size": Vector2(height if charge else width, height), "sideways": 0 if charge else -1}
+			else:
+				var meld: Dictionary = group.meld.duplicate()
+				meld["charge_marker"] = round.is_charge_meld(seat, group.meld_index)
+				layout = _meld_tile_layout(meld, seat, PLAYER_TILE_UNIT, TILE_GAP)
+			var origin := Vector2.ZERO
+			var rects: Array[Rect2] = []
+			var placed := false
+			while row_index < 6 and not placed:
+				var bottom := HAND_ROW_Y + height if row_index == 0 else EXPOSED_OVERFLOW_Y + height - (row_index - 1) * (height + 14.0)
+				var right := hand_left - EXPOSED_HAND_GAP if row_index == 0 else EXPOSED_OVERFLOW_RIGHT_X
+				var x := next_x
+				while x + float(layout.size.x) <= right:
+					origin = Vector2(x, bottom - float(layout.size.y))
+					rects = _exposed_rects(layout, origin, transform, width, height)
+					if _exposed_space_clear(rects, occupied):
+						placed = true
+						break
+					x += TILE_GAP
+				if not placed:
+					row_index += 1
+					next_x = EXPOSED_OVERFLOW_X
+			if not placed:
+				push_error("碰杠/鸡牌区域无法容纳当前牌组")
+			group["origin"] = origin
+			group["layout"] = layout
+			plans.append(group)
+			occupied.append_array(rects)
+			next_x = origin.x + float(layout.size.x) + TILE_GAP + (10.0 if group.has("meld") else 0.0)
+		_exposed_layouts[seat] = plans
+
+func _exposed_rects(layout: Dictionary, origin: Vector2, transform: Transform2D, width: float, height: float) -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	for index in layout.positions.size():
+		var pos := origin + Vector2(layout.positions[index])
+		var rect := Rect2(pos, Vector2(width, height))
+		if index == int(layout.sideways):
+			# -90° 绕左上角旋转后，纵向占位是原牌宽，不能减去原牌高。
+			rect = Rect2(pos - Vector2(0, width), Vector2(height, width))
+		rects.append(transform * rect)
+	return rects
+
+func _exposed_space_clear(rects: Array[Rect2], occupied: Array[Rect2]) -> bool:
+	var bounds := Rect2(Vector2(24, 72), Vector2(1392, 1376))
+	for rect in rects:
+		if not bounds.encloses(rect):
+			return false
+		for other in occupied:
+			if rect.grow(2.0).intersects(other.grow(-0.5)):
+				return false
+	return true
+
+## 结算时每家面前两行：第一行叫牌/未叫牌与胡牌方式，第二行得分点。
+func _refresh_status_text(seat: int) -> void:
+	var label: Label = _status_labels[seat]
+	label.text = ""
+	label.hide()
 
 func _chicken_discards(seat: int) -> Array:
 	var player: PlayerState = round.players[seat]
@@ -522,8 +638,6 @@ func _refresh_center() -> void:
 	center_info.text = str(_sum_wall()) if not round.players.is_empty() else "--"
 	var number: int = _round_number if _net_mode() == "" else _net_node().round_number
 	round_label.text = "第 %02d 局    ·    %s" % [maxi(1, number), "单机对局" if _net_mode() == "" else "联机对局"]
-	if round.round_meta.get("chicken_multiplier", 1) > 1:
-		round_label.text += "    ·    鸡分 ×%d" % round.round_meta.chicken_multiplier
 	for seat in 4:
 		wind_labels[seat].add_theme_color_override("font_color", GOLD if round.current_turn == seat and round.phase == "playing" else MUTED)
 	_update_speed_buttons()
@@ -559,20 +673,8 @@ func _seat_name(seat: int) -> String:
 	return ["你", "下家", "对家", "上家"][_relative_seat(seat)]
 
 func _refresh_status() -> void:
-	if round.phase == "settled":
-		var winner := int(round.round_meta.get("winner", -1))
-		status_label.text = _draw_result_title() if winner < 0 else "%s%s" % [_seat_name(winner), "自摸" if round.round_meta.get("self_draw", false) else "胡牌"]
-	elif not _response_disc.is_empty():
-		var response: Dictionary = round._awaiting_response
-		var source := int(response.get("disc_seat", round.last_discard.get("seat", -1)))
-		var robbed: bool = response.get("options", {}).get("rob_kong", false)
-		status_label.text = "%s%s %s" % [_seat_name(source), "加杠" if robbed else "打出", _cn(_response_disc)]
-	elif _declaring_ready:
-		status_label.text = "报听"
-	elif _selecting:
-		status_label.text = "你的回合" + ("  ·  已报听" if round.players[human_seat].ready else "")
-	else:
-		status_label.text = "%s的回合" % _seat_name(round.current_turn)
+	status_label.text = ""
+	status_label.hide()
 
 func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
 	if not _selecting or not tile.interactive:
@@ -707,7 +809,6 @@ func _on_require_response(seat: int, discarded_seat: int, tile: String, options:
 		_add_action("杠", func(): _commit_response("kong"), true)
 	_add_action("过", func(): _commit_response("pass"))
 	_update_interactivity()
-	status_label.text = "%s%s %s" % [_seat_name(discarded_seat), "加杠" if options.get("rob_kong", false) else "打出", _cn(tile)]
 
 func _commit_response(action: String) -> void:
 	var tile := _response_disc
@@ -734,7 +835,7 @@ func _on_net_prompt(seat: int) -> void:
 			var tile: String = response.tile
 			var player: PlayerState = round.players[seat]
 			var options: Dictionary = response.get("options", {
-				"can_win": RuleEngine.can_win_on(player.concealed, player.melds, tile),
+				"can_win": round.can_win_on_discard(seat, int(response.get("disc_seat", -1)), tile, str(response.get("stage", ""))),
 				"can_pong": Tiles.count(player.concealed, tile) >= 2,
 				"can_kong": Tiles.count(player.concealed, tile) >= 3,
 			})
@@ -756,57 +857,232 @@ func _draw_result_title() -> String:
 func _show_result() -> void:
 	_clear_box(result_layer)
 	var shade := ColorRect.new()
-	shade.color = Color(0.02, 0.06, 0.04, 0.78)
+	shade.color = Color(0.02, 0.06, 0.04, 0.72)
 	shade.size = DESIGN_SIZE
 	result_layer.add_child(shade)
+	_result_shade = shade
 	var panel := Panel.new()
-	panel.position = (DESIGN_SIZE - Vector2(560, 590)) / 2.0
-	panel.size = Vector2(560, 590)
-	panel.add_theme_stylebox_override("panel", _style(Color("#243b31"), Color("#739383"), 8, 1))
+	panel.name = "SettlementCard"
+	panel.position = (DESIGN_SIZE - RESULT_CARD_SIZE) / 2.0
+	panel.size = RESULT_CARD_SIZE
+	panel.add_theme_stylebox_override("panel", _style(Color("#22392f"), Color("#739383"), 10, 1))
 	result_layer.add_child(panel)
+	_result_panel = panel
 	var winner := int(round.round_meta.get("winner", -1))
-	var title := _draw_result_title() if winner < 0 else "%s%s" % [_seat_name(winner), "自摸" if round.round_meta.get("self_draw", false) else "胡牌"]
-	_label(panel, title, Vector2(32, 24), Vector2(496, 48), 30, GOLD).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var flip: String = round.round_meta.get("flip_tile", "")
 	if flip != "":
-		_label(panel, "翻牌鸡", Vector2(176, 88), Vector2(92, 38), 17, MUTED)
-		_put_tile(panel, _make_tile(flip, true), Vector2(290, 76))
+		_label(panel, "翻鸡牌", Vector2(480, 24), Vector2(180, 72), 42)
+		var flip_tile := _make_tile(flip, true, RESULT_TILE_UNIT)
+		flip_tile.name = "FlippedChickenTile"
+		_put_tile(panel, flip_tile, Vector2(682, 12))
 	elif winner < 0:
+		_label(panel, _draw_result_title(), Vector2(42, 16), Vector2(740, 52), 34, GOLD)
 		var notice := "本局不计分 · 下局鸡分 ×%d" % round.next_chicken_multiplier if round.round_meta.get("all_called_draw", false) else "未叫牌者补出牌鸡与杠分 · 叫牌者不补差"
-		_label(panel, notice, Vector2(24, 92), Vector2(512, 38), 19, GOLD).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	for relative in 4:
+		_label(panel, notice, Vector2(42, 74), Vector2(950, 32), 22, MUTED)
+	else:
+		_label(panel, "牌墙已空 · 无翻鸡", Vector2(42, 28), Vector2(800, 64), 34, MUTED)
+	var round_points: Array = round.last_result.get("round_points", round._last_round_points)
+	var pairs: Array = round.last_result.get("pairwise", ScoringEngine.pairwise_payments(round.last_result.get("transfers", round._last_transfers)))
+	var status: Array = round.last_result.get("status", [])
+	var items: Array = round.last_result.get("items", [])
+	for row_index in 4:
+		var relative: int = [0, 3, 2, 1][row_index]
 		var seat := posmod(human_seat + relative, 4)
 		var player: PlayerState = round.players[seat]
-		var delta := 0.0
-		var deltas: Array = round.last_result.get("deltas", round._last_deltas)
-		if deltas.size() == 4:
-			delta = float(deltas[seat])
-		var y := 153.0 + relative * 49.0
-		_label(panel, _seat_name(seat), Vector2(38, y), Vector2(150, 36), 20)
-		_label(panel, "%.0f 分" % player.score, Vector2(202, y), Vector2(130, 36), 22)
-		var change := _label(panel, "%+.0f" % delta, Vector2(382, y), Vector2(128, 36), 23, GOLD if delta > 0 else MUTED)
-		change.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var detail := RichTextLabel.new()
-	detail.position = Vector2(38, 366)
-	detail.size = Vector2(484, 118)
-	detail.add_theme_font_size_override("normal_font_size", 16)
-	detail.add_theme_color_override("default_color", MUTED)
-	detail.text = "\n".join(round.last_result.get("lines", []))
-	for transfer in round.last_result.get("transfers", []):
-		detail.text += "\n%s → %s  %.0f  %s" % [_seat_name(transfer.from), _seat_name(transfer.to), transfer.amount, transfer.reason]
-	panel.add_child(detail)
-	var view := _button("牌桌", func(): result_layer.hide(), Vector2(146, 48))
-	view.position = Vector2(42, 516)
-	panel.add_child(view)
-	var next := _button("下一局" if _net_mode() != "client" else "返回大厅", _next_round if _net_mode() != "client" else _on_quit, Vector2(290, 48), true)
-	next.position = Vector2(222, 516)
+		var own_points := float(round_points[seat]) if round_points.size() == 4 else 0.0
+		var row := Control.new()
+		row.name = "ResultSeat%d" % seat
+		row.position = Vector2(42, 108 + row_index * 326)
+		row.size = Vector2(1236, 318)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(row)
+		_label(row, _seat_name(seat), Vector2(0, 12), Vector2(164, 60), 42).name = "SeatName"
+		_label(row, "%.0f分" % player.score, Vector2(206, 12), Vector2(250, 60), 40).name = "TotalScore"
+		var own_label := _label(row, "本局%.0f分" % own_points, Vector2(472, 12), Vector2(290, 60), 40)
+		own_label.name = "RoundPoints"
+		own_label.tooltip_text = "本人的得分点合计；明杠基础4分只向放杠者收，单独列在杠牌组内"
+		var payments := ScoringEngine.relative_payments(pairs, seat)
+		for index in 3:
+			var x := 786.0 + index * 150.0
+			var direction: String = ["上家", "对家", "下家"][index]
+			var amount := float(payments[index])
+			var direction_label := _label(row, direction, Vector2(x, 0), Vector2(140, 26), 18, MUTED)
+			direction_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			var change := _label(row, "%+.0f" % amount if not is_zero_approx(amount) else "0", Vector2(x, 24), Vector2(140, 52), 40)
+			change.name = "Payment%d" % index
+			change.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			change.tooltip_text = "该玩家自己的%s：%s%.0f分" % [direction, "收取" if amount >= 0 else "付出", absf(amount)]
+		var first: String = str(status[seat]) if status.size() == 4 else ""
+		var list: Array = items[seat] if items.size() == 4 else []
+		_draw_result_details(row, seat, first, list, winner)
+	var eye := _button("看牌桌", func(): _toggle_result_panel(false), RESULT_TOGGLE_SIZE)
+	eye.tooltip_text = "隐藏结算卡片，查看牌桌上的牌"
+	eye.position = RESULT_TOGGLE_LOCAL_POSITION
+	panel.add_child(eye)
+	var next := _button("下一局" if _net_mode() != "client" else "返回大厅", _next_round if _net_mode() != "client" else _on_quit, Vector2(300, 52), true)
+	next.position = Vector2((RESULT_CARD_SIZE.x - 300) / 2.0, RESULT_CARD_SIZE.y - 78)
 	panel.add_child(next)
+	_ensure_restore_button()
+	_toggle_result_panel(true)
 	result_layer.show()
+
+## 各家明细独立滚动，极端多鸡/多杠也不会覆盖其他玩家或下一局按钮。
+func _draw_result_details(row: Control, seat: int, status: String, list: Array, winner: int) -> void:
+	var background := Panel.new()
+	background.name = "Details"
+	background.position = Vector2(0, 76)
+	background.size = Vector2(1236, 242)
+	background.add_theme_stylebox_override("panel", _style(Color("#1b3027"), Color.TRANSPARENT, 6))
+	row.add_child(background)
+	var state := _label(background, status if status != "" else "未叫牌", Vector2(22, 65), Vector2(162, 112), 24, GOLD if seat == winner else INK)
+	state.name = "CallStatus"
+	state.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	state.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var scroll := ScrollContainer.new()
+	scroll.name = "ScoreGroups"
+	scroll.position = Vector2(194, 8)
+	scroll.size = Vector2(1024, 226)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	background.add_child(scroll)
+	var flow := HFlowContainer.new()
+	flow.name = "Groups"
+	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flow.add_theme_constant_override("h_separation", 20)
+	flow.add_theme_constant_override("v_separation", 14)
+	scroll.add_child(flow)
+	# 胡牌奖在前，鸡牌按类型/单张分值归组，所有杠集中放在最后。
+	for category in ["text", "chicken", "kong"]:
+		for item in list:
+			var kind := str(item.get("kind", ""))
+			var item_category := "kong" if kind == "kong" else ("chicken" if kind in ["chicken", "charge", "flip"] else "text")
+			if item_category == category:
+				_draw_result_group(flow, item, seat, 1000.0)
+
+func _result_sideways_index(item: Dictionary, seat: int) -> int:
+	if item.get("kind", "") == "charge":
+		return 0
+	if item.get("kind", "") != "kong":
+		return -1
+	if item.get("kong_kind", "") == "exposed":
+		return int({1: 3, 2: 3, 3: 0}.get(posmod(int(item.get("from_seat", -1)) - seat, 4), -1))
+	return -1
+
+func _result_group_note(item: Dictionary, seat: int) -> String:
+	if item.get("kind", "") != "kong":
+		return str(item.get("note", ""))
+	var text := ""
+	if item.get("kong_kind", "") == "exposed":
+		var direction: String = ["本人", "下家", "对家", "上家"][posmod(int(item.get("from_seat", -1)) - seat, 4)]
+		text = "只收%s杠分%.0f" % [direction, float(item.get("base_amount", 0.0))]
+	else:
+		text = "未叫牌者各付杠分4" if item.get("draw", false) else "每家杠分4"
+	if float(item.get("chicken_amount", 0.0)) > 0:
+		text += (" · 未叫牌者鸡分%.0f" if item.get("draw", false) else " · 每家鸡分%.0f") % float(item.chicken_amount)
+	if float(item.get("flip_amount", 0.0)) > 0:
+		text += " · 翻鸡%.0f" % float(item.flip_amount)
+	return text
+
+func _draw_result_group(flow: HFlowContainer, item: Dictionary, seat: int, max_width: float) -> void:
+	var tiles: Array = item.get("tiles", []).duplicate()
+	if tiles.is_empty() and str(item.get("tile", "")) != "":
+		tiles.append(str(item.tile))
+	var tile_width := TileView.BASE_W * RESULT_TILE_UNIT
+	var tile_height := TileView.BASE_H * RESULT_TILE_UNIT
+	var sideways := _result_sideways_index(item, seat)
+	var positions: Array = []
+	var rotations: Array = []
+	var x := 0.0
+	var y := 28.0
+	var widest := 0.0
+	var content_height := tile_height
+	if item.get("kind", "") == "kong":
+		var meld := {"kind": "add_kong" if item.get("kong_kind", "") == "add_kong" else "kong",
+			"concealed": item.get("kong_kind", "") == "concealed", "from_seat": item.get("from_seat", -1)}
+		var layout := _meld_tile_layout(meld, seat, RESULT_TILE_UNIT, 8.0)
+		for index in tiles.size():
+			positions.append(Vector2(layout.positions[index]) + Vector2(0, y))
+			rotations.append(index == int(layout.sideways))
+		x = float(layout.size.x) + 8.0
+		widest = x
+		content_height = float(layout.size.y)
+	else:
+		for index in tiles.size():
+			var rotated: bool = index == sideways or item.get("kind", "") == "charge"
+			var width := tile_height if rotated else tile_width
+			if x + width + 76.0 > max_width:
+				x = 0.0
+				y += tile_height + 8.0
+			positions.append(Vector2(x, y + tile_height if rotated else y))
+			rotations.append(rotated)
+			x += width + 8.0
+			widest = maxf(widest, x)
+	var is_kong: bool = item.get("kind", "") == "kong"
+	var dimensions := Vector2(maxf(152.0, widest + 66.0), y + content_height + (8.0 if is_kong else 28.0))
+	if tiles.is_empty():
+		dimensions = Vector2(152, 158)
+	var group := Control.new()
+	group.name = "ScoreGroup"
+	group.custom_minimum_size = dimensions
+	group.set_meta("score_item", item.duplicate(true))
+	group.mouse_filter = Control.MOUSE_FILTER_PASS
+	group.tooltip_text = _result_group_note(item, seat)
+	flow.add_child(group)
+	var heading := str(item.get("label", ""))
+	if is_kong:
+		if item.get("kong_kind", "") == "exposed":
+			var direction: String = ["本人", "下家", "对家", "上家"][posmod(int(item.get("from_seat", -1)) - seat, 4)]
+			heading += " · %s杠分%.0f" % [direction, float(item.get("base_amount", 0.0))]
+		else:
+			heading += " · 杠分%.0f" % float(item.get("base_amount", 0.0))
+		if float(item.get("chicken_amount", 0.0)) > 0:
+			heading += " · 鸡分%.0f" % float(item.chicken_amount)
+	var heading_label := _label(group, heading, Vector2.ZERO, Vector2(dimensions.x, 26), 18, MUTED)
+	heading_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	for index in tiles.size():
+		var tile := _make_tile(str(tiles[index]), true, RESULT_TILE_UNIT)
+		var position: Vector2 = positions[index]
+		if bool(rotations[index]):
+			tile.rotation = -PI / 2.0
+		_put_tile(group, tile, position)
+	var amount := float(item.get("amount", 0.0))
+	var score_pos := Vector2(x, y + content_height / 2.0 - 24.0) if not tiles.is_empty() else Vector2(0, 62)
+	var amount_label := _label(group, "%+.0f" % amount, score_pos, Vector2(66 if not tiles.is_empty() else 152, 48), 32)
+	amount_label.name = "GroupAmount"
+	if not is_kong:
+		var note := _label(group, _result_group_note(item, seat), Vector2(0, dimensions.y - 24), Vector2(dimensions.x, 24), 16, MUTED)
+		note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+
+func _ensure_restore_button() -> void:
+	# _clear_box 会把旧按钮排队释放，所以失效的引用必须重建，否则收不起卡片后就唤不回来。
+	if _result_restore != null and is_instance_valid(_result_restore):
+		return
+	_result_restore = _button("查看结算", func(): _toggle_result_panel(true), RESULT_TOGGLE_SIZE, true)
+	_result_restore.position = panel_position_for_result_toggle()
+	_result_restore.tooltip_text = "重新显示结算卡片"
+	# Keep the restore button outside the result overlay so it remains clickable
+	# while the card and its input layer are hidden.
+	surface.add_child(_result_restore)
+
+func panel_position_for_result_toggle() -> Vector2:
+	return (DESIGN_SIZE - RESULT_CARD_SIZE) / 2.0 + RESULT_TOGGLE_LOCAL_POSITION
+
+## 眼睛开关：隐藏卡片露出牌桌，再点一次回来。
+func _toggle_result_panel(show_card: bool) -> void:
+	if _result_shade != null and is_instance_valid(_result_shade):
+		_result_shade.visible = show_card
+	if _result_panel != null and is_instance_valid(_result_panel):
+		_result_panel.visible = show_card
+	# 隐藏卡片后把遮罩也放掉，否则牌桌仍然点不动。
+	result_layer.mouse_filter = Control.MOUSE_FILTER_STOP if show_card else Control.MOUSE_FILTER_IGNORE
+	if _result_restore != null and is_instance_valid(_result_restore):
+		_result_restore.visible = not show_card
 
 func _next_round() -> void:
 	if _net_mode() == "host":
 		_result_shown = false
 		result_layer.hide()
+		result_layer.mouse_filter = Control.MOUSE_FILTER_STOP
 		_net_node().next_round()
 	else:
 		new_game()

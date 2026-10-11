@@ -32,9 +32,14 @@ var _last_deltas: Array = [0.0, 0.0, 0.0, 0.0]
 var _last_lines: Array = []
 var _last_total := 0.0
 var _last_points: Array = []
+var _last_round_points: Array = [0.0, 0.0, 0.0, 0.0]
+var _last_pairwise: Array = []
 var _last_transfers: Array = []
+var _last_items: Array = [[], [], [], []]
+var _last_status: Array = ["", "", "", ""]
 var _draw_remaining_before := 108
 var _kong_draw_turn := false
+var _kong_draw_kind := ""
 var ai_delay_seconds := 0.0
 var next_chicken_multiplier := 1
 
@@ -46,7 +51,7 @@ func _reset_meta() -> void:
 		"charge_chickens": {}, "flip_tile": "", "chicken_multiplier": 1,
 		"kong_draw_seat": -1, "last_four_self_draw_seat": -1,
 		"robber_seat": -1, "burn_chicken_seat": -1,
-		"winner": -1, "self_draw": false,
+		"winner": -1, "self_draw": false, "win_tile": "", "discard_seat": -1,
 	}
 
 func build_players(human_seat: int) -> void:
@@ -77,6 +82,7 @@ func start_round(human_seat: int, die_override: int = -1) -> void:
 	_turn_count = 0
 	awaiting = false
 	_kong_draw_turn = false
+	_kong_draw_kind = ""
 	var built := WallBuilder.setup(_rng)
 	wall = WallRing.new(built.ring)
 	var die := die_override if die_override >= 1 and die_override <= 6 else _rng.randi_range(1, 6)
@@ -213,8 +219,15 @@ func _discard(seat: int, tile: String) -> void:
 	player.discard_count += 1
 	player.just_drew = ""
 	player.first_turn_done = true
+	var after_kong := _kong_draw_turn and _kong_draw_kind in ["concealed", "add_kong"]
+	last_discard = {
+		"seat": seat,
+		"tile": tile,
+		"after_kong": after_kong,
+		"kong_kind": _kong_draw_kind if after_kong else "",
+	}
 	_kong_draw_turn = false
-	last_discard = {"seat": seat, "tile": tile}
+	_kong_draw_kind = ""
 	if Tiles.is_chicken(tile) and not has_charge(tile):
 		round_meta.charge_chickens[tile] = {"owner": seat, "location": "discard", "discard_id": player.discard_count - 1}
 		_refresh_charge_flags()
@@ -231,12 +244,49 @@ func _seat_order(source: int) -> Array:
 
 func _response_options(seat: int, tile: String) -> Dictionary:
 	var player: PlayerState = players[seat]
+	var source := int(_pending_kong.get("seat", -1)) if _response_stage == "rob" else int(last_discard.get("seat", -1))
 	return {
-		"can_win": _response_stage in ["win", "rob"] and RuleEngine.can_win_on(player.concealed, player.melds, tile),
+		"can_win": can_win_on_discard(seat, source, tile, _response_stage),
 		"can_pong": _response_stage == "meld" and not player.ready and Tiles.count(player.concealed, tile) >= 2,
 		"can_kong": _response_stage == "meld" and not player.ready and _wall_count() > 0 and Tiles.count(player.concealed, tile) >= 3,
 		"rob_kong": _response_stage == "rob",
 	}
+
+## Returns true only for a kong made entirely from this player's own tiles.
+## An exposed kong claimed from another player's discard is deliberately excluded.
+func has_self_kong(seat: int) -> bool:
+	if seat < 0 or seat >= players.size():
+		return false
+	for meld in players[seat].melds:
+		if meld.get("kind", "") == "add_kong":
+			return true
+		if meld.get("kind", "") == "kong" and meld.get("concealed", false):
+			return true
+	return false
+
+## Applies the discard-win restrictions shared by local play, AI and network prompts.
+## The hand must still be a legal winning hand; the exceptions only decide whether
+## a legal win may use another player's tile instead of requiring self-draw.
+func can_win_on_discard(seat: int, source: int, tile: String, stage: String = "") -> bool:
+	if seat < 0 or seat >= players.size() or source == seat:
+		return false
+	var player: PlayerState = players[seat]
+	if not RuleEngine.can_win_on(player.concealed, player.melds, tile):
+		return false
+	if stage == "rob":
+		return true
+	if player.ready:
+		return true
+	if source >= 0 and source < players.size() and players[source].ready:
+		return true
+	if bool(last_discard.get("after_kong", false)):
+		return true
+	var combined := player.concealed.duplicate()
+	combined.append(tile)
+	var pattern := RuleEngine.analyze(combined, player.melds)
+	if pattern.get("seven_pairs", false) or pattern.get("all_triplets", false) or pattern.get("flush", false):
+		return true
+	return has_self_kong(seat)
 
 func _ask_next_responder(source: int, tile: String) -> void:
 	if phase != "playing":
@@ -321,6 +371,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
 		_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
 		current_turn = seat
+		_kong_draw_kind = "exposed"
 		_state_after_kong_draw()
 		return
 	if action == "pong" and options.can_pong:
@@ -352,6 +403,7 @@ func _do_concealed_kong(seat: int, tile: String, player: PlayerState) -> void:
 	_remove_n(player.concealed, tile, 4)
 	player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "concealed": true, "after_discard": player.discard_count})
 	current_turn = seat
+	_kong_draw_kind = "concealed"
 	_state_after_kong_draw()
 
 func _do_add_kong(seat: int, tile: String) -> bool:
@@ -376,11 +428,13 @@ func _complete_add_kong() -> void:
 	_pending_kong = {}
 	_awaiting_response = {}
 	current_turn = seat
+	_kong_draw_kind = "add_kong"
 	_state_after_kong_draw()
 
 func _do_self_win(seat: int) -> void:
 	round_meta.winner = seat
 	round_meta.self_draw = true
+	round_meta.win_tile = str(players[seat].just_drew)
 	if _kong_draw_turn:
 		round_meta.kong_draw_seat = seat
 	if _draw_remaining_before <= 4:
@@ -396,6 +450,8 @@ func _discard_win(seat: int, source: int, tile: String = "", robbed: bool = fals
 	if not robbed:
 		_remove_from_discards(source, win_tile, seat, "hand")
 	players[seat].concealed.append(win_tile)
+	# 胡牌那张固定停在摸牌位：牌桌上单独显示，不并回手牌排序里。
+	players[seat].just_drew = win_tile
 	_finish()
 
 func has_charge(tile: String) -> bool:
@@ -453,7 +509,11 @@ func _finish() -> void:
 	_last_deltas = scored.deltas
 	_last_lines = scored.lines
 	_last_points = scored.points
+	_last_round_points = scored.round_points
+	_last_pairwise = scored.pairwise
 	_last_transfers = scored.transfers
+	_last_items = scored.get("items", [[], [], [], []])
+	_last_status = scored.get("status", ["", "", "", ""])
 	next_chicken_multiplier = int(scored.next_chicken_multiplier)
 	round_meta.all_called_draw = scored.all_called_draw
 	round_meta.next_chicken_multiplier = next_chicken_multiplier
@@ -470,6 +530,8 @@ func build_result() -> Dictionary:
 	var result := {
 		"round_meta": round_meta.duplicate(true), "scores": [], "players": [],
 		"deltas": _last_deltas, "lines": _last_lines, "points": _last_points,
+		"round_points": _last_round_points, "pairwise": _last_pairwise,
+		"items": _last_items, "status": _last_status,
 		"transfers": _last_transfers, "total_delta": _last_total,
 		"flip_tile": round_meta.get("flip_tile", ""),
 		"next_chicken_multiplier": next_chicken_multiplier,

@@ -41,6 +41,7 @@ func _run() -> void:
 	tv.set_unit(1.0)
 	t.expect(tv != null, "牌背程序化绘制不应崩溃")
 	print("[ok] 牌背走程序化绘制（无素材）")
+	tv.free()
 
 	# 手牌排序：万→条→筒，各花色1→9
 	var messy: Array = ["tong8", "wan1", "tiao9", "wan9", "tiao1", "tong1", "wan2"]
