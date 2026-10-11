@@ -21,8 +21,12 @@ func _run() -> void:
 		while Network.net_node._peer_seat.size() < 2 and Time.get_ticks_msec() - start < 10000:
 			await get_tree().process_frame
 		_expect(Network.net_node._peer_seat.size() >= 2, "Client must receive a seat before game starts")
+		Network.net_node.set_ready(true)
+		while not Network.net_node.all_ready() and Time.get_ticks_msec() - start < 10000:
+			await get_tree().process_frame
 		Network.net_node.start_net_game(1000)
 	else:
+		Network.net_node.room_ready.connect(func(_seat): Network.net_node.set_ready(true))
 		Network.start_client("127.0.0.1", 7526)
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	add_child(table)

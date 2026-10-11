@@ -1,92 +1,441 @@
 extends Control
-
-var content: VBoxContainer
+## 搜索与等待房间共用横屏画布；所有发牌由 NetGameNode 准备状态控制。
+const DESIGN := Vector2(1480, 860)
+const WINDS := ["东", "南", "西", "北"]
+var content: Control
+var browser: Control
+var waiting: Control
 var status: Label
-var join_button: Button
-var address: LineEdit
+var room_input: LineEdit
+var room_name_input: LineEdit
+var player_input: LineEdit
+var filter_input: LineEdit
+var room_rows: VBoxContainer
+var room_heading: Label
+var seat_buttons: Array[Button] = []
+var ready_button: Button
+var dealer_button: CheckButton
+var swap_row: HBoxContainer
+var swap_label: Label
+var waiting_hint: Label
+var create_button: Button
+var search_button: Button
+var lan_button: Button
+var online_button: Button
+var server_button: Button
+var server_dialog: ConfirmationDialog
+var server_input: LineEdit
+var online := false
+var _in_room := false
+var _connecting := false
+var _creating := false
+var _transitioning := false
+var _refresh := 0.0
+var _connection_attempt := 0
+var _creation_attempt := 0
+var update_panel: UpdatePanel
 
 func _ready() -> void:
-	var theme_resource := Theme.new()
-	theme_resource.default_font = TileView._font()
-	theme_resource.default_font_size = 22
-	theme = theme_resource
-	var background := ColorRect.new()
-	background.color = Color("#174f3c")
-	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(background)
-	content = VBoxContainer.new()
-	content.size = Vector2(500, 430)
-	content.add_theme_constant_override("separation", 18)
+	var ui_theme := Theme.new()
+	ui_theme.default_font = TileView._font()
+	ui_theme.default_font_size = 26
+	theme = ui_theme
+	var bg := ColorRect.new()
+	bg.color = Color("#123e30")
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(bg)
+	content = Control.new()
+	content.size = DESIGN
 	add_child(content)
-	var title := Label.new()
-	title.text = "联机房间"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 32)
-	content.add_child(title)
-	content.add_child(_button("创建房间", _on_host))
-	address = LineEdit.new()
-	address.placeholder_text = "主机 IP 地址"
-	address.text = "127.0.0.1"
-	address.custom_minimum_size = Vector2(500, 60)
-	content.add_child(address)
-	join_button = _button("加入房间", _on_join)
-	content.add_child(join_button)
-	status = Label.new()
-	status.custom_minimum_size = Vector2(500, 60)
+	_label(content, "联机房间", Vector2(36, 22), Vector2(900, 58), 42)
+	update_panel = UpdatePanel.new()
+	add_child(update_panel)
+	_button(content, "检查更新", Vector2(1200, 24), Vector2(244, 58), update_panel.open)
+	lan_button = _button(content, "局域网", Vector2(36, 100), Vector2(200, 64), func(): _set_mode(false))
+	online_button = _button(content, "在线", Vector2(250, 100), Vector2(200, 64), func(): _set_mode(true))
+	server_button = _button(content, "服务器设置", Vector2(1200, 100), Vector2(244, 64), _open_server)
+	browser = Control.new()
+	browser.position = Vector2(36, 194)
+	browser.size = Vector2(1408, 530)
+	content.add_child(browser)
+	_panel(browser, Vector2.ZERO, Vector2(422, 530))
+	_label(browser, "创建房间", Vector2(24, 16), Vector2(370, 48), 32)
+	_label(browser, "昵称", Vector2(24, 80), Vector2(370, 34), 24)
+	player_input = _field(browser, Vector2(24, 118), Vector2(374, 56), "你的昵称", GameConfig.player_name, 16)
+	_label(browser, "房间号 · 4～8 位数字", Vector2(24, 188), Vector2(374, 34), 24)
+	room_input = _field(browser, Vector2(24, 228), Vector2(374, 56), "输入房间号", str(randi_range(100000, 999999)), 8)
+	_label(browser, "房间名称", Vector2(24, 300), Vector2(374, 34), 24)
+	room_name_input = _field(browser, Vector2(24, 340), Vector2(374, 56), "朋友麻将局", "朋友麻将局", 24)
+	create_button = _button(browser, "创建房间", Vector2(24, 438), Vector2(374, 64), _create)
+	_panel(browser, Vector2(446, 0), Vector2(962, 530))
+	filter_input = _field(browser, Vector2(470, 20), Vector2(530, 60), "搜索房间号或名称", "", 32)
+	filter_input.text_changed.connect(func(_value): _render_rooms())
+	search_button = _button(browser, "刷新房间", Vector2(1024, 20), Vector2(360, 60), _search)
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(470, 98)
+	scroll.size = Vector2(914, 406)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	browser.add_child(scroll)
+	room_rows = VBoxContainer.new()
+	room_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	room_rows.add_theme_constant_override("separation", 14)
+	scroll.add_child(room_rows)
+	waiting = Control.new()
+	waiting.position = Vector2(36, 194)
+	waiting.size = Vector2(1408, 530)
+	content.add_child(waiting)
+	waiting.hide()
+	_panel(waiting, Vector2.ZERO, Vector2(1408, 530))
+	room_heading = _label(waiting, "", Vector2(28, 14), Vector2(1352, 48), 32)
+	var locations := [Vector2(484, 326), Vector2(936, 166), Vector2(484, 94), Vector2(32, 166)]
+	for seat in 4:
+		var index := seat
+		var button := _button(waiting, "", locations[seat], Vector2(440, 168), func(): Network.net_node.select_seat(index))
+		button.add_theme_font_size_override("font_size", 25)
+		seat_buttons.append(button)
+	waiting_hint = _label(waiting, "", Vector2(484, 266), Vector2(440, 54), 23)
+	waiting_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	dealer_button = CheckButton.new()
+	dealer_button.text = "我想当庄"
+	dealer_button.position = Vector2(32, 380)
+	dealer_button.size = Vector2(300, 64)
+	dealer_button.toggled.connect(func(value): Network.net_node.set_wants_dealer(value))
+	waiting.add_child(dealer_button)
+	ready_button = _button(waiting, "准备", Vector2(1010, 388), Vector2(366, 78), _toggle_ready)
+	swap_row = HBoxContainer.new()
+	swap_row.position = Vector2(32, 478)
+	swap_row.size = Vector2(1344, 48)
+	swap_row.add_theme_constant_override("separation", 16)
+	waiting.add_child(swap_row)
+	swap_label = Label.new()
+	swap_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	swap_row.add_child(swap_label)
+	var accept := _button(null, "同意换座", Vector2.ZERO, Vector2(180, 48), func(): Network.net_node.respond_swap(true))
+	var decline := _button(null, "暂不换座", Vector2.ZERO, Vector2(180, 48), func(): Network.net_node.respond_swap(false))
+	swap_row.add_child(accept)
+	swap_row.add_child(decline)
+	swap_row.hide()
+	status = _label(content, "", Vector2(36, 738), Vector2(1408, 44), 24)
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status.add_theme_font_size_override("font_size", 18)
-	content.add_child(status)
-	content.add_child(_button("返回", func():
-		Network.reset()
-		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")))
+	_button(content, "返回 / 离开房间", Vector2(36, 794), Vector2(304, 60), _back)
+	_label(content, "选座后点击准备 · 人机默认准备 · 全部准备后开局", Vector2(376, 800), Vector2(1068, 48), 24)
+	_build_server_dialog()
+	Network.discovery.rooms_updated.connect(_render_rooms)
+	Network.discovery.discovery_error.connect(_message)
+	Network.directory.rooms_updated.connect(_online_rooms_updated)
+	Network.directory.directory_error.connect(_directory_error)
+	Network.directory.room_created.connect(_online_created)
 	resized.connect(_layout)
 	_layout()
+	_set_mode(false)
 
 func _layout() -> void:
-	var factor := minf(1.0, minf(size.x / 580.0, size.y / 540.0))
-	content.scale = Vector2.ONE * factor
-	content.position = (size - content.size * factor) / 2.0
+	var factor := minf((size.x - 28.0) / DESIGN.x, (size.y - 28.0) / DESIGN.y)
+	content.scale = Vector2.ONE * maxf(0.1, factor)
+	content.position = (size - DESIGN * content.scale) / 2.0
 
-func _button(text: String, callback: Callable) -> Button:
+func _panel(parent: Control, position_value: Vector2, dimensions: Vector2) -> void:
+	var panel := Panel.new()
+	panel.position = position_value
+	panel.size = dimensions
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#205341")
+	style.border_color = Color("#5b826d")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(16)
+	panel.add_theme_stylebox_override("panel", style)
+	parent.add_child(panel)
+
+func _label(parent: Control, text_value: String, pos: Vector2, dimensions: Vector2, font_size: int) -> Label:
+	var label := Label.new()
+	label.text = text_value
+	label.position = pos
+	label.size = dimensions
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", Color("#edf3ee"))
+	parent.add_child(label)
+	return label
+
+func _field(parent: Control, pos: Vector2, dimensions: Vector2, placeholder: String, value: String, limit: int) -> LineEdit:
+	var field := LineEdit.new()
+	field.position = pos
+	field.size = dimensions
+	field.placeholder_text = placeholder
+	field.text = value
+	field.max_length = limit
+	parent.add_child(field)
+	return field
+
+func _button(parent: Control, text_value: String, pos: Vector2, dimensions: Vector2, callback: Callable) -> Button:
 	var button := Button.new()
-	button.text = text
-	button.custom_minimum_size = Vector2(500, 60)
-	for state in ["normal", "hover", "pressed"]:
+	button.text = text_value
+	button.position = pos
+	button.size = dimensions
+	button.custom_minimum_size = dimensions
+	for state in ["normal", "hover", "pressed", "disabled"]:
 		var style := StyleBoxFlat.new()
-		style.bg_color = Color("#355e48") if state == "normal" else Color("#4b7b5d")
-		style.border_color = Color("#8da98e")
+		style.bg_color = Color("#355f48") if state == "normal" else Color("#49775a")
+		if state == "disabled": style.bg_color = Color("#304b3c")
+		style.border_color = Color("#9cba93")
 		style.set_border_width_all(1)
-		style.set_corner_radius_all(6)
+		style.set_corner_radius_all(10)
 		button.add_theme_stylebox_override(state, style)
 	button.pressed.connect(callback)
+	if parent != null: parent.add_child(button)
 	return button
 
-func _on_host() -> void:
-	Network.reset()
-	if Network.start_host(false, true, 7500):
-		get_tree().change_scene_to_file("res://scenes/GameTable.tscn")
-	else:
-		status.text = "创建失败，端口已被占用"
+func _set_mode(value: bool) -> void:
+	if _in_room or _connecting or _creating: return
+	online = value
+	lan_button.disabled = not online
+	online_button.disabled = online
+	server_button.visible = online
+	if online: Network.discovery.stop_search()
+	else: Network.discovery.search()
+	_message("搜索在线房间…" if online else "正在搜索局域网房间，连接同一 Wi-Fi 的朋友即可加入")
+	_search()
+	_render_rooms()
 
-func _on_join() -> void:
-	Network.reset()
-	var ip := address.text.strip_edges()
-	if ip == "":
-		ip = "127.0.0.1"
-	join_button.disabled = true
-	status.text = "连接中…"
-	if not Network.start_client(ip, 7500):
-		status.text = "连接失败，请检查主机地址"
-		join_button.disabled = false
+func _search() -> void:
+	if _in_room or _connecting: return
+	if online: Network.directory.search()
+	else: Network.discovery.search()
+	_refresh = 5.0
+
+func _process(delta: float) -> void:
+	if online and not _in_room and not _connecting and not _creating:
+		_refresh -= delta
+		if _refresh <= 0.0: _search()
+
+func _render_rooms() -> void:
+	if room_rows == null or _in_room: return
+	for child in room_rows.get_children():
+		room_rows.remove_child(child)
+		child.queue_free()
+	var list: Array = Network.directory.rooms if online else Network.discovery.rooms.values()
+	list = list.duplicate()
+	list.sort_custom(func(a, b): return str(a.number) < str(b.number))
+	var shown := 0
+	var query := filter_input.text.strip_edges().to_lower()
+	for room in list:
+		if query != "" and not (str(room.number).contains(query) or str(room.name).to_lower().contains(query)): continue
+		shown += 1
+		var row := HBoxContainer.new()
+		row.custom_minimum_size.y = 90
+		room_rows.add_child(row)
+		var label := Label.new()
+		label.text = "%s  ·  房间 %s\n真人 %d / 4  ·  %s" % [room.name, room.number, int(room.get("players", 0)), "游戏中" if room.get("started", false) else "等待准备"]
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.add_theme_font_size_override("font_size", 25)
+		label.clip_text = true
+		row.add_child(label)
+		var selected: Dictionary = room.duplicate()
+		var join := _button(null, "加入", Vector2.ZERO, Vector2(170, 78), func(): _join(selected))
+		join.disabled = _connecting or _creating or bool(room.get("started", false)) or int(room.get("players", 0)) >= 4
+		row.add_child(join)
+	if shown == 0:
+		var empty := Label.new()
+		empty.text = "没有匹配的房间" if query != "" else ("暂无在线房间，可创建新房间" if online and Network.directory.base_url != "" else ("先配置房间服务器，再搜索在线房间" if online else "暂无局域网房间，可创建房间邀请朋友"))
+		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty.custom_minimum_size = Vector2(870, 120)
+		room_rows.add_child(empty)
+
+func _create() -> void:
+	if _creating or _connecting: return
+	var number := room_input.text.strip_edges()
+	if not NetGameNode.valid_room_number(number):
+		_message("房间号请输入 4～8 位数字")
 		return
-	Network.net_node.room_ready.connect(func(_seat):
-		get_tree().change_scene_to_file("res://scenes/GameTable.tscn"))
-	Network.net_node.connection_error.connect(func(message):
-		status.text = message
-		join_button.disabled = false)
+	GameConfig.player_name = player_input.text.strip_edges().left(16)
+	if GameConfig.player_name == "": GameConfig.player_name = "玩家"
+	_creating = true
+	_creation_attempt += 1
+	var creation := _creation_attempt
+	create_button.disabled = true
+	if online:
+		# A background list refresh must not swallow the create request.
+		Network.directory.cancel()
+		_message("正在创建在线房间…")
+		Network.directory.create_room(number, room_name_input.text)
+		return
+	_message("检查房间号…")
+	Network.discovery.search()
+	await get_tree().create_timer(1.8).timeout
+	if not is_inside_tree() or not _creating or creation != _creation_attempt: return
+	if Network.discovery.has_number(number):
+		_creation_failed("这个房间号已在使用，请换一个")
+		return
+	Network.reset()
+	_bind_net()
+	var opened := false
+	var first := randi_range(7600, 8600)
+	for attempt in 24:
+		if Network.start_host(false, true, first + attempt, number, room_name_input.text):
+			opened = true
+			break
+	if not opened or not Network.discovery.advertise(Network.net_node):
+		Network.reset()
+		_creation_failed("无法创建局域网房间，请稍后重试")
+		return
+	_creating = false
+	_show_waiting()
+
+func _join(room: Dictionary) -> void:
+	if _connecting or _creating: return
+	GameConfig.player_name = player_input.text.strip_edges().left(16)
+	if GameConfig.player_name == "": GameConfig.player_name = "玩家"
+	Network.reset()
+	_bind_net()
+	_connecting = true
+	_connection_attempt += 1
+	var attempt := _connection_attempt
+	create_button.disabled = true
+	search_button.disabled = true
+	_message("正在加入房间 %s…" % room.number)
+	_render_rooms()
+	if not Network.start_client(str(room.host), int(room.port), str(room.number), str(room.get("owner_token", ""))):
+		_connection_failed("无法连接房间，请刷新后重试")
+		return
+	await get_tree().create_timer(12.0).timeout
+	if is_inside_tree() and _connecting and attempt == _connection_attempt: _connection_failed("加入超时，请刷新房间后重试")
+
+func _bind_net() -> void:
+	var net := Network.net_node
+	net.room_ready.connect(func(_seat):
+		if _connecting:
+			_connecting = false
+			_show_waiting())
+	net.lobby_updated.connect(_render_waiting)
+	net.lobby_notice.connect(_message)
+	net.game_started.connect(_enter_table)
+	net.connection_error.connect(_connection_failed)
+
+func _show_waiting() -> void:
+	_in_room = true
+	browser.hide()
+	waiting.show()
+	lan_button.disabled = true
+	online_button.disabled = true
+	server_button.hide()
+	Network.discovery.stop_search()
+	_message("点击人机位置直接选座，点击真人位置申请交换；准备好后开局")
+	_render_waiting()
+
+func _render_waiting() -> void:
+	if not _in_room: return
+	var net := Network.net_node
+	var data := net.lobby
+	if data.is_empty(): return
+	room_heading.text = "%s  ·  房间 %s  ·  %s" % [data.name, data.number, "在线" if online else "局域网"]
+	for seat in 4:
+		var member: Dictionary = data.seats[seat]
+		var mine := seat == net.my_seat
+		var tags := " · 我" if mine else ""
+		if int(member.peer) == int(data.owner): tags += " · 房主"
+		seat_buttons[seat].text = "%s位  %s%s\n%s%s\n%s" % [WINDS[seat], member.name, tags, "已准备" if member.ready else "未准备", " · 想当庄" if member.wants_dealer else "", "你的位置" if mine else ("点击选座" if member.ai else "点击申请换座")]
+		seat_buttons[seat].disabled = mine or bool(data.started)
+		seat_buttons[seat].add_theme_color_override("font_disabled_color", Color("#edcc80") if mine else Color("#aac5b9"))
+	if net.my_seat >= 0:
+		var me: Dictionary = data.seats[net.my_seat]
+		ready_button.text = "取消准备" if me.ready else "准备"
+		dealer_button.set_pressed_no_signal(bool(me.wants_dealer))
+	var seconds := int(data.countdown)
+	waiting_hint.text = "%d 秒后开局" % seconds if seconds >= 0 else "等待大家准备"
+	var pending: Dictionary = data.swap
+	swap_row.visible = not pending.is_empty() and int(pending.get("to", -1)) == net._local_peer()
+	if swap_row.visible:
+		var name_value := "玩家"
+		for member in data.seats:
+			if int(member.peer) == int(pending.from): name_value = str(member.name)
+		swap_label.text = "%s 想和你交换座位" % name_value
+	elif not pending.is_empty(): _message("换座请求已发出，等待对方同意（20 秒内有效）")
+
+func _toggle_ready() -> void:
+	var net := Network.net_node
+	if net.my_seat >= 0 and net.lobby.has("seats"):
+		net.set_ready(not bool(net.lobby.seats[net.my_seat].ready))
+
+func _enter_table() -> void:
+	if _transitioning: return
+	_transitioning = true
+	get_tree().call_deferred("change_scene_to_file", "res://scenes/GameTable.tscn")
+
+func _connection_failed(message: String) -> void:
+	if _transitioning: return
+	Network.reset()
+	if _creating and online: Network.directory.cancel()
+	_connection_attempt += 1
+	_creation_attempt += 1
+	_connecting = false
+	_creating = false
+	_in_room = false
+	waiting.hide()
+	browser.show()
+	create_button.disabled = false
+	search_button.disabled = false
+	_set_mode(online)
+	_message(message)
+
+func _creation_failed(message: String) -> void:
+	_creating = false
+	create_button.disabled = false
+	_message(message)
+
+func _online_rooms_updated() -> void:
+	if online and not _in_room:
+		_render_rooms()
+		_message("已更新在线房间")
+
+func _directory_error(message: String) -> void:
+	if online:
+		_creation_failed(message)
+		_render_rooms()
+
+func _online_created(room: Dictionary) -> void:
+	if not _creating or not online or _in_room: return
+	_creating = false
+	_join(room)
+
+func _message(message: String) -> void:
+	if status != null: status.text = message
+
+func _build_server_dialog() -> void:
+	server_dialog = ConfirmationDialog.new()
+	server_dialog.title = "在线服务器设置"
+	server_dialog.min_size = Vector2i(800, 260)
+	server_dialog.ok_button_text = "保存并搜索"
+	server_dialog.cancel_button_text = "取消"
+	add_child(server_dialog)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 20)
+	server_dialog.add_child(box)
+	var label := Label.new()
+	label.text = "填写房间服务地址，保存后所有在线房间由服务器运行。"
+	label.add_theme_font_size_override("font_size", 24)
+	box.add_child(label)
+	server_input = LineEdit.new()
+	server_input.placeholder_text = "https://你的房间服务器"
+	server_input.custom_minimum_size = Vector2(760, 60)
+	box.add_child(server_input)
+	server_dialog.confirmed.connect(func():
+		if Network.directory.configure(server_input.text): _search())
+
+func _open_server() -> void:
+	server_input.text = Network.directory.base_url
+	server_dialog.popup_centered()
+
+func _back() -> void:
+	if _transitioning: return
+	if _in_room or _connecting or _creating:
+		_connection_failed("已离开房间")
+	else:
+		Network.discovery.stop_search()
+		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		Network.reset()
-		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+		if update_panel != null and update_panel.is_open(): update_panel.close()
+		else: _back()

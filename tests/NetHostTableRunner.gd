@@ -12,6 +12,8 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 	net.start_host(false, true, 7511)  # 主机本人可操作(seat0=human)，空位AI
+	net.net_node.set_ready(true)
+	net.net_node.start_net_game(1000)
 	var table = load("res://scenes/GameTable.tscn").instantiate()
 	add_child(table)
 	await get_tree().process_frame

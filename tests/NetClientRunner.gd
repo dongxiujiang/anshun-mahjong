@@ -8,6 +8,7 @@ func _run() -> void:
 	var net := NetGameNode.new()
 	net.name = "Net"
 	add_child(net)
+	net.room_ready.connect(func(_seat): net.set_ready(true))
 	net.client("127.0.0.1", 7510)
 	print("[client] 尝试连接主机 7510 ...")
 	var t := 0.0
@@ -25,6 +26,15 @@ func _run() -> void:
 			print("[client] 通过")
 			get_tree().quit(0)
 			return
+		if net.game.awaiting:
+			var actor := AiPlayer.new("client test")
+			if net.game._awaiting_response.get("seat", -1) == net.my_seat:
+				var request: Dictionary = net.game._awaiting_response
+				net.submit_client_response(request.tile, actor.decide_response(net.game, net.my_seat, request.disc_seat, request.tile, request.options))
+				net.game.awaiting = false
+			elif net.game.current_turn == net.my_seat and net.game.phase == "playing":
+				net.submit_client_turn(actor.decide_turn(net.game, net.my_seat))
+				net.game.awaiting = false
 	print("[client] 超时未收到结算同步")
 	get_tree().quit(1)
 

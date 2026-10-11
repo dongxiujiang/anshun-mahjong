@@ -136,7 +136,7 @@ func _test_network_round() -> void:
 	# 在 Autoload 注册完成后加载，避免 --script 的入口预编译形成单例依赖环。
 	var node = load("res://scripts/online/NetGameNode.gd").new()
 	root.add_child(node)
-	node.host_mode = true
+	t.expect(node.host(false, true, 7535), "换庄测试建立真实主机成员")
 	node.game = _fixture()
 	node.game.players[2].concealed = DRAGON.duplicate()
 	node.game._do_self_win(2)
@@ -145,6 +145,7 @@ func _test_network_round() -> void:
 	t.expect(node.game.dealer_seat == 2 and node.game.current_turn == 2, "主机下一局消费结算选庄")
 	t.expect(node.game.players.map(func(player): return player.score) == scores, "联机下一局保留结算分数")
 	node.free()
+	root.multiplayer.multiplayer_peer = null
 
 func _test_score_ui() -> void:
 	var table = load("res://scenes/GameTable.tscn").instantiate()

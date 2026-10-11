@@ -5,7 +5,10 @@
 牌面使用 `res/tiles` 素材：**1-9.png=筒子，11-19.png=条子，21-29.png=万字**（270×360）；牌背无素材，由程序化绘制（缺图时牌面也自动回退程序化绘制）。
 
 - 单机：1 名真人（座位0，首局为庄）+ 3 个 AI；之后按本局结果换庄。
-- 联机：房间制，人不够由 AI 补位，满 4 人开局；主机权威、客户端同步渲染。
+- 联机：局域网自动搜索房间，也支持连接云端房间服务；先选座、换座和准备，人不够由默认准备的 AI 补位，全部准备后开局。
+- 更新：主菜单和联机大厅都可「检查更新」。更新包放在 GitHub Releases，不需要额外更新服务器。
+
+应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Windows 和 Android 游戏内下载补丁，重启生效，不必重装；大版本更新完整 EXE/APK。首次使用热更新须安装包含 PatchBoot 的完整版本。发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
 
 ---
 
@@ -36,11 +39,17 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 
 ## 三、联机
 
-1. 主机：主菜单 →「联机」→「创建主机」（默认端口 7500）。
-2. 其他玩家：「加入」并填写主机 IP（局域网填内网 IP；同机测试填 127.0.0.1）。
-3. 空位自动补 AI，满 4 人即可开局。
+1. 主菜单 →「联机房间」，默认进入「局域网」，自动搜索同一局域网内的房间，不需要输入 IP。
+2. 创建者输入 **4～8 位数字房间号**（保留前导零）、昵称和房间名称；其他玩家可以按房间号/名称筛选并点击「加入」。局域网已有同号房间时禁止创建。
+3. 创建/加入后进入等待房间，**此时不发牌**。点击人机位置直接选座；点击真人位置发送换座申请，由对方同意或拒绝，20 秒未响应自动取消。
+4. 空位由人机补齐且默认准备；真人点击「准备」。加入、离开、交换或更换座位会取消真人准备，变更「我想当庄」取消自己的准备。全部准备后倒数 **3 秒**，取消准备可以停止倒数。
+5. 首局从勾选「我想当庄」的玩家中随机选庄；仅一人勾选则直接当庄，无人勾选则四家随机。后续局继续按胡牌、放炮、流局规则换庄，累计分数保留。
+6. 已开局房间不接受新加入者；真人中途断线由人机代打。局域网主机关闭则房间结束，在线房主退出可转交房主权限。
+7. 选择「在线」后，在「服务器设置」保存房间服务地址，之后自动搜索在线房间，创建/加入沿用同一准备流程。在线房主也是客户端，游戏由云端 Godot 进程权威运行，房主可以点「下一局」。**没有配置服务器时显示设置提示，不显示模拟房间。**
 
-> 传输基于 Godot 高层多人（ENet）。跨公网需主机做端口映射/内网穿透（默认 7500/UDP）。
+工程附带可部署的云端服务，部署方法见 [server/README.md](server/README.md)。当前已通过本机 HTTP 服务 + 独立 Godot 房间服务器测试，尚未连接真实云服务器。
+
+局域网使用 UDP 广播查询（7499～7508），游戏端口建房时自动选取，不在 UI 展示 IP。在线使用 HTTP(S) 房间目录 + ENet/UDP 独立游戏端口，玩家无需配置本地端口映射。
 
 ## 四、规则实现要点
 
@@ -82,7 +91,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
    命令行：`godot --headless --export-release "Android" build/android/安顺麻将.apk`
 4. 命令行导出 PC：`godot --headless --export-release "Windows" build/windows/安顺麻将.exe`
 
-最新横屏布局已打包：Windows 为 `build/windows/安顺麻将.exe`（可直接运行），Android 为 `build/android/安顺麻将.apk`（使用现有调试密钥签名，可安装测试）。已检查 Windows 启动与打包后的牌桌资源、APK 签名及横屏设置。后续修改代码不会自动更新安装包，需要重新导出。
+1.2.0 正式横屏版本已使用提供的游戏图标重新打包，发布文件位于 `build/releases/v1.2.0/`：Windows 安装向导、免安装主程序、Android 正式签名 APK 和更新清单。热更新基线位于 `build/update_baselines/1.2.0-boot1/`。首次发布与以后的小/大版本更新教程见 [docs/publishing.md](docs/publishing.md)；双击根目录 `生成小版本更新.cmd` 可准备后续小补丁。正式 APK 与旧调试版签名不同，首次需卸载旧调试版；后续正式版保持同一签名。
 
 导出预设已写入 `export_presets.cfg`（Windows + Android，含包名 `com.anshun.mahjong`、arm64-v8a/armeabi-v7a、沉浸式全屏）。
 
@@ -92,14 +101,18 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 scenes/        MainMenu / Lobby / GameTable 场景
 scripts/
   autoload/    GameConfig(规则数值) · AudioManager(音轨/音量/去重) · Network(联机入口)
+              PatchBoot(启动前挂载小版本补丁、失败回退)
+              UpdateManager(GitHub Releases 两级更新、下载、校验和重启)
   core/        Tiles / TileSetFactory / WallBuilder / WallRing / PlayerState
                RuleEngine(判胡番型听牌) / Shanten(向听数) / ScoringEngine(捉鸡结算) / RoundState(回合状态机)
   ai/          AiPlayer(向听数+攻防)
-  online/      NetGameNode(主机权威/客户端同步, ENet)
+  online/      NetGameNode(等待房间/选座/准备/权威游戏) · LanDiscovery · OnlineDirectory
   ui/          TileView(程序化牌面) / MainMenu / Lobby / GameTable / SoundSettings
 res/audio/     四个座位各32段牌名/动作语音、Ripples背景音乐、落桌音效与署名
 tools/audio/   可选的素材生成工具（游戏运行不依赖）
 tests/         headless 冒烟与联机测试
+server/        Python房间目录 · Godot无界面房间服务器 · 部署说明
+res/update/    Windows 更新替换脚本（只在已下载并校验后执行）
 ```
 
 ## 七、测试（headless）
@@ -128,6 +141,9 @@ godot --headless --script res://tests/smoke_ui.gd        # UI 异步闭环
 godot --headless --script res://tests/smoke_audio.gd     # 音频素材/真实出牌/胡牌/同步去重/音量/后台/设置布局
 godot --headless --script res://tests/sweep.gd           # 多种子扫描（胡/碰/杠/报听统计）
 godot --headless --script res://tests/smoke_table_layout.gd  # 牌桌布局与溢出
+godot --headless --script res://tests/smoke_lobby.gd     # 准备/AI/选座/随机庄家/横屏等待房间
+godot --headless --script res://tests/smoke_update.gd    # GitHub 更新版本比较、地址/校验和平台处理
+python tests/run_network.py --godot /path/to/godot      # 真实局域网、换座、延迟发牌、牌桌UI和在线服务
 godot --headless --script res://tests/play_one.gd        # 完整一局逐步战报（人工观察用，不对断言负责）
 # 联机（先主机，后客户端）
 godot --headless res://tests/host_scene.tscn &

@@ -174,17 +174,16 @@ func _setup_host_view() -> void:
 	human_seat = network.my_seat
 	round = network.game
 	_connect_audio_round()
-	_round_number = 1
+	_round_number = network.round_number
 	round.require_turn.connect(_on_require_turn)
 	round.require_response.connect(_on_require_response)
 	round.round_finished.connect(_on_round_finished)
 	round.state_update.connect(_refresh)
-	if round.phase == "idle":
-		network.start_net_game()
-	else:
+	if round.phase != "idle":
 		_on_net_prompt(human_seat)
 		_refresh()
 	network.connection_error.connect(_on_connection_error)
+	network.lobby_updated.connect(_on_net_lobby_updated)
 
 func _setup_client_view() -> void:
 	var network = _net_node()
@@ -197,10 +196,12 @@ func _setup_client_view() -> void:
 	network.state_updated.connect(_on_client_state_updated)
 	network.prompted.connect(_on_net_prompt)
 	network.connection_error.connect(_on_connection_error)
+	network.lobby_updated.connect(_on_net_lobby_updated)
 	enable_net(network.submit_client_turn, network.submit_client_response)
 	if network.my_seat >= 0:
 		human_seat = network.my_seat
 	_refresh()
+	_on_net_prompt(human_seat)
 
 func _build_static_ui() -> void:
 	var theme_resource := Theme.new()
@@ -807,8 +808,10 @@ func _refresh_discards(seat: int) -> void:
 		_scroll_to_latest.call_deferred(river)
 
 func _scroll_to_latest(river: ScrollContainer) -> void:
+	if not is_inside_tree():
+		return
 	await get_tree().process_frame
-	if is_instance_valid(river):
+	if is_inside_tree() and is_instance_valid(river):
 		river.scroll_vertical = int(river.get_v_scroll_bar().max_value)
 
 func _wall_stacks(seat: int) -> Array:
@@ -1019,6 +1022,11 @@ func _on_client_state_updated() -> void:
 		_add_action("结算", _show_result)
 	_refresh()
 
+func _on_net_lobby_updated() -> void:
+	# 在线房主断线后，新的房主可以继续下一局。
+	if round != null and round.phase == "settled" and _result_shown and _result_panel != null and _result_panel.visible:
+		_show_result()
+
 func _on_net_prompt(seat: int) -> void:
 	if seat != human_seat or seat >= round.players.size():
 		return
@@ -1112,7 +1120,8 @@ func _show_result() -> void:
 	eye.tooltip_text = "隐藏结算卡片，查看牌桌上的牌"
 	eye.position = _result_toggle_position()
 	panel.add_child(eye)
-	var next := _button("下一局" if _net_mode() != "client" else "返回大厅", _next_round if _net_mode() != "client" else _on_quit, Vector2(300, 52), true)
+	var can_continue: bool = _net_mode() == "" or _net_node().is_room_owner()
+	var next := _button("下一局" if can_continue else "返回大厅", _next_round if can_continue else _on_quit, Vector2(300, 52), true)
 	next.position = Vector2((_result_card_size().x - 300) / 2.0, _result_card_size().y - 78)
 	panel.add_child(next)
 	_ensure_restore_button()
@@ -1273,7 +1282,7 @@ func _toggle_result_panel(show_card: bool) -> void:
 		_result_restore.visible = not show_card
 
 func _next_round() -> void:
-	if _net_mode() == "host":
+	if _net_mode() != "":
 		_result_shown = false
 		result_layer.hide()
 		result_layer.mouse_filter = Control.MOUSE_FILTER_STOP

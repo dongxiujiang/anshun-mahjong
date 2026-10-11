@@ -5,6 +5,10 @@ extends SceneTree
 ## 注意：联机测试（host/client 配对）需要两个进程，不在这里跑，见 README 第七节。
 
 const SUITES: Array[String] = [
+	"res://tests/smoke_lobby.gd",
+	"res://tests/smoke_lobby_flow.gd",
+	"res://tests/smoke_update.gd",
+	"res://tests/smoke_hot_update.gd",
 	"res://tests/smoke_tiles.gd",
 	"res://tests/smoke_wall.gd",
 	"res://tests/smoke_logic.gd",

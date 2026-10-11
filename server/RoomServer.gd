@@ -1,0 +1,44 @@
+extends SceneTree
+## 云端每个房间一个无界面 Godot 进程，复用同一权威状态机和 RPC。
+var _status_path := ""
+var _tick := 0.0
+var _empty_seconds := 0.0
+var _net: NetGameNode
+
+func _initialize() -> void:
+	call_deferred("_run")
+
+func _argument(name_value: String, fallback: String = "") -> String:
+	for value in OS.get_cmdline_user_args():
+		if value.begins_with(name_value + "="): return value.substr(name_value.length() + 1)
+	return fallback
+
+func _run() -> void:
+	var network := root.get_node("Network")
+	_net = network.net_node
+	_status_path = _argument("--status-file")
+	if not _net.host(false, true, int(_argument("--room-port", "7600")), _argument("--room-number", "0000"), _argument("--room-name", "在线麻将"), true, _argument("--owner-token")):
+		quit(1)
+		return
+	_net.game.ai_delay_seconds = 1.0
+	_write_status()
+
+func _process(delta: float) -> bool:
+	if _net == null or not _net.host_mode: return false
+	_tick += delta
+	_empty_seconds = _empty_seconds + delta if _net._members.is_empty() else 0.0
+	if _empty_seconds > 60.0:
+		quit()
+		return false
+	if _tick >= 1.0:
+		_tick = 0.0
+		_write_status()
+	return false
+
+func _write_status() -> void:
+	if _status_path == "": return
+	var file := FileAccess.open(_status_path + ".tmp", FileAccess.WRITE)
+	if file == null: return
+	file.store_string(JSON.stringify({"number": _net.room_number, "name": _net.room_name, "players": _net._members.size(), "started": _net._started, "updated": Time.get_unix_time_from_system()}))
+	file.close()
+	DirAccess.rename_absolute(_status_path + ".tmp", _status_path)

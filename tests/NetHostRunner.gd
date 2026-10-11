@@ -11,6 +11,9 @@ func _run() -> void:
 	net.host(true, true, 7510)
 	print("[host] 主机启动，等待客户端 2 秒后开局")
 	await get_tree().create_timer(2.0).timeout
+	var wait_start := Time.get_ticks_msec()
+	while not net.all_ready() and Time.get_ticks_msec() - wait_start < 10000:
+		await get_tree().process_frame
 	net.start_net_game()
 	print("[host] 本局进行中/已结算")
 	var t := 0.0

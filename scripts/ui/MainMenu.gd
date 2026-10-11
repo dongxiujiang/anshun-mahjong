@@ -2,6 +2,8 @@ extends Control
 
 var content: VBoxContainer
 var sound_settings: SoundSettings
+var update_panel: UpdatePanel
+var update_button: Button
 
 func _ready() -> void:
 	var theme_resource := Theme.new()
@@ -14,7 +16,7 @@ func _ready() -> void:
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 	content = VBoxContainer.new()
-	content.size = Vector2(460, 492)
+	content.size = Vector2(460, 610)
 	content.add_theme_constant_override("separation", 18)
 	add_child(content)
 	var title := Label.new()
@@ -37,18 +39,35 @@ func _ready() -> void:
 	sound_settings = SoundSettings.new()
 	add_child(sound_settings)
 	content.add_child(_button("声音设置", sound_settings.open))
+	update_panel = UpdatePanel.new()
+	add_child(update_panel)
+	update_button = _button("检查更新", update_panel.open)
+	content.add_child(update_button)
 	content.add_child(_button("退出", func(): get_tree().quit()))
+	var version := Label.new()
+	version.text = "版本 " + UpdateManager.current_version()
+	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	version.add_theme_font_size_override("font_size", 17)
+	content.add_child(version)
+	UpdateManager.state_changed.connect(_update_badge)
+	_update_badge()
 	resized.connect(_layout)
 	_layout()
+	UpdateManager.maybe_check()
+	PatchBoot.confirm_boot()
+
+func _update_badge() -> void:
+	update_button.text = "有新版 · " + str(UpdateManager.latest.version) if UpdateManager.state in ["available", "ready"] else "检查更新"
 
 func _layout() -> void:
-	var factor := minf(1.0, minf(size.x / 540.0, size.y / 600.0))
+	var factor := minf(1.0, minf(size.x / 540.0, size.y / 700.0))
 	content.scale = Vector2.ONE * factor
 	content.position = (size - content.size * factor) / 2.0
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST and sound_settings != null and sound_settings.is_open():
-		sound_settings.close()
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if update_panel != null and update_panel.is_open(): update_panel.close()
+		elif sound_settings != null and sound_settings.is_open(): sound_settings.close()
 
 func _button(text: String, callback: Callable) -> Button:
 	var button := Button.new()

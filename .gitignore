@@ -24,6 +24,8 @@ desktop.ini
 *.log
 *.out
 *.err
+__pycache__/
+*.pyc
 
 # ── Android 签名文件 ─────────────────────────────────────
 *.keystore
