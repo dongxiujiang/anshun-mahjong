@@ -14,6 +14,10 @@ const LANDSCAPE_RESULT_SIZE := Vector2(2200, 1232)
 const TILE_UNIT := 1.1
 const PLAYER_TILE_UNIT := 1.35
 const OWN_PLAYER_TILE_UNIT := 1.60
+const OWN_HAND_TILE_UNIT := OWN_PLAYER_TILE_UNIT * 1.5
+const ACTION_BUTTON_SIZE := Vector2(118, 84)
+const DISCARD_BUTTON_SIZE := ACTION_BUTTON_SIZE * 1.5
+const ACTION_HAND_GAP := 56.0
 ## 结算卡片里的牌图单独放大，便于看清是哪张牌。
 const RESULT_TILE_UNIT := 1.6
 const RESULT_CARD_SIZE := Vector2(1320, 1496)
@@ -392,7 +396,10 @@ func _table_bounds() -> Rect2:
 
 func _seat_metrics(seat: int) -> Dictionary:
 	var side := _relative_seat(seat) % 2 == 1
-	return {"hand_y": 1010.0 if side else (430.0 if seat == human_seat else 458.0),
+	var exposed_y := 1010.0 if side else (430.0 if seat == human_seat else 458.0)
+	# Keep the local hand's bottom edge; the larger faces grow upwards.
+	var hand_y := exposed_y - TileView.BASE_H * (OWN_HAND_TILE_UNIT - OWN_PLAYER_TILE_UNIT) if seat == human_seat else exposed_y
+	return {"hand_y": hand_y, "exposed_y": exposed_y,
 		"left": -494.0 if side else -1000.0, "overflow_x": -544.0 if side else -1000.0,
 		"overflow_right": 530.0 if side else 1000.0,
 		# Side-player discard zones are wider in their local axis.  Tile units stay
@@ -403,10 +410,13 @@ func _seat_metrics(seat: int) -> Dictionary:
 func _player_tile_unit(seat: int) -> float:
 	return OWN_PLAYER_TILE_UNIT if seat == human_seat else PLAYER_TILE_UNIT
 
+func _hand_tile_unit(seat: int) -> float:
+	return OWN_HAND_TILE_UNIT if seat == human_seat else PLAYER_TILE_UNIT
+
 ## 手牌与独立摸牌位整体居中；预留摸牌位，摸打时整排不会来回跳动。
 func _hand_layout(seat: int) -> Dictionary:
 	var player: PlayerState = round.players[seat]
-	var width := TileView.BASE_W * _player_tile_unit(seat)
+	var width := TileView.BASE_W * _hand_tile_unit(seat)
 	var count := player.concealed.size() - (1 if player.just_drew != "" and player.concealed.has(player.just_drew) else 0)
 	var span := maxf(0.0, count * (width + TILE_GAP) - TILE_GAP)
 	var right := (span + DRAW_GAP + width) / 2.0
@@ -418,13 +428,28 @@ func _layout_actions() -> void:
 	var right := _table_center().x + 574.0
 	var top := _table_center().y + float(_seat_metrics(human_seat).hand_y)
 	if round != null and round.players.size() == 4:
-		right = _table_center().x + float(_hand_layout(human_seat).draw_x) + TileView.BASE_W * OWN_PLAYER_TILE_UNIT
+		right = _table_center().x + float(_hand_layout(human_seat).draw_x) + TileView.BASE_W * OWN_HAND_TILE_UNIT
 	# The rightmost action aligns with the right edge of the drawn tile.  The row
 	# grows leftwards as optional actions appear, keeping all actions above it.
 	var count := action_bar.get_child_count()
 	action_bar.visible = count > 0
-	action_bar.size = Vector2(maxi(1, count) * 118 + maxi(0, count - 1) * 12, 84)
-	action_bar.position = Vector2(right - action_bar.size.x, top - 98.0)
+	var row_size := Vector2(0, ACTION_BUTTON_SIZE.y)
+	for button in action_bar.get_children():
+		row_size.x += button.custom_minimum_size.x
+		row_size.y = maxf(row_size.y, button.custom_minimum_size.y)
+	row_size.x += maxi(0, count - 1) * action_bar.get_theme_constant("separation")
+	action_bar.size = row_size
+	# With a short hand, keep the buttons to the right of our river. The
+	# next player's river may sit underneath, as requested, but our tiles stay clear.
+	var metrics := _seat_metrics(human_seat)
+	var river := Rect2(_table_center() + Vector2(metrics.river_position), Vector2(metrics.river_size))
+	var next_hand_left: float = _table_center().x + _seat_metrics(posmod(human_seat + 1, 4)).hand_y
+	var right_limit := minf(_table_bounds().end.x - 16.0, next_hand_left - 16.0)
+	var left := minf(maxf(right - row_size.x, river.end.x + 16.0), right_limit - row_size.x)
+	var row_top := top - row_size.y - ACTION_HAND_GAP
+	if Rect2(Vector2(left, row_top), row_size).intersects(river):
+		row_top = minf(row_top, river.position.y - row_size.y - 16.0)
+	action_bar.position = Vector2(left, row_top)
 
 func _result_card_size() -> Vector2:
 	return LANDSCAPE_RESULT_SIZE if _landscape else RESULT_CARD_SIZE
@@ -583,18 +608,20 @@ func _refresh_seat(seat: int) -> void:
 	_clear_box(hand_box[seat])
 	_clear_box(draw_box[seat])
 	var own := seat == human_seat
+	var hand_unit := _hand_tile_unit(seat)
+	width = TileView.BASE_W * hand_unit
 	var x := hand_x
 	var y: float = metrics.hand_y
 	var reveal := own or round.phase == "settled"
 	for card in cards:
-		var tile := _make_tile(card if reveal else "", reveal, player_unit)
+		var tile := _make_tile(card if reveal else "", reveal, hand_unit)
 		_put_tile(hand_box[seat], tile, Vector2(x, y))
 		if own:
 			tile.gui_input.connect(_on_human_tile_gui.bind(tile))
 			tile.set_meta("drawn", false)
 		x += width + TILE_GAP
 	if has_draw:
-		var drawn := _make_tile(player.just_drew if reveal else "", reveal, player_unit)
+		var drawn := _make_tile(player.just_drew if reveal else "", reveal, hand_unit)
 		_put_tile(draw_box[seat], drawn, Vector2(draw_x, y))
 		drawn.set_meta("drawn", true)
 		if own:
@@ -640,9 +667,9 @@ func _prepare_exposed_layouts() -> void:
 		occupied.append(Rect2(control.position, control.size).grow(6.0))
 	occupied.append(Rect2(Vector2(1056, 566), Vector2(168, 168)).grow(6.0))
 	for seat in 4:
-		var player_unit := _player_tile_unit(seat)
-		var width := TileView.BASE_W * player_unit
-		var height := TileView.BASE_H * player_unit
+		var hand_unit := _hand_tile_unit(seat)
+		var width := TileView.BASE_W * hand_unit
+		var height := TileView.BASE_H * hand_unit
 		var transform := Transform2D(ROTATIONS[_relative_seat(seat)], _table_center())
 		var metrics := _seat_metrics(seat)
 		var player: PlayerState = round.players[seat]
@@ -680,7 +707,7 @@ func _prepare_exposed_layouts() -> void:
 			while row_index < 20 and not placed:
 				# Scan inward for free space, checking every tile's actual bounds;
 				# opposite-player kongs include their upper sideways tile.
-				var bottom: float = metrics.hand_y + height if row_index == 0 else metrics.hand_y - 16.0 - (row_index - 1) * 24.0
+				var bottom: float = metrics.exposed_y + height if row_index == 0 else metrics.exposed_y - 16.0 - (row_index - 1) * 24.0
 				var right: float = hand_left - EXPOSED_HAND_GAP if row_index == 0 else metrics.overflow_right
 				var x: float = next_x if row_index == 0 else metrics.overflow_x
 				while x + float(layout.size.x) <= right:
@@ -1323,8 +1350,10 @@ func _button(text: String, callback: Callable, dimensions: Vector2, primary: boo
 	return button
 
 func _add_action(text: String, callback: Callable, primary: bool = false, tooltip: String = "") -> Button:
-	var button := _button(text, callback, Vector2(118, 84), primary)
-	button.add_theme_font_size_override("font_size", 28)
+	# 报听、碰、杠、胡等操作与出牌使用相同的大按钮和字号。
+	var button := _button(text, callback, DISCARD_BUTTON_SIZE, primary)
+	button.add_theme_font_size_override("font_size", 42)
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	button.tooltip_text = tooltip
 	action_bar.add_child(button)
 	_layout_actions()

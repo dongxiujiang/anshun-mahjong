@@ -21,6 +21,7 @@ func _run() -> void:
 	_test_ready()
 	_test_kong()
 	_test_kong_choices()
+	await _test_response_actions()
 	_test_sync()
 	_test_network_reset()
 	_test_charge_chickens()
@@ -181,6 +182,15 @@ func _test_kong_choices() -> void:
 		choices.id_pressed.emit(1)
 		_expect(player.melds.size() == 1 and player.melds[0].tile == "wan4", "Second kong choice must be honored")
 
+func _test_response_actions() -> void:
+	_build_midgame()
+	table._on_require_response(0, 1, "tong9", {"can_win": true, "can_pong": true, "can_kong": true})
+	table._refresh()
+	await process_frame
+	await process_frame
+	_expect(table.action_bar.get_child_count() == 4, "Win, pong, kong and pass must fit together")
+	_check_layout()
+
 func _test_network_reset() -> void:
 	var network := root.get_node("Network")
 	network.reset()
@@ -253,12 +263,12 @@ func _check_layout() -> void:
 	_expect(table.OWN_PLAYER_TILE_UNIT > table.PLAYER_TILE_UNIT, "Only the local player's non-discard tiles are enlarged")
 	if table.action_bar.visible:
 		var row: Dictionary = table._hand_layout(table.human_seat)
-		var draw_right: float = table._table_center().x + row.draw_x + TileView.BASE_W * table.OWN_PLAYER_TILE_UNIT
+		var draw_right: float = table._table_center().x + row.draw_x + TileView.BASE_W * table.OWN_HAND_TILE_UNIT
 		var draw_top: float = table._table_center().y + table._seat_metrics(table.human_seat).hand_y
-		_expect(is_equal_approx(table.action_bar.position.x + table.action_bar.size.x, draw_right), "Actions must align above the right edge of the draw slot")
+		_expect(table.action_bar.position.x + table.action_bar.size.x >= draw_right - 0.01, "Actions stay above the draw or shift right to keep the local river clear")
 		_expect(table.action_bar.position.y + table.action_bar.size.y < draw_top, "Actions must sit above the draw slot")
 		for button in table.action_bar.get_children():
-			_expect(button.custom_minimum_size == Vector2(118, 84), "Turn and response buttons must keep the larger touch target")
+			_expect(button.custom_minimum_size == table.DISCARD_BUTTON_SIZE, "Every turn and response action must keep the enlarged touch target")
 	var tiles: Array = []
 	for seat in 4:
 		_expect(not table.wall_box[seat].visible and table.wall_box[seat].get_child_count() == 0, "Wall visuals must be removed without removing wall logic")
@@ -269,7 +279,11 @@ func _check_layout() -> void:
 		for box in [table.hand_box[seat], table.draw_box[seat], table.meld_box[seat], table.chicken_box[seat]] + table.discard_box[seat]:
 			for tile in box.get_children():
 				var player_tile: bool = box == table.hand_box[seat] or box == table.draw_box[seat] or box == table.meld_box[seat] or box == table.chicken_box[seat]
-				var expected_unit: float = (table.OWN_PLAYER_TILE_UNIT if seat == table.human_seat else table.PLAYER_TILE_UNIT) if player_tile else table.TILE_UNIT
+				var expected_unit: float = table.TILE_UNIT
+				if box == table.hand_box[seat] or box == table.draw_box[seat]:
+					expected_unit = table.OWN_HAND_TILE_UNIT if seat == table.human_seat else table.PLAYER_TILE_UNIT
+				elif player_tile:
+					expected_unit = table.OWN_PLAYER_TILE_UNIT if seat == table.human_seat else table.PLAYER_TILE_UNIT
 				_expect(tile.size.is_equal_approx(Vector2(TileView.BASE_W, TileView.BASE_H) * expected_unit), "Tile size must match its table zone")
 				if not player_tile:
 					_expect(tile.size.is_equal_approx(Vector2(52.8, 70.4)), "Discarded tiles must keep their original dimensions")
@@ -285,6 +299,8 @@ func _check_layout() -> void:
 					_expect(not rect.grow(-0.5).intersects(other.grow(-0.5)), "Face/hand tiles must not overlap: seat %d tile %s rect %s / %s" % [seat, tile.tile, rect, other])
 				for label in table.center_labels.values() + table.avatars.values() + [table.center_info, table.action_bar, table.status_label]:
 					if not label.visible or label.size.x < 1.0 or label.size.y < 1.0:
+						continue
+					if label == table.action_bar and box in table.discard_box[seat] and table._relative_seat(seat) == 1:
 						continue
 					_expect(not rect.grow(-0.5).intersects(_control_rect(label).grow(-0.5)), "Tiles must not cover scores or controls: %s %s / %s %s" % [tile.get_path(), rect, label.get_path(), _control_rect(label)])
 				for wall_seat in 4:
