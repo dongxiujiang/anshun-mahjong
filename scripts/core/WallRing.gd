@@ -19,26 +19,38 @@ var _drawn: Array[bool] = []
 var _head := 0
 var _tail := 0
 var remaining := 108
+var _segments: Dictionary
 
 const SUIT_LEN := 26  # 砖数单位，仅供内部：每砖2张
 const PAIR := 2
 
-func _init(ring_tiles: Array):
+func _init(ring_tiles: Array, dealer_seat: int = 0):
 	# ring_tiles 为 108 张，按物理顺时针（与 SEG 边界一致）传入
 	assert(ring_tiles.size() == N)
 	_ring = ring_tiles.duplicate()
+	_segments = segments_for_dealer(dealer_seat)
 	_drawn.resize(N)
 	_drawn.fill(false)
 
 ## 根据骰子点数 D 计算牌头索引（本子按你描述的规则）：
 ##   D∈{1,3,5} -> 对家墙(seg0) 跳过D砖 ; D=4 -> 上家(seg3) 跳4砖 ; D∈{2,6} -> 下家(seg1) 跳D砖
-static func compute_break(die: int) -> int:
-	if die in [1, 3, 5]:
-		return SEG[0].start + die * PAIR          # 对家
-	elif die == 4:
-		return SEG[3].start + 4 * PAIR            # 上家
-	else:  # 2,6
-		return SEG[1].start + die * PAIR          # 下家
+static func segments_for_dealer(dealer_seat: int) -> Dictionary:
+	var segments := {}
+	var start := 0
+	for index in 4:
+		var seat := int(SEG[index].seat)
+		var length := 28 if posmod(seat - dealer_seat, 2) == 0 else 26
+		segments[index] = {"start": start, "len": length, "seat": seat}
+		start += length
+	return segments
+
+static func compute_break(die: int, dealer_seat: int = 0) -> int:
+	var offset := 2 if die in [1, 3, 5] else (3 if die == 4 else 1)
+	var target := posmod(dealer_seat + offset, 4)
+	for segment in segments_for_dealer(dealer_seat).values():
+		if int(segment.seat) == target:
+			return int(segment.start) + die * PAIR
+	return 0
 
 func set_head(break_idx: int):
 	_head = break_idx
@@ -100,9 +112,9 @@ func wall_stack_counts(seat: int) -> Array:
 	return stacks
 
 func _wall_seg_for_seat(seat: int) -> Dictionary:
-	for key in SEG:
-		if SEG[key].seat == seat: return SEG[key]
-	return SEG[0]
+	for key in _segments:
+		if _segments[key].seat == seat: return _segments[key]
+	return _segments[0]
 
 func remaining_in_wall_until_empty() -> bool:
 	return remaining <= 0

@@ -67,8 +67,9 @@ func _seen_map(round, seat: int = -1) -> Dictionary:
 	for player in round.players:
 		for tile in player.discards:
 			seen[tile] = seen.get(tile, 0) + 1
-		for meld in player.melds:
-			if not meld.get("concealed", false) or player.seat == seat:
+		for index in player.melds.size():
+			var meld: Dictionary = player.melds[index]
+			if player.seat == seat or round.is_meld_revealed(player.seat, index):
 				seen[meld.tile] = seen.get(meld.tile, 0) + (3 if meld.kind == "pung" else 4)
 	if seat >= 0:
 		for tile in round.players[seat].concealed:

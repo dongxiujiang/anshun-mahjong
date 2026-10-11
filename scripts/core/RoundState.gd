@@ -6,6 +6,7 @@ signal require_response(seat, discarded_seat, tile, options)
 signal round_finished(result)
 signal state_update()
 signal dealt(info)
+signal audio_event(event: Dictionary)
 
 const SEATS := [0, 1, 2, 3]
 const CFG := preload("res://scripts/autoload/GameConfig.gd")
@@ -13,6 +14,8 @@ var players: Array = []
 var controllers: Array = []
 var wall: WallRing
 var current_turn := 0
+var dealer_seat := 0
+var next_dealer_seat := 0
 var awaiting := false
 var phase := "idle"
 var last_result := {}
@@ -42,12 +45,34 @@ var _kong_draw_turn := false
 var _kong_draw_kind := ""
 var ai_delay_seconds := 0.0
 var next_chicken_multiplier := 1
+var audio_session := ""
+var audio_event_id := 0
+var audio_events: Array = []
+var _audio_sync_initialized := false
+var _win_audio_emitted := false
+const AUDIO_HISTORY_LIMIT := 16
 
 func _init() -> void:
 	_reset_meta()
+	_reset_audio_events()
+
+func _reset_audio_events() -> void:
+	audio_session = Crypto.new().generate_random_bytes(8).hex_encode()
+	audio_event_id = 0
+	audio_events.clear()
+	_win_audio_emitted = false
+
+func _emit_audio_event(action: String, seat: int, tile: String = "") -> void:
+	audio_event_id += 1
+	var event := {"session": audio_session, "id": audio_event_id, "action": action, "seat": seat, "tile": tile}
+	audio_events.append(event)
+	while audio_events.size() > AUDIO_HISTORY_LIMIT:
+		audio_events.pop_front()
+	audio_event.emit(event.duplicate(true))
 
 func _reset_meta() -> void:
 	round_meta = {
+		"dealer_seat": dealer_seat,
 		"charge_chickens": {}, "flip_tile": "", "chicken_multiplier": 1,
 		"kong_draw_seat": -1, "last_four_self_draw_seat": -1,
 		"robber_seat": -1, "burn_chicken_seat": -1,
@@ -58,7 +83,7 @@ func build_players(human_seat: int) -> void:
 	players.clear()
 	for seat in SEATS:
 		var player := PlayerState.new()
-		player.init_seat(seat, seat == human_seat, seat == 0, ["庄家", "下家", "对家", "上家"][seat])
+		player.init_seat(seat, seat == human_seat, seat == dealer_seat, ["庄家", "下家", "对家", "上家"][posmod(seat - dealer_seat, 4)])
 		player.score = CFG.START_SCORE
 		players.append(player)
 
@@ -66,10 +91,12 @@ func start_round(human_seat: int, die_override: int = -1) -> void:
 	var scores: Array = []
 	for player in players:
 		scores.append(player.score)
+	dealer_seat = posmod(next_dealer_seat, 4)
 	build_players(human_seat)
 	if scores.size() == 4:
 		apply_scores(scores)
 	_reset_meta()
+	_reset_audio_events()
 	last_result = {}
 	round_meta.chicken_multiplier = clampi(next_chicken_multiplier, 1, CFG.MAX_CHICKEN_MULTIPLIER)
 	next_chicken_multiplier = 1
@@ -83,24 +110,26 @@ func start_round(human_seat: int, die_override: int = -1) -> void:
 	awaiting = false
 	_kong_draw_turn = false
 	_kong_draw_kind = ""
-	var built := WallBuilder.setup(_rng)
-	wall = WallRing.new(built.ring)
+	var built := WallBuilder.setup(_rng, dealer_seat)
+	wall = WallRing.new(built.ring, dealer_seat)
 	var die := die_override if die_override >= 1 and die_override <= 6 else _rng.randi_range(1, 6)
 	round_meta["die"] = die
-	round_meta["break"] = WallRing.compute_break(die)
+	round_meta["break"] = WallRing.compute_break(die, dealer_seat)
 	wall.set_head(round_meta["break"])
 	phase = "dealing"
 	_initial_deal()
 	phase = "playing"
-	current_turn = 0
+	current_turn = dealer_seat
 	_begin_turn()
 
 func _initial_deal() -> void:
 	for batch in 3:
-		for seat in SEATS:
+		for offset in 4:
+			var seat := posmod(dealer_seat + offset, 4)
 			for index in 4:
 				players[seat].concealed.append(wall.draw_head())
-	for seat in SEATS:
+	for offset in 4:
+		var seat := posmod(dealer_seat + offset, 4)
 		players[seat].concealed.append(wall.draw_head())
 	var info: Array = []
 	for player in players:
@@ -206,6 +235,7 @@ func _apply_turn_action(seat: int, decision: Dictionary) -> void:
 		if RuleEngine.is_tenpai(after, player.melds):
 			player.ready = true
 			player.announced_ready = true
+			_emit_audio_event("ready", seat)
 	_discard(seat, discard)
 
 func _discard(seat: int, tile: String) -> void:
@@ -231,6 +261,7 @@ func _discard(seat: int, tile: String) -> void:
 	if Tiles.is_chicken(tile) and not has_charge(tile):
 		round_meta.charge_chickens[tile] = {"owner": seat, "location": "discard", "discard_id": player.discard_count - 1}
 		_refresh_charge_flags()
+	_emit_audio_event("discard", seat, tile)
 	state_update.emit()
 	_after_discard()
 
@@ -372,6 +403,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
 		current_turn = seat
 		_kong_draw_kind = "exposed"
+		_emit_audio_event("kong", seat)
 		_state_after_kong_draw()
 		return
 	if action == "pong" and options.can_pong:
@@ -381,6 +413,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		player.just_drew = ""
 		current_turn = seat
 		_kong_draw_turn = false
+		_emit_audio_event("pong", seat)
 		_ask_turn_actor()
 		return
 	_ask_next_responder(source, tile)
@@ -404,6 +437,8 @@ func _do_concealed_kong(seat: int, tile: String, player: PlayerState) -> void:
 	player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "concealed": true, "after_discard": player.discard_count})
 	current_turn = seat
 	_kong_draw_kind = "concealed"
+	# 只喊“杠”，公共声音事件不能泄露暗杠的牌。
+	_emit_audio_event("kong", seat)
 	_state_after_kong_draw()
 
 func _do_add_kong(seat: int, tile: String) -> bool:
@@ -415,6 +450,8 @@ func _do_add_kong(seat: int, tile: String) -> bool:
 			_pending_kong = {"seat": seat, "tile": tile, "index": index}
 			_response_stage = "rob"
 			_pending_responders = _seat_order(seat)
+			# 加杠宣告时喊一次，被抢时接胡牌语音，完成时不再重喊。
+			_emit_audio_event("kong", seat)
 			_ask_next_responder(seat, tile)
 			return true
 	return false
@@ -470,6 +507,15 @@ func is_charge_meld(seat: int, index: int) -> bool:
 	var charge: Dictionary = round_meta.get("charge_chickens", {}).get(players[seat].melds[index].tile, {})
 	return charge.get("owner", -1) == seat and charge.get("location", "") == "meld" and charge.get("meld_index", -1) == index
 
+func is_meld_revealed(seat: int, index: int) -> bool:
+	var player: PlayerState = players[seat]
+	var meld: Dictionary = player.melds[index]
+	if not meld.get("concealed", false) or phase == "settled":
+		return true
+	# 暗杠补牌后的本轮出牌仍反扣，下一轮本人出牌后才全部翻开。
+	# 使用累计出牌次数，碰杠移走弃牌不会让已亮出的暗杠重新扣回。
+	return player.discard_count >= int(meld.get("after_discard", 0)) + 2
+
 func _refresh_charge_flags() -> void:
 	for player in players:
 		player.charge_chicken = false
@@ -515,6 +561,8 @@ func _finish() -> void:
 	_last_items = scored.get("items", [[], [], [], []])
 	_last_status = scored.get("status", ["", "", "", ""])
 	next_chicken_multiplier = int(scored.next_chicken_multiplier)
+	next_dealer_seat = _choose_next_dealer(scored.called)
+	round_meta.next_dealer_seat = next_dealer_seat
 	round_meta.all_called_draw = scored.all_called_draw
 	round_meta.next_chicken_multiplier = next_chicken_multiplier
 	_last_total = 0.0
@@ -523,8 +571,25 @@ func _finish() -> void:
 		_last_total += scored.deltas[seat]
 	assert(is_zero_approx(_last_total), "Settlement must preserve the four players' total score")
 	last_result = build_result()
+	if int(round_meta.winner) >= 0 and not _win_audio_emitted:
+		_win_audio_emitted = true
+		_emit_audio_event("zimo" if round_meta.get("self_draw", false) else "hu", int(round_meta.winner), str(round_meta.get("win_tile", "")))
 	round_finished.emit(last_result)
 	state_update.emit()
+
+func _choose_next_dealer(called: Array) -> int:
+	var winner := int(round_meta.get("winner", -1))
+	if winner >= 0:
+		if round_meta.get("self_draw", false):
+			return winner
+		var source := int(round_meta.get("discard_seat", -1))
+		return source if source in SEATS else winner
+	# 多人未叫时，从本局庄家开始顺时针取第一位；全员叫牌则连庄。
+	for offset in 4:
+		var seat := posmod(dealer_seat + offset, 4)
+		if not called[seat]:
+			return seat
+	return dealer_seat
 
 func build_result() -> Dictionary:
 	var result := {
@@ -535,6 +600,7 @@ func build_result() -> Dictionary:
 		"transfers": _last_transfers, "total_delta": _last_total,
 		"flip_tile": round_meta.get("flip_tile", ""),
 		"next_chicken_multiplier": next_chicken_multiplier,
+		"dealer_seat": dealer_seat, "next_dealer_seat": next_dealer_seat,
 	}
 	for player in players:
 		result.players.append({"seat": player.seat, "concealed": player.concealed.duplicate(),
@@ -561,9 +627,11 @@ func _wall_count() -> int:
 func serialize() -> Dictionary:
 	var state := {
 		"current_turn": current_turn, "phase": phase, "round_meta": round_meta.duplicate(true),
+		"dealer_seat": dealer_seat, "next_dealer_seat": next_dealer_seat,
 		"last_discard": last_discard.duplicate(), "awaiting": awaiting, "prompt_id": prompt_id,
 		"awaiting_response": _awaiting_response.duplicate(true), "last_result": last_result.duplicate(true),
 		"players": [], "wall": {}, "wall_stacks": {}, "next_chicken_multiplier": next_chicken_multiplier,
+		"audio_session": audio_session, "audio_event_id": audio_event_id, "audio_events": audio_events.duplicate(true),
 	}
 	for player in players:
 		state.players.append({
@@ -581,6 +649,8 @@ func serialize() -> Dictionary:
 	return state
 
 func apply_sync(state: Dictionary) -> void:
+	dealer_seat = int(state.get("dealer_seat", state.get("round_meta", {}).get("dealer_seat", 0)))
+	next_dealer_seat = int(state.get("next_dealer_seat", dealer_seat))
 	players.clear()
 	for data in state.players:
 		var player := PlayerState.new()
@@ -595,7 +665,7 @@ func apply_sync(state: Dictionary) -> void:
 		player.ready = data.ready
 		player.name_label = data.name
 		player.is_human = data.is_human
-		player.is_dealer = data.get("is_dealer", player.seat == 0)
+		player.is_dealer = data.get("is_dealer", player.seat == dealer_seat)
 		player.just_drew = data.get("just_drew", "")
 		player.first_turn_done = data.get("first_turn_done", false)
 		player.charge_chicken = data.get("charge_chicken", false)
@@ -611,6 +681,21 @@ func apply_sync(state: Dictionary) -> void:
 	last_result = state.get("last_result", {}).duplicate(true)
 	wall_remain = state.wall.duplicate()
 	wall_stacks = state.get("wall_stacks", {}).duplicate(true)
+	_apply_audio_sync(state)
+
+func _apply_audio_sync(state: Dictionary) -> void:
+	var session := str(state.get("audio_session", ""))
+	var last_id := audio_event_id if session == audio_session else 0
+	audio_session = session
+	audio_event_id = int(state.get("audio_event_id", 0))
+	audio_events = state.get("audio_events", []).duplicate(true)
+	# 初次加入/重连只接收当前进度，不重播此前牌名及已结束的胡牌。
+	if not _audio_sync_initialized:
+		_audio_sync_initialized = true
+		return
+	for event in audio_events:
+		if str(event.get("session", "")) == session and int(event.get("id", 0)) > last_id:
+			audio_event.emit(event.duplicate(true))
 
 func serialize_for_seat(seat: int) -> Dictionary:
 	var state := serialize()
@@ -622,9 +707,9 @@ func serialize_for_seat(seat: int) -> Dictionary:
 		player.concealed.fill("hidden0")
 		if player.just_drew != "":
 			player.just_drew = "hidden0"
-		for meld in player.melds:
-			if meld.get("concealed", false):
-				meld.tile = "hidden0"
+		for index in player.melds.size():
+			if not is_meld_revealed(int(player.seat), index):
+				player.melds[index].tile = "hidden0"
 	return state
 
 func _remove_n(cards: Array, tile: String, count: int) -> void:

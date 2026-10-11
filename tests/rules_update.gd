@@ -39,6 +39,7 @@ func _run() -> void:
 	_test_kong_payments()
 	_test_multiplier()
 	_test_ready_kongs()
+	_test_concealed_kong_reveal()
 	print("[rules_update] %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -267,3 +268,74 @@ func _test_ready_kongs() -> void:
 		r.players[0].just_drew = "wan9"
 		r.players[0].melds = [{"kind": kind, "tile": "wan7", "from_seat": 1}]
 		check(not r.can_declare_ready(0), "Prior " + kind + " disqualifies ready")
+
+func _check_kong_visibility(r: RoundState, owner: int, expected: Array) -> void:
+	var actor := AiPlayer.new("Reveal test")
+	for index in expected.size():
+		var tile: String = r.players[owner].melds[index].tile
+		check(r.is_meld_revealed(owner, index) == expected[index], "Concealed kong visibility follows its owner's discard count")
+		check(r.serialize_for_seat(owner).players[owner].melds[index].tile == tile, "Owner retains its own kong value without changing the display rule")
+		for viewer in 4:
+			if viewer == owner:
+				continue
+			var view := r.serialize_for_seat(viewer)
+			check(view.players[owner].melds[index].tile == (tile if expected[index] else "hidden0"), "Only revealed kong values are transmitted to opponents")
+			var client := RoundState.new()
+			client.apply_sync(view)
+			check(client.is_meld_revealed(owner, index) == expected[index], "Client derives the same reveal time after joining or refreshing")
+			check(int(actor._seen_map(r, viewer).get(tile, 0)) == (4 if expected[index] else 0), "AI counts an opponent's concealed kong only after it is revealed")
+		check(int(actor._seen_map(r, owner).get(tile, 0)) == 4, "Owner knows all four of its own kong tiles even before reveal")
+
+func _test_concealed_kong_reveal() -> void:
+	for owner in 4:
+		var r := fixture()
+		r.current_turn = owner
+		var player: PlayerState = r.players[owner]
+		player.discard_count = 3
+		player.concealed = ["wan7", "wan7", "wan7", "wan7", "tong6", "tong6", "tong6", "tong6", "tiao2", "tiao3", "tiao4", "wan9", "wan9", "tong1"]
+		player.just_drew = "tong1"
+		check(r.submit_turn(owner, {"kong_declares": ["wan7"]}), "Concealed kong is accepted for every seat")
+		_check_kong_visibility(r, owner, [false])
+		check(r.submit_turn(owner, {"kong_declares": ["tong6"]}), "Consecutive concealed kong is accepted in the same turn")
+		_check_kong_visibility(r, owner, [false, false])
+		check(not r.submit_turn(owner, {"discard": "invalid"}) and player.discard_count == 3, "Invalid discard cannot advance the reveal time")
+		check(r.submit_turn(owner, {"discard": "tong1"}), "Kong replacement turn ends with a legal discard")
+		_check_kong_visibility(r, owner, [false, false])
+		var other := (owner + 1) % 4
+		r.players[other].concealed.append("wan5")
+		r._discard(other, "wan5")
+		_check_kong_visibility(r, owner, [false, false])
+		r.current_turn = owner
+		r._begin_turn()
+		_check_kong_visibility(r, owner, [false, false])
+		check(r.submit_turn(owner, {"discard": player.just_drew}), "Owner completes the following turn's discard")
+		_check_kong_visibility(r, owner, [true, true])
+		r._remove_from_discards(owner, str(player.discards.back()))
+		_check_kong_visibility(r, owner, [true, true])
+		# Settlement reveals even a kong whose next discard has not yet occurred.
+		player.discard_count = 4
+		r.phase = "settled"
+		_check_kong_visibility(r, owner, [true, true])
+	# Kongs declared in different turns must reveal independently.
+	var r := fixture()
+	var player: PlayerState = r.players[0]
+	player.concealed = ["wan7", "wan7", "wan7", "wan7", "tong6", "tong6", "tong6", "tiao2", "tiao3", "tiao4", "wan9", "wan9", "wan2", "wan3"]
+	player.just_drew = "wan3"
+	var deck := TileSetFactory.create_deck()
+	deck[0] = "wan1"
+	deck[1] = "tong6"
+	deck[107] = "tong2"
+	r.wall = WallRing.new(deck)
+	r.wall.set_head(0)
+	check(r.submit_turn(0, {"kong_declares": ["wan7"]}), "First staggered kong is accepted")
+	check(r.submit_turn(0, {"discard": "wan2"}), "First staggered kong's replacement discard is accepted")
+	r.current_turn = 0
+	r._begin_turn()
+	check(r.submit_turn(0, {"kong_declares": ["tong6"]}), "Next-turn concealed kong is accepted")
+	_check_kong_visibility(r, 0, [false, false])
+	check(r.submit_turn(0, {"discard": "wan3"}), "Next-turn discard reveals the older kong only")
+	_check_kong_visibility(r, 0, [true, false])
+	r.current_turn = 0
+	r._begin_turn()
+	check(r.submit_turn(0, {"discard": player.just_drew}), "Later discard reveals the newer kong")
+	_check_kong_visibility(r, 0, [true, true])

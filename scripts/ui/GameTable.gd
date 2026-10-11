@@ -65,8 +65,11 @@ var _result_shade: ColorRect
 var _result_restore: Button
 var _status_labels := {}
 var _exposed_layouts := {}
+var _sound_settings: SoundSettings
+var _audio_round: RoundState
 
 func _ready() -> void:
+	AudioManager.begin_table(self)
 	_build_static_ui()
 	resized.connect(_layout)
 	_layout()
@@ -77,6 +80,22 @@ func _ready() -> void:
 		_setup_client_view()
 	else:
 		new_game()
+
+func _connect_audio_round() -> void:
+	if _audio_round != null and _audio_round.audio_event.is_connected(_on_audio_event):
+		_audio_round.audio_event.disconnect(_on_audio_event)
+	_audio_round = round
+	AudioManager.reset_round(round.audio_session, round.audio_event_id)
+	round.audio_event.connect(_on_audio_event)
+
+func _on_audio_event(event: Dictionary) -> void:
+	AudioManager.play_event(event)
+
+func _exit_tree() -> void:
+	if _audio_round != null and _audio_round.audio_event.is_connected(_on_audio_event):
+		_audio_round.audio_event.disconnect(_on_audio_event)
+	_audio_round = null
+	AudioManager.end_table(self)
 
 func _net_mode() -> String:
 	var network := get_node_or_null("/root/Network")
@@ -105,6 +124,7 @@ func _emit_response(tile: String, decision: Dictionary) -> void:
 func new_game() -> void:
 	var scores: Array = []
 	var chicken_multiplier := round.next_chicken_multiplier if round != null else 1
+	var next_dealer := round.next_dealer_seat if round != null else 0
 	if round != null:
 		for player in round.players:
 			scores.append(player.score)
@@ -118,7 +138,9 @@ func new_game() -> void:
 		_result_restore.hide()
 	_round_number += 1
 	round = RoundState.new()
+	_connect_audio_round()
 	round.next_chicken_multiplier = chicken_multiplier
+	round.next_dealer_seat = next_dealer
 	round.require_turn.connect(_on_require_turn)
 	round.require_response.connect(_on_require_response)
 	round.round_finished.connect(_on_round_finished)
@@ -129,15 +151,18 @@ func new_game() -> void:
 	round.controllers = controllers
 	round.ai_delay_seconds = GameConfig.ai_delay_seconds()
 	round.randomize_seed()
-	round.start_round(human_seat)
+	# 先带入累计分数，再让新庄家开始行动（AI 庄家也可能马上结算）。
 	if scores.size() == 4:
+		round.build_players(human_seat)
 		round.apply_scores(scores)
+	round.start_round(human_seat)
 	_refresh()
 
 func _setup_host_view() -> void:
 	var network = _net_node()
 	human_seat = network.my_seat
 	round = network.game
+	_connect_audio_round()
 	_round_number = 1
 	round.require_turn.connect(_on_require_turn)
 	round.require_response.connect(_on_require_response)
@@ -153,6 +178,7 @@ func _setup_host_view() -> void:
 func _setup_client_view() -> void:
 	var network = _net_node()
 	round = network.game
+	_connect_audio_round()
 	_round_number = 1
 	network.room_ready.connect(func(seat):
 		human_seat = seat
@@ -200,6 +226,13 @@ func _build_static_ui() -> void:
 		speed_bar.add_child(speed_button)
 		_speed_buttons[speed_key] = speed_button
 	_update_speed_buttons()
+	_sound_settings = SoundSettings.new()
+	add_child(_sound_settings)
+	var sound_button := _button("声音", _sound_settings.open, Vector2(60, 40))
+	sound_button.name = "SoundButton"
+	sound_button.add_theme_font_size_override("font_size", 17)
+	sound_button.position = Vector2(1287, 20)
+	surface.add_child(sound_button)
 	var back := _button("←", _on_quit, Vector2(48, 42))
 	back.position = Vector2(1354, 20)
 	back.tooltip_text = "返回大厅"
@@ -365,7 +398,7 @@ func _refresh_seat(seat: int) -> void:
 		return
 	var player: PlayerState = round.players[seat]
 	var title: String = ["你", "下家", "对家", "上家"][relative]
-	center_labels[seat].text = title
+	center_labels[seat].text = "%s\n%.0f分" % [title, player.score]
 	var label_font_size := 15 if relative == 1 or relative == 3 else 17
 	for line in center_labels[seat].text.split("\n"):
 		while label_font_size > 10 and TileView._font().get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, label_font_size).x > center_labels[seat].size.x:
@@ -408,10 +441,8 @@ func _refresh_seat(seat: int) -> void:
 		var charge_index := -1
 		if round.is_charge_meld(seat, group.meld_index):
 			charge_index = int(layout.sideways) if int(layout.sideways) >= 0 else 0
+		var up: bool = round.is_meld_revealed(seat, group.meld_index)
 		for index in count:
-			var up: bool = not (meld.get("concealed", false) and index in [0, 3] and round.phase != "settled")
-			if meld.get("concealed", false) and seat != human_seat and round.phase != "settled":
-				up = false
 			var tile := _make_tile(meld.tile if up else "", up, PLAYER_TILE_UNIT)
 			tile.set_meta("charge_chicken", index == charge_index)
 			if index == charge_index:
@@ -619,7 +650,7 @@ func _wall_stacks(seat: int) -> Array:
 		return round.wall_stacks[seat]
 	var fallback: Array = []
 	var remaining := _wall_remain(seat)
-	for index in (14 if seat == 0 or seat == 2 else 13):
+	for index in (14 if posmod(seat - round.dealer_seat, 2) == 0 else 13):
 		fallback.append(clampi(remaining - index * 2, 0, 2))
 	return fallback
 
@@ -1099,7 +1130,10 @@ func _on_connection_error(message: String) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		_on_quit()
+		if _sound_settings != null and _sound_settings.is_open():
+			_sound_settings.close()
+		else:
+			_on_quit()
 
 func _make_tile(card: String, up: bool, unit: float = TILE_UNIT) -> TileView:
 	var tile := TileView.new()

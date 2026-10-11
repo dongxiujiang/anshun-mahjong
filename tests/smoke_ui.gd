@@ -7,6 +7,8 @@ const H := preload("res://tests/test_harness.gd")
 var table
 var _frames := 0
 var t := H.new()
+var audio_seats := [0, 0, 0, 0]
+var audio_wins := 0
 
 func _initialize() -> void:
 	table = load("res://scenes/GameTable.tscn").instantiate()
@@ -15,15 +17,25 @@ func _initialize() -> void:
 
 func _drive() -> void:
 	_frames += 1
+	if _frames == 1:
+		root.get_node("AudioManager").event_played.connect(_on_audio_event)
 	if _frames > 4000:
 		print("[smoke_ui] 超时结束失败")
 		t.expect(false, "UI 闭环超时（%d 帧未结算）" % _frames)
+		table.queue_free()
+		# 音频停止与 Playback 回收在音频线程上完成。
+		await create_timer(0.2).timeout
 		quit(t.finish("smoke_ui")); return
 	var r = table.round
 	if r.phase == "settled":
 		print("[smoke_ui] 结算: winner=%d deltas=%s 牌守恒=%s" % [r.round_meta.winner, str(r.last_result.deltas), _conserved(r)])
 		t.expect(_conserved(r), "UI结算后牌应守恒")
 		t.expect(is_zero_approx(r.last_result.total_delta), "UI结算后总分变化应为0")
+		for seat in 4:
+			t.expect(audio_seats[seat] > 0, "真人和每个AI都应该触发出牌语音")
+		t.expect(audio_wins == (1 if int(r.round_meta.winner) >= 0 else 0), "结算只触发一次正确的胡牌语音，流局不触发")
+		table.queue_free()
+		await create_timer(0.2).timeout
 		quit(t.finish("smoke_ui")); return
 	if r.awaiting:
 		if not r._awaiting_response.is_empty():
@@ -43,6 +55,12 @@ func _drive() -> void:
 	else:
 		await process_frame
 	_drive()
+
+func _on_audio_event(event: Dictionary) -> void:
+	if event.action == "discard":
+		audio_seats[int(event.seat)] += 1
+	elif event.action in ["hu", "zimo"]:
+		audio_wins += 1
 
 func _decide(seat: int, ps, r) -> Dictionary:
 	if RuleEngine.analyze(ps.concealed, ps.melds).win:

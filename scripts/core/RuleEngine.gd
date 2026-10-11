@@ -102,7 +102,7 @@ static func _is_flush(concealed: Array, melds: Array) -> bool:
 ## 返回: {"win":bool, "seven_pairs":bool, "all_triplets":bool, "flush":bool}
 static func analyze(concealed: Array, melds: Array) -> Dictionary:
 	var e := exposed_melds_count(melds)
-	var invalid := {"win": false, "normal": false, "seven_pairs": false, "all_triplets": false, "flush": false}
+	var invalid := {"win": false, "normal": false, "seven_pairs": false, "dragon_seven_pairs": false, "all_triplets": false, "flush": false}
 	if e > 4 or concealed.size() != 3 * (4 - e) + 2:
 		return invalid
 	var counts := Tiles.to_counts(concealed)
@@ -120,9 +120,11 @@ static func analyze(concealed: Array, melds: Array) -> Dictionary:
 	# 普通胡
 	var normal := _win_normal(arr.duplicate(), melds_needed)
 	var seven_pairs := false
+	var dragon_seven_pairs := false
 	var all_triplets := false
 	if e == 0 and _is_seven_pairs(concealed):
 		seven_pairs = true
+		dragon_seven_pairs = counts.values().has(4)
 	else:
 		all_triplets = _is_all_triplets(concealed, melds, melds_needed)
 	var flush := _is_flush(concealed, melds)
@@ -130,6 +132,7 @@ static func analyze(concealed: Array, melds: Array) -> Dictionary:
 		"win": normal or seven_pairs or all_triplets,
 		"normal": normal,
 		"seven_pairs": seven_pairs,
+		"dragon_seven_pairs": dragon_seven_pairs,
 		"all_triplets": all_triplets,
 		"flush": flush,
 	}

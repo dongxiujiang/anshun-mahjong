@@ -1,6 +1,7 @@
 extends Control
 
 var content: VBoxContainer
+var sound_settings: SoundSettings
 
 func _ready() -> void:
 	var theme_resource := Theme.new()
@@ -13,7 +14,7 @@ func _ready() -> void:
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 	content = VBoxContainer.new()
-	content.size = Vector2(460, 410)
+	content.size = Vector2(460, 492)
 	content.add_theme_constant_override("separation", 18)
 	add_child(content)
 	var title := Label.new()
@@ -33,14 +34,21 @@ func _ready() -> void:
 	content.add_child(tiles)
 	content.add_child(_button("单机对局", func(): get_tree().change_scene_to_file("res://scenes/GameTable.tscn")))
 	content.add_child(_button("联机房间", func(): get_tree().change_scene_to_file("res://scenes/Lobby.tscn")))
+	sound_settings = SoundSettings.new()
+	add_child(sound_settings)
+	content.add_child(_button("声音设置", sound_settings.open))
 	content.add_child(_button("退出", func(): get_tree().quit()))
 	resized.connect(_layout)
 	_layout()
 
 func _layout() -> void:
-	var factor := minf(1.0, minf(size.x / 540.0, size.y / 520.0))
+	var factor := minf(1.0, minf(size.x / 540.0, size.y / 600.0))
 	content.scale = Vector2.ONE * factor
 	content.position = (size - content.size * factor) / 2.0
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and sound_settings != null and sound_settings.is_open():
+		sound_settings.close()
 
 func _button(text: String, callback: Callable) -> Button:
 	var button := Button.new()

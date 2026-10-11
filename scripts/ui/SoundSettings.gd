@@ -1,0 +1,152 @@
+class_name SoundSettings
+extends CanvasLayer
+## 主菜单和牌桌共用的声音面板，独立于旋转、缩放的牌桌。
+
+const PANEL_SIZE := Vector2(680, 520)
+const TITLES := {"music": "背景音乐", "voice": "出牌 / 动作语音", "effects": "落桌音效"}
+var overlay: Control
+var panel: Panel
+var sliders := {}
+var switches := {}
+var percentages := {}
+var preview_button: Button
+var voice_selector: OptionButton
+var persist_changes := true
+
+func _ready() -> void:
+	layer = 20
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	overlay = Control.new()
+	overlay.name = "SoundOverlay"
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(overlay)
+	var shade := ColorRect.new()
+	shade.color = Color(0.02, 0.06, 0.04, 0.8)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(shade)
+	panel = Panel.new()
+	panel.size = PANEL_SIZE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#1e4234")
+	style.border_color = Color("#cbb279")
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(16)
+	panel.add_theme_stylebox_override("panel", style)
+	var ui_theme := Theme.new()
+	ui_theme.default_font = TileView._font()
+	ui_theme.default_font_size = 24
+	panel.theme = ui_theme
+	overlay.add_child(panel)
+	_label("声音设置", Vector2(36, 24), Vector2(608, 42), 32)
+	_label("声音大小和开关会自动保存", Vector2(36, 78), Vector2(608, 30), 20)
+	for index in AudioManager.CHANNELS.size():
+		var channel: String = AudioManager.CHANNELS[index]
+		var y := 126.0 + index * 88.0
+		var toggle := CheckButton.new()
+		toggle.text = TITLES[channel]
+		toggle.position = Vector2(28, y)
+		toggle.size = Vector2(280, 62)
+		toggle.toggled.connect(_on_toggle.bind(channel))
+		panel.add_child(toggle)
+		switches[channel] = toggle
+		var slider := HSlider.new()
+		slider.position = Vector2(324, y + 8)
+		slider.size = Vector2(234, 48)
+		slider.min_value = 0
+		slider.max_value = 100
+		slider.step = 1
+		slider.value_changed.connect(_on_slider.bind(channel))
+		panel.add_child(slider)
+		sliders[channel] = slider
+		percentages[channel] = _label("", Vector2(574, y + 12), Vector2(78, 42), 24)
+	var credit := LinkButton.new()
+	credit.text = "音乐：Ripples · Kevin MacLeod · incompetech.com · CC BY 4.0"
+	credit.position = Vector2(36, 382)
+	credit.size = Vector2(608, 28)
+	credit.add_theme_font_size_override("font_size", 16)
+	credit.tooltip_text = "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100691\nhttps://creativecommons.org/licenses/by/4.0/\n已调整音量、淡入淡出并转换为 WAV。"
+	credit.pressed.connect(func(): OS.shell_open("https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100691"))
+	panel.add_child(credit)
+	voice_selector = OptionButton.new()
+	voice_selector.position = Vector2(36, 422)
+	voice_selector.size = Vector2(172, 62)
+	for title in ["柔和女声", "轻朗男声", "清柔女声", "沉稳男声"]:
+		voice_selector.add_item(title)
+	panel.add_child(voice_selector)
+	preview_button = _button("试听语音", Vector2(220, 422), Vector2(172, 62), _preview_voice)
+	_button("关闭", Vector2(404, 422), Vector2(240, 62), close)
+	AudioManager.settings_changed.connect(_sync)
+	get_viewport().size_changed.connect(_layout)
+	_layout()
+	_sync()
+	overlay.hide()
+
+func _label(text: String, pos: Vector2, dimensions: Vector2, font_size: int) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.position = pos
+	label.size = dimensions
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", Color("#f1e7cb"))
+	panel.add_child(label)
+	return label
+
+func _button(text: String, pos: Vector2, dimensions: Vector2, callback: Callable) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.position = pos
+	button.size = dimensions
+	for state in ["normal", "hover", "pressed", "disabled"]:
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color("#345e48") if state == "normal" else Color("#48795a")
+		style.set_corner_radius_all(8)
+		button.add_theme_stylebox_override(state, style)
+	button.pressed.connect(callback)
+	panel.add_child(button)
+	return button
+
+func _layout() -> void:
+	var viewport_size := get_viewport().get_visible_rect().size
+	# 牌桌使用 1440×1520 拉伸画布；按实际屏幕大小调整面板，
+	# 避免手机上再被整个游戏的缩放缩小一次。
+	var screen_scale := get_viewport().get_screen_transform().get_scale().abs()
+	var physical_size := viewport_size * screen_scale
+	var physical_factor := minf(1.0, minf((physical_size.x - 32) / PANEL_SIZE.x, (physical_size.y - 32) / PANEL_SIZE.y))
+	panel.scale = Vector2.ONE * maxf(0.1, physical_factor / maxf(0.01, screen_scale.x))
+	panel.position = (viewport_size - PANEL_SIZE * panel.scale) / 2.0
+
+func _sync() -> void:
+	for channel in AudioManager.CHANNELS:
+		sliders[channel].set_value_no_signal(roundf(float(AudioManager.volumes[channel]) * 100.0))
+		switches[channel].set_pressed_no_signal(AudioManager.enabled[channel])
+		percentages[channel].text = "%d%%" % roundi(float(AudioManager.volumes[channel]) * 100.0)
+		preview_button.disabled = not AudioManager.enabled.voice or float(AudioManager.volumes.voice) <= 0.0
+
+func _on_toggle(on: bool, channel: String) -> void:
+	AudioManager.set_enabled(channel, on, persist_changes)
+
+func _on_slider(value: float, channel: String) -> void:
+	AudioManager.set_volume(channel, value / 100.0, persist_changes)
+
+func _preview_voice() -> void:
+	AudioManager.preview_voice(voice_selector.selected)
+
+func open() -> void:
+	_sync()
+	_layout()
+	overlay.show()
+	preview_button.grab_focus()
+
+func close(persist: bool = true) -> void:
+	if persist and persist_changes:
+		AudioManager.save_settings()
+	overlay.hide()
+
+func is_open() -> bool:
+	return overlay != null and overlay.visible
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if is_open() and event.is_action_pressed("ui_cancel"):
+		close()
+		get_viewport().set_input_as_handled()

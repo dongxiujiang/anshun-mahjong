@@ -25,6 +25,7 @@ func _run() -> void:
 	_test_network_reset()
 	_test_charge_chickens()
 	await _test_anchored_rows()
+	await _test_current_scores()
 	_build_midgame()
 	for dimensions in [Vector2i(1440, 1520), Vector2i(1440, 1000), Vector2i(1280, 720), Vector2i(960, 540), Vector2i(1080, 1080), Vector2i(1080, 1920)]:
 		root.size = dimensions
@@ -39,6 +40,7 @@ func _run() -> void:
 			print("[layout] screenshot ", path)
 	await _test_dense_discards()
 	await _test_meld_markers()
+	await _test_concealed_kong_reveal()
 	_test_result()
 	await process_frame
 	await process_frame
@@ -548,6 +550,58 @@ func _test_meld_markers() -> void:
 		_expect(root.get_texture().get_image().save_png("res://docs/table_kong_arrangements.png") == OK)
 	_build_midgame()
 
+func _test_concealed_kong_reveal() -> void:
+	table.human_seat = 0
+	_new_fixture()
+	var host: RoundState = table.round
+	var kong_tiles := ["wan7", "tong6", "tiao8", "tiao9"]
+	for owner in 4:
+		host.players[owner].melds = [{"kind": "kong", "tile": kong_tiles[owner], "concealed": true, "after_discard": 3}]
+		host.players[owner].concealed = ["wan1", "wan2", "wan3", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
+	root.size = Vector2i(1440, 1520)
+	for discard_count in [3, 4, 5]:
+		for player in host.players:
+			player.discard_count = discard_count
+		var revealed: bool = discard_count == 5
+		for viewer in 4:
+			table.human_seat = viewer
+			for synced in [false, true]:
+				if synced:
+					var client := RoundState.new()
+					client.apply_sync(host.serialize_for_seat(viewer))
+					table.round = client
+				else:
+					table.round = host
+				table._refresh()
+				for owner in 4:
+					_expect(table.meld_box[owner].get_child_count() == 4, "Every concealed kong displays all four tiles")
+					for tile in table.meld_box[owner].get_children():
+						_expect(tile.face_up == revealed, "All four kong tiles, including the owner's view, flip after the following discard")
+						_expect(tile.tile == (kong_tiles[owner] if revealed else ""), "Face-down kong views contain no face or tooltip value")
+						_expect(is_zero_approx(tile.rotation), "Hidden and revealed concealed kongs both keep four upright tiles")
+						if not revealed:
+							_expect(tile.tooltip_text == "", "Hidden kong cannot leak its value through a tooltip")
+			table.round = host
+			table._refresh()
+			await process_frame
+			await process_frame
+			_check_layout()
+			if rendering and viewer == 0 and discard_count in [4, 5]:
+				await RenderingServer.frame_post_draw
+				var suffix := "revealed" if revealed else "hidden"
+				_expect(root.get_texture().get_image().save_png("res://docs/table_concealed_kong_%s.png" % suffix) == OK)
+	host.phase = "settled"
+	table._result_shown = true
+	for player in host.players:
+		player.discard_count = 4
+	table.round = host
+	table._refresh()
+	for owner in 4:
+		for tile in table.meld_box[owner].get_children():
+			_expect(tile.face_up and tile.tile == kong_tiles[owner], "Early settlement shows the complete concealed kong on the table")
+	table.human_seat = 0
+	_build_midgame()
+
 func _test_result() -> void:
 	table._result_shown = true
 	table.round.phase = "settled"
@@ -604,13 +658,37 @@ func _test_draw_results() -> void:
 
 func _test_next_round() -> void:
 	table.round.players[0].score = 224.0
+	table.round.players[3].score = -24.0
 	table.round.next_chicken_multiplier = 2
+	table.round.next_dealer_seat = 3
+	table.human_seat = 3
 	table.new_game()
 	_expect(table.round.players[0].score == 224.0)
+	_expect(table.round.players[3].score == -24.0, "Next game carries negative cumulative score before play")
+	_expect(table.round.dealer_seat == 3 and table.round.current_turn == 3, "New game starts from the newly selected dealer")
+	_expect(table.round.players[3].is_dealer and table.round.players[3].concealed.size() == 14, "New dealer receives14 and shows dealer badge")
+	_expect(table.center_labels[3].text.contains("-24分"), "Table immediately displays preserved negative score")
 	_expect(table.round.round_meta.chicken_multiplier == 2, "Next game carries the chicken multiplier")
 	_expect(not table.round_label.text.contains("鸡分 ×2"), "The active multiplier stays inside settlement details")
 	_expect(not table.result_layer.visible)
 	_expect(table.round.phase == "playing")
+
+func _test_current_scores() -> void:
+	_new_fixture()
+	var scores := [-240.0, 1040.0, 0.0, 200.0]
+	table.round.apply_scores(scores)
+	for viewpoint in 4:
+		table.human_seat = viewpoint
+		table._refresh()
+		await process_frame
+		for seat in 4:
+			var label: Label = table.center_labels[seat]
+			_expect(label.visible and label.text.contains("%.0f分" % scores[seat]), "All viewpoints show each seat's current cumulative score")
+			for line in label.text.split("\n"):
+				_expect(TileView._font().get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x <= label.size.x, "Positive and negative current scores fit labels")
+			_expect(not table._status_labels[seat].visible, "Current scores don't expose table settlement text")
+	table.human_seat = 0
+	table._refresh()
 
 func _expect(condition: bool, message: String = "Table assertion failed") -> void:
 	if not condition:

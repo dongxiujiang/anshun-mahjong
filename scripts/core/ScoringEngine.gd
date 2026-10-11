@@ -19,6 +19,7 @@ const SEAT_NAMES := ["庄家", "下家", "对家", "上家"]
 static func settle(round) -> Dictionary:
 	var meta: Dictionary = round.round_meta
 	var winner: int = meta.get("winner", -1)
+	var dealer: int = meta.get("dealer_seat", 0)
 	var deltas := [0.0, 0.0, 0.0, 0.0]
 	var points := [0.0, 0.0, 0.0, 0.0]
 	var discard_points := [0.0, 0.0, 0.0, 0.0]
@@ -42,12 +43,12 @@ static func settle(round) -> Dictionary:
 				if item.get("source", "") != "kong" and (winner >= 0 or item.get("source", "") == "discard"):
 					items[seat].append(item.duplicate(true))
 		if profile.burned:
-			lines.append("%s 抢杠烧鸡：鸡分 0" % _nm(seat))
+			lines.append("%s 抢杠烧鸡：鸡分 0" % _nm(seat, dealer))
 			items[seat].append({"kind": "penalty", "label": "抢杠烧鸡", "tile": "", "tiles": [], "amount": 0.0, "note": "鸡分归零"})
 		if winner < 0:
-			lines.append("%s%s：保留出牌鸡 %.0f" % [_nm(seat), " 已叫牌" if called else " 未叫牌", discard_points[seat]])
+			lines.append("%s%s：保留出牌鸡 %.0f" % [_nm(seat, dealer), " 已叫牌" if called else " 未叫牌", discard_points[seat]])
 		else:
-			lines.append("%s%s：鸡分 %.0f，打出鸡 %.0f" % [_nm(seat), " 已叫牌" if called else " 未叫牌", points[seat], discard_points[seat]])
+			lines.append("%s%s：鸡分 %.0f，打出鸡 %.0f" % [_nm(seat, dealer), " 已叫牌" if called else " 未叫牌", points[seat], discard_points[seat]])
 	if multiplier > 1:
 		lines.append("本局鸡分 ×%d（不影响额外加分、牌型和报听）" % multiplier)
 	if flip != "":
@@ -101,14 +102,14 @@ static func settle(round) -> Dictionary:
 			_transfer(deltas, transfers, seat, winner, bonus, "胡牌额外加分")
 	var pattern := RuleEngine.hand_pattern(round.players[winner].concealed, round.players[winner].melds)
 	for item in [
-		["seven_pairs", CFG.SCORE_SEVEN_PAIRS, "小七对"],
+		["seven_pairs", CFG.SCORE_DRAGON_SEVEN_PAIRS if pattern.get("dragon_seven_pairs", false) else CFG.SCORE_SEVEN_PAIRS, "龙七对" if pattern.get("dragon_seven_pairs", false) else "小七对"],
 		["all_triplets", CFG.SCORE_BIG_SET if self_draw else CFG.SCORE_BIG_SET_DISCARD, "大队子"],
 		["flush", CFG.SCORE_FLUSH, "清一色"],
 	]:
 		if pattern.get(item[0], false):
 			_pay_win(deltas, transfers, winner, meta, float(item[1]), item[2])
-			lines.append("%s：%s付 %.0f" % [item[2], "每家" if self_draw else _nm(meta.get("discard_seat", -1)), item[1]])
-			items[winner].append({"kind": "pattern", "label": item[2], "tile": "", "tiles": [], "amount": float(item[1]), "note": "每家付" if self_draw else "%s付" % _nm(meta.get("discard_seat", -1))})
+			lines.append("%s：%s付 %.0f" % [item[2], "每家" if self_draw else _nm(meta.get("discard_seat", -1), dealer), item[1]])
+			items[winner].append({"kind": "pattern", "label": item[2], "tile": "", "tiles": [], "amount": float(item[1]), "note": "每家付" if self_draw else "%s付" % _nm(meta.get("discard_seat", -1), dealer)})
 	var ready_payments := {}
 	if round.players[winner].ready:
 		for seat in 4:
@@ -120,8 +121,8 @@ static func settle(round) -> Dictionary:
 	for seat in 4:
 		if seat != winner and round.players[seat].ready:
 			ready_payments[seat] = true
-			lines.append("%s 报听被杀：付 24" % _nm(seat))
-			items[seat].append({"kind": "penalty", "label": "报听被杀", "tile": "", "tiles": [], "amount": -CFG.SCORE_READY, "note": "付给%s" % _nm(winner)})
+			lines.append("%s 报听被杀：付 24" % _nm(seat, dealer))
+			items[seat].append({"kind": "penalty", "label": "报听被杀", "tile": "", "tiles": [], "amount": -CFG.SCORE_READY, "note": "付给%s" % _nm(winner, dealer)})
 	for payer in ready_payments:
 		_transfer(deltas, transfers, payer, winner, CFG.SCORE_READY, "报听")
 	_pay_kongs(round, deltas, transfers, called_seats, items, flip, false)
@@ -164,7 +165,7 @@ static func relative_payments(matrix: Array, seat: int) -> Array:
 static func _win_status(seat: int, winner: int, self_draw: bool, discard_seat: int, called: Array, pattern: Dictionary, round) -> String:
 	var names: Array = []
 	if pattern.get("seven_pairs", false):
-		names.append("小七对")
+		names.append("龙七对" if pattern.get("dragon_seven_pairs", false) else "小七对")
 	if pattern.get("all_triplets", false):
 		names.append("大队子")
 	if pattern.get("flush", false):
@@ -365,5 +366,5 @@ static func _transfer(deltas: Array, transfers: Array, payer: int, receiver: int
 	deltas[receiver] += amount
 	transfers.append({"from": payer, "to": receiver, "amount": amount, "reason": reason})
 
-static func _nm(seat: int) -> String:
-	return SEAT_NAMES[seat] if seat >= 0 and seat < 4 else "-"
+static func _nm(seat: int, dealer: int = 0) -> String:
+	return SEAT_NAMES[posmod(seat - dealer, 4)] if seat >= 0 and seat < 4 else "-"

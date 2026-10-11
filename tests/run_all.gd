@@ -13,11 +13,13 @@ const SUITES: Array[String] = [
 	"res://tests/smoke_ready.gd",
 	"res://tests/rules_complete.gd",
 	"res://tests/rules_update.gd",
+	"res://tests/dragon_dealer.gd",
 	"res://tests/smoke_round.gd",
 	"res://tests/smoke_ai.gd",
 	"res://tests/sweep.gd",
 	"res://tests/smoke_table_layout.gd",
 	"res://tests/smoke_ui.gd",
+	"res://tests/smoke_audio.gd",
 ]
 
 func _initialize() -> void:

@@ -25,6 +25,7 @@ const SCORE_LAST_FOUR := 9.0      # 最后四张自摸（海底） +9
 const SCORE_BIG_SET := 14.0       # 大队子（对对胡）自摸每家14
 const SCORE_BIG_SET_DISCARD := 14.0 # 大队子放炮者支付14。
 const SCORE_SEVEN_PAIRS := 24.0   # 小七对 自摸+24 / 胡别人者给24
+const SCORE_DRAGON_SEVEN_PAIRS := 44.0 # 七对中含四张同牌，替代小七对分。
 const SCORE_FLUSH := 24.0         # 清一色 自摸+24 / 胡别人者给24
 const SCORE_READY := 24.0         # 报听：自摸每家给24；被杀给24；胡别家别家给24
 

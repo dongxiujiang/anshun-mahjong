@@ -6,8 +6,11 @@ var host_mode := false
 var failed := false
 var turns := 0
 var responses := 0
+var audio_events := 0
+var audio_ids := {}
 
 func _ready() -> void:
+	AudioManager.event_played.connect(_on_audio_event)
 	host_mode = OS.get_cmdline_user_args().has("--table-host")
 	_run()
 
@@ -36,11 +39,13 @@ func _run() -> void:
 				if opponent != seat:
 					_expect(round.players[opponent].concealed.all(func(tile): return tile == "hidden0"), "Opponent hand values must stay private")
 		if round.phase == "settled":
+			_expect(audio_events > 0, "Host and client table must both receive audio events")
+			_expect(AudioManager._last_event_id == round.audio_event_id, "Table audio must reach the latest synced event")
 			if host_mode:
 				if Network.net_node.ack_flag:
 					_expect(not Network.net_node.ack_text.contains("UI=fail"), "Client UI must pass")
 					print("[net_table] host completed; turns=%d responses=%d client=%s" % [turns, responses, Network.net_node.ack_text])
-					get_tree().quit(1 if failed else 0)
+					await _finish_test()
 					return
 			else:
 				await get_tree().process_frame
@@ -50,7 +55,7 @@ func _run() -> void:
 				Network.net_node.rpc_id(1, "ack", "turns=%d responses=%d UI=%s" % [turns, responses, "fail" if failed else "ok"])
 				await get_tree().create_timer(0.3).timeout
 				print("[net_table] client completed; turns=%d responses=%d" % [turns, responses])
-				get_tree().quit(1 if failed else 0)
+				await _finish_test()
 				return
 		elif table._selecting:
 			var player: PlayerState = round.players[seat]
@@ -72,3 +77,15 @@ func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failed = true
 		push_error(message)
+
+func _finish_test() -> void:
+	table.queue_free()
+	# 给音频线程完成停止和释放播放实例的时间。
+	await get_tree().create_timer(0.2).timeout
+	get_tree().quit(1 if failed else 0)
+
+func _on_audio_event(event: Dictionary) -> void:
+	var identity := "%s:%d" % [event.session, event.id]
+	_expect(not audio_ids.has(identity), "Network refresh must not replay an audio event")
+	audio_ids[identity] = true
+	audio_events += 1
