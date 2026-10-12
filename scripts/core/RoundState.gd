@@ -170,6 +170,8 @@ func _ask_turn_actor() -> void:
 		state_update.emit()
 
 func _queue_ai_turn(seat: int, actor: Object) -> void:
+	var session := audio_session
+	var prompt := prompt_id
 	awaiting = false
 	state_update.emit()
 	var tree := Engine.get_main_loop() as SceneTree
@@ -177,9 +179,20 @@ func _queue_ai_turn(seat: int, actor: Object) -> void:
 		_apply_turn_action(seat, actor.decide_turn(self, seat))
 		return
 	await tree.create_timer(ai_delay_seconds).timeout
-	if phase != "playing" or current_turn != seat or not _awaiting_response.is_empty():
+	if audio_session != session or phase != "playing" or current_turn != seat or not _awaiting_response.is_empty() or prompt_id != prompt or controllers[seat] != actor:
 		return
 	_apply_turn_action(seat, actor.decide_turn(self, seat))
+
+func restore_human_control(seat: int) -> void:
+	controllers[seat] = null
+	if phase != "playing" or awaiting:
+		return
+	# Reissue an AI prompt immediately; the old timer is invalidated by its controller/prompt guards.
+	if _response_stage == "":
+		if current_turn == seat: _ask_turn_actor()
+	elif not _pending_responders.is_empty() and _pending_responders[0] == seat:
+		var source: Dictionary = _pending_kong if _response_stage == "rob" else last_discard
+		_ask_next_responder(int(source.seat), str(source.tile))
 
 func submit_turn(seat: int, decision: Dictionary) -> bool:
 	if phase != "playing" or not awaiting or not _awaiting_response.is_empty() or seat != current_turn:
@@ -355,16 +368,24 @@ func _ask_next_responder(source: int, tile: String) -> void:
 		state_update.emit()
 
 func _queue_ai_response(seat: int, source: int, tile: String, options: Dictionary, actor: Object) -> void:
+	# 人机选择“过”不串行等待1/2/3秒，只为实际碰杠胡保留动作延迟。
+	var decision: Dictionary = actor.decide_response(self, seat, source, tile, options)
+	if decision.get("action", "pass") == "pass":
+		_process_response(seat, source, tile, decision)
+		return
+	var session := audio_session
+	var stage := _response_stage
+	var prompt := prompt_id
 	awaiting = false
 	state_update.emit()
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:
-		_process_response(seat, source, tile, actor.decide_response(self, seat, source, tile, options))
+		_process_response(seat, source, tile, decision)
 		return
 	await tree.create_timer(ai_delay_seconds).timeout
-	if phase != "playing" or _pending_responders.is_empty() or _pending_responders[0] != seat or _response_stage == "":
+	if audio_session != session or phase != "playing" or _pending_responders.is_empty() or _pending_responders[0] != seat or _response_stage != stage or prompt_id != prompt or controllers[seat] != actor:
 		return
-	_process_response(seat, source, tile, actor.decide_response(self, seat, source, tile, options))
+	_process_response(seat, source, tile, decision)
 
 func submit_response(seat: int, tile: String, decision: Dictionary) -> bool:
 	if phase != "playing" or not awaiting or _awaiting_response.get("seat", -1) != seat or _awaiting_response.get("tile", "") != tile:
@@ -547,6 +568,9 @@ func _penzu() -> void:
 	_finish()
 
 func _finish() -> void:
+	# 已完成的结算只能入账一次；重复结束通知不能再次加减四家的分数。
+	if phase == "settled" and not last_result.is_empty():
+		return
 	phase = "settled"
 	awaiting = false
 	_awaiting_response = {}

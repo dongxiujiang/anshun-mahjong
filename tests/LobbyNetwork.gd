@@ -56,11 +56,22 @@ func _run() -> void:
 	else:
 		# Validate actual LAN query/reply; no manually entered host address.
 		Network.discovery.search()
+		if OS.get_cmdline_user_args().has("--lobby-interface"):
+			# Exercise the real hotspot/Wi-Fi adapter instead of a same-PC loopback.
+			Network.discovery.stop_search()
+			Network.discovery.searching = true
+			Network.discovery._query = PacketPeerUDP.new()
+			t.expect(Network.discovery._query.bind(0) == OK, "Interface test opens query socket")
+			Network.discovery._refresh_interfaces()
+			Network.discovery._timer = 3600.0
+			t.expect(not Network.discovery._probes.is_empty(), "Connected LAN adapter available")
 		t.expect(await _wait_until(func(): return Network.discovery.has_number("456789")), "LAN room discovered")
 		var room: Dictionary = {}
 		for candidate in Network.discovery.rooms.values():
 			if candidate.number == "456789": room = candidate
 		t.expect(not room.is_empty(), "Room number resolves endpoint")
+		if OS.get_cmdline_user_args().has("--lobby-interface"):
+			t.expect(str(room.get("host", "")) != "127.0.0.1", "LAN handshake uses real interface, no loopback")
 		if room.is_empty():
 			get_tree().quit(1)
 			return

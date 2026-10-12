@@ -15,7 +15,7 @@ var _trial := false
 var _confirmed := false
 
 func _init() -> void:
-	base_version = str(ProjectSettings.get_setting("application/config/version", "1.2.0"))
+	base_version = str(ProjectSettings.get_setting("application/config/version", "1.0.0"))
 	base_id = str(ProjectSettings.get_setting("updates/base_id", ""))
 	effective_version = base_version
 	enabled = OS.has_feature("template") and not OS.has_feature("editor") and base_id != ""

@@ -1,8 +1,12 @@
 class_name SoundSettings
 extends CanvasLayer
+signal exit_requested
+signal exit_confirmed
+signal ai_speed_selected(speed_key: String)
 ## 主菜单和牌桌共用的声音面板，独立于旋转、缩放的牌桌。
 
 const PANEL_SIZE := Vector2(680, 520)
+const TABLE_PANEL_SIZE := Vector2(1040, 600)
 const TITLES := {"music": "背景音乐", "voice": "出牌 / 动作语音", "effects": "落桌音效"}
 var overlay: Control
 var panel: Panel
@@ -12,6 +16,11 @@ var percentages := {}
 var preview_button: Button
 var voice_selector: OptionButton
 var persist_changes := true
+var speed_buttons := {}
+var table_mode := false
+var exit_confirmation: Panel
+var confirm_exit_button: Button
+var cancel_exit_button: Button
 
 func _ready() -> void:
 	layer = 20
@@ -25,7 +34,7 @@ func _ready() -> void:
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(shade)
 	panel = Panel.new()
-	panel.size = PANEL_SIZE
+	panel.size = TABLE_PANEL_SIZE if table_mode else PANEL_SIZE
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("#1e4234")
 	style.border_color = Color("#cbb279")
@@ -37,7 +46,7 @@ func _ready() -> void:
 	ui_theme.default_font_size = 24
 	panel.theme = ui_theme
 	overlay.add_child(panel)
-	_label("声音设置", Vector2(36, 24), Vector2(608, 42), 32)
+	_label("设置" if table_mode else "声音设置", Vector2(36, 24), Vector2(608, 42), 32)
 	_label("声音大小和开关会自动保存", Vector2(36, 78), Vector2(608, 30), 20)
 	for index in AudioManager.CHANNELS.size():
 		var channel: String = AudioManager.CHANNELS[index]
@@ -74,11 +83,33 @@ func _ready() -> void:
 		voice_selector.add_item(title)
 	panel.add_child(voice_selector)
 	preview_button = _button("试听语音", Vector2(220, 422), Vector2(172, 62), _preview_voice)
-	_button("关闭", Vector2(404, 422), Vector2(240, 62), close)
+	_button("继续游戏" if table_mode else "关闭", Vector2(404, 422), Vector2(240, 126 if table_mode else 62), close)
+	if table_mode:
+		_label("人机速度", Vector2(716, 24), Vector2(288, 48), 28)
+		for item in [["快 1 秒", "fast"], ["中 2 秒", "medium"], ["慢 3 秒", "slow"]]:
+			var speed_key: String = item[1]
+			var speed_button := _button(item[0], Vector2(716, 84 + speed_buttons.size() * 100), Vector2(288, 88), func(): _set_speed(speed_key))
+			speed_buttons[speed_key] = speed_button
+		var exit_button := _button("退出房间", Vector2(716, 422), Vector2(288, 126), func(): exit_requested.emit())
+		exit_button.name = "ExitRoomButton"
+		exit_confirmation = Panel.new()
+		exit_confirmation.name = "ExitConfirmation"
+		exit_confirmation.size = TABLE_PANEL_SIZE
+		exit_confirmation.add_theme_stylebox_override("panel", style)
+		panel.add_child(exit_confirmation)
+		var question := _label("确定退出当前房间？\n退出后返回主菜单", Vector2(100, 144), Vector2(840, 110), 32)
+		question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		question.reparent(exit_confirmation, false)
+		confirm_exit_button = _button("退出房间", Vector2(184, 320), Vector2(288, 126), func(): exit_confirmed.emit())
+		confirm_exit_button.reparent(exit_confirmation, false)
+		cancel_exit_button = _button("继续游戏", Vector2(568, 320), Vector2(288, 126), func(): exit_confirmation.hide())
+		cancel_exit_button.reparent(exit_confirmation, false)
+		exit_confirmation.hide()
 	AudioManager.settings_changed.connect(_sync)
 	get_viewport().size_changed.connect(_layout)
 	_layout()
 	_sync()
+	_update_speed_buttons()
 	overlay.hide()
 
 func _label(text: String, pos: Vector2, dimensions: Vector2, font_size: int) -> Label:
@@ -108,13 +139,14 @@ func _button(text: String, pos: Vector2, dimensions: Vector2, callback: Callable
 
 func _layout() -> void:
 	var viewport_size := get_viewport().get_visible_rect().size
-	# 牌桌使用 1440×1520 拉伸画布；按实际屏幕大小调整面板，
+	# 牌桌使用横屏拉伸画布；按实际屏幕大小调整面板，
 	# 避免手机上再被整个游戏的缩放缩小一次。
 	var screen_scale := get_viewport().get_screen_transform().get_scale().abs()
 	var physical_size := viewport_size * screen_scale
-	var physical_factor := minf(1.0, minf((physical_size.x - 32) / PANEL_SIZE.x, (physical_size.y - 32) / PANEL_SIZE.y))
+	var dimensions := TABLE_PANEL_SIZE if table_mode else PANEL_SIZE
+	var physical_factor := minf(1.0, minf((physical_size.x - 32) / dimensions.x, (physical_size.y - 32) / dimensions.y))
 	panel.scale = Vector2.ONE * maxf(0.1, physical_factor / maxf(0.01, screen_scale.x))
-	panel.position = (viewport_size - PANEL_SIZE * panel.scale) / 2.0
+	panel.position = (viewport_size - dimensions * panel.scale) / 2.0
 
 func _sync() -> void:
 	for channel in AudioManager.CHANNELS:
@@ -132,21 +164,40 @@ func _on_slider(value: float, channel: String) -> void:
 func _preview_voice() -> void:
 	AudioManager.preview_voice(voice_selector.selected)
 
+func _set_speed(speed_key: String) -> void:
+	if not table_mode: GameConfig.set_ai_speed(speed_key)
+	ai_speed_selected.emit(speed_key)
+
+func _update_speed_buttons() -> void:
+	var selected: String = GameConfig.ai_speed
+	var network := get_node_or_null("/root/Network")
+	if table_mode and network != null and network.mode != "":
+		selected = str(network.net_node.lobby.get("ai_speed", "fast"))
+	for speed_key in speed_buttons:
+		speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == selected else Color.WHITE
+
 func open() -> void:
 	_sync()
+	_update_speed_buttons()
 	_layout()
 	overlay.show()
 	preview_button.grab_focus()
+
+func confirm_exit() -> void:
+	open()
+	if exit_confirmation != null: exit_confirmation.show()
 
 func close(persist: bool = true) -> void:
 	if persist and persist_changes:
 		AudioManager.save_settings()
 	overlay.hide()
+	if exit_confirmation != null: exit_confirmation.hide()
 
 func is_open() -> bool:
 	return overlay != null and overlay.visible
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if is_open() and event.is_action_pressed("ui_cancel"):
-		close()
+		if exit_confirmation != null and exit_confirmation.visible: exit_confirmation.hide()
+		else: close()
 		get_viewport().set_input_as_handled()

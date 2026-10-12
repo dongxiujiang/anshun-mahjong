@@ -10,7 +10,7 @@ func _run() -> void:
 	var boot := root.get_node("PatchBoot")
 	var patch := {"base_id": boot.base_id, "base_version": boot.base_version, "engine": boot.engine_version(), "url": "https://example.com/patch.pck", "sha256": "a".repeat(64), "size": 1234}
 	var full := {"url": "https://example.com/app.exe", "sha256": "b".repeat(64), "size": 9999}
-	var data := {"schema": 2, "version": "1.2.2", "patches": {"windows": patch, "android": patch}, "packages": {"windows": full, "android": full}, "release_url": "https://example.com/release"}
+	var data := {"schema": 2, "version": "1.0.2", "patches": {"windows": patch, "android": patch}, "packages": {"windows": full, "android": full}, "release_url": "https://example.com/release"}
 	manager.apply_release(data, "windows")
 	t.expect(manager.state == "available" and manager.latest.kind == "patch" and manager.can_download(), "兼容小版本优先选择补丁")
 	t.expect(manager.latest.size == 1234 and manager.message.contains("无需"), "小版本显示补丁大小")
@@ -36,7 +36,7 @@ func _run() -> void:
 	manager.apply_release(invalid, "windows")
 	t.expect(manager.state == "error", "拒绝 HTTP 补丁地址")
 	var old := data.duplicate(true)
-	old.version = "1.2.0"
+	old.version = "1.0.0"
 	manager.apply_release(old, "windows")
 	t.expect(manager.state == "current", "补丁不降级")
 	var fallback := data.duplicate(true)
@@ -56,9 +56,9 @@ func _run() -> void:
 	file.store_buffer(PackedByteArray([71, 68, 80, 67, 0, 0, 0, 0]))
 	file.close()
 	var entry := patch.duplicate(true)
-	entry.merge({"version": "1.2.2", "platform": "windows", "sha256": FileAccess.get_sha256(source), "size": 8}, true)
+	entry.merge({"version": "1.0.2", "platform": "windows", "sha256": FileAccess.get_sha256(source), "size": 8}, true)
 	t.expect(isolated.stage_patch(ProjectSettings.globalize_path(source), entry), "补丁写入独立目录并持久保存待应用状态")
-	t.expect(isolated.pending_patch().get("version", "") == "1.2.2", "重启前读取待应用版本")
+	t.expect(isolated.pending_patch().get("version", "") == "1.0.2", "重启前读取待应用版本")
 	var stored: Dictionary = isolated.pending_patch()
 	file = FileAccess.open(isolated._pack_path(stored), FileAccess.WRITE)
 	file.store_string("damaged")

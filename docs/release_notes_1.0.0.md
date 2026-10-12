@@ -1,4 +1,4 @@
-# 安顺麻将 1.2.0 正式版
+# 安顺麻将 1.0.0 正式版
 
 - 使用东秀麻将图片作为 Windows 和 Android 游戏图标。
 - 横屏牌桌，放大手牌与操作按钮，支持电脑和安卓手机游玩。
@@ -7,7 +7,7 @@
 - 小版本在游戏内下载补丁，重启生效；大版本更新完整应用。
 - 更新校验、启动失败自动回退，以及恢复上一小版本。
 
-Windows 推荐下载 `anshun-mahjong-setup-1.2.0.exe` 安装，也可直接运行 `anshun-mahjong-windows-x64.exe`。
+Windows 推荐下载 `anshun-mahjong-setup-1.0.0.exe` 安装，也可直接运行 `anshun-mahjong-windows-x64.exe`。
 
 Android 下载 `anshun-mahjong.apk`。从旧调试版改为正式版时，首次需要卸载旧测试版；后续正式版可覆盖安装。安装前卸载会清除旧版应用数据。
 

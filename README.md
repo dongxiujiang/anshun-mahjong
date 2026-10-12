@@ -49,7 +49,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 
 工程附带可部署的云端服务，部署方法见 [server/README.md](server/README.md)。当前已通过本机 HTTP 服务 + 独立 Godot 房间服务器测试，尚未连接真实云服务器。
 
-局域网使用 UDP 广播查询（7499～7508），游戏端口建房时自动选取，不在 UI 展示 IP。在线使用 HTTP(S) 房间目录 + ENet/UDP 独立游戏端口，玩家无需配置本地端口映射。
+局域网同时使用 UDP 广播、绑定 Wi-Fi/热点网卡的定向查询和有节奏的本地网段扫描（7499～7508）；房主也会向搜索端口 7509～7518 主动发送房间信息。这样手机给电脑开热点时不依赖系统转发全网广播，也无需输入 IP。只扫描当前私有 IPv4 地址所在的 /24，不扫描公网；更大网段仍使用广播发现。游戏端口建房时自动选取，不在 UI 展示 IP。在线使用 HTTP(S) 房间目录 + ENet/UDP 独立游戏端口，玩家无需配置本地端口映射。
 
 ## 四、规则实现要点
 
@@ -74,7 +74,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
   - 明杠：基础杠分4仅由未叫牌的放杠者付；杠中四张鸡的鸡分8由每个未叫牌者付。放杠者已叫牌时不收其基础4，其他未叫牌者仍补鸡分8。
   - 杠牌者未叫牌则不收杠分。杠内鸡牌在该组杠中计一次；翻倍局杠内鸡分也翻倍，基础杠分4不翻倍。
   - 四家均未叫牌时无收款人，本局不计分。有人胡牌或完成一次查叫补分后，下局鸡分倍率恢复为 1；翻倍只影响鸡分，不影响杠分、额外加分、牌型或报听费用。
-- **AI**：以「向听数最低」为主攻，向听相同再按「孤立度 + 已见张安全度」取舍，配合碰/杠/报听/胡决策。
+- **AI**：先筛选向听数合理的出牌，再综合有效进张、预期净收益和放炮损失。收益计算包含鸡牌/金鸡/翻鸡、流局查叫、定向杠分、龙七对等牌型及报听费用；碰、暗杠、加杠也会比较收益与抢杠风险。根据公开弃牌、碰杠和报听生成受剩余张数约束的对手听牌样本，估计各张牌的危险度及赔付；不读取对手暗手或牌墙顺序。这是有限采样与启发式估计，未使用训练模型或完整 MCTS。
 
 > 所有番值/鸡值集中在 `scripts/autoload/GameConfig.gd`，便于按真实规则微调。
 
@@ -91,7 +91,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
    命令行：`godot --headless --export-release "Android" build/android/安顺麻将.apk`
 4. 命令行导出 PC：`godot --headless --export-release "Windows" build/windows/安顺麻将.exe`
 
-1.2.0 正式横屏版本已使用提供的游戏图标重新打包，发布文件位于 `build/releases/v1.2.0/`：Windows 安装向导、免安装主程序、Android 正式签名 APK 和更新清单。热更新基线位于 `build/update_baselines/1.2.0-boot1/`。首次发布与以后的小/大版本更新教程见 [docs/publishing.md](docs/publishing.md)；双击根目录 `生成小版本更新.cmd` 可准备后续小补丁。正式 APK 与旧调试版签名不同，首次需卸载旧调试版；后续正式版保持同一签名。
+1.0.0 正式横屏版本已使用提供的游戏图标重新打包，发布文件位于 `build/releases/v1.0.0/`：Windows 安装向导、免安装主程序、Android 正式签名 APK 和更新清单。热更新基线位于 `build/update_baselines/1.0.0-boot1/`。首次发布与以后的小/大版本更新教程见 [docs/publishing.md](docs/publishing.md)；双击根目录 `生成小版本更新.cmd` 可准备后续小补丁。正式 APK 与旧调试版签名不同，首次需卸载旧调试版；后续正式版保持同一签名。
 
 导出预设已写入 `export_presets.cfg`（Windows + Android，含包名 `com.anshun.mahjong`、arm64-v8a/armeabi-v7a、沉浸式全屏）。
 
@@ -105,7 +105,8 @@ scripts/
               UpdateManager(GitHub Releases 两级更新、下载、校验和重启)
   core/        Tiles / TileSetFactory / WallBuilder / WallRing / PlayerState
                RuleEngine(判胡番型听牌) / Shanten(向听数) / ScoringEngine(捉鸡结算) / RoundState(回合状态机)
-  ai/          AiPlayer(向听数+攻防)
+  ai/          AiPlayer(出牌/碰杠/报听决策) · AiValueModel(预期收付)
+               AiOpponentModel(公开信息手牌采样与放炮风险)
   online/      NetGameNode(等待房间/选座/准备/权威游戏) · LanDiscovery · OnlineDirectory
   ui/          TileView(程序化牌面) / MainMenu / Lobby / GameTable / SoundSettings
 res/audio/     四个座位各32段牌名/动作语音、Ripples背景音乐、落桌音效与署名
@@ -123,6 +124,15 @@ res/update/    Windows 更新替换脚本（只在已下载并校验后执行）
 godot --headless --script res://tests/run_all.gd
 ```
 
+推荐使用带实际时间限制、脚本错误检查和独立日志的入口，避免加载错误后一直等待；默认包含 28 套检查，AI 自战两套分别最多等待 10 分钟。把 Godot 路径替换成自己的路径：
+
+```
+python -X utf8 tests/run_suites.py --godot "C:/path/to/Godot.exe"
+python -X utf8 tests/run_reconnect.py --godot "C:/path/to/Godot.exe"
+```
+
+第一条命令的日志保存在 `build/test_results/`，第二条验证大厅、开局和人机代打等待中的真实断线重连。联机回归也可以用 `tests/run_network.py --section lan`、`--section ready` 或 `--section online` 分别运行，避免重复执行已经通过的场景。
+
 单独运行：
 
 ```
@@ -137,10 +147,15 @@ godot --headless --script res://tests/rules_update.gd    # 双冲锋归属、翻
 godot --headless --script res://tests/dragon_dealer.gd   # 龙七对44、结算选庄、四家换庄发牌/骰子/牌墙和同步
 godot --headless --script res://tests/smoke_round.gd     # 单局集成
 godot --headless --script res://tests/smoke_ai.gd        # AI 自战多局（含牌守恒）
+godot --headless --script res://tests/ai_value.gd        # 预期收益与真实结算逐项核对
+godot --headless --script res://tests/ai_inference.gd    # 手牌推断、公开信息隔离、收益与防守决策
+godot --headless --script res://tests/ai_benchmark.gd    # 可选：与冻结的旧 AI 轮换座位对抗
+godot --headless --script res://tests/shanten_cache.gd   # 向听数缓存与旧 DFS 逐项核对
 godot --headless --script res://tests/smoke_ui.gd        # UI 异步闭环
 godot --headless --script res://tests/smoke_audio.gd     # 音频素材/真实出牌/胡牌/同步去重/音量/后台/设置布局
 godot --headless --script res://tests/sweep.gd           # 多种子扫描（胡/碰/杠/报听统计）
 godot --headless --script res://tests/smoke_table_layout.gd  # 牌桌布局与溢出
+godot --headless --script res://tests/smoke_lan_discovery.gd # 热点单播/主动通知，广播被屏蔽及网卡缺失
 godot --headless --script res://tests/smoke_lobby.gd     # 准备/AI/选座/随机庄家/横屏等待房间
 godot --headless --script res://tests/smoke_update.gd    # GitHub 更新版本比较、地址/校验和平台处理
 python tests/run_network.py --godot /path/to/godot      # 真实局域网、换座、延迟发牌、牌桌UI和在线服务

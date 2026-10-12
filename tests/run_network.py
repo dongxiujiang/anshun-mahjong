@@ -14,6 +14,7 @@ LOGS = PROJECT / "build"
 
 
 def launch(godot, name, scene, user_args=()):
+    LOGS.mkdir(parents=True, exist_ok=True)
     stdout = (LOGS / f"{name}.log").open("w", encoding="utf-8")
     stderr = (LOGS / f"{name}.err").open("w", encoding="utf-8")
     args = [godot, "--headless", "--path", str(PROJECT)]
@@ -25,18 +26,28 @@ def launch(godot, name, scene, user_args=()):
 
 def finish(item, name, timeout=70):
     process, stdout, stderr = item
-    try: code = process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-        raise AssertionError(f"{name} timed out") from None
+    failure = ""
+    deadline = time.monotonic() + timeout
+    try:
+        while process.poll() is None:
+            errors = (LOGS / f"{name}.err").read_text(encoding="utf-8-sig", errors="replace")
+            if "SCRIPT ERROR:" in errors or "ERROR:" in errors:
+                failure = "Godot reported an error"
+                break
+            if time.monotonic() >= deadline:
+                failure = f"timed out after {timeout}s"
+                break
+            time.sleep(0.1)
     finally:
+        if process.poll() is None:
+            process.kill()
+        code = process.wait()
         stdout.close()
         stderr.close()
-    output = (LOGS / f"{name}.log").read_text(encoding="utf-8-sig")
-    errors = (LOGS / f"{name}.err").read_text(encoding="utf-8-sig")
-    if code != 0 or "SCRIPT ERROR:" in errors or "ERROR:" in errors or "passed" not in output and "completed" not in output:
-        raise AssertionError(f"{name}: exit {code}\n{output}\n{errors}")
+    output = (LOGS / f"{name}.log").read_text(encoding="utf-8-sig", errors="replace")
+    errors = (LOGS / f"{name}.err").read_text(encoding="utf-8-sig", errors="replace")
+    if failure or code != 0 or "SCRIPT ERROR:" in errors or "ERROR:" in errors or "passed" not in output and "completed" not in output:
+        raise AssertionError(f"{name}: {failure} exit {code}\n{output}\n{errors}")
     print(f"[ok] {name}", flush=True)
 
 
@@ -51,31 +62,41 @@ def request(base, method="GET", data=None):
         return error.code, json.load(error)
 
 
-def run(godot):
+def run(godot, lan_interface=False, section="all"):
     children = []
     try:
-        host = launch(godot, "lobby_host", "res://tests/lobby_network.tscn", ["--lobby-host"])
-        children.append(host)
-        time.sleep(0.5)
-        client = launch(godot, "lobby_client", "res://tests/lobby_network.tscn")
-        children.append(client)
-        deadline = time.monotonic() + 25
-        while time.monotonic() < deadline:
-            if "GAME_STARTED" in (LOGS / "lobby_host.log").read_text(encoding="utf-8-sig"): break
-            if host[0].poll() is not None: break
-            time.sleep(0.05)
-        late = launch(godot, "lobby_late", "res://tests/lobby_network.tscn", ["--lobby-late"])
-        children.append(late)
-        finish(late, "lobby_late")
-        finish(client, "lobby_client")
-        finish(host, "lobby_host")
-        host = launch(godot, "table_host", "res://tests/net_table_ui.tscn", ["--table-host"])
-        children.append(host)
-        time.sleep(0.5)
-        client = launch(godot, "table_client", "res://tests/net_table_ui.tscn")
-        children.append(client)
-        finish(client, "table_client")
-        finish(host, "table_host")
+        if section in ("all", "lan"):
+            host = launch(godot, "lobby_host", "res://tests/lobby_network.tscn", ["--lobby-host"])
+            children.append(host)
+            time.sleep(0.5)
+            client = launch(godot, "lobby_client", "res://tests/lobby_network.tscn", ["--lobby-interface"] if lan_interface else [])
+            children.append(client)
+            deadline = time.monotonic() + 25
+            while time.monotonic() < deadline:
+                if "GAME_STARTED" in (LOGS / "lobby_host.log").read_text(encoding="utf-8-sig"): break
+                if host[0].poll() is not None: break
+                time.sleep(0.05)
+            late = launch(godot, "lobby_late", "res://tests/lobby_network.tscn", ["--lobby-late"])
+            children.append(late)
+            finish(late, "lobby_late")
+            finish(client, "lobby_client")
+            finish(host, "lobby_host")
+            host = launch(godot, "table_host", "res://tests/net_table_ui.tscn", ["--table-host"])
+            children.append(host)
+            time.sleep(0.5)
+            client = launch(godot, "table_client", "res://tests/net_table_ui.tscn")
+            children.append(client)
+            finish(client, "table_client")
+            finish(host, "table_host")
+        if section in ("all", "ready"):
+            ready_clients = []
+            for role in range(4):
+                item = launch(godot, f"ready_player_{role}", "res://tests/next_round_network.gd", [f"--ready-role={role}"])
+                children.append(item)
+                ready_clients.append(item)
+                time.sleep(0.15)
+            for role, item in enumerate(ready_clients):
+                finish(item, f"ready_player_{role}", 70)
     finally:
         for process, stdout, stderr in children:
             if process.poll() is None:
@@ -83,6 +104,9 @@ def run(godot):
                 process.wait()
             stdout.close()
             stderr.close()
+    if section not in ("all", "online"):
+        print(f"[run_network] {section} passed", flush=True)
+        return
     spec = importlib.util.spec_from_file_location("room_directory", PROJECT / "server" / "room_directory.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -143,4 +167,7 @@ def run(godot):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--godot", required=True)
-    run(parser.parse_args().godot)
+    parser.add_argument("--lan-interface", action="store_true", help="Require a connected private IPv4 interface; suppress loopback discovery")
+    parser.add_argument("--section", choices=("all", "lan", "ready", "online"), default="all")
+    args = parser.parse_args()
+    run(args.godot, args.lan_interface, args.section)

@@ -3,6 +3,11 @@ extends RefCounted
 
 var name := "AI"
 var rng := RandomNumberGenerator.new()
+var inference_weight := 1.0
+const VALUE := preload("res://scripts/ai/AiValueModel.gd")
+const OPPONENT := preload("res://scripts/ai/AiOpponentModel.gd")
+var opponent_model := OPPONENT.new()
+var last_analysis: Array = []
 
 func _init(label := "AI") -> void:
 	name = label
@@ -16,10 +21,10 @@ func decide_turn(round, seat: int) -> Dictionary:
 		return {"discard": player.just_drew}
 	if round._wall_count() > 0:
 		for tile in Tiles.to_counts(player.concealed):
-			if Tiles.count(player.concealed, tile) == 4 and _kong_keeps_shape(player, tile, false):
+			if Tiles.count(player.concealed, tile) == 4 and _kong_helps(round, seat, tile, false):
 				return {"kong_declares": [tile]}
 		for meld in player.melds:
-			if meld.kind == "pung" and player.concealed.has(meld.tile) and _danger(round, seat, meld.tile) < 3.0:
+			if meld.kind == "pung" and player.concealed.has(meld.tile) and _add_kong_helps(round, seat, meld.tile):
 				return {"add_kong": [meld.tile]}
 	var choice := _pick_discard(round, seat)
 	return {"discard": choice.tile, "ready": choice.ready_capable}
@@ -27,40 +32,120 @@ func decide_turn(round, seat: int) -> Dictionary:
 func _pick_discard(round, seat: int) -> Dictionary:
 	var player: PlayerState = round.players[seat]
 	var seen := _seen_map(round, seat)
+	var context := opponent_model.observe(round, seat, seen)
+	var after_kong: bool = round._kong_draw_turn and round._kong_draw_kind in ["concealed", "add_kong"]
+	last_analysis = _discard_options(round, seat, player.concealed, player.melds, seen, context, round.can_declare_ready(seat), after_kong)
+	var best: Dictionary = last_analysis[0]
+	for candidate in last_analysis:
+		if float(candidate.merit) > float(best.merit): best = candidate
+	return {"tile": best.tile, "ready_capable": best.declare_ready}
+
+func _discard_options(round, seat: int, hand: Array, melds: Array, seen: Dictionary, context: Dictionary, allow_ready: bool = false, after_kong: bool = false) -> Array:
+	var options: Array = []
 	var candidates: Array = []
 	var lowest := 99
-	for tile in Tiles.to_counts(player.concealed):
-		var after := player.concealed.duplicate()
+	var threat := 0.0
+	for opponent in context.opponents:
+		threat = maxf(threat, float(opponent.tenpai_probability))
+	for tile in Tiles.to_counts(hand):
+		var after := hand.duplicate()
 		after.erase(tile)
-		var distance := Shanten.shanten(after, player.melds)
+		var distance := Shanten.shanten(after, melds)
 		lowest = mini(lowest, distance)
-		candidates.append({"tile": tile, "after": after, "distance": distance})
-	var threat := _threat(round, seat)
-	var best := -INF
-	var chosen: String = player.concealed[0]
-	var ready := false
+		candidates.append({"tile": tile, "hand": after, "distance": distance})
+	# A distant, threatened hand may retreat one step. Otherwise preserve the
+	# fastest completion routes before comparing uncertain score estimates.
+	var retreat := 1 if threat >= 0.55 and lowest > 1 else 0
 	for candidate in candidates:
-		if candidate.distance > lowest + (1 if threat > 0 and lowest > 1 else 0):
-			continue
-		var improvement := 0
-		# Evaluate all unseen draws that reduce distance, without inspecting opponents' hands.
-		for tile in Tiles.all_values():
-			var available := maxi(0, 4 - int(seen.get(tile, 0)))
-			if available == 0:
-				continue
-			var trial: Array = candidate.after.duplicate()
-			trial.append(tile)
-			if Shanten.shanten(trial, player.melds) < candidate.distance:
-				improvement += available
-		var danger := _danger(round, seat, candidate.tile)
-		var defense_weight := (55.0 if lowest > 1 else 13.0) * threat
-		var merit: float = -100.0 * candidate.distance + 2.0 * improvement - defense_weight * danger
-		merit += 1.5 if Tiles.is_chicken(candidate.tile) and not round.has_charge(candidate.tile) else 0.0
-		if merit > best:
-			best = merit
-			chosen = candidate.tile
-			ready = candidate.distance == 0 and round.can_declare_ready(seat) and RuleEngine.is_tenpai(candidate.after, player.melds)
-	return {"tile": chosen, "ready_capable": ready}
+		if int(candidate.distance) > lowest + retreat: continue
+		var ordinary := _evaluate_hand(round, seat, candidate.hand, melds, seen, context, candidate.tile, false, after_kong)
+		options.append(ordinary)
+		if allow_ready and int(ordinary.distance) == 0:
+			var declared := _evaluate_hand(round, seat, candidate.hand, melds, seen, context, candidate.tile, true, after_kong)
+			options.append(declared)
+	return options
+
+func _evaluate_hand(round, seat: int, hand: Array, melds: Array, seen: Dictionary, context: Dictionary, discard: String = "", declared: bool = false, after_kong: bool = false) -> Dictionary:
+	var distance := Shanten.shanten(hand, melds)
+	var outs := 0
+	var ron_outs := 0.0
+	var self_value := 0.0
+	var ron_value := 0.0
+	for tile in Tiles.all_values():
+		var available := maxi(0, 4 - int(seen.get(tile, 0)))
+		if available == 0: continue
+		var full := hand.duplicate()
+		full.append(tile)
+		if Shanten.shanten(full, melds) >= distance: continue
+		outs += available
+		if distance != 0: continue
+		var pattern := RuleEngine.analyze(full, melds)
+		if not pattern.win: continue
+		var draw_seen := seen.duplicate()
+		draw_seen[tile] = int(draw_seen.get(tile, 0)) + 1
+		var win_flips := VALUE.flip_distribution(draw_seen)
+		self_value += available * VALUE.win_value(round, seat, full, melds, win_flips, context.opponents, declared, true, -1, discard)
+		for opponent in context.opponents:
+			if VALUE.allows_ron(pattern, melds, declared) or opponent.ready:
+				ron_outs += available / 3.0
+				ron_value += available / 3.0 * VALUE.win_value(round, seat, full, melds, win_flips, context.opponents, declared, false, int(opponent.seat), discard)
+	if distance == 0:
+		self_value /= maxi(1, outs)
+		ron_value /= maxf(1.0, ron_outs)
+	else:
+		self_value = VALUE.win_value(round, seat, hand, melds, context.flips, context.opponents, false, true, -1, discard)
+	var most_called := 0.0
+	var enemy_survival := 1.0
+	for opponent in context.opponents:
+		most_called = maxf(most_called, float(opponent.tenpai_probability))
+		enemy_survival *= 1.0 - 0.35 * float(opponent.tenpai_probability)
+	var turns: float = round._wall_count() / 4.0 * (1.0 - 0.35 * most_called)
+	var rate := clampf(outs / float(maxi(1, int(context.unknown))), 0.0, 1.0)
+	var progress := 1.0 - pow(1.0 - rate, turns)
+	var called_probability := 1.0 if distance == 0 else pow(progress, maxi(1, distance))
+	var self_probability := progress
+	if distance > 0:
+		# Early broad improvements are not the final winning outs. Reusing their
+		# rate for every stage severely overvalues breaking a ready hand.
+		var stage_turns := turns / float(distance + 1)
+		var improve_stage := 1.0 - pow(1.0 - rate, stage_turns)
+		var finish_rate := minf(rate, 6.0 / float(maxi(1, int(context.unknown))))
+		self_probability = 0.70 * pow(improve_stage, distance) * (1.0 - pow(1.0 - finish_rate, stage_turns))
+	var ron_probability := 1.0 - pow(1.0 - clampf(0.25 * ron_outs / float(maxi(1, int(context.unknown))), 0.0, 1.0), 3.0 * turns)
+	var win_probability := self_probability + (1.0 - self_probability) * ron_probability
+	var normal := VALUE.settlement_value(round, seat, hand, melds, context.flips, context.opponents, discard)
+	var drawn := VALUE.draw_value(round, seat, hand, melds, context.opponents, discard)
+	var draw_weight := clampf(1.0 - round._wall_count() / 56.0, 0.25, 1.0)
+	var called_balance: float = lerpf(float(normal.called), float(drawn.called), draw_weight)
+	var uncalled_balance: float = lerpf(float(normal.uncalled), float(drawn.uncalled), draw_weight)
+	var own := VALUE.profile(round, seat, hand, melds, context.flips, discard)
+	var risk := {"probability": 0.0, "loss": 0.0}
+	if discard != "":
+		risk = opponent_model.risk(context, discard, declared, after_kong, false, seat, float(own.total) if distance == 0 else 0.0, distance == 0)
+	var merit := self_probability * self_value + (1.0 - self_probability) * ron_probability * ron_value
+	merit += (1.0 - win_probability) * (called_probability * called_balance + (1.0 - called_probability) * uncalled_balance)
+	merit -= float(risk.loss) * inference_weight
+	if declared: merit -= (1.0 - win_probability) * (1.0 - enemy_survival) * VALUE.CFG.SCORE_READY
+	var expected_net := merit
+	# Future hand probabilities are approximate. Preserve an attack-efficiency
+	# anchor so speculative pattern income cannot outweigh real live improvements.
+	merit += 8.0 * called_probability - 24.0 * distance + 0.60 * outs + 0.10 * _shape_quality(hand, seen)
+	return {"tile": discard, "distance": distance, "outs": outs, "win_probability": win_probability,
+		"win_value": self_value, "called_probability": called_probability, "expected_loss": risk.loss,
+		"discard_risk": risk.probability, "declare_ready": declared, "expected_net": expected_net, "merit": merit}
+
+func _shape_quality(hand: Array, seen: Dictionary) -> float:
+	var counts := Tiles.to_counts(hand)
+	var result := 0.0
+	for tile in counts:
+		var copies := int(counts[tile])
+		var remaining := maxi(0, 4 - int(seen.get(tile, 0)))
+		if copies == 2: result += 0.25 * remaining
+		for offset in [1, 2]:
+			var rank: int = Tiles.rank(tile) + offset
+			if rank <= 9 and counts.has(Tiles.val(Tiles.suit(tile), rank)):
+				result += 0.2 if offset == 1 else 0.1
+	return result
 
 func _seen_map(round, seat: int = -1) -> Dictionary:
 	var seen := {}
@@ -76,49 +161,91 @@ func _seen_map(round, seat: int = -1) -> Dictionary:
 			seen[tile] = seen.get(tile, 0) + 1
 	return seen
 
-func _threat(round, seat: int) -> float:
-	var threat := 0.0
-	for opponent in round.players:
-		if opponent.seat == seat:
-			continue
-		threat = maxf(threat, 1.5 if opponent.ready else (0.9 if opponent.melds.size() >= 3 else (0.45 if opponent.discard_count >= 10 else 0.0)))
-	return threat
-
 func _danger(round, seat: int, tile: String) -> float:
-	var seen := _seen_map(round, seat)
-	if int(seen.get(tile, 0)) >= 4:
-		return 0.0
-	var risk := 0.0
-	for opponent in round.players:
-		if opponent.seat == seat:
-			continue
-		var weight := 1.5 if opponent.ready else (0.9 if opponent.melds.size() >= 3 else 0.5)
-		var history: Array = opponent.discard_history
-		# Discarded values are reduced risk, not absolute safety: this variant has no furiten.
-		var value := 0.2 if history.has(tile) else 1.0
-		var rank := Tiles.rank(tile)
-		if rank in [1, 9]:
-			value *= 0.7
-		for offset in [-3, 3]:
-			var neighbor: int = rank + offset
-			if neighbor >= 1 and neighbor <= 9 and history.has(Tiles.val(Tiles.suit(tile), neighbor)):
-				value *= 0.65
-		value *= maxf(0.15, 1.0 - 0.18 * int(seen.get(tile, 0)))
-		risk += weight * value
-	return risk
+	var context := opponent_model.observe(round, seat, _seen_map(round, seat))
+	return 10.0 * float(opponent_model.risk(context, tile, round.players[seat].ready, false, false, seat).probability)
 
 func _kong_keeps_shape(player: PlayerState, tile: String, exposed: bool) -> bool:
 	var after := player.concealed.duplicate()
-	for index in (3 if exposed else 4):
-		after.erase(tile)
+	for _index in (3 if exposed else 4): after.erase(tile)
 	var melds := player.melds.duplicate(true)
 	melds.append({"kind": "kong", "tile": tile})
-	var before := 99
-	for discard in Tiles.to_counts(player.concealed):
-		var trial := player.concealed.duplicate()
-		trial.erase(discard)
-		before = mini(before, Shanten.shanten(trial, player.melds))
+	var before := Shanten.shanten(player.concealed, player.melds)
+	if player.concealed.size() % 3 == 2:
+		before = 99
+		for discard in Tiles.to_counts(player.concealed):
+			var trial := player.concealed.duplicate()
+			trial.erase(discard)
+			before = mini(before, Shanten.shanten(trial, player.melds))
 	return Shanten.shanten(after, melds) <= before
+
+func _best_option(options: Array) -> Dictionary:
+	var best: Dictionary = options[0]
+	for option in options:
+		if float(option.merit) > float(best.merit): best = option
+	return best
+
+func _before_meld(round, seat: int, seen: Dictionary, context: Dictionary) -> Dictionary:
+	var player: PlayerState = round.players[seat]
+	if player.concealed.size() % 3 == 2:
+		return _best_option(_discard_options(round, seat, player.concealed, player.melds, seen, context, round.can_declare_ready(seat)))
+	return _evaluate_hand(round, seat, player.concealed, player.melds, seen, context)
+
+func _claim_context(round, context: Dictionary, source: int, tile: String) -> Dictionary:
+	if not Tiles.is_chicken(tile): return context
+	var updated := context.duplicate(true)
+	var source_player: PlayerState = round.players[source]
+	var index := source_player.discards.rfind(tile)
+	if index < 0: return context
+	var charge: bool = round.is_charge_discard(source, index)
+	var multiplier := int(round.round_meta.get("chicken_multiplier", 1))
+	var amount := VALUE.tile_value(tile, context.flips, multiplier, charge)
+	var draw_amount := VALUE.tile_value(tile, {}, multiplier, charge)
+	for opponent in updated.opponents:
+		if int(opponent.seat) != source: continue
+		opponent.discarded = maxf(0.0, float(opponent.discarded) - amount)
+		opponent.chickens = maxf(0.0, float(opponent.chickens) - amount)
+		opponent.draw_discarded = maxf(0.0, float(opponent.draw_discarded) - draw_amount)
+	return updated
+
+func _kong_helps(round, seat: int, tile: String, exposed: bool, source: int = -1) -> bool:
+	var player: PlayerState = round.players[seat]
+	if not _kong_keeps_shape(player, tile, exposed): return false
+	var seen := _seen_map(round, seat)
+	var context := opponent_model.observe(round, seat, seen)
+	var before := _before_meld(round, seat, seen, context)
+	var hand := player.concealed.duplicate()
+	for _index in (3 if exposed else 4): hand.erase(tile)
+	var melds := player.melds.duplicate(true)
+	melds.append({"kind": "kong", "tile": tile, "concealed": not exposed, "from_seat": source})
+	var after_context := _claim_context(round, context, source, tile) if exposed and source >= 0 else context
+	var after := _evaluate_hand(round, seat, hand, melds, seen, after_context)
+	# The replacement draw is immediate; future own-kong discards are evaluated
+	# with unrestricted ron eligibility by _pick_discard after the kong occurs.
+	var replacement := float(after.outs) / float(maxi(1, int(context.unknown)))
+	var immediate_bonus := replacement * (float(after.win_value) + 3.0 * VALUE.CFG.SCORE_KONG_DRAW) if int(after.distance) == 0 else 2.0 * replacement
+	return float(after.merit) + immediate_bonus > float(before.merit)
+
+func _add_kong_helps(round, seat: int, tile: String) -> bool:
+	var player: PlayerState = round.players[seat]
+	var seen := _seen_map(round, seat)
+	var context := opponent_model.observe(round, seat, seen)
+	var before := _before_meld(round, seat, seen, context)
+	var hand := player.concealed.duplicate()
+	hand.erase(tile)
+	var melds := player.melds.duplicate(true)
+	for meld in melds:
+		if meld.kind == "pung" and meld.tile == tile: meld.kind = "add_kong"
+	var after := _evaluate_hand(round, seat, hand, melds, seen, context)
+	var rob := opponent_model.risk(context, tile, false, false, true, seat, 0.0, int(after.distance) == 0)
+	var own := VALUE.profile(round, seat, hand, melds, context.flips)
+	var burned_loss := float(rob.probability) * 3.0 * float(own.total)
+	var replacement := float(after.outs) / float(maxi(1, int(context.unknown)))
+	var bonus := replacement * (float(after.win_value) + 3.0 * VALUE.CFG.SCORE_KONG_DRAW) if int(after.distance) == 0 else 2.0 * replacement
+	# Only realized score income is contingent on surviving a robbery. Scaling
+	# a negative shanten prior would perversely reward a dangerous added kong.
+	var income := maxf(0.0, float(after.expected_net) + bonus)
+	return float(after.merit) + bonus - float(rob.probability) * income - float(rob.loss) - burned_loss > float(before.merit)
 
 func decide_response(round, seat: int, source: int, tile: String, options: Dictionary) -> Dictionary:
 	if options.get("can_win", false):
@@ -126,7 +253,7 @@ func decide_response(round, seat: int, source: int, tile: String, options: Dicti
 	var player: PlayerState = round.players[seat]
 	if player.ready or options.get("rob_kong", false):
 		return {"action": "pass"}
-	if options.get("can_kong", false) and _kong_keeps_shape(player, tile, true):
+	if options.get("can_kong", false) and _kong_helps(round, seat, tile, true, source):
 		return {"action": "kong"}
 	if options.get("can_pong", false) and _pong_helps(round, seat, tile):
 		return {"action": "pong"}
@@ -134,17 +261,19 @@ func decide_response(round, seat: int, source: int, tile: String, options: Dicti
 
 func _pong_helps(round, seat: int, tile: String) -> bool:
 	var player: PlayerState = round.players[seat]
+	if player.melds.is_empty():
+		var pairs := 0
+		for copies in Tiles.to_counts(player.concealed).values(): pairs += int(copies) / 2
+		if pairs >= 5: return false
+	var seen := _seen_map(round, seat)
+	var context := opponent_model.observe(round, seat, seen)
+	var before := _evaluate_hand(round, seat, player.concealed, player.melds, seen, context)
 	var after := player.concealed.duplicate()
 	after.erase(tile)
 	after.erase(tile)
 	var melds := player.melds.duplicate(true)
 	melds.append({"kind": "pung", "tile": tile})
-	var distance := Shanten.shanten(player.concealed, player.melds)
-	var best := 99
-	for discard in Tiles.to_counts(after):
-		var trial := after.duplicate()
-		trial.erase(discard)
-		var merit := Shanten.shanten(trial, melds)
-		if _threat(round, seat) < 1.0 or _danger(round, seat, discard) < 1.5:
-			best = mini(best, merit)
-	return best < distance or (best == 0 and distance == 0)
+	var source := int(round.last_discard.get("seat", -1))
+	var after_context := _claim_context(round, context, source, tile) if source >= 0 else context
+	var best := _best_option(_discard_options(round, seat, after, melds, seen, after_context))
+	return float(best.merit) > float(before.merit) + 0.5

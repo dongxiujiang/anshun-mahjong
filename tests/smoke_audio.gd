@@ -374,7 +374,7 @@ func _test_ui() -> void:
 		t.expect(visible.encloses(sound.panel.get_global_rect()), "游戏拉伸模式下设置面板完整显示：" + str(dimensions))
 		var screen_scale := root.get_screen_transform().get_scale().abs()
 		var physical_width: float = sound.panel.size.x * sound.panel.scale.x * screen_scale.x
-		var expected_width := 680.0 * minf(1.0, minf((dimensions.x - 32.0) / 680.0, (dimensions.y - 32.0) / 520.0))
+		var expected_width: float = sound.panel.size.x * minf(1.0, minf((dimensions.x - 32.0) / sound.panel.size.x, (dimensions.y - 32.0) / sound.panel.size.y))
 		t.expect(absf(physical_width - expected_width) < 2.0, "手机声音面板按真实屏幕放大：" + str(dimensions))
 		if rendering and dimensions == Vector2i(360, 640):
 			await RenderingServer.frame_post_draw

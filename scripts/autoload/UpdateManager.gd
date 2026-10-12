@@ -20,6 +20,10 @@ var _download: HTTPRequest
 var _check_url := ""
 var _partial_path := ""
 var _automatic_checked := false
+var _automatic_prompted := false
+var _automatic_check_active := false
+var _automatic_retry_used := false
+var _automatic_retry_pending := false
 var _progress_timer := 0.0
 var _release_context: Dictionary = {}
 var _manifest_digest := ""
@@ -32,6 +36,7 @@ func _ready() -> void:
 	_metadata.timeout = 15.0
 	_metadata.body_size_limit = 512 * 1024
 	_metadata.max_redirects = 5
+	_metadata.use_threads = true
 	add_child(_metadata)
 	_metadata.request_completed.connect(_metadata_done)
 	_download = HTTPRequest.new()
@@ -50,18 +55,40 @@ func _ready() -> void:
 		latest["notes"] = str(pending.get("notes", ""))
 		downloaded_path = ProjectSettings.globalize_path(boot._pack_path(pending))
 		_set_state("ready", "小版本 %s 已下载，重启后生效" % pending.version)
+	# 每次启动只检查一次，切换大厅/牌桌不会重复请求。
+	call_deferred("maybe_check")
 
 func current_version() -> String:
 	var boot := get_node_or_null("/root/PatchBoot")
-	return str(boot.effective_version) if boot != null else str(ProjectSettings.get_setting("application/config/version", "1.2.0"))
+	return str(boot.effective_version) if boot != null else str(ProjectSettings.get_setting("application/config/version", "1.0.0"))
 
 func maybe_check() -> void:
-	if auto_check and state != "ready" and not _automatic_checked and DisplayServer.get_name() != "headless":
+	if auto_check and not _automatic_checked and DisplayServer.get_name() != "headless":
 		_automatic_checked = true
-		check_updates()
+		if state not in ["checking", "downloading", "ready"]:
+			check_updates()
+			_automatic_check_active = state == "checking"
+
+func _retry_startup_check() -> void:
+	if not _automatic_retry_pending: return
+	_automatic_retry_pending = false
+	if not auto_check or state != "error": return
+	check_updates()
+	_automatic_check_active = state == "checking"
+
+func claim_startup_prompt() -> bool:
+	if not auto_check or _automatic_prompted or state not in ["available", "ready"]: return false
+	_automatic_prompted = true
+	return true
+
+static func _normalized_version(value: String) -> String:
+	var normalized := value.strip_edges()
+	if normalized.begins_with("v") or normalized.begins_with("V"):
+		normalized = normalized.substr(1)
+	return normalized
 
 static func _version_parts(value: String) -> PackedInt32Array:
-	var normalized := value.strip_edges().trim_prefix("v")
+	var normalized := _normalized_version(value)
 	var pieces := normalized.split(".")
 	if pieces.size() < 2 or pieces.size() > 3: return PackedInt32Array()
 	var out := PackedInt32Array()
@@ -104,6 +131,8 @@ func platform_key() -> String:
 
 func check_updates() -> void:
 	if state in ["checking", "downloading"]: return
+	_automatic_retry_pending = false
+	_automatic_check_active = false
 	latest.clear()
 	_release_context.clear()
 	_manifest_digest = ""
@@ -156,8 +185,8 @@ func _metadata_done(result: int, code: int, _headers: PackedStringArray, body: P
 			_set_state("error", "更新信息格式有误，请稍后重试")
 		else:
 			if not _release_context.is_empty():
-				var expected := str(_release_context.tag_name).trim_prefix("v")
-				if str(data.get("version", "")) != expected or int(data.get("schema", 0)) != 2:
+				var expected := _normalized_version(str(_release_context.tag_name))
+				if _normalized_version(str(data.get("version", ""))) != expected or int(data.get("schema", 0)) != 2:
 					_set_state("error", "发布标签与更新清单不一致")
 				else:
 					if str(data.get("notes", "")) == "": data["notes"] = str(_release_context.get("body", ""))
@@ -167,7 +196,16 @@ func _metadata_done(result: int, code: int, _headers: PackedStringArray, body: P
 				_manifest_digest = ""
 			else:
 				apply_release(data, platform_key(), not OS.has_feature("template"))
-	if state != "checking": check_finished.emit()
+	if state != "checking":
+		# 启动时网络尚未就绪或服务临时失败，稍后自动重试一次。
+		var transient_failure := result != HTTPRequest.RESULT_SUCCESS or code >= 500 or code == 429
+		if state == "error" and transient_failure and _automatic_check_active and not _automatic_retry_used:
+			_automatic_retry_used = true
+			_automatic_retry_pending = true
+			_set_state("error", "自动检查暂未成功，2 秒后重试…")
+			get_tree().create_timer(2.0).timeout.connect(_retry_startup_check)
+		_automatic_check_active = false
+		check_finished.emit()
 
 func _fetch_release_manifest(data: Dictionary, allow_local: bool) -> bool:
 	var assets = data.get("assets", [])
@@ -205,7 +243,7 @@ func apply_release(data: Dictionary, platform: String, allow_local: bool = false
 	if github and (bool(data.get("draft", false)) or bool(data.get("prerelease", false))):
 		_set_state("no_release", "暂未发布正式更新")
 		return
-	var version := str(data.get("tag_name", "") if github else data.get("version", "")).trim_prefix("v")
+	var version := _normalized_version(str(data.get("tag_name", "") if github else data.get("version", "")))
 	if _version_parts(version).is_empty():
 		_set_state("error", "更新版本号无效")
 		return

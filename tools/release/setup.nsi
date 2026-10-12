@@ -4,7 +4,7 @@ Unicode true
 !include "LogicLib.nsh"
 
 !ifndef ReleaseVersion
-  !define ReleaseVersion "1.2.0"
+  !define ReleaseVersion "1.0.0"
 !endif
 !define Root "${__FILEDIR__}\..\.."
 Name "安顺麻将·捉鸡"

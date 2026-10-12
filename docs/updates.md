@@ -10,13 +10,13 @@
 - 已运行成功的补丁仍可点「恢复上一小版本」手动回退。保留当前与上一成功补丁，清理更早的补丁。
 - 已保存的声音、网络设置保留。当前对局和会话分数不跨重启保存，需先结束对局。
 
-**已安装的旧包需要先更新一次完整应用，获得 PatchBoot 启动器，后续才能用小版本热更新。1.2.0 正式安装包已生成于 `build/releases/v1.2.0/`，尚未发布到 GitHub。图形界面操作教程见 [publishing.md](publishing.md)。**
+**已安装的旧包需要先更新一次完整应用，获得 PatchBoot 启动器，后续才能用小版本热更新。1.0.0 正式安装包已生成于 `build/releases/v1.0.0/`，对应已发布的 `V1.0.0` 标签，重新上传修正后的四个附件。图形界面操作教程见 [publishing.md](publishing.md)。**
 
 ## 版本与兼容范围
 
 主版本号不同，例如 `1.x.x → 2.0.0`，走完整应用更新。同一主版本号的小版本，只有安装基线 ID、基线版本、Godot 引擎版本与平台一致才加载补丁；不兼容时前往完整安装包发布页。
 
-当前安装版本 `1.2.0`，基线 ID 为 `1.2.0-boot1`。安装基线版本保持不变，小版本实际版本从已启用的补丁元数据读取，例如 `1.2.2`。小版本发布工具的 `--version` 指定有效游戏版本，无须修改安卓版本码。
+当前安装版本 `1.0.0`，基线 ID 为 `1.0.0-boot1`。GitHub 标签前缀配置为 `updates/tag_prefix="V"`，发布标签用 `V1.0.0`，清单 version 用数字 `1.0.0`；更新检查兼容 v/V，下载地址保持标签的实际大小写。安装基线版本保持不变，小版本实际版本从已启用的补丁元数据读取，例如 `1.0.2`。小版本发布工具的 `--version` 指定有效游戏版本，无须修改安卓版本码。
 
 可热更新：已有脚本逻辑、场景、UI、音效和纹理，以及通过路径加载的新普通资源。
 
@@ -29,7 +29,7 @@
 同一次工程状态先完成测试，再保存平台基线，并导出完整 EXE/APK。基线必须与安装包的代码、资源和导出选项一致，永久保存 `baseline.json` 与两个 PCK。这些基线文件用于开发者生成差分补丁，无须上传给玩家。
 
 ```powershell
-python tools/update/prepare_hot_update.py baseline --godot "C:/Users/xiu/Desktop/Godot_v4.7.2-stable_win64.exe" --output build/update_baselines/1.2.0-boot1
+python tools/update/prepare_hot_update.py baseline --godot "C:/Users/xiu/Desktop/Godot_v4.7.2-stable_win64.exe" --output build/update_baselines/1.0.0-boot1
 ```
 
 基线输出：`windows-base.pck`、`android-base.pck`、`baseline.json`。导出完整 EXE/APK 后运行：
@@ -38,23 +38,23 @@ python tools/update/prepare_hot_update.py baseline --godot "C:/Users/xiu/Desktop
 python tools/update/prepare_release.py
 ```
 
-将 `build/releases/v1.2.0/` 中的 `update-manifest.json`、`anshun-mahjong-windows-x64.exe`、`anshun-mahjong.apk` 上传到正式、非 Draft、非 Pre-release 的 `v1.2.0` Release。工具只准备本地文件，不上传、不发布。务必使用从相同代码导出的安装包。
+将 `build/releases/v1.0.0/` 中的 `update-manifest.json`、`anshun-mahjong-windows-x64.exe`、`anshun-mahjong.apk` 上传到正式、非 Draft、非 Pre-release 的 `V1.0.0` Release。工具只准备本地文件，不上传、不发布。务必使用从相同代码导出的安装包。
 
 ## 小版本发布
 
 改游戏代码或资源后，完成测试，导出累计差分补丁：
 
 ```powershell
-python tools/update/prepare_hot_update.py patch --godot "C:/Users/xiu/Desktop/Godot_v4.7.2-stable_win64.exe" --baseline build/update_baselines/1.2.0-boot1 --version 1.2.2 --notes "优化手牌与结算界面"
+python tools/update/prepare_hot_update.py patch --godot "C:/Users/xiu/Desktop/Godot_v4.7.2-stable_win64.exe" --baseline build/update_baselines/1.0.0-boot1 --version 1.0.2 --notes "优化手牌与结算界面"
 ```
 
-将 `build/releases/v1.2.2/` 中的以下三个文件上传到正式 `v1.2.2` Release：
+将 `build/releases/v1.0.2/` 中的以下三个文件上传到正式 `V1.0.2` Release：
 
 - `update-manifest.json`
-- `anshun-mahjong-windows-1.2.2.pck`
-- `anshun-mahjong-android-1.2.2.pck`
+- `anshun-mahjong-windows-1.0.2.pck`
+- `anshun-mahjong-android-1.0.2.pck`
 
-网址、SHA-256、大小与兼容信息自动生成。两个平台独立导出，避免 Windows/Android 导入纹理不兼容。补丁始终相对完整安装基线生成，玩家可从 `1.2.0` 直接到 `1.2.2`，不用先装 `1.2.1`。
+网址、SHA-256、大小与兼容信息自动生成。两个平台独立导出，避免 Windows/Android 导入纹理不兼容。补丁始终相对完整安装基线生成，玩家可从 `1.0.0` 直接到 `1.0.2`，不用先装 `1.0.1`。
 
 小版本发布默认只携带补丁；首次安装或不兼容安装者可前往清单中的 `installation_url` 下载基线完整版本，再下载最新小补丁。需要为新玩家提供最新完整包时，可导出同版本完整包，并把两个文件及其 SHA-256、大小、下载 URL 补入清单的 `packages` 字段。
 
@@ -63,19 +63,19 @@ python tools/update/prepare_hot_update.py patch --godot "C:/Users/xiu/Desktop/Go
 ```json
 {
   "schema": 2,
-  "version": "1.2.2",
+  "version": "1.0.2",
   "notes": "优化牌桌布局",
-  "release_url": "https://github.com/dongxiujiang/anshun-mahjong/releases/tag/v1.2.2",
-  "installation_url": "https://github.com/dongxiujiang/anshun-mahjong/releases/tag/v1.2.0",
+  "release_url": "https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.0.2",
+  "installation_url": "https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.0.0",
   "packages": {},
   "patches": {
     "windows": {
-      "url": "https://github.com/dongxiujiang/anshun-mahjong/releases/download/v1.2.2/anshun-mahjong-windows-1.2.2.pck",
+      "url": "https://github.com/dongxiujiang/anshun-mahjong/releases/download/V1.0.2/anshun-mahjong-windows-1.0.2.pck",
       "sha256": "由发布工具生成的64位摘要",
       "size": 123456,
       "platform": "windows",
-      "base_id": "1.2.0-boot1",
-      "base_version": "1.2.0",
+      "base_id": "1.0.0-boot1",
+      "base_version": "1.0.0",
       "engine": "4.7.2"
     }
   }

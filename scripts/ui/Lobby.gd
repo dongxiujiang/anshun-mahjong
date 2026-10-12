@@ -194,8 +194,7 @@ func _set_mode(value: bool) -> void:
 	online_button.disabled = online
 	server_button.visible = online
 	if online: Network.discovery.stop_search()
-	else: Network.discovery.search()
-	_message("搜索在线房间…" if online else "正在搜索局域网房间，连接同一 Wi-Fi 的朋友即可加入")
+	_message("搜索在线房间…" if online else "自动搜索同一 Wi-Fi 或手机热点内的房间，电脑建房后保持等待")
 	_search()
 	_render_rooms()
 
@@ -238,7 +237,7 @@ func _render_rooms() -> void:
 		row.add_child(join)
 	if shown == 0:
 		var empty := Label.new()
-		empty.text = "没有匹配的房间" if query != "" else ("暂无在线房间，可创建新房间" if online and Network.directory.base_url != "" else ("先配置房间服务器，再搜索在线房间" if online else "暂无局域网房间，可创建房间邀请朋友"))
+		empty.text = "没有匹配的房间" if query != "" else ("暂无在线房间，可创建新房间" if online and Network.directory.base_url != "" else ("先配置房间服务器，再搜索在线房间" if online else "正在搜索 Wi-Fi 和手机热点内的房间…\n请先在另一台设备创建房间并保持等待，发现后会自动显示。"))
 		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		empty.custom_minimum_size = Vector2(870, 120)
 		room_rows.add_child(empty)
@@ -285,6 +284,8 @@ func _create() -> void:
 
 func _join(room: Dictionary) -> void:
 	if _connecting or _creating: return
+	# 已选定端点后停止网段扫描，把热点和主线程留给连接握手。
+	Network.discovery.stop_search()
 	GameConfig.player_name = player_input.text.strip_edges().left(16)
 	if GameConfig.player_name == "": GameConfig.player_name = "玩家"
 	Network.reset()
@@ -312,6 +313,9 @@ func _bind_net() -> void:
 	net.lobby_notice.connect(_message)
 	net.game_started.connect(_enter_table)
 	net.connection_error.connect(_connection_failed)
+	net.reconnecting.connect(func(attempt, maximum): _message("连接中断，正在重连（%d/%d）…" % [attempt, maximum]))
+	net.room_ready.connect(func(_seat):
+		if _in_room: _message("连接已恢复"))
 
 func _show_waiting() -> void:
 	_in_room = true
@@ -336,7 +340,8 @@ func _render_waiting() -> void:
 		var tags := " · 我" if mine else ""
 		if int(member.peer) == int(data.owner): tags += " · 房主"
 		seat_buttons[seat].text = "%s位  %s%s\n%s%s\n%s" % [WINDS[seat], member.name, tags, "已准备" if member.ready else "未准备", " · 想当庄" if member.wants_dealer else "", "你的位置" if mine else ("点击选座" if member.ai else "点击申请换座")]
-		seat_buttons[seat].disabled = mine or bool(data.started)
+		seat_buttons[seat].disabled = mine or bool(data.started) or bool(member.get("disconnected", false))
+		if bool(member.get("disconnected", false)): seat_buttons[seat].text += "\n断线 · 等待重连"
 		seat_buttons[seat].add_theme_color_override("font_disabled_color", Color("#edcc80") if mine else Color("#aac5b9"))
 	if net.my_seat >= 0:
 		var me: Dictionary = data.seats[net.my_seat]

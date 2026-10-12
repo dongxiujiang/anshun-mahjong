@@ -17,6 +17,7 @@ func _ready() -> void:
 func _run() -> void:
 	if host_mode:
 		_expect(Network.start_host(false, true, 7526), "Host must open the test port")
+		Network.net_node.measure_state_traffic = true
 		var start := Time.get_ticks_msec()
 		while Network.net_node._peer_seat.size() < 2 and Time.get_ticks_msec() - start < 10000:
 			await get_tree().process_frame
@@ -48,6 +49,9 @@ func _run() -> void:
 			if host_mode:
 				if Network.net_node.ack_flag:
 					_expect(not Network.net_node.ack_text.contains("UI=fail"), "Client UI must pass")
+					var stats: Dictionary = Network.net_node.state_metrics
+					_expect(int(stats.coalesced) > 0 and int(stats.bytes) < int(stats.full_bytes), "Coalescing and incremental audio reduce network traffic")
+					print("[net_table] sync metrics: ", stats)
 					print("[net_table] host completed; turns=%d responses=%d client=%s" % [turns, responses, Network.net_node.ack_text])
 					await _finish_test()
 					return

@@ -57,11 +57,19 @@ func _run() -> void:
 	var scores: Array = table.round.players.map(func(player): return player.score)
 	var next_dealer: int = table.round.next_dealer_seat
 	table._next_round()
+	t.expect(network.net_node.round_number == 1 and table.result_layer.visible, "Readying keeps settlement until countdown completes")
+	t.expect(table._next_round_button.text.contains("1 秒"), "Settlement shows one-second countdown")
+	await create_timer(1.15).timeout
 	t.expect(network.net_node.round_number == 2, "Next-round table button advances network round")
 	t.expect(table.round.dealer_seat == next_dealer, "Next-round button uses result dealer")
 	t.expect(table.round.players.map(func(player): return player.score) == scores, "Next-round button keeps scores")
 	# Returning to menu closes discovery responder and network peer.
-	table._on_quit()
+	table._confirm_quit()
+	t.expect(network.mode == "host" and table._sound_settings.exit_confirmation.visible, "Exit leaves the room connected until confirmed")
+	table._sound_settings.cancel_exit_button.pressed.emit()
+	t.expect(network.mode == "host", "Cancel exit keeps the multiplayer room")
+	table._confirm_quit()
+	table._sound_settings.confirm_exit_button.pressed.emit()
 	await process_frame
 	t.expect(network.mode == "" and network.discovery._responder == null, "Leaving table closes room")
 	await create_timer(0.25).timeout

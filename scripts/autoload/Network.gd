@@ -34,6 +34,7 @@ func start_client(ip: String, port: int = 0, number: String = "", owner_token: S
 
 func reset() -> void:
 	mode = ""
+	discovery.stop_search()
 	discovery.stop_advertise()
 	multiplayer.multiplayer_peer = null
 	remove_child(net_node)

@@ -469,7 +469,9 @@ func _assert_claimed_charge(source: int, receiver: int, card: String, other: Str
 	_expect(table.chicken_box[source].get_child_count() == 1, "The original player only displays the remaining chicken")
 	_expect(table.chicken_box[source].get_child(0).get_meta("charge_chicken", false), "The other kind retains its independent charge")
 	var charge: TileView = table.meld_box[receiver].get_child(0)
-	_expect(charge.get_meta("charge_chicken", false) and not is_zero_approx(charge.rotation), "Claimed charge moves sideways into receiver meld")
+	_expect(is_zero_approx(charge.rotation) and not charge.get_meta("charge_chicken", false), "Claimed chicken pung has three upright tiles")
+	for tile in table.meld_box[receiver].get_children():
+		_expect(is_zero_approx(tile.rotation), "Every chicken pung tile stays upright")
 	_expect(table.round.is_charge_meld(receiver, 0), "Ownership survives sync")
 
 func _test_dense_discards() -> void:
@@ -726,7 +728,7 @@ func _test_landscape_stretch() -> void:
 			for box in [table.hand_box[seat], table.draw_box[seat], table.meld_box[seat], table.chicken_box[seat]]:
 				for tile in box.get_children():
 					_expect(screen_rect.encloses(_physical_rect(tile)), "All player tiles must fit the physical Android screen")
-		for control in [table._speed_bar, table._sound_button, table._back_button, table.action_bar]:
+		for control in [table._settings_button, table.action_bar]:
 			_expect(screen_rect.encloses(_physical_rect(control)), "Landscape controls must remain inside the physical screen")
 		if rendering:
 			await RenderingServer.frame_post_draw

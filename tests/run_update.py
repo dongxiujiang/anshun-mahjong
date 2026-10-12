@@ -87,8 +87,8 @@ func _initialize():
                 return
             code = 200
             def patch_manifest():
-                entry = {"url": base + "/patch.pck", "sha256": patch_sha, "size": len(patch_package), "base_id": "1.2.0-boot1", "base_version": "1.2.0", "engine": engine_version}
-                return {"schema": 2, "version": "1.2.2", "notes": "小版本资源更新", "release_url": base + "/release", "patches": {"windows": entry, "android": entry}}
+                entry = {"url": base + "/patch.pck", "sha256": patch_sha, "size": len(patch_package), "base_id": "1.0.0-boot1", "base_version": "1.0.0", "engine": engine_version}
+                return {"schema": 2, "version": "1.0.2", "notes": "小版本资源更新", "release_url": base + "/release", "patches": {"windows": entry, "android": entry}}
             if self.path == "/missing": code, data = 404, {}
             elif self.path == "/limited": code, data = 429, {}
             elif self.path == "/broken":
@@ -101,12 +101,14 @@ func _initialize():
                 if self.path == "/patch-bad-hash": data["patches"]["windows"]["sha256"] = "0" * 64
                 if self.path == "/patch-wrong-format":
                     data["patches"]["windows"].update(url=base + "/wrong.pck", sha256=hashlib.sha256(b"not-an-executable").hexdigest(), size=len(b"not-an-executable"))
-            elif self.path in ["/github-patch", "/github-wrong-digest"]:
+            elif self.path in ["/github-patch", "/github-lowercase", "/github-wrong-version", "/github-wrong-digest"]:
                 encoded = json.dumps(patch_manifest(), ensure_ascii=False).encode()
-                digest = hashlib.sha256(encoded).hexdigest() if self.path == "/github-patch" else "0" * 64
-                data = {"tag_name": "v1.2.2", "html_url": base + "/release", "assets": [{"name": "update-manifest.json", "browser_download_url": base + "/patch-manifest", "digest": "sha256:" + digest}]}
+                digest = "0" * 64 if self.path == "/github-wrong-digest" else hashlib.sha256(encoded).hexdigest()
+                data = {"tag_name": "V1.0.2", "html_url": base + "/release", "assets": [{"name": "update-manifest.json", "browser_download_url": base + "/patch-manifest", "digest": "sha256:" + digest}]}
+                if self.path == "/github-lowercase": data["tag_name"] = "v1.0.2"
+                if self.path == "/github-wrong-version": data["tag_name"] = "V1.0.3"
             else:
-                version = "1.2.0" if self.path == "/current" else "9.0.10"
+                version = "1.0.0" if self.path == "/current" else "9.0.10"
                 url = base + "/package.exe"
                 digest, size = sha, len(package)
                 if self.path == "/bad-hash": digest = "0" * 64

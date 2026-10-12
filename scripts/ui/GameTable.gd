@@ -23,6 +23,7 @@ const RESULT_TILE_UNIT := 1.6
 const RESULT_CARD_SIZE := Vector2(1320, 1496)
 const RESULT_TOGGLE_SIZE := Vector2(132, 54)
 const RESULT_TOGGLE_LOCAL_POSITION := Vector2(1166, 22)
+const NEXT_ROUND_BUTTON_SIZE := Vector2(440, 126)
 const TILE_GAP := 4.0
 const EXPOSED_HAND_GAP := 36.0
 const DRAW_GAP := 24.0
@@ -68,15 +69,17 @@ var _speed_buttons := {}
 var _result_panel: Control
 var _result_shade: ColorRect
 var _result_restore: Button
+var _next_round_button: Button
+var _next_round_status: Label
+var _next_round_hint: Label
 var _status_labels := {}
 var _exposed_layouts := {}
 var _sound_settings: SoundSettings
 var _audio_round: RoundState
 var _landscape := false
-var _speed_bar: HBoxContainer
-var _speed_label: Label
 var _sound_button: Button
-var _back_button: Button
+var _settings_button: Button
+var _seat_visual_keys := {}
 var _remaining_label: Label
 
 func _ready() -> void:
@@ -196,6 +199,11 @@ func _setup_client_view() -> void:
 	network.state_updated.connect(_on_client_state_updated)
 	network.prompted.connect(_on_net_prompt)
 	network.connection_error.connect(_on_connection_error)
+	network.reconnecting.connect(func(attempt, maximum):
+		_selecting = false
+		_clear_actions()
+		status_label.text = "连接中断，正在重连（%d/%d）…" % [attempt, maximum]
+		status_label.show())
 	network.lobby_updated.connect(_on_net_lobby_updated)
 	enable_net(network.submit_client_turn, network.submit_client_response)
 	if network.my_seat >= 0:
@@ -225,33 +233,22 @@ func _build_static_ui() -> void:
 	_label(surface, "捉鸡  /  万 · 条 · 筒", Vector2(222, 28), Vector2(250, 30), 16, MUTED)
 	round_label = _label(surface, "", Vector2(570, 28), Vector2(300, 30), 16, MUTED)
 	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_speed_label = _label(surface, "AI速度", Vector2(950, 24), Vector2(82, 32), 15, MUTED)
-	var speed_bar := HBoxContainer.new()
-	speed_bar.position = Vector2(1030, 20)
-	speed_bar.size = Vector2(250, 40)
-	speed_bar.add_theme_constant_override("separation", 6)
-	surface.add_child(speed_bar)
-	_speed_bar = speed_bar
-	for item in [["快1秒", "fast"], ["中2秒", "medium"], ["慢3秒", "slow"]]:
-		var speed_key: String = item[1]
-		var speed_button := _button(item[0], func(): _set_ai_speed(speed_key), Vector2(72, 36))
-		speed_button.add_theme_font_size_override("font_size", 14)
-		speed_bar.add_child(speed_button)
-		_speed_buttons[speed_key] = speed_button
-	_update_speed_buttons()
 	_sound_settings = SoundSettings.new()
+	_sound_settings.table_mode = true
 	add_child(_sound_settings)
-	var sound_button := _button("声音", _sound_settings.open, Vector2(60, 40))
+	_speed_buttons = _sound_settings.speed_buttons
+	_sound_settings.ai_speed_selected.connect(_set_ai_speed)
+	_update_speed_buttons()
+	var sound_button := _button("设置", _sound_settings.open, DISCARD_BUTTON_SIZE, true)
 	sound_button.name = "SoundButton"
-	sound_button.add_theme_font_size_override("font_size", 17)
+	sound_button.add_theme_font_size_override("font_size", 32)
 	sound_button.position = Vector2(1287, 20)
 	surface.add_child(sound_button)
 	_sound_button = sound_button
-	var back := _button("←", _on_quit, Vector2(48, 42))
-	back.position = Vector2(1354, 20)
-	back.tooltip_text = "返回大厅"
-	surface.add_child(back)
-	_back_button = back
+	# 返回、声音和 AI 速度统一收进大号设置面板，避免右上角小按钮难以点击。
+	_sound_settings.exit_requested.connect(_confirm_quit)
+	_sound_settings.exit_confirmed.connect(_on_quit)
+	_settings_button = sound_button
 	for seat in 4:
 		var station := Control.new()
 		station.name = "SeatRoot%d" % seat
@@ -347,18 +344,9 @@ func _layout() -> void:
 	_remaining_label.position = Vector2(680, 705) + delta
 	center_info.position = Vector2(664, 733) + delta
 	round_label.position.x = (design.x - round_label.size.x) / 2.0
-	_speed_label.position.x = design.x - (624 if _landscape else 490)
-	_speed_bar.position = Vector2(design.x - (532 if _landscape else 410), 12 if _landscape else 20)
-	_speed_bar.size = Vector2(330 if _landscape else 250, 60 if _landscape else 40)
-	for button in _speed_buttons.values():
-		button.custom_minimum_size = Vector2(102, 60) if _landscape else Vector2(72, 36)
-		button.add_theme_font_size_override("font_size", 20 if _landscape else 14)
-	_sound_button.position = Vector2(design.x - (186 if _landscape else 153), 12 if _landscape else 20)
-	_sound_button.custom_minimum_size = Vector2(86, 60) if _landscape else Vector2(60, 40)
+	_sound_button.position = Vector2(design.x - DISCARD_BUTTON_SIZE.x - 24, 12 if _landscape else 20)
+	_sound_button.custom_minimum_size = DISCARD_BUTTON_SIZE
 	_sound_button.size = _sound_button.custom_minimum_size
-	_back_button.position = Vector2(design.x - (88 if _landscape else 86), 12 if _landscape else 20)
-	_back_button.custom_minimum_size = Vector2(60, 60) if _landscape else Vector2(48, 42)
-	_back_button.size = _back_button.custom_minimum_size
 	# Actions sit immediately above the local player's draw slot.
 	_layout_actions()
 	status_label.position = Vector2(60, design.y - 54)
@@ -516,7 +504,6 @@ func _refresh() -> void:
 			_result_restore.hide()
 		# 新一局开始前把结算层的状态复位，避免遮罩残留挡住牌桌。
 		result_layer.mouse_filter = Control.MOUSE_FILTER_STOP
-	_selected_tile = null
 	_layout_actions()
 	_prepare_exposed_layouts()
 	for seat in 4:
@@ -561,6 +548,13 @@ func _refresh_seat(seat: int) -> void:
 	center_labels[seat].add_theme_font_size_override("font_size", label_font_size)
 	center_labels[seat].add_theme_color_override("font_color", GOLD if player.ready else INK)
 	center_labels[seat].size = Vector2(70, 110) if relative == 1 or relative == 3 else Vector2(164, 64)
+	var plans: Array = _exposed_layouts.get(seat, [])
+	var key := var_to_bytes([human_seat, _design_size(), round.audio_session, player.concealed, player.just_drew, player.melds,
+		player.discards, player.discard_ids, player.discard_count, round.phase == "settled", round.last_discard, plans,
+		round.round_meta.get("charge_chickens", {}), _hand_layout(seat)])
+	if _seat_visual_keys.get(seat) == key: return
+	_seat_visual_keys[seat] = key
+	if seat == human_seat: _selected_tile = null
 	_clear_box(meld_box[seat])
 	_clear_box(chicken_box[seat])
 	var cards := Tiles.sort_hand(player.concealed)
@@ -594,7 +588,7 @@ func _refresh_seat(seat: int) -> void:
 		var count := 3 if meld.kind == "pung" else 4
 		var layout: Dictionary = group.layout
 		var charge_index := -1
-		if round.is_charge_meld(seat, group.meld_index):
+		if round.is_charge_meld(seat, group.meld_index) and meld.kind != "pung":
 			charge_index = int(layout.sideways) if int(layout.sideways) >= 0 else 0
 		var up: bool = round.is_meld_revealed(seat, group.meld_index)
 		for index in count:
@@ -638,8 +632,7 @@ func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> 
 	var source := posmod(int(meld.get("from_seat", -1)) - seat, 4)
 	var exposed: bool = kind == "kong" and not meld.get("concealed", false) and int(meld.get("from_seat", -1)) in range(4)
 	var sideways := int({1: 3, 2: 3, 3: 0}.get(source, -1)) if exposed else -1
-	if kind == "pung" and meld.get("charge_marker", false):
-		sideways = 0
+	# 碰牌没有来源标记：即使碰到幺鸡，三张牌也全部竖放。
 	var positions: Array = []
 	if exposed and source == 2:
 		var span := 3 * width + 2 * gap
@@ -839,18 +832,21 @@ func _refresh_center() -> void:
 	_update_speed_buttons()
 
 func _set_ai_speed(speed_key: String) -> void:
-	GameConfig.set_ai_speed(speed_key)
-	if round != null:
-		round.ai_delay_seconds = GameConfig.ai_delay_seconds()
-	var network := get_node_or_null("/root/Network")
-	if network != null and network.net_node != null and network.net_node.game != null:
-		network.net_node.game.ai_delay_seconds = GameConfig.ai_delay_seconds()
+	if _net_mode() == "":
+		GameConfig.set_ai_speed(speed_key)
+		if round != null: round.ai_delay_seconds = GameConfig.ai_delay_seconds()
+	elif _net_node().is_room_owner():
+		GameConfig.set_ai_speed(speed_key)
+		_net_node().set_ai_speed(speed_key)
 	_update_speed_buttons()
 
 func _update_speed_buttons() -> void:
+	var selected: String = GameConfig.ai_speed if _net_mode() == "" else str(_net_node().lobby.get("ai_speed", "fast"))
 	for speed_key in _speed_buttons:
 		var button: Button = _speed_buttons[speed_key]
-		button.modulate = Color("#f4df9f") if speed_key == GameConfig.ai_speed else Color.WHITE
+		button.modulate = Color("#f4df9f") if speed_key == selected else Color.WHITE
+		button.disabled = _net_mode() != "" and not _net_node().is_room_owner()
+		button.tooltip_text = "联机房间人机速度由房主设置" if button.disabled else ""
 
 func _sum_wall() -> int:
 	var count := 0
@@ -925,7 +921,7 @@ func _build_turn_options(player: PlayerState) -> void:
 		_add_action("报听", _toggle_ready)
 	var discard := _add_action("出牌", _discard_selected, true)
 	discard.set_meta("discard", true)
-	discard.disabled = true
+	discard.disabled = not is_instance_valid(_selected_tile)
 
 func _add_kong_choices(title: String, decision_key: String, cards: Array) -> void:
 	if cards.is_empty():
@@ -1016,16 +1012,13 @@ func _on_client_state_updated() -> void:
 	_selecting = false
 	_response_disc = ""
 	_clear_actions()
-	if round.awaiting:
-		_on_net_prompt(human_seat)
 	if round.phase == "settled":
 		_add_action("结算", _show_result)
 	_refresh()
 
 func _on_net_lobby_updated() -> void:
-	# 在线房主断线后，新的房主可以继续下一局。
-	if round != null and round.phase == "settled" and _result_shown and _result_panel != null and _result_panel.visible:
-		_show_result()
+	_update_speed_buttons()
+	_refresh_next_round_controls()
 
 func _on_net_prompt(seat: int) -> void:
 	if seat != human_seat or seat >= round.players.size():
@@ -1093,8 +1086,8 @@ func _show_result() -> void:
 		var own_points := float(round_points[seat]) if round_points.size() == 4 else 0.0
 		var row := Control.new()
 		row.name = "ResultSeat%d" % seat
-		row.position = Vector2(32 + (row_index % 2) * 1080, 112 + (row_index / 2) * 520) if _landscape else Vector2(42, 108 + row_index * 326)
-		row.size = Vector2(1056, 510) if _landscape else Vector2(1236, 318)
+		row.position = Vector2(32 + (row_index % 2) * 1080, 112 + (row_index / 2) * 474) if _landscape else Vector2(42, 108 + row_index * 306)
+		row.size = Vector2(1056, 464) if _landscape else Vector2(1236, 298)
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		panel.add_child(row)
 		_label(row, _seat_name(seat), Vector2(0, 12), Vector2(110, 60) if _landscape else Vector2(164, 60), 34 if _landscape else 42).name = "SeatName"
@@ -1120,10 +1113,20 @@ func _show_result() -> void:
 	eye.tooltip_text = "隐藏结算卡片，查看牌桌上的牌"
 	eye.position = _result_toggle_position()
 	panel.add_child(eye)
-	var can_continue: bool = _net_mode() == "" or _net_node().is_room_owner()
-	var next := _button("下一局" if can_continue else "返回大厅", _next_round if can_continue else _on_quit, Vector2(300, 52), true)
-	next.position = Vector2((_result_card_size().x - 300) / 2.0, _result_card_size().y - 78)
+	var next := _button("下一局" if _net_mode() == "" else "准备下一局", _next_round, NEXT_ROUND_BUTTON_SIZE, true)
+	next.name = "NextRoundButton"
+	next.add_theme_font_size_override("font_size", 38)
+	next.position = Vector2((_result_card_size().x - NEXT_ROUND_BUTTON_SIZE.x) / 2.0, _result_card_size().y - NEXT_ROUND_BUTTON_SIZE.y - 24)
 	panel.add_child(next)
+	_next_round_button = next
+	if _net_mode() != "":
+		var side_width := next.position.x - 64.0
+		_next_round_status = _label(panel, "", Vector2(32, next.position.y + 12), Vector2(side_width, 100), 26, MUTED)
+		_next_round_status.name = "NextRoundReadiness"
+		_next_round_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_next_round_hint = _label(panel, "", Vector2(next.position.x + NEXT_ROUND_BUTTON_SIZE.x + 32, next.position.y + 12), Vector2(side_width, 100), 26, GOLD)
+		_next_round_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_refresh_next_round_controls()
 	_ensure_restore_button()
 	_toggle_result_panel(true)
 	result_layer.show()
@@ -1133,17 +1136,17 @@ func _draw_result_details(row: Control, seat: int, status: String, list: Array, 
 	var background := Panel.new()
 	background.name = "Details"
 	background.position = Vector2(0, 76)
-	background.size = Vector2(1056, 434) if _landscape else Vector2(1236, 242)
+	background.size = Vector2(row.size.x, row.size.y - 76)
 	background.add_theme_stylebox_override("panel", _style(Color("#1b3027"), Color.TRANSPARENT, 6))
 	row.add_child(background)
-	var state := _label(background, status if status != "" else "未叫牌", Vector2(12, 12) if _landscape else Vector2(22, 65), Vector2(132, 400) if _landscape else Vector2(162, 112), 24, GOLD if seat == winner else INK)
+	var state := _label(background, status if status != "" else "未叫牌", Vector2(12, 12) if _landscape else Vector2(22, 65), Vector2(132, background.size.y - 24) if _landscape else Vector2(162, 112), 24, GOLD if seat == winner else INK)
 	state.name = "CallStatus"
 	state.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	state.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var scroll := ScrollContainer.new()
 	scroll.name = "ScoreGroups"
 	scroll.position = Vector2(152, 8) if _landscape else Vector2(194, 8)
-	scroll.size = Vector2(886, 418) if _landscape else Vector2(1024, 226)
+	scroll.size = Vector2(886 if _landscape else 1024, background.size.y - 16)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	background.add_child(scroll)
@@ -1283,12 +1286,33 @@ func _toggle_result_panel(show_card: bool) -> void:
 
 func _next_round() -> void:
 	if _net_mode() != "":
-		_result_shown = false
-		result_layer.hide()
-		result_layer.mouse_filter = Control.MOUSE_FILTER_STOP
-		_net_node().next_round()
+		var network = _net_node()
+		if network.lobby.get("ready_round", -1) != network.round_number: return
+		var me: Dictionary = network.lobby.seats[human_seat]
+		network.set_ready(not bool(me.ready))
 	else:
 		new_game()
+
+func _refresh_next_round_controls() -> void:
+	if _net_mode() == "" or round == null or round.phase != "settled" or not is_instance_valid(_next_round_button): return
+	var network = _net_node()
+	var state: Dictionary = network.lobby
+	var seats: Array = state.get("seats", [])
+	_next_round_button.disabled = state.get("ready_round", -1) != network.round_number or seats.size() != 4
+	if _next_round_button.disabled: return
+	var seconds := int(state.get("countdown", -1))
+	var ready: bool = seats[human_seat].ready
+	_next_round_button.text = "%d 秒后开始 · 取消" % seconds if seconds >= 0 else ("已准备 · 点击取消" if ready else "准备下一局")
+	_next_round_button.add_theme_font_size_override("font_size", 34)
+	var statuses := PackedStringArray()
+	var waiting := PackedStringArray()
+	for relative in [0, 3, 2, 1]:
+		var seat := posmod(human_seat + relative, 4)
+		var name_value: String = ["你", "下家", "对家", "上家"][relative]
+		statuses.append("%s %s" % [name_value, "人机已准备" if seats[seat].ai else ("已准备" if seats[seat].ready else "未准备")])
+		if not seats[seat].ready: waiting.append(name_value)
+	_next_round_status.text = " · ".join(statuses)
+	_next_round_hint.text = "全部准备 · %d 秒后开始" % seconds if seconds >= 0 else "等待：" + "、".join(waiting)
 
 func _on_connection_error(message: String) -> void:
 	_selecting = false
@@ -1305,7 +1329,13 @@ func _notification(what: int) -> void:
 		if _sound_settings != null and _sound_settings.is_open():
 			_sound_settings.close()
 		else:
-			_on_quit()
+			_confirm_quit()
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		if _sound_settings.is_open(): _sound_settings.close()
+		else: _confirm_quit()
+		get_viewport().set_input_as_handled()
 
 func _make_tile(card: String, up: bool, unit: float = TILE_UNIT) -> TileView:
 	var tile := TileView.new()
@@ -1389,3 +1419,6 @@ func _on_quit() -> void:
 	if _net_mode() != "":
 		Network.reset()
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+
+func _confirm_quit() -> void:
+	_sound_settings.confirm_exit()

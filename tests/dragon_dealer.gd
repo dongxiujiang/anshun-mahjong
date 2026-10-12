@@ -138,10 +138,14 @@ func _test_network_round() -> void:
 	root.add_child(node)
 	t.expect(node.host(false, true, 7535), "换庄测试建立真实主机成员")
 	node.game = _fixture()
+	node._started = true
+	node.round_number = 1
 	node.game.players[2].concealed = DRAGON.duplicate()
 	node.game._do_self_win(2)
 	var scores: Array = node.game.players.map(func(player): return player.score)
 	node.next_round()
+	t.expect(node.round_number == 1 and node._countdown == 1.0, "主机准备后等待1秒，不立即开局")
+	node._process(1.01)
 	t.expect(node.game.dealer_seat == 2 and node.game.current_turn == 2, "主机下一局消费结算选庄")
 	t.expect(node.game.players.map(func(player): return player.score) == scores, "联机下一局保留结算分数")
 	node.free()

@@ -9,8 +9,9 @@ func _expect(value: bool, label: String) -> void:
 	print("[release_pack] %s %s" % ["OK" if value else "FAIL", label])
 
 func _run() -> void:
-	_expect(ProjectSettings.get_setting("application/config/version") == "1.2.0", "version")
-	_expect(ProjectSettings.get_setting("updates/base_id") == "1.2.0-boot1", "baseline")
+	_expect(ProjectSettings.get_setting("application/config/version") == "1.0.0", "version")
+	_expect(ProjectSettings.get_setting("updates/base_id") == "1.0.0-boot1", "baseline")
+	_expect(ProjectSettings.get_setting("updates/tag_prefix") == "V", "uppercase release tags")
 	_expect(ProjectSettings.get_setting("application/config/icon") == "res://res/icons/game_icon.png", "new icon setting")
 	_expect(FileAccess.file_exists("res://res/icons/game_icon.png"), "new icon packaged")
 	_expect(FileAccess.get_file_as_string("res://res/update/windows_update.ps1").contains("Get-UpdateHash"), "full updater helper")

@@ -36,7 +36,7 @@ def run(godot):
     config = f'''config_version=5
 [application]
 config/name="{app_name}"
-config/version="1.2.0"
+config/version="1.0.0"
 run/main_scene="res://main.tscn"
 [autoload]
 PatchBoot="*res://scripts/autoload/PatchBoot.gd"
@@ -107,12 +107,12 @@ func _ready():
         command(args, "launch")
         return json.loads((user / "result.json").read_text(encoding="utf-8"))
 
-    def entry(pack, version="1.2.2"):
+    def entry(pack, version="1.0.2"):
         digest = hashlib.sha256(pack.read_bytes()).hexdigest()
         directory = user / "updates/packs"
         directory.mkdir(parents=True, exist_ok=True)
         shutil.copy2(pack, directory / (digest + ".pck"))
-        return {"version": version, "base_id": "test-base", "base_version": "1.2.0", "engine": engine, "platform": "windows", "sha256": digest, "size": pack.stat().st_size, "file": digest + ".pck"}
+        return {"version": version, "base_id": "test-base", "base_version": "1.0.0", "engine": engine, "platform": "windows", "sha256": digest, "size": pack.stat().st_size, "file": digest + ".pck"}
 
     def write_state(state):
         (user / "updates").mkdir(parents=True, exist_ok=True)
@@ -133,9 +133,9 @@ func _ready():
         pending = entry(pack)
         write_state({"pending": pending})
         result = launch(True)
-        assert result["value"] == "patched-autoload" and result["class_value"] == "patched-class" and result["version"] == "1.2.2", result
+        assert result["value"] == "patched-autoload" and result["class_value"] == "patched-class" and result["version"] == "1.0.2", result
         assert launch()["value"] == "patched-autoload", "Confirmed patch not retained"
-        print("[hot_update] compiled autoload patched before loading; skip 1.2.1; no reinstall: passed", flush=True)
+        print("[hot_update] compiled autoload patched before loading; skip 1.0.1; no reinstall: passed", flush=True)
         # A trial without confirmation simulates a crash before the main menu is ready.
         write_state({"pending": pending})
         assert launch()["value"] == "patched-autoload"
@@ -158,22 +158,22 @@ func _ready():
         (source / "game.gd").write_text('extends Node\nvar value := "second-patch"\n', encoding="utf-8")
         newer = FIXTURE / "patch2.pck"
         export(newer, base)
-        write_state({"active": pending, "pending": entry(newer, "1.2.3")})
+        write_state({"active": pending, "pending": entry(newer, "1.0.3")})
         assert launch()["value"] == "second-patch"
         assert launch()["value"] == "patched-autoload", "Failed trial did not restore last known-good patch"
         print("[hot_update] second cumulative patch failure restores known-good patch: passed", flush=True)
         # Run the actual install button path in an exported runtime, including its room guard and real restart.
         write_state({})
-        info = entry(newer, "1.2.3")
+        info = entry(newer, "1.0.3")
         request = FIXTURE / "install.json"
-        manifest = {"schema": 2, "version": "1.2.3", "patches": {"windows": {**info, "url": "https://example.com/patch.pck"}}}
+        manifest = {"schema": 2, "version": "1.0.3", "patches": {"windows": {**info, "url": "https://example.com/patch.pck"}}}
         request.write_text(json.dumps({"manifest": manifest, "path": str(newer)}), encoding="utf-8")
         (user / "result.json").unlink(missing_ok=True)
         command([str(runtime), "--headless", "--", "--install=" + str(request)], "restart")
         deadline = time.monotonic() + 10
         while not (user / "result.json").exists() and time.monotonic() < deadline: time.sleep(0.05)
         result = json.loads((user / "result.json").read_text(encoding="utf-8"))
-        assert result["value"] == "second-patch" and result["version"] == "1.2.3", result
+        assert result["value"] == "second-patch" and result["version"] == "1.0.3", result
         # Wait for confirm_boot's atomic state write before cleaning its fixture directory.
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:

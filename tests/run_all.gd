@@ -5,6 +5,8 @@ extends SceneTree
 ## 注意：联机测试（host/client 配对）需要两个进程，不在这里跑，见 README 第七节。
 
 const SUITES: Array[String] = [
+	"res://tests/smoke_lan_discovery.gd",
+	"res://tests/lan_join_perf.gd",
 	"res://tests/smoke_lobby.gd",
 	"res://tests/smoke_lobby_flow.gd",
 	"res://tests/smoke_update.gd",
@@ -12,16 +14,23 @@ const SUITES: Array[String] = [
 	"res://tests/smoke_tiles.gd",
 	"res://tests/smoke_wall.gd",
 	"res://tests/smoke_logic.gd",
+	"res://tests/shanten_cache.gd",
 	"res://tests/smoke_scoring.gd",
 	"res://tests/settlement_card.gd",
+	"res://tests/scoring_audit.gd",
 	"res://tests/smoke_ready.gd",
 	"res://tests/rules_complete.gd",
 	"res://tests/rules_update.gd",
 	"res://tests/dragon_dealer.gd",
 	"res://tests/smoke_round.gd",
+	"res://tests/ai_inference.gd",
+	"res://tests/ai_value.gd",
 	"res://tests/smoke_ai.gd",
 	"res://tests/sweep.gd",
 	"res://tests/smoke_table_layout.gd",
+	"res://tests/table_controls_perf.gd",
+	"res://tests/network_latency.gd",
+	"res://tests/reconnect_control.gd",
 	"res://tests/smoke_ui.gd",
 	"res://tests/smoke_audio.gd",
 ]

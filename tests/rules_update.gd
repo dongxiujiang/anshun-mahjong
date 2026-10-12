@@ -237,13 +237,18 @@ func _test_multiplier() -> void:
 	check(settle(r).next_chicken_multiplier == 1, "A win resets multiplier")
 	# The host uses the same next-round entry point.
 	var host = load("res://scripts/online/NetGameNode.gd").new()
-	host.host_mode = true
+	root.add_child(host)
+	check(host.host(false, true, 7537), "Multiplier test opens a real room")
+	host._started = true
+	host.round_number = 1
 	host.game = r
 	r.phase = "settled"
 	r.next_chicken_multiplier = 2
 	host.next_round()
+	host._process(1.01)
 	check(r.round_meta.chicken_multiplier == 2, "Network host next round carries multiplier")
 	host.free()
+	root.multiplayer.multiplayer_peer = null
 
 func _test_ready_kongs() -> void:
 	var r := fixture()

@@ -7,11 +7,14 @@ func _initialize() -> void: call_deferred("_run")
 
 func _run() -> void:
 	updater = root.get_node("UpdateManager")
-	t.expect(updater.current_version() == "1.2.0", "应用版本已配置")
-	for pair in [["1.2.1", "1.2.0"], ["v2.0.0", "1.9.9"], ["1.2.0", "1.2.0"], ["1.1.9", "1.2.0"], ["1.2", "1.2.0"]]:
-		var expected: bool = pair[0] in ["1.2.1", "v2.0.0"]
+	t.expect(updater.current_version() == "1.0.0", "应用版本已配置")
+	t.expect(updater.auto_check and ProjectSettings.get_setting("updates/auto_check", false), "游戏默认开启启动检查更新")
+	t.expect(updater.is_newer("V1.0.1", "v1.0.0"), "兼容大写 V 发布标签")
+	t.expect(not updater.is_newer("V1.0.0", "1.0.0"), "大写标签同版本不更新")
+	for pair in [["1.0.1", "1.0.0"], ["v2.0.0", "1.9.9"], ["1.0.0", "1.0.0"], ["0.9.9", "1.0.0"], ["1.0", "1.0.0"]]:
+		var expected: bool = pair[0] in ["1.0.1", "v2.0.0"]
 		t.expect(updater.is_newer(pair[0], pair[1]) == expected, "版本比较 %s / %s" % pair)
-	for number in ["", "1", "1.2.3.4", "1.a.0", "v1.2.0-beta"]:
+	for number in ["", "1", "1.0.3.4", "1.a.0", "v1.0.0-beta", "V1.0.1-beta", "vV1.0.1", "VV1.0.1"]:
 		t.expect(updater._version_parts(number).is_empty(), "拒绝无效版本号 %s" % number)
 	for url in ["https://github.com/a/b/releases/download/v1/app.exe", "https://example.com/update.json"]:
 		t.expect(updater.safe_url(url), "接受 HTTPS 更新地址")
@@ -22,8 +25,12 @@ func _run() -> void:
 	t.expect(not updater.valid_sha256("0".repeat(63)), "拒绝短 SHA-256")
 	var manager = load("res://scripts/autoload/UpdateManager.gd").new()
 	root.add_child(manager)
-	manager.apply_release({"tag_name": "v1.2.0", "draft": false, "prerelease": false}, "windows", true)
+	manager.apply_release({"tag_name": "v1.0.0", "draft": false, "prerelease": false}, "windows", true)
 	t.expect(manager.state == "current", "同版本不提示更新")
+	manager.apply_release({"tag_name": "V1.0.0", "draft": false, "prerelease": false}, "windows", true)
+	t.expect(manager.state == "current", "已发布 V1.0.0 标签与包内版本一致")
+	manager.apply_release({"tag_name": "V1.0.1", "html_url": "https://example.com/release", "assets": [{"name": "anshun-mahjong-windows-x64.exe", "browser_download_url": "https://example.com/game.exe"}]}, "windows")
+	t.expect(manager.state == "available" and manager.latest.version == "1.0.1", "大写 V 更新版本规范化")
 	var digest := "a".repeat(64)
 	manager.apply_release({"version": "1.3.0", "release_url": "http://127.0.0.1:8080/release", "notes": "修复牌桌问题", "platforms": {"windows": {"url": "http://127.0.0.1:8080/game.exe", "sha256": digest, "size": 1234}, "android": {"url": "http://127.0.0.1:8080/game.apk", "sha256": digest, "size": 2345}}}, "windows", true)
 	t.expect(manager.state == "available" and manager.can_download(), "静态清单发现 Windows 更新")
@@ -74,7 +81,7 @@ func _test_ui() -> void:
 	updater.apply_release({"version": "9.0.10", "notes": "优化局域网房间搜索与选座\n改善横屏牌桌布局\n新增出牌语音与背景音乐", "release_url": "https://example.com/release", "platforms": {"android": {"url": "https://example.com/game.apk"}}}, "android")
 	t.expect(panel.action_button.text == "下载 APK", "安卓显示下载 APK 入口")
 	var boot := root.get_node("PatchBoot")
-	updater.apply_release({"schema": 2, "version": "1.2.2", "notes": "优化横屏手牌布局\n调整出牌语音\n修复结算显示", "release_url": "https://example.com/release", "patches": {"android": {"base_id": boot.base_id, "base_version": boot.base_version, "engine": boot.engine_version(), "url": "https://example.com/patch.pck", "sha256": digest, "size": 3456789}}}, "android")
+	updater.apply_release({"schema": 2, "version": "1.0.2", "notes": "优化横屏手牌布局\n调整出牌语音\n修复结算显示", "release_url": "https://example.com/release", "patches": {"android": {"base_id": boot.base_id, "base_version": boot.base_version, "engine": boot.engine_version(), "url": "https://example.com/patch.pck", "sha256": digest, "size": 3456789}}}, "android")
 	t.expect(panel.action_button.text == "下载小版本补丁" and panel.detail.text.contains("不需要重新安装"), "安卓小版本面板说明无需安装")
 	updater.state = "ready"
 	updater.state_changed.emit()
@@ -88,6 +95,22 @@ func _test_ui() -> void:
 		root.get_texture().get_image().save_png("res://build/update_panel.png")
 	panel.close()
 	t.expect(not panel.is_open(), "关闭更新面板后继续游戏")
+	updater.auto_check = true
+	updater._automatic_prompted = false
+	updater.state_changed.emit()
+	t.expect(panel.is_open(), "启动发现新版自动显示更新面板")
+	panel.close()
+	updater.state_changed.emit()
+	t.expect(not panel.is_open(), "关闭后状态刷新不会反复弹窗")
+	updater.state = "error"
+	updater._automatic_prompted = false
+	updater.state_changed.emit()
+	t.expect(not panel.is_open(), "启动检查失败允许继续游戏")
+	updater.state = "ready"
+	updater.state_changed.emit()
+	t.expect(panel.is_open(), "已下载的补丁在启动时提醒重启")
+	panel.close()
+	updater.auto_check = false
 	menu.queue_free()
 	await process_frame
 	updater.latest.clear()

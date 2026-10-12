@@ -15,25 +15,28 @@ def sha256(path):
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
-def project_value(key):
+def project_value(key, default=None):
     config = (PROJECT / "project.godot").read_text(encoding="utf-8-sig")
-    match = re.search(r'^' + re.escape(key) + r'="([^"\n]+)"$', config, re.MULTILINE)
+    match = re.search(r'^' + re.escape(key) + r'="([^"\n]*)"$', config, re.MULTILINE)
     if not match:
+        if default is not None: return default
         raise ValueError(f"project.godot 缺少 {key}")
     return match.group(1)
 
 
-def manifest(version, repository, notes=""):
+def manifest(version, repository, notes="", tag_prefix="v"):
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("版本号必须是三段数字")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("仓库应为 owner/repository")
+    if tag_prefix not in ("v", "V", ""):
+        raise ValueError("标签前缀只能是 v、V 或留空")
     return {"schema": 2, "version": version, "notes": notes,
-            "release_url": f"https://github.com/{repository}/releases/tag/v{version}",
+            "release_url": f"https://github.com/{repository}/releases/tag/{tag_prefix}{version}",
             "packages": {}, "patches": {}}
 
 
-def copy_packages(data, windows, android, output, repository):
+def copy_packages(data, windows, android, output, repository, tag_prefix="v"):
     for platform, source in [("windows", windows), ("android", android)]:
         if not source: continue
         source = Path(source).resolve()
@@ -42,7 +45,7 @@ def copy_packages(data, windows, android, output, repository):
         target = output / ASSETS[platform]
         if source != target: shutil.copy2(source, target)
         data["packages"][platform] = {
-            "url": f"https://github.com/{repository}/releases/download/v{data['version']}/{target.name}",
+            "url": f"https://github.com/{repository}/releases/download/{tag_prefix}{data['version']}/{target.name}",
             "sha256": sha256(target), "size": target.stat().st_size,
         }
 
@@ -56,12 +59,13 @@ def write_manifest(data, output):
 def prepare(windows, android, output, repository=None, notes=""):
     version = project_value("config/version")
     repository = repository or project_value("github_repository")
+    tag_prefix = project_value("tag_prefix", "v")
     output = Path(output).resolve() / ("v" + version)
     output.mkdir(parents=True, exist_ok=True)
-    data = manifest(version, repository, notes)
-    copy_packages(data, windows, android, output, repository)
+    data = manifest(version, repository, notes, tag_prefix)
+    copy_packages(data, windows, android, output, repository, tag_prefix)
     write_manifest(data, output)
-    print(f"已准备大版本 v{version}：{output}")
+    print(f"已准备大版本 {tag_prefix}{version}：{output}")
     print("未上传或发布；导出文件须与当前工程版本一致。")
     return data
 
