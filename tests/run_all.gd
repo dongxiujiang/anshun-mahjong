@@ -25,6 +25,7 @@ const SUITES: Array[String] = [
 	"res://tests/smoke_round.gd",
 	"res://tests/ai_inference.gd",
 	"res://tests/ai_value.gd",
+	"res://tests/ai_mcts.gd",
 	"res://tests/smoke_ai.gd",
 	"res://tests/sweep.gd",
 	"res://tests/smoke_table_layout.gd",

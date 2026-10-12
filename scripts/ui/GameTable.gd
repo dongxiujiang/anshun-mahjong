@@ -862,6 +862,9 @@ func _wall_remain(seat: int) -> int:
 func _seat_name(seat: int) -> String:
 	if seat < 0 or seat > 3:
 		return "-"
+	if _net_mode() != "" and round != null and seat < round.players.size():
+		var player_name := str(round.players[seat].name_label).strip_edges()
+		if player_name != "": return player_name
 	return ["你", "下家", "对家", "上家"][_relative_seat(seat)]
 
 func _refresh_status() -> void:

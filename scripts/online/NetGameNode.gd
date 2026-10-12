@@ -397,6 +397,7 @@ func start_net_game(seed_value: int = -1) -> bool:
 	round_number = 1
 	_publish_lobby()
 	game.start_round(my_seat)
+	_apply_member_names()
 	_host_broadcast()
 	host_game_started.emit()
 	game_started.emit()
@@ -464,6 +465,19 @@ func _start_next_round() -> void:
 	round_number += 1
 	_publish_lobby()
 	game.start_round(my_seat)
+	_apply_member_names()
+	_host_broadcast()
+
+func _apply_member_names() -> void:
+	if game == null or game.players.size() != 4: return
+	for seat in 4:
+		var peer := int(_seat_peer.get(seat, -1))
+		if peer > 0:
+			game.players[seat].name_label = str(_members.get(peer, {}).get("name", "玩家"))
+			game.players[seat].is_human = _ctrl_hint.get(seat, AUTO) != AUTO
+		else:
+			game.players[seat].name_label = "人机%d" % (seat + 1)
+			game.players[seat].is_human = false
 
 func client(ip: String, port: int = 0, number: String = "", player_name: String = "", owner_token: String = "") -> bool:
 	_server_ip = ip

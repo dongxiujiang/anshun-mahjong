@@ -6,7 +6,9 @@ var rng := RandomNumberGenerator.new()
 var inference_weight := 1.0
 const VALUE := preload("res://scripts/ai/AiValueModel.gd")
 const OPPONENT := preload("res://scripts/ai/AiOpponentModel.gd")
+const MCTS := preload("res://scripts/ai/AiMctsSearch.gd")
 var opponent_model := OPPONENT.new()
+var mcts := MCTS.new()
 var last_analysis: Array = []
 
 func _init(label := "AI") -> void:
@@ -35,6 +37,19 @@ func _pick_discard(round, seat: int) -> Dictionary:
 	var context := opponent_model.observe(round, seat, seen)
 	var after_kong: bool = round._kong_draw_turn and round._kong_draw_kind in ["concealed", "add_kong"]
 	last_analysis = _discard_options(round, seat, player.concealed, player.melds, seen, context, round.can_declare_ready(seat), after_kong)
+	var ordinary := last_analysis.filter(func(candidate): return not bool(candidate.get("declare_ready", false)))
+	var search_candidates: Array = ordinary.duplicate(true)
+	search_candidates.sort_custom(func(left, right): return float(left.merit) > float(right.merit))
+	if search_candidates.size() > 6:
+		search_candidates = search_candidates.slice(0, 6)
+	var tree: Dictionary = mcts.rank(round, seat, player.concealed, player.melds, seen, search_candidates, context) if search_candidates.size() > 1 else {}
+	for candidate in last_analysis:
+		var search: Dictionary = tree.get(candidate.tile, {})
+		candidate["mcts_visits"] = int(search.get("visits", 0))
+		candidate["mcts_value"] = float(search.get("value", 0.0))
+		# MCTS refines equal/near-equal routes; the hard shanten filter and
+		# expected-loss term above still dominate a speculative branch.
+		candidate.merit += 0.40 * candidate.mcts_value
 	var best: Dictionary = last_analysis[0]
 	for candidate in last_analysis:
 		if float(candidate.merit) > float(best.merit): best = candidate

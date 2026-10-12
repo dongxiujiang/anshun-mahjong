@@ -8,6 +8,8 @@
 - 联机：局域网自动搜索房间，也支持连接云端房间服务；先选座、换座和准备，人不够由默认准备的 AI 补位，全部准备后开局。
 - 更新：主菜单和联机大厅都可「检查更新」。更新包放在 GitHub Releases，不需要额外更新服务器。
 
+联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
+
 应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Windows 和 Android 游戏内下载补丁，重启生效，不必重装；大版本更新完整 EXE/APK。首次使用热更新须安装包含 PatchBoot 的完整版本。发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
 
 ---
@@ -74,7 +76,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
   - 明杠：基础杠分4仅由未叫牌的放杠者付；杠中四张鸡的鸡分8由每个未叫牌者付。放杠者已叫牌时不收其基础4，其他未叫牌者仍补鸡分8。
   - 杠牌者未叫牌则不收杠分。杠内鸡牌在该组杠中计一次；翻倍局杠内鸡分也翻倍，基础杠分4不翻倍。
   - 四家均未叫牌时无收款人，本局不计分。有人胡牌或完成一次查叫补分后，下局鸡分倍率恢复为 1；翻倍只影响鸡分，不影响杠分、额外加分、牌型或报听费用。
-- **AI**：先筛选向听数合理的出牌，再综合有效进张、预期净收益和放炮损失。收益计算包含鸡牌/金鸡/翻鸡、流局查叫、定向杠分、龙七对等牌型及报听费用；碰、暗杠、加杠也会比较收益与抢杠风险。根据公开弃牌、碰杠和报听生成受剩余张数约束的对手听牌样本，估计各张牌的危险度及赔付；不读取对手暗手或牌墙顺序。这是有限采样与启发式估计，未使用训练模型或完整 MCTS。
+- **AI**：先筛选向听数合理的出牌，再综合有效进张、预期净收益和放炮损失。收益计算包含鸡牌/金鸡/翻鸡、流局查叫、定向杠分、龙七对等牌型及报听费用；碰、暗杠、加杠也会比较收益与抢杠风险。根据公开弃牌、碰杠和报听生成受剩余张数约束的对手听牌样本，估计各张牌的危险度及赔付；不读取对手暗手或牌墙顺序。在收益接近的前 6 个候选上再运行有界 MCTS（16 次模拟、深度 2），只作路线细化，不替代向听和防守硬约束。这不是训练模型或无限搜索。
 
 > 所有番值/鸡值集中在 `scripts/autoload/GameConfig.gd`，便于按真实规则微调。
 
@@ -106,7 +108,7 @@ scripts/
   core/        Tiles / TileSetFactory / WallBuilder / WallRing / PlayerState
                RuleEngine(判胡番型听牌) / Shanten(向听数) / ScoringEngine(捉鸡结算) / RoundState(回合状态机)
   ai/          AiPlayer(出牌/碰杠/报听决策) · AiValueModel(预期收付)
-               AiOpponentModel(公开信息手牌采样与放炮风险)
+               AiOpponentModel(公开信息手牌采样与放炮风险) · AiMctsSearch(有界随机展望)
   online/      NetGameNode(等待房间/选座/准备/权威游戏) · LanDiscovery · OnlineDirectory
   ui/          TileView(程序化牌面) / MainMenu / Lobby / GameTable / SoundSettings
 res/audio/     四个座位各32段牌名/动作语音、Ripples背景音乐、落桌音效与署名
@@ -124,7 +126,7 @@ res/update/    Windows 更新替换脚本（只在已下载并校验后执行）
 godot --headless --script res://tests/run_all.gd
 ```
 
-推荐使用带实际时间限制、脚本错误检查和独立日志的入口，避免加载错误后一直等待；默认包含 28 套检查，AI 自战两套分别最多等待 10 分钟。把 Godot 路径替换成自己的路径：
+推荐使用带实际时间限制、脚本错误检查和独立日志的入口，避免加载错误后一直等待；默认包含 29 套检查，AI 自战两套分别最多等待 10 分钟。把 Godot 路径替换成自己的路径：
 
 ```
 python -X utf8 tests/run_suites.py --godot "C:/path/to/Godot.exe"

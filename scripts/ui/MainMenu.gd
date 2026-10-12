@@ -7,6 +7,7 @@ var sound_settings: SoundSettings
 var update_panel: UpdatePanel
 var update_button: Button
 var update_status_label: Label
+var rule_guide: Control
 
 func _ready() -> void:
 	var theme_resource := Theme.new()
@@ -62,6 +63,11 @@ func _ready() -> void:
 	var sound := _button("声音设置", sound_settings.open)
 	sound.position = Vector2(984, 724)
 	content.add_child(sound)
+	rule_guide = load("res://scripts/ui/RuleGuide.gd").new()
+	add_child(rule_guide)
+	var rules := _button("新手规则", rule_guide.open)
+	rules.position = Vector2(984, 838)
+	content.add_child(rules)
 	update_panel = UpdatePanel.new()
 	add_child(update_panel)
 	update_button = _button("检查更新", func():
@@ -72,8 +78,8 @@ func _ready() -> void:
 	var exit := _button("退出游戏", func(): get_tree().quit())
 	exit.position = Vector2(1520, 724)
 	content.add_child(exit)
-	_label(content, "版本 " + UpdateManager.current_version(), Vector2(984, 862), Vector2(760, 48), 26, Color("#adc6b5"))
-	update_status_label = _label(content, "启动时自动检查更新", Vector2(984, 906), Vector2(760, 42), 22, Color("#adc6b5"))
+	_label(content, "版本 " + UpdateManager.current_version(), Vector2(984, 906), Vector2(760, 48), 26, Color("#adc6b5"))
+	update_status_label = _label(content, "启动时自动检查更新", Vector2(984, 950), Vector2(760, 42), 22, Color("#adc6b5"))
 	UpdateManager.state_changed.connect(_update_badge)
 	_update_badge()
 	resized.connect(_layout)
