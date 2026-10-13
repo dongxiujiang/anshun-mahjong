@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_kind:
-        description: "构建完整包或相对 1.0.0 基线生成热补丁"
+        description: "构建完整包或基于固定基线的热补丁"
         required: true
         default: full
         type: choice
@@ -12,7 +12,7 @@ on:
           - full
           - patch
       baseline_run_id:
-        description: "patch 模式使用的完整构建 run id"
+        description: "patch 模式填写保存 baseline artifact 的完整构建 run id"
         required: false
         type: string
       patch_version:
@@ -36,10 +36,11 @@ jobs:
   build:
     name: Build Windows and Android
     runs-on: ubuntu-22.04
+    timeout-minutes: 45
     env:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+      RELEASE_KIND: ${{ inputs.release_kind || 'full' }}
+      BASELINE_RUN_ID: ${{ inputs.baseline_run_id || '' }}
+      PATCH_VERSION: ${{ inputs.patch_version || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,6 +50,32 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Validate release inputs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, re
+          from tools.update.prepare_hot_update import release_tag, setting
+          kind = os.environ["RELEASE_KIND"]
+          if kind not in {"full", "patch"}:
+              raise SystemExit("release_kind 必须是 full 或 patch")
+          base = setting("base_id")
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+", base):
+              raise SystemExit("base_id 含有不安全字符")
+          if kind == "patch":
+              if not re.fullmatch(r"[0-9]+", os.environ["BASELINE_RUN_ID"]):
+                  raise SystemExit("patch 模式必须填写数字形式的 baseline_run_id")
+              if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", os.environ["PATCH_VERSION"]):
+                  raise SystemExit("patch_version 必须是 x.y.z")
+          if os.environ.get("GITHUB_EVENT_NAME") == "push":
+              tag = os.environ.get("GITHUB_REF_NAME", "")
+              expected = release_tag(setting("config/version"))
+              if tag != expected:
+                  raise SystemExit(f"标签 {tag} 与工程版本不一致，应为 {expected}")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as out:
+              out.write(f"BASELINE_ID={base}\n")
+          PY
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -57,6 +84,7 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
       - name: Install Android SDK packages
         shell: bash
         run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
@@ -64,106 +92,148 @@ jobs:
       - name: Install Godot and export templates
         shell: bash
         run: |
+          set -euo pipefail
           curl -fsSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
           unzip -q /tmp/godot.zip -d /tmp/godot
           sudo install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
           curl -fsSL -o /tmp/templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
-          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          rm -rf /tmp/templates
+          mkdir -p /tmp/templates "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
           unzip -q /tmp/templates.tpz -d /tmp/templates
-          tar -xf /tmp/templates/templates.tpz -C "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          test -f /tmp/templates/templates/windows_release_x86_64.exe
+          test -f /tmp/templates/templates/android_release.apk
+          cp -a /tmp/templates/templates/. "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
+
+      - name: Configure Godot Android export
+        shell: bash
+        env:
+          GITHUB_ACTIONS: "true"
+          GODOT_VERSION: ${{ env.GODOT_VERSION }}
+        run: python tools/release/configure_ci_export.py
+
+      - name: Import project and run CI configuration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/ci
+          godot --headless --path . --editor --import > build/ci/import.log 2>&1
+          python -m unittest discover -s tests -p 'test_ci_export.py' 2>&1 | tee build/ci/configure_tests.log
 
       - name: Run core tests
         shell: bash
         run: |
-          python -X utf8 tests/run_suites.py --godot "$(command -v godot)" --suite ai_mcts ai_value ai_inference shanten_cache smoke_ai --simulation-timeout 600
+          python -X utf8 tests/run_suites.py --godot "$(command -v godot)" \
+            --suite ai_mcts ai_value ai_inference shanten_cache smoke_ai \
+            --simulation-timeout 600
 
       - name: Configure Android signing
+        if: ${{ env.RELEASE_KIND == 'full' }}
         shell: bash
-        run: |
-          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "ANDROID_KEYSTORE_BASE64 is required"; exit 1; }
-          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "ANDROID_KEYSTORE_PASSWORD is required"; exit 1; }
-          test -n "$ANDROID_KEYSTORE_USER" || { echo "ANDROID_KEYSTORE_USER is required"; exit 1; }
-          mkdir -p "$RUNNER_TEMP/signing" .godot
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/signing/release.keystore"
-          cat > .godot/export_credentials.cfg <<EOF
-          [preset.1.options]
-          keystore/release="${RUNNER_TEMP}/signing/release.keystore"
-          keystore/release_user="${ANDROID_KEYSTORE_USER}"
-          keystore/release_password="${ANDROID_KEYSTORE_PASSWORD}"
-          EOF
+        env:
+          GITHUB_ACTIONS: "true"
+          GODOT_VERSION: ${{ env.GODOT_VERSION }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+        run: python tools/release/configure_ci_export.py --signing
 
-      - name: Export Windows and Android
+      - name: Export full Windows and Android packages
+        if: ${{ env.RELEASE_KIND == 'full' }}
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p build/windows build/android
-          godot --headless --path . --export-release "Windows" build/windows/anshun-mahjong-windows-x64.exe
-          godot --headless --path . --export-release "Android" build/android/anshun-mahjong.apk
+          godot --headless --path . --export-release "Windows" build/windows/anshun-mahjong-windows-x64.exe > build/ci/windows-export.log 2>&1
+          godot --headless --path . --export-release "Android" build/android/anshun-mahjong.apk > build/ci/android-export.log 2>&1
+          test -s build/windows/anshun-mahjong-windows-x64.exe
+          test -s build/android/anshun-mahjong.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose build/android/anshun-mahjong.apk
 
-      - name: Prepare full manifest
-        if: ${{ github.event_name == 'push' || inputs.release_kind == 'full' || inputs.release_kind == '' }}
+      - name: Prepare full manifest and baseline
+        if: ${{ env.RELEASE_KIND == 'full' }}
         shell: bash
         run: |
+          set -euo pipefail
           python tools/update/prepare_release.py \
             --windows build/windows/anshun-mahjong-windows-x64.exe \
             --android build/android/anshun-mahjong.apk \
             --output build/releases \
-            --repository dongxiujiang/anshun-mahjong
-
-      - name: Save patch baseline
-        if: ${{ github.event_name == 'push' || inputs.release_kind == 'full' || inputs.release_kind == '' }}
-        shell: bash
-        run: |
+            --repository "$GITHUB_REPOSITORY"
           python tools/update/prepare_hot_update.py baseline \
             --godot "$(command -v godot)" \
-            --output build/update_baselines/${BASELINE_ID}
+            --output "build/update_baselines/$BASELINE_ID"
 
-      - name: Upload full artifacts and baseline
-        if: ${{ github.event_name == 'push' || inputs.release_kind == 'full' || inputs.release_kind == '' }}
+      - name: Upload full release artifact
+        if: ${{ env.RELEASE_KIND == 'full' }}
         uses: actions/upload-artifact@v4
         with:
           name: full-release-${{ github.run_id }}
-          retention-days: 400
+          retention-days: 90
+          if-no-files-found: error
           path: |
             build/releases/**
             build/windows/anshun-mahjong-windows-x64.exe
             build/android/anshun-mahjong.apk
 
-      - name: Upload baseline for future patches
-        if: ${{ github.event_name == 'push' || inputs.release_kind == 'full' || inputs.release_kind == '' }}
+      - name: Upload patch baseline artifact
+        if: ${{ env.RELEASE_KIND == 'full' }}
         uses: actions/upload-artifact@v4
         with:
           name: baseline
-          retention-days: 400
-          path: build/update_baselines/${{ env.BASELINE_ID }}/
+          retention-days: 90
+          if-no-files-found: error
+          path: |
+            build/update_baselines/${{ env.BASELINE_ID }}/baseline.json
+            build/update_baselines/${{ env.BASELINE_ID }}/windows-base.pck
+            build/update_baselines/${{ env.BASELINE_ID }}/android-base.pck
 
       - name: Download selected baseline
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_kind == 'patch' }}
+        if: ${{ env.RELEASE_KIND == 'patch' }}
         uses: actions/download-artifact@v4
         with:
-          run-id: ${{ inputs.baseline_run_id }}
+          run-id: ${{ env.BASELINE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           name: baseline
           path: build/update_baselines/${{ env.BASELINE_ID }}
 
       - name: Generate hot-update patches
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_kind == 'patch' }}
+        if: ${{ env.RELEASE_KIND == 'patch' }}
         shell: bash
+        env:
+          PATCH_VERSION: ${{ env.PATCH_VERSION }}
         run: |
-          test -n "${{ inputs.baseline_run_id }}" || { echo "patch 模式必须填写 baseline_run_id"; exit 1; }
-          VERSION="${{ inputs.patch_version }}"
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "patch_version 必须是 x.y.z"; exit 1; }
+          set -euo pipefail
           python tools/update/prepare_hot_update.py patch \
             --godot "$(command -v godot)" \
-            --baseline build/update_baselines/${BASELINE_ID} \
-            --version "$VERSION" \
-            --repository dongxiujiang/anshun-mahjong \
+            --baseline "build/update_baselines/$BASELINE_ID" \
+            --version "$PATCH_VERSION" \
+            --repository "$GITHUB_REPOSITORY" \
             --output build/releases \
             --notes "GitHub Actions 自动生成的小版本补丁"
 
-      - name: Upload patch artifacts
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_kind == 'patch' }}
+      - name: Upload patch artifact
+        if: ${{ env.RELEASE_KIND == 'patch' }}
         uses: actions/upload-artifact@v4
         with:
           name: patch-release-${{ github.run_id }}
-          retention-days: 400
+          retention-days: 90
+          if-no-files-found: error
           path: build/releases/**
+
+      - name: Upload safe CI logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            build/ci/import.log
+            build/ci/configure_tests.log
+            build/test_results/**
+
+      - name: Remove temporary signing files
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/signing/release.keystore" .godot/export_credentials.cfg
