@@ -15,8 +15,30 @@ on:
         description: "patch 模式填写保存 baseline artifact 的完整构建 run id"
         required: false
         type: string
+      baseline_source:
+        description: "patch 基线来源：V1.0.0 Release 附件或 Actions artifact"
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - artifact
+      baseline_release_tag:
+        description: "release 基线标签，现有玩家填写 V1.0.0"
+        required: false
+        default: V1.0.0
+        type: string
       patch_version:
         description: "patch 模式版本号，例如 1.0.1"
+        required: false
+        type: string
+      publish_release:
+        description: "构建成功后自动创建 GitHub Release 并上传附件"
+        required: true
+        default: false
+        type: boolean
+      release_notes:
+        description: "Release 说明；留空使用默认说明"
         required: false
         type: string
   push:
@@ -24,7 +46,7 @@ on:
       - "V1.0.*"
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 env:
@@ -40,7 +62,11 @@ jobs:
     env:
       RELEASE_KIND: ${{ inputs.release_kind || 'full' }}
       BASELINE_RUN_ID: ${{ inputs.baseline_run_id || '' }}
+      BASELINE_SOURCE: ${{ inputs.baseline_source || 'release' }}
+      BASELINE_RELEASE_TAG: ${{ inputs.baseline_release_tag || 'V1.0.0' }}
       PATCH_VERSION: ${{ inputs.patch_version || '' }}
+      PUBLISH_RELEASE: ${{ inputs.publish_release || false }}
+      RELEASE_NOTES: ${{ inputs.release_notes || 'GitHub Actions 自动生成的构建' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,21 +85,29 @@ jobs:
           kind = os.environ["RELEASE_KIND"]
           if kind not in {"full", "patch"}:
               raise SystemExit("release_kind 必须是 full 或 patch")
+          source = os.environ["BASELINE_SOURCE"]
+          if source not in {"release", "artifact"}:
+              raise SystemExit("baseline_source 必须是 release 或 artifact")
           base = setting("base_id")
           if not re.fullmatch(r"[A-Za-z0-9_.-]+", base):
               raise SystemExit("base_id 含有不安全字符")
           if kind == "patch":
-              if not re.fullmatch(r"[0-9]+", os.environ["BASELINE_RUN_ID"]):
-                  raise SystemExit("patch 模式必须填写数字形式的 baseline_run_id")
+              if source == "artifact" and not re.fullmatch(r"[0-9]+", os.environ["BASELINE_RUN_ID"]):
+                  raise SystemExit("artifact 基线必须填写数字形式的 baseline_run_id")
+              if source == "release" and not re.fullmatch(r"V[0-9]+\.[0-9]+\.[0-9]+", os.environ["BASELINE_RELEASE_TAG"]):
+                  raise SystemExit("release 基线标签必须是 Vx.y.z")
               if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", os.environ["PATCH_VERSION"]):
                   raise SystemExit("patch_version 必须是 x.y.z")
+          version = setting("config/version") if kind == "full" else os.environ["PATCH_VERSION"]
+          if os.environ.get("PUBLISH_RELEASE", "false").lower() not in {"true", "false"}:
+              raise SystemExit("publish_release 必须是布尔值")
           if os.environ.get("GITHUB_EVENT_NAME") == "push":
               tag = os.environ.get("GITHUB_REF_NAME", "")
               expected = release_tag(setting("config/version"))
               if tag != expected:
                   raise SystemExit(f"标签 {tag} 与工程版本不一致，应为 {expected}")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as out:
-              out.write(f"BASELINE_ID={base}\n")
+              out.write(f"BASELINE_ID={base}\nRELEASE_VERSION={version}\n")
           PY
 
       - name: Set up Java
@@ -186,13 +220,29 @@ jobs:
             build/update_baselines/${{ env.BASELINE_ID }}/android-base.pck
 
       - name: Download selected baseline
-        if: ${{ env.RELEASE_KIND == 'patch' }}
+        if: ${{ env.RELEASE_KIND == 'patch' && env.BASELINE_SOURCE == 'artifact' }}
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ env.BASELINE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           name: baseline
           path: build/update_baselines/${{ env.BASELINE_ID }}
+
+      - name: Download original release baseline
+        if: ${{ env.RELEASE_KIND == 'patch' && env.BASELINE_SOURCE == 'release' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          folder="build/update_baselines/$BASELINE_ID"
+          mkdir -p "$folder"
+          for file in baseline.json windows-base.pck android-base.pck; do
+            curl --fail --location --retry 3 \
+              "https://github.com/$GITHUB_REPOSITORY/releases/download/$BASELINE_RELEASE_TAG/$file" \
+              --output "$folder/$file"
+          done
+          test -s "$folder/baseline.json"
+          test -s "$folder/windows-base.pck"
+          test -s "$folder/android-base.pck"
 
       - name: Generate hot-update patches
         if: ${{ env.RELEASE_KIND == 'patch' }}
@@ -217,6 +267,29 @@ jobs:
           retention-days: 90
           if-no-files-found: error
           path: build/releases/**
+
+      - name: Write release notes
+        if: ${{ env.PUBLISH_RELEASE == 'true' }}
+        shell: bash
+        env:
+          RELEASE_NOTES: ${{ env.RELEASE_NOTES }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          Path("build/ci/release-notes.md").write_text(os.environ["RELEASE_NOTES"] + "\n", encoding="utf-8")
+          PY
+
+      - name: Publish GitHub release
+        if: ${{ env.PUBLISH_RELEASE == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: V${{ env.RELEASE_VERSION }}
+          name: 安顺麻将 V${{ env.RELEASE_VERSION }}
+          body_path: build/ci/release-notes.md
+          draft: false
+          prerelease: false
+          files: build/releases/v${{ env.RELEASE_VERSION }}/*
 
       - name: Upload safe CI logs
         if: ${{ always() }}
