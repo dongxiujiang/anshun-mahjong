@@ -6,6 +6,8 @@ signal require_response(seat, discarded_seat, tile, options)
 signal round_finished(result)
 signal state_update()
 signal dealt(info)
+## 视觉事件只描述已完成的逻辑结果，客户端可丢弃并从快照恢复。
+signal visual_event(event: Dictionary)
 signal audio_event(event: Dictionary)
 
 const SEATS := [0, 1, 2, 3]
@@ -96,6 +98,12 @@ var _kong_draw_turn := false
 var _kong_draw_kind: KongKind = KongKind.NONE
 var ai_delay_seconds := 0.0
 var next_chicken_multiplier := 1
+const PRESENTATION := preload("res://scripts/core/RoundPresentation.gd")
+var _presentation := PRESENTATION.new()
+var visual_event_id: int:
+	get: return _presentation.event_id
+var visual_events: Array:
+	get: return _presentation.events
 const ACTIONS := preload("res://scripts/core/LegalActions.gd")
 const REPLAY := preload("res://scripts/core/RoundReplay.gd")
 var _recorder := REPLAY.new()
@@ -116,12 +124,22 @@ var audio_events: Array:
 func _init() -> void:
 	_reset_meta()
 	_audio.audio_event.connect(_forward_audio_event)
+	_presentation.visual_event.connect(_forward_visual_event)
 
 func _forward_audio_event(event: Dictionary) -> void:
 	audio_event.emit(event)
 
+func _forward_visual_event(event: Dictionary) -> void:
+	visual_event.emit(event)
+
 func _reset_audio_events() -> void:
 	_audio.reset()
+
+func _reset_visual_events() -> void:
+	_presentation.reset()
+
+func _emit_visual_event(event_type: String, data: Dictionary = {}) -> void:
+	_presentation.emit_event(event_type, data)
 
 func _emit_audio_event(action: String, seat: int, tile: String = "") -> void:
 	_audio.emit_action(action, seat, tile)
@@ -154,6 +172,7 @@ func start_round(human_seat: int, die_override: int = -1) -> void:
 		apply_scores(scores)
 	_reset_meta()
 	_reset_audio_events()
+	_reset_visual_events()
 	last_result = {}
 	round_meta.chicken_multiplier = clampi(next_chicken_multiplier, 1, CFG.MAX_CHICKEN_MULTIPLIER)
 	next_chicken_multiplier = 1
@@ -172,6 +191,7 @@ func start_round(human_seat: int, die_override: int = -1) -> void:
 	var die := die_override if die_override >= 1 and die_override <= 6 else _rng.randi_range(1, 6)
 	round_meta["die"] = die
 	round_meta["break"] = WallRing.compute_break(die, dealer_seat)
+	_emit_visual_event("dice", {"value": die, "dealer": dealer_seat})
 	wall.set_head(round_meta["break"])
 	phase = Phase.DEALING
 	_initial_deal()
@@ -181,18 +201,29 @@ func start_round(human_seat: int, die_override: int = -1) -> void:
 	_begin_turn()
 
 func _initial_deal() -> void:
+	var batches: Array = []
 	for batch in 3:
+		var batch_info: Array = []
 		for offset in 4:
 			var seat := posmod(dealer_seat + offset, 4)
+			var cards: Array = []
 			for index in 4:
-				players[seat].concealed.append(wall.draw_head())
+				var card := wall.draw_head()
+				players[seat].concealed.append(card)
+				cards.append(card)
+			batch_info.append({"seat": seat, "cards": cards})
+		batches.append(batch_info)
 	for offset in 4:
 		var seat := posmod(dealer_seat + offset, 4)
-		players[seat].concealed.append(wall.draw_head())
+		var card := wall.draw_head()
+		players[seat].concealed.append(card)
+		batches.append([{"seat": seat, "cards": [card], "dealer_extra": seat == dealer_seat}])
 	var info: Array = []
 	for player in players:
 		info.append({"seat": player.seat, "count": player.concealed.size()})
-	dealt.emit(info)
+	dealt.emit({"players": info, "batches": batches})
+	for batch in batches:
+		_emit_visual_event("deal_batch", {"deals": batch})
 
 func _begin_turn() -> void:
 	if phase != Phase.PLAYING:
@@ -210,6 +241,7 @@ func _begin_turn() -> void:
 	var player: PlayerState = players[current_turn]
 	player.just_drew = tile
 	player.concealed.append(tile)
+	_emit_visual_event("draw", {"seat": current_turn, "tile": tile, "kind": "head"})
 	_ask_turn_actor()
 
 func _ask_turn_actor() -> void:
@@ -481,6 +513,7 @@ func _state_after_kong_draw() -> void:
 	var player: PlayerState = players[current_turn]
 	player.just_drew = tile
 	player.concealed.append(tile)
+	_emit_visual_event("draw", {"seat": current_turn, "tile": tile, "kind": "tail"})
 	_kong_draw_turn = true
 	_ask_turn_actor()
 

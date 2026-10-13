@@ -34,6 +34,9 @@ const WINDS := ["东", "南", "西", "北"]
 const INK := Color("#edf3ee")
 const MUTED := Color("#aac5b9")
 const GOLD := Color("#edcc80")
+const SAFE_MARGIN := 28.0
+const TOUCH_MARGIN := 16.0
+const VISUAL_ANIMATIONS := true
 
 var round: RoundState
 var human_seat := 0
@@ -81,6 +84,12 @@ var _sound_button: Button
 var _settings_button: Button
 var _seat_visual_keys := {}
 var _remaining_label: Label
+var _animation_layer: TableAnimationLayer
+var _animation_busy := false
+var _animation_last_id := 0
+var _animation_queue: Array = []
+var _skip_visual_once := false
+var _last_tile_input_ms := -1000
 
 func _ready() -> void:
 	AudioManager.begin_table(self)
@@ -98,17 +107,76 @@ func _ready() -> void:
 func _connect_audio_round() -> void:
 	if _audio_round != null and _audio_round.audio_event.is_connected(_on_audio_event):
 		_audio_round.audio_event.disconnect(_on_audio_event)
+	if _audio_round != null and _audio_round.visual_event.is_connected(_on_visual_event):
+		_audio_round.visual_event.disconnect(_on_visual_event)
 	_audio_round = round
 	AudioManager.reset_round(round.audio_session, round.audio_event_id)
+	_animation_last_id = 0
+	_animation_queue.clear()
+	_animation_busy = false
+	_last_tile_input_ms = -1000
+	if _animation_layer != null:
+		_animation_layer.cancel()
 	round.audio_event.connect(_on_audio_event)
+	if not round.visual_event.is_connected(_on_visual_event):
+		round.visual_event.connect(_on_visual_event)
 
 func _on_audio_event(event: Dictionary) -> void:
 	AudioManager.play_event(event)
+
+func _on_visual_event(event: Dictionary) -> void:
+	if _animation_layer == null:
+		return
+	var event_id := int(event.get("id", 0))
+	if event_id <= _animation_last_id:
+		return
+	_animation_last_id = event_id
+	if _skip_visual_once:
+		_skip_visual_once = false
+		return
+	_animation_queue.append(event.duplicate(true))
+	call_deferred("_pump_visual_animation")
+
+func _pump_visual_animation() -> void:
+	if _animation_busy or _animation_queue.is_empty() or _animation_layer == null:
+		return
+	var event: Dictionary = _animation_queue.pop_front()
+	_animation_busy = true
+	var type := str(event.get("type", ""))
+	var target := Callable(self, "_on_visual_animation_finished")
+	if type == "deal" or type == "draw":
+		event["to"] = _animation_target_for_seat(int(event.get("seat", 0)))
+		event["from"] = _table_center()
+	if type == "deal_batch":
+		var deals: Array = event.get("deals", [])
+		if deals.is_empty():
+			_on_visual_animation_finished()
+			return
+		var deal: Dictionary = deals[0]
+		for index in range(1, deals.size()):
+			var rest := deals[index].duplicate(true)
+			_animation_queue.push_front({"id": event.get("id", 0), "type": "deal", "seat": rest.get("seat", 0), "cards": rest.get("cards", [])})
+		event["type"] = "deal"
+		event["seat"] = deal.get("seat", 0)
+		event["cards"] = deal.get("cards", [])
+		event["to"] = _animation_target_for_seat(int(event.seat))
+		event["from"] = _table_center()
+	_animation_layer.play(event, target)
+
+func _on_visual_animation_finished() -> void:
+	_animation_busy = false
+	call_deferred("_pump_visual_animation")
+
+func _animation_target_for_seat(seat: int) -> Vector2:
+	var relative := _relative_seat(seat)
+	return [Vector2(1140, 1010), Vector2(1640, 650), Vector2(1140, 430), Vector2(640, 650)][relative]
 
 func _exit_tree() -> void:
 	if _audio_round != null and _audio_round.audio_event.is_connected(_on_audio_event):
 		_audio_round.audio_event.disconnect(_on_audio_event)
 	_audio_round = null
+	if _animation_layer != null:
+		_animation_layer.cancel()
 	AudioManager.end_table(self)
 
 func _net_mode() -> String:
@@ -201,6 +269,10 @@ func _setup_client_view() -> void:
 	network.prompted.connect(_on_net_prompt)
 	network.connection_error.connect(_on_connection_error)
 	network.reconnecting.connect(func(attempt, maximum):
+		_skip_visual_once = true
+		_animation_queue.clear()
+		_animation_busy = false
+		_animation_layer.cancel()
 		_selecting = false
 		_clear_actions()
 		status_label.text = "连接中断，正在重连（%d/%d）…" % [attempt, maximum]
@@ -317,6 +389,11 @@ func _build_static_ui() -> void:
 	result_layer.size = DESIGN_SIZE
 	result_layer.mouse_filter = Control.MOUSE_FILTER_STOP
 	result_layer.hide()
+	_animation_layer = TableAnimationLayer.new()
+	_animation_layer.name = "AnimationLayer"
+	_animation_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_animation_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_animation_layer)
 
 func _layout() -> void:
 	if surface == null:
@@ -331,6 +408,9 @@ func _layout() -> void:
 	surface.size = design
 	surface.scale = Vector2.ONE * factor
 	surface.position = available.position + (available.size - design * factor) / 2.0
+	_animation_layer.position = surface.position
+	_animation_layer.size = design
+	_animation_layer.scale = Vector2.ONE * factor
 	result_layer.size = design
 	for seat in 4:
 		seat_roots[seat].position = _table_center()
@@ -374,6 +454,8 @@ func _usable_rect() -> Rect2:
 		if safe.has_area():
 			var transform := get_viewport().get_screen_transform() * get_global_transform()
 			bounds = bounds.intersection(transform.affine_inverse() * safe)
+	if OS.has_feature("android") and bounds.has_area():
+		bounds = bounds.grow(-SAFE_MARGIN)
 	return bounds
 
 func _design_size() -> Vector2:
@@ -880,6 +962,11 @@ func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
 	var keyboard: bool = event is InputEventKey and event.pressed and event.keycode in [KEY_ENTER, KEY_SPACE]
 	if not clicked and not keyboard:
 		return
+	if clicked:
+		var now := Time.get_ticks_msec()
+		if now - _last_tile_input_ms < 100:
+			return
+		_last_tile_input_ms = now
 	if _selected_tile == tile:
 		_submit_discard(tile.tile)
 		return
@@ -1001,6 +1088,11 @@ func _commit_response(action: String) -> void:
 	_emit_response(tile, {"action": action})
 
 func _on_client_state_updated() -> void:
+	# 快照更新是联机的最终事实；重连后跳过尚未完成的视觉过渡。
+	if _net_mode() == "client" and _animation_layer != null and _animation_busy:
+		_animation_queue.clear()
+		_animation_busy = false
+		_animation_layer.cancel()
 	_selecting = false
 	_response_disc = ""
 	_clear_actions()

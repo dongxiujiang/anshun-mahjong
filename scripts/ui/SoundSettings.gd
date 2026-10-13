@@ -3,6 +3,7 @@ extends CanvasLayer
 signal exit_requested
 signal exit_confirmed
 signal ai_speed_selected(speed_key: String)
+signal animation_speed_selected(speed_key: String)
 signal replay_export_requested
 ## 主菜单和牌桌共用的声音面板，独立于旋转、缩放的牌桌。
 
@@ -18,6 +19,7 @@ var preview_button: Button
 var voice_selector: OptionButton
 var persist_changes := true
 var speed_buttons := {}
+var animation_speed_buttons := {}
 var table_mode := false
 var exit_confirmation: Panel
 var confirm_exit_button: Button
@@ -93,6 +95,11 @@ func _ready() -> void:
 			var speed_key: String = item[1]
 			var speed_button := _button(item[0], Vector2(716, 84 + speed_buttons.size() * 100), Vector2(288, 88), func(): _set_speed(speed_key))
 			speed_buttons[speed_key] = speed_button
+		_label("动画速度", Vector2(716, 294), Vector2(288, 38), 24)
+		for item in [["快", "fast"], ["标准", "standard"], ["慢", "slow"]]:
+			var animation_key: String = item[1]
+			var animation_button := _button(item[0], Vector2(716 + animation_speed_buttons.size() * 98, 332), Vector2(92, 64), func(): _set_animation_speed(animation_key))
+			animation_speed_buttons[animation_key] = animation_button
 		var exit_button := _button("退出房间", Vector2(716, 422), Vector2(288, 126), func(): exit_requested.emit())
 		exit_button.name = "ExitRoomButton"
 		replay_export_button = _button("保存本局记录", Vector2(36, 496), Vector2(356, 70), func(): replay_export_requested.emit())
@@ -173,6 +180,10 @@ func _set_speed(speed_key: String) -> void:
 	if not table_mode: GameConfig.set_ai_speed(speed_key)
 	ai_speed_selected.emit(speed_key)
 
+func _set_animation_speed(speed_key: String) -> void:
+	GameConfig.set_animation_speed(speed_key)
+	animation_speed_selected.emit(speed_key)
+
 func _update_speed_buttons() -> void:
 	var selected: String = GameConfig.ai_speed
 	var network := get_node_or_null("/root/Network")
@@ -180,6 +191,8 @@ func _update_speed_buttons() -> void:
 		selected = str(network.net_node.lobby.get("ai_speed", "fast"))
 	for speed_key in speed_buttons:
 		speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == selected else Color.WHITE
+	for speed_key in animation_speed_buttons:
+		animation_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.animation_speed else Color.WHITE
 
 func open() -> void:
 	_sync()

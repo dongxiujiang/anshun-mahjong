@@ -11,6 +11,7 @@ var selected := false
 var interactive := false
 var _table_position := Vector2.ZERO
 var _hovered := false
+var touch_padding := 14.0
 
 const BASE_W := 48.0
 const BASE_H := 64.0
@@ -39,6 +40,13 @@ func set_interactive(on: bool) -> void:
 	focus_mode = Control.FOCUS_ALL if on else Control.FOCUS_NONE
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if on else Control.CURSOR_ARROW
 	_update_lift()
+
+## 保持绘制尺寸不变，只扩展触控命中区域，避免相邻手牌被视觉放大后互相遮挡。
+func _has_point(point: Vector2) -> bool:
+	if not interactive:
+		return Rect2(Vector2.ZERO, size).has_point(point)
+	var padding := touch_padding * unit
+	return Rect2(-padding, -padding, size.x + padding * 2.0, size.y + padding * 2.0).has_point(point)
 
 func _update_lift() -> void:
 	position = _table_position + Vector2(0, -14.0 if selected else (-6.0 if _hovered and interactive else 0.0))
@@ -104,6 +112,15 @@ func _draw() -> void:
 		draw_style_box(outline, Rect2(-1, -1, w + 2, h + 2))
 		if highlight:
 			draw_circle(Vector2(w / 2, -5 * unit), 2.5 * unit, Color("#f1d47f"))
+	if bool(get_meta("charge_chicken", false)):
+		_draw_badge(Vector2(w - 12 * unit, 12 * unit), Color("#db8246"), "冲")
+	elif bool(get_meta("gold_chicken", false)):
+		_draw_badge(Vector2(w - 12 * unit, 12 * unit), Color("#d5af4e"), "金")
+
+func _draw_badge(center: Vector2, color: Color, text: String) -> void:
+	draw_circle(center, 8.0 * unit, Color(0.08, 0.12, 0.1, 0.78))
+	draw_circle(center, 6.5 * unit, color)
+	draw_string(_font(), center + Vector2(-4.0 * unit, 3.5 * unit), text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(8.0 * unit), Color("#fff7dc"))
 
 func _tile_style(color: Color, border: Color) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()

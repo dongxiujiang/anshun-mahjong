@@ -14,6 +14,8 @@ static func serialize(round_state) -> Dictionary:
 		"next_chicken_multiplier": round_state.next_chicken_multiplier,
 		"audio_session": round_state.audio_session, "audio_event_id": round_state.audio_event_id,
 		"audio_events": round_state.audio_events.duplicate(true),
+		"visual_session": round_state._presentation.session, "visual_event_id": round_state.visual_event_id,
+		"visual_events": round_state.visual_events.duplicate(true),
 	}
 	if state.awaiting_response.has("stage"):
 		state.awaiting_response.stage = round_state._response_stage_name(int(state.awaiting_response.stage))
@@ -77,6 +79,7 @@ static func apply_sync(round_state, state: Dictionary) -> void:
 	round_state.wall_remain = state.wall.duplicate()
 	round_state.wall_stacks = state.get("wall_stacks", {}).duplicate(true)
 	round_state._audio.apply_sync(state)
+	round_state._presentation.apply_sync(state)
 
 static func serialize_for_seat(round_state, seat: int) -> Dictionary:
 	var state := serialize(round_state)
@@ -91,6 +94,15 @@ static func serialize_for_seat(round_state, seat: int) -> Dictionary:
 		for index in player.melds.size():
 			if not round_state.is_meld_revealed(int(player.seat), index):
 				player.melds[index].tile = "hidden0"
+	for event in state.get("visual_events", []):
+		if event.has("seat") and int(event.get("seat", -1)) != seat:
+			if event.has("tile"): event.tile = "hidden0"
+			if event.has("cards") and event.cards is Array:
+				event.cards = event.cards.map(func(_card): return "hidden0")
+		if event.get("type", "") == "deal_batch":
+			for deal in event.get("deals", []):
+				if int(deal.get("seat", -1)) != seat:
+					deal.cards = deal.cards.map(func(_card): return "hidden0")
 	return state
 
 # 结算 items、points 等嵌套数据中的杠类型也要在边界转换。

@@ -57,6 +57,8 @@ var online_mode := false
 # AI 思考速度：快 1 秒 / 中 2 秒 / 慢 3 秒。
 const AI_SPEED_DELAYS := {"fast": 1.0, "medium": 2.0, "slow": 3.0}
 var ai_speed := "fast"
+const ANIMATION_SPEEDS := {"fast": 0.5, "standard": 1.0, "slow": 2.0}
+var animation_speed := "standard"
 
 func set_ai_speed(value: String) -> void:
 	if AI_SPEED_DELAYS.has(value):
@@ -66,3 +68,10 @@ func ai_delay_seconds() -> float:
 	if DisplayServer.get_name() == "headless":
 		return 0.0
 	return float(AI_SPEED_DELAYS.get(ai_speed, 1.0))
+
+func set_animation_speed(value: String) -> void:
+	if ANIMATION_SPEEDS.has(value):
+		animation_speed = value
+
+func animation_duration(base_seconds: float) -> float:
+	return base_seconds * float(ANIMATION_SPEEDS.get(animation_speed, 1.0))

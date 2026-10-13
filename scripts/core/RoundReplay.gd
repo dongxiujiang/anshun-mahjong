@@ -67,7 +67,7 @@ static func _wall_state(wall: WallRing) -> Dictionary:
 static func fingerprint(round) -> String:
 	var state: Dictionary = round.serialize()
 	# 人机同步执行与人工逐步提交的提示编号/音频会话不同，不影响规则结果。
-	for key in ["awaiting", "prompt_id", "awaiting_response", "audio_session", "audio_event_id", "audio_events"]: state.erase(key)
+	for key in ["awaiting", "prompt_id", "awaiting_response", "audio_session", "audio_event_id", "audio_events", "visual_session", "visual_event_id", "visual_events"]: state.erase(key)
 	for player in state.players:
 		player.erase("name")
 		player.erase("is_human")
