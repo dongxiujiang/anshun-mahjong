@@ -30,11 +30,15 @@ static func charges(round, deltas: Array, transfers: Array, items: Array, lines:
 	var winner: int = meta.winner
 	var self_draw: bool = meta.get("self_draw", false)
 	var dealer: int = meta.get("dealer_seat", 0)
-	var pattern := RuleEngine.hand_pattern(round.players[winner].concealed, round.players[winner].melds)
+	var pattern := RuleEngine.hand_pattern(round.players[winner].concealed, round.players[winner].melds, str(meta.get("win_tile", "")))
+	var special := RuleEngine.special_pattern_key(pattern)
 	for spec in CFG.PATTERNS:
 		var p: Dictionary = spec
 		var key: String = p.get("key", "")
-		if not pattern.get(key, false):
+		if special != "":
+			if key != special:
+				continue
+		elif not pattern.get(key, false):
 			continue
 		var dragon: bool = p.has("dragon_flag") and pattern.get(str(p.get("dragon_flag", "")), false)
 		var label: String = str(p.get("dragon_label", "")) if dragon else str(p.get("label", ""))

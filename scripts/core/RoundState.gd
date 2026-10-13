@@ -131,7 +131,7 @@ func _reset_meta() -> void:
 		"dealer_seat": dealer_seat,
 		"charge_chickens": {}, "flip_tile": "", "chicken_multiplier": 1,
 		"kong_draw_seat": -1, "last_four_self_draw_seat": -1,
-		"robber_seat": -1, "burn_chicken_seat": -1,
+		"robber_seat": -1, "burn_chicken_seat": -1, "burn_chicken_reason": "",
 		"winner": -1, "self_draw": false, "win_tile": "", "discard_seat": -1,
 	}
 
@@ -442,6 +442,10 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 			_pending_kong = {}
 			_discard_win(seat, source, tile, true)
 		else:
+			if bool(last_discard.get("after_kong", false)):
+				round_meta.robber_seat = seat
+				round_meta.burn_chicken_seat = source
+				round_meta.burn_chicken_reason = "after_kong_discard"
 			_discard_win(seat, source, tile)
 		return
 	if not _pending_responders.is_empty() and _pending_responders[0] == seat:
@@ -522,6 +526,7 @@ func _do_self_win(seat: int) -> void:
 	round_meta.winner = seat
 	round_meta.self_draw = true
 	round_meta.win_tile = str(players[seat].just_drew)
+	# 胡牌后传入实际胡牌张，供清单吊牌型精确判定。
 	if _kong_draw_turn:
 		round_meta.kong_draw_seat = seat
 	if _draw_remaining_before <= 4:
@@ -584,6 +589,8 @@ func _remove_from_discards(seat: int, tile: String, receiver: int = -1, location
 			charge.owner = receiver
 			charge.location = location
 			charge.meld_index = meld_index
+			# 冲锋鸡被碰/杠后归碰杠者所有；其首张奖励降为每张2分，
+			# 明杠另由放出该牌的玩家支付本组固定4分。
 		discards.remove_at(index)
 		if index < player.discard_ids.size():
 			player.discard_ids.remove_at(index)

@@ -48,8 +48,9 @@ static func settle(round) -> Dictionary:
 				if item.get("source", "") != "kong" and (winner >= 0 or item.get("source", "") == "discard"):
 					items[seat].append(item.duplicate(true))
 		if profile.burned:
-			lines.append("%s 抢杠烧鸡：鸡分 0" % _nm(seat, dealer))
-			items[seat].append({"kind": "penalty", "label": "抢杠烧鸡", "tile": "", "tiles": [], "amount": 0.0, "note": "鸡分归零"})
+			var burn_label := "杠后抢胡烧鸡" if meta.get("burn_chicken_reason", "") == "after_kong_discard" else "抢杠烧鸡"
+			lines.append("%s %s：鸡分 0" % [_nm(seat, dealer), burn_label])
+			items[seat].append({"kind": "penalty", "label": burn_label, "tile": "", "tiles": [], "amount": 0.0, "note": "鸡分归零"})
 		if winner < 0:
 			lines.append("%s%s：保留出牌鸡 %.0f" % [_nm(seat, dealer), " 已叫牌" if called else " 未叫牌", discard_points[seat]])
 		else:
@@ -103,10 +104,14 @@ static func _result(deltas: Array, lines: Array, points: Array, discard_points: 
 
 static func _win_status(seat: int, winner: int, self_draw: bool, discard_seat: int, called: Array, pattern: Dictionary, round) -> String:
 	var names: Array = []
+	var special := RuleEngine.special_pattern_key(pattern)
 	for spec in CFG.PATTERNS:
 		var p: Dictionary = spec
 		var key: String = p.get("key", "")
-		if not pattern.get(key, false):
+		if special != "":
+			if key != special:
+				continue
+		elif not pattern.get(key, false):
 			continue
 		var dragon: bool = p.has("dragon_flag") and pattern.get(str(p.get("dragon_flag", "")), false)
 		names.append(str(p.get("dragon_label", "")) if dragon else str(p.get("label", "")))

@@ -33,6 +33,7 @@ func _run() -> void:
 	_test_flip_cycle()
 	_test_charges()
 	_test_claims()
+	_test_claimed_charge_settlement()
 	_test_chicken_values()
 	_test_win_payments()
 	_test_draw_payments()
@@ -144,6 +145,25 @@ func _test_chicken_values() -> void:
 	for seat_items in settled.items:
 		for item in seat_items:
 			check(item.get("kind", "") != "net", "结算卡片不应显示补付或差额条目")
+
+func _test_claimed_charge_settlement() -> void:
+	# 冲锋鸡被碰：三张归碰家，每张2分，不再保留原出牌者4分。
+	var pong := fixture()
+	pong.players[1].melds = [{"kind": "pung", "tile": "tiao1", "from_seat": 0}]
+	pong.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "meld", "meld_index": 0}}
+	var pong_profile := ScoringEngine.chicken_profile(pong, 1, "")
+	check(pong_profile.total == 6.0, "被碰冲锋鸡归碰家，每张2分")
+	check(pong_profile.items.size() == 1 and pong_profile.items[0].kind == "charge" and pong_profile.items[0].label == "冲锋鸡" and pong_profile.items[0].unit_amount == 2.0, "被碰后保留冲锋鸡标识并按每张2分展示")
+
+	# 冲锋鸡被明杠：四张归杠家，每张2分；原放牌者额外支付固定杠4分。
+	var kong := fixture()
+	kong.players[0].concealed = MELD_WAIT.duplicate()
+	kong.players[0].melds = [{"kind": "kong", "tile": "tiao1", "from_seat": 1}]
+	kong.round_meta.charge_chickens = {"tiao1": {"owner": 0, "location": "meld", "meld_index": 0}}
+	var kong_result := settle(kong)
+	check(kong_result.items[0][0].chicken_amount == 8.0, "被杠冲锋鸡按四张每张2分")
+	check(kong_result.pairwise[0][1] == 12.0, "被杠玩家支付鸡8加明杠4")
+	check(kong_result.pairwise[0][2] == 8.0 and kong_result.pairwise[0][3] == 8.0, "其他玩家只支付被杠冲锋鸡8分")
 
 func _test_win_payments() -> void:
 	var r := fixture()

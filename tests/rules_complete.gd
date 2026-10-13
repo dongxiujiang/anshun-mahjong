@@ -216,6 +216,22 @@ func _test_discard_win_restrictions() -> void:
 	after_kong.players[1].concealed = thirteen.duplicate()
 	after_kong.last_discard = {"seat": 0, "tile": "wan9", "after_kong": true, "kong_kind": RoundState.KongKind.ADD_KONG}
 	expect(after_kong.can_win_on_discard(1, 0, "wan9"), "Post-kong discard permits ordinary discard win")
+	after_kong.players[0].discards = ["wan9"]
+	after_kong._awaiting_response = {"seat": 1, "disc_seat": 0, "tile": "wan9"}
+	after_kong._pending_responders = [1]
+	after_kong._response_stage = RoundState.ResponseStage.WIN
+	after_kong._process_response(1, 0, "wan9", {"action": "win"})
+	expect(after_kong.round_meta.burn_chicken_seat == 0 and after_kong.round_meta.burn_chicken_reason == "after_kong_discard", "Post-kong discard win burns source chickens")
+	var dark_after_kong := fixture()
+	dark_after_kong.players[1].concealed = thirteen.duplicate()
+	dark_after_kong.players[0].discards = ["wan9"]
+	dark_after_kong.last_discard = {"seat": 0, "tile": "wan9", "after_kong": true, "kong_kind": RoundState.KongKind.CONCEALED}
+	dark_after_kong._pending_responders = [1]
+	dark_after_kong._response_stage = RoundState.ResponseStage.WIN
+	dark_after_kong._process_response(1, 0, "wan9", {"action": "win"})
+	expect(dark_after_kong.round_meta.burn_chicken_seat == 0, "Post-concealed-kong discard win burns source chickens")
+	dark_after_kong.players[0].discards.append_array(["tiao1", "tong8"])
+	expect(ScoringEngine.chicken_profile(dark_after_kong, 0, "tiao1").total == 0.0, "Burned kong discarder chicken score is exactly zero")
 	var rob := fixture()
 	rob.players[1].concealed = thirteen.duplicate()
 	rob._pending_kong = {"seat": 0, "tile": "wan9", "index": 0}
@@ -232,6 +248,24 @@ func _test_wall_and_patterns() -> void:
 	expect(not RuleEngine.analyze(["wan1", "wan1"], []).win, "Incomplete pair must not win")
 	var quad_pairs := ["wan1", "wan1", "wan1", "wan1", "wan2", "wan2", "wan3", "wan3", "tiao4", "tiao4", "tong5", "tong5", "tong6", "tong6"]
 	expect(RuleEngine.analyze(quad_pairs, []).seven_pairs, "Four identical tiles may form two pairs")
+	var clean_single := ["tiao1", "tiao2", "tiao3", "tiao4", "tiao5", "tiao6", "tiao2", "tiao3", "tiao4", "tiao5", "tiao6", "tiao7", "tiao9", "tiao9"]
+	var single_pattern := RuleEngine.analyze(clean_single, [], "tiao9")
+	expect(single_pattern.win and single_pattern.clean_single_wait, "清单吊 is four one-suit sequences plus a pair made by the winning tile")
+	expect(not RuleEngine.analyze(clean_single, [], "tiao6").clean_single_wait, "清单吊 requires the actual winning tile to complete the pair")
+	var clean_round := fixture()
+	clean_round.round_meta.winner = 0
+	clean_round.round_meta.self_draw = true
+	clean_round.round_meta.win_tile = "tiao9"
+	clean_round.players[0].concealed = clean_single.duplicate()
+	var clean_result := scored(clean_round)
+	expect(clean_result.items[0].any(func(item): return item.get("kind", "") == "pattern" and item.get("label", "") == "清单吊" and item.get("amount", 0) == 54), "清单吊 scores 54 and replaces plain 清一色")
+	expect(clean_result.items[0].all(func(item): return item.get("label", "") != "清一色"), "清单吊 does not double count 清一色")
+	var clean_big := ["tiao1", "tiao1", "tiao1", "tiao2", "tiao2", "tiao2", "tiao4", "tiao4", "tiao4", "tiao6", "tiao6", "tiao6", "tiao9", "tiao9"]
+	var big_pattern := RuleEngine.analyze(clean_big, [])
+	expect(big_pattern.clean_big_triplets and RuleEngine.special_pattern_key(big_pattern) == "clean_big_triplets", "清大对 special pattern has priority")
+	var dragon := ["tiao1", "tiao1", "tiao1", "tiao1", "tiao2", "tiao2", "tiao3", "tiao3", "tiao5", "tiao5", "tiao7", "tiao7", "tiao9", "tiao9"]
+	var dragon_pattern := RuleEngine.analyze(dragon, [])
+	expect(dragon_pattern.clean_dragon_seven_pairs and RuleEngine.special_pattern_key(dragon_pattern) == "clean_dragon_seven_pairs", "清龙七对 special pattern has priority")
 	var round := fixture()
 	round.players[0].concealed = WIN.duplicate()
 	round.players[0].just_drew = "wan9"

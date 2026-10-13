@@ -27,6 +27,9 @@ const SCORE_BIG_SET_DISCARD := 14.0 # 大队子放炮者支付14。
 const SCORE_SEVEN_PAIRS := 24.0   # 小七对 自摸+24 / 胡别人者给24
 const SCORE_DRAGON_SEVEN_PAIRS := 44.0 # 七对中含四张同牌，替代小七对分。
 const SCORE_FLUSH := 24.0         # 清一色 自摸+24 / 胡别人者给24
+const SCORE_CLEAN_BIG_TRIPLETS := 34.0 # 清大对（清一色大对子）
+const SCORE_CLEAN_SINGLE_WAIT := 54.0 # 清单吊
+const SCORE_CLEAN_DRAGON_SEVEN_PAIRS := 88.0 # 清龙七对
 const SCORE_READY := 24.0         # 报听：自摸每家给24；被杀给24；胡别家别家给24
 
 # ---------- 番型表 ----------
@@ -36,6 +39,9 @@ const PATTERNS := [
 	{"key": "seven_pairs", "label": "小七对", "self": SCORE_SEVEN_PAIRS, "discard": SCORE_SEVEN_PAIRS, "dragon_flag": "dragon_seven_pairs", "dragon_label": "龙七对", "dragon_self": SCORE_DRAGON_SEVEN_PAIRS, "dragon_discard": SCORE_DRAGON_SEVEN_PAIRS},
 	{"key": "all_triplets", "label": "大队子", "self": SCORE_BIG_SET, "discard": SCORE_BIG_SET_DISCARD},
 	{"key": "flush", "label": "清一色", "self": SCORE_FLUSH, "discard": SCORE_FLUSH},
+	{"key": "clean_big_triplets", "label": "清大对", "self": SCORE_CLEAN_BIG_TRIPLETS, "discard": SCORE_CLEAN_BIG_TRIPLETS},
+	{"key": "clean_single_wait", "label": "清单吊", "self": SCORE_CLEAN_SINGLE_WAIT, "discard": SCORE_CLEAN_SINGLE_WAIT},
+	{"key": "clean_dragon_seven_pairs", "label": "清龙七对", "self": SCORE_CLEAN_DRAGON_SEVEN_PAIRS, "discard": SCORE_CLEAN_DRAGON_SEVEN_PAIRS},
 ]
 
 # ---------- 座位 ----------

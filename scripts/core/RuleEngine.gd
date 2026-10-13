@@ -98,11 +98,33 @@ static func _is_flush(concealed: Array, melds: Array) -> bool:
 		elif s != suit: return false
 	return not first
 
+static func _is_clean_single_wait(concealed: Array, melds: Array, winning_tile: String) -> bool:
+	# 清单吊：胡牌前只剩四组面子和一张单牌，胡牌张正好与单牌配成将。
+	# 用实际胡牌张检查，避免把普通清一色对子手误判成单吊；不能调用 is_tenpai，
+	# 因为 analyze() 本身会计算牌型标记。
+	if winning_tile == "" or not concealed.has(winning_tile) or not _is_flush(concealed, melds):
+		return false
+	var melds_needed := 4 - melds.size()
+	if melds_needed < 0 or concealed.size() != 3 * melds_needed + 2:
+		return false
+	var arr := Tiles.hand_to_counts_array(concealed)
+	var index := Tiles.value_index(winning_tile)
+	if arr[index] < 2:
+		return false
+	arr[index] -= 1 # 去掉实际胡到的牌后，检查是否只剩同值单张。
+	if arr[index] != 1:
+		arr[index] += 1
+		return false
+	arr[index] -= 1
+	var can_form_sets := _melds_ok(arr, melds_needed, 0)
+	arr[index] += 2
+	return can_form_sets
+
 ## 综合分析手牌是否为胡、以及叠加番型标记
 ## 返回: {"win":bool, "seven_pairs":bool, "all_triplets":bool, "flush":bool}
-static func analyze(concealed: Array, melds: Array) -> Dictionary:
+static func analyze(concealed: Array, melds: Array, winning_tile: String = "") -> Dictionary:
 	var e := exposed_melds_count(melds)
-	var invalid := {"win": false, "normal": false, "seven_pairs": false, "dragon_seven_pairs": false, "all_triplets": false, "flush": false}
+	var invalid := {"win": false, "normal": false, "seven_pairs": false, "dragon_seven_pairs": false, "all_triplets": false, "flush": false, "clean_big_triplets": false, "clean_single_wait": false, "clean_dragon_seven_pairs": false}
 	if e > 4 or concealed.size() != 3 * (4 - e) + 2:
 		return invalid
 	var counts := Tiles.to_counts(concealed)
@@ -128,6 +150,9 @@ static func analyze(concealed: Array, melds: Array) -> Dictionary:
 	else:
 		all_triplets = _is_all_triplets(concealed, melds, melds_needed)
 	var flush := _is_flush(concealed, melds)
+	var clean_big_triplets := all_triplets and flush
+	var clean_dragon_seven_pairs := dragon_seven_pairs and flush
+	var clean_single_wait := _is_clean_single_wait(concealed, melds, winning_tile)
 	return {
 		"win": normal or seven_pairs or all_triplets,
 		"normal": normal,
@@ -135,6 +160,9 @@ static func analyze(concealed: Array, melds: Array) -> Dictionary:
 		"dragon_seven_pairs": dragon_seven_pairs,
 		"all_triplets": all_triplets,
 		"flush": flush,
+		"clean_big_triplets": clean_big_triplets,
+		"clean_single_wait": clean_single_wait,
+		"clean_dragon_seven_pairs": clean_dragon_seven_pairs,
 	}
 
 ## 加入一张牌后能否胡（用于自摸/听牌/胡别家）
@@ -160,5 +188,19 @@ static func is_tenpai(concealed: Array, melds: Array) -> bool:
 	return not waiting_tiles(concealed, melds).is_empty()
 
 ## 计算完整手牌的番型（供结算用）
-static func hand_pattern(concealed: Array, melds: Array) -> Dictionary:
-	return analyze(concealed, melds)
+static func hand_pattern(concealed: Array, melds: Array, winning_tile: String = "") -> Dictionary:
+	return analyze(concealed, melds, winning_tile)
+
+## 返回实际计分时应使用的牌型。清牌型是替代分，不与其组成牌型重复相加。
+static func special_pattern_key(pattern: Dictionary) -> String:
+	if pattern.get("clean_dragon_seven_pairs", false):
+		return "clean_dragon_seven_pairs"
+	if pattern.get("clean_single_wait", false):
+		return "clean_single_wait"
+	if pattern.get("clean_big_triplets", false):
+		return "clean_big_triplets"
+	return ""
+
+static func is_scoring_pattern(pattern: Dictionary, key: String) -> bool:
+	var special := special_pattern_key(pattern)
+	return key == special if special != "" else bool(pattern.get(key, false))

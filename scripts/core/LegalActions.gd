@@ -62,6 +62,7 @@ static func can_win_on_discard(round, seat: int, source: int, tile: String, stag
 	if not RuleEngine.can_win_on(player.concealed, player.melds, tile): return false
 	if stage == RoundState.ResponseStage.ROB or player.ready: return true
 	if source >= 0 and source < round.players.size() and round.players[source].ready: return true
+	# 暗杠、加杠补牌后打出的牌都开放抢胡，并由结算统一标记烧鸡。
 	if bool(round.last_discard.get("after_kong", false)): return true
 	var combined := player.concealed.duplicate()
 	combined.append(tile)

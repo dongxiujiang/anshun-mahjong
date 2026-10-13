@@ -26,6 +26,7 @@ static func pay(round, deltas: Array, transfers: Array, called: Array, items: Ar
 			var flip_value := 0.0
 			if receiver != round.round_meta.get("burn_chicken_seat", -1):
 				if Tiles.is_chicken(tile):
+					# 冲锋鸡被杠后按普通鸡每张2分计，明杠放牌者另付杠分4。
 					chicken_value = CFG.SCORE_CALL_CHICKEN * 4.0 * multiplier
 					if not is_draw:
 						chicken_value *= CFG.SCORE_FLIP_DOUBLE if tile in related else 1.0

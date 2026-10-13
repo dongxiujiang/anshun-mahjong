@@ -28,9 +28,10 @@ static func chicken_profile(round, seat: int, flip: String) -> Dictionary:
 			list.append(_chicken_item(tile, is_charge, doubled, amount, "打出", "discard"))
 		for tile in player.concealed:
 			_append_hand_chicken(list, tile, related, gold_chickens, multiplier, "手中")
-		for meld in player.melds:
+		for meld_index in player.melds.size():
+			var meld: Dictionary = player.melds[meld_index]
 			for _index in (3 if meld.get("kind", "") == "pung" else 4):
-				_append_hand_chicken(list, str(meld.get("tile", "")), related, gold_chickens, multiplier, "碰中" if meld.get("kind", "") == "pung" else "杠中", "meld" if meld.get("kind", "") == "pung" else "kong")
+				_append_hand_chicken(list, str(meld.get("tile", "")), related, gold_chickens, multiplier, "碰中" if meld.get("kind", "") == "pung" else "杠中", "meld" if meld.get("kind", "") == "pung" else "kong", round.is_charge_meld(seat, meld_index))
 		for item in list:
 			if item.get("source", "") != "discard":
 				if item.get("kind", "") == "flip":
@@ -44,11 +45,12 @@ static func chicken_profile(round, seat: int, flip: String) -> Dictionary:
 		list = []
 	return {"discarded": discarded, "held": held, "flipped": flipped, "total": (discarded + held + flipped), "burned": burned, "items": group_chicken_items(list), "raw_items": list}
 
-static func _append_hand_chicken(list: Array, tile: String, related: Array, gold_chickens: Array, multiplier: int, where: String, source: String = "hand") -> void:
+static func _append_hand_chicken(list: Array, tile: String, related: Array, gold_chickens: Array, multiplier: int, where: String, source: String = "hand", charge: bool = false) -> void:
 	if Tiles.is_chicken(tile):
 		var doubled: bool = tile in gold_chickens
+		# 碰杠后冲锋鸡仍保留类型标记，但分值降为普通鸡每张2分。
 		var amount: float = CFG.SCORE_CALL_CHICKEN * (CFG.SCORE_FLIP_DOUBLE if doubled else 1.0) * multiplier
-		list.append(_chicken_item(tile, false, doubled, amount, where, source))
+		list.append(_chicken_item(tile, charge, doubled, amount, where, source))
 	elif tile in related:
 		var amount: float = CFG.SCORE_FLIP_CHICKEN * multiplier
 		list.append({"kind": "flip", "label": "翻鸡", "tile": tile, "tiles": [], "amount": amount, "note": "翻牌三张", "source": source})
