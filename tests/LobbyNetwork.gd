@@ -31,7 +31,7 @@ func _run() -> void:
 		t.expect(Network.discovery.advertise(Network.net_node), "Host advertises")
 		var net := Network.net_node
 		t.expect(await _wait_until(func(): return net._members.size() == 2), "Client joins discovered room")
-		t.expect(net.game.phase == "idle" and net.game.players.is_empty(), "Join doesn't deal")
+		t.expect(net.game.phase == RoundState.Phase.IDLE and net.game.players.is_empty(), "Join doesn't deal")
 		t.expect(await _wait_until(func(): return int(net._seat_peer[2]) > 1 and bool(net._members[int(net._seat_peer[2])].ready)), "Client selects AI seat and readies")
 		t.expect(not net.all_ready(), "Host unready blocks start")
 		net.select_seat(2)
@@ -47,7 +47,7 @@ func _run() -> void:
 		t.expect(snapshot == net._seat_peer, "Unknown peer cannot move seats")
 		net.set_ready(true)
 		t.expect(await _wait_until(func(): return net.ack_text == "cancelled"), "Ready cancellation arrives")
-		t.expect(net.game.phase == "idle" and net._countdown < 0, "Cancel countdown prevents deal")
+		t.expect(net.game.phase == RoundState.Phase.IDLE and net._countdown < 0, "Cancel countdown prevents deal")
 		t.expect(await _wait_until(func(): return net._started), "All ready automatically deal")
 		t.expect(net.game.dealer_seat == 0, "Only dealer applicant selected after swap")
 		print("[lobby_network] GAME_STARTED")
@@ -83,7 +83,7 @@ func _run() -> void:
 		Network.start_client(str(room.host), int(room.port), "456789")
 		var net := Network.net_node
 		t.expect(await _wait_until(func(): return not net.lobby.is_empty()), "Receives lobby state")
-		t.expect(net.game.phase == "idle" and net.game.players.is_empty(), "No hidden early deal")
+		t.expect(net.game.phase == RoundState.Phase.IDLE and net.game.players.is_empty(), "No hidden early deal")
 		net.select_seat(2)
 		t.expect(await _wait_until(func(): return net.my_seat == 2), "AI seat selectable")
 		net.set_wants_dealer(true)
@@ -103,7 +103,7 @@ func _run() -> void:
 		net.rpc_id(1, "ack", "cancelled")
 		await get_tree().create_timer(0.2).timeout
 		net.set_ready(true)
-		t.expect(await _wait_until(func(): return net.game.phase != "idle"), "Tiles arrive only after ready")
+		t.expect(await _wait_until(func(): return net.game.phase != RoundState.Phase.IDLE), "Tiles arrive only after ready")
 		t.expect(net.game.dealer_seat == 0, "Dealer synchronized")
 		for seat in range(1, 4):
 			t.expect(net.game.players[seat].concealed.all(func(tile): return tile == "hidden0"), "Opponent tiles remain private")
@@ -111,7 +111,7 @@ func _run() -> void:
 	var deadline := Time.get_ticks_msec() + 45000
 	while Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
-		if net.game.phase == "settled":
+		if net.game.phase == RoundState.Phase.SETTLED:
 			if is_host:
 				if net.ack_text == "settled-ok": break
 			else:
@@ -132,7 +132,7 @@ func _run() -> void:
 				else:
 					net.submit_client_turn(decision)
 					net.game.awaiting = false
-	t.expect(net.game.phase == "settled", "Moved seats play full match")
+	t.expect(net.game.phase == RoundState.Phase.SETTLED, "Moved seats play full match")
 	if is_host: t.expect(net.ack_text == "settled-ok", "Client completed")
 	print("[lobby_network] ", "host" if is_host else "client")
 	get_tree().quit(t.finish("lobby_network"))

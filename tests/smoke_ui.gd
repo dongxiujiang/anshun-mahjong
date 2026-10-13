@@ -27,7 +27,7 @@ func _drive() -> void:
 		await create_timer(0.2).timeout
 		quit(t.finish("smoke_ui")); return
 	var r = table.round
-	if r.phase == "settled":
+	if r.phase == RoundState.Phase.SETTLED:
 		print("[smoke_ui] 结算: winner=%d deltas=%s 牌守恒=%s" % [r.round_meta.winner, str(r.last_result.deltas), _conserved(r)])
 		t.expect(_conserved(r), "UI结算后牌应守恒")
 		t.expect(is_zero_approx(r.last_result.total_delta), "UI结算后总分变化应为0")

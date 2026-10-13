@@ -43,7 +43,7 @@ func _run() -> void:
 		quit(t.finish("smoke_online_lobby_flow"))
 		return
 	var deadline := Time.get_ticks_msec() + 35000
-	while table.round.phase != "settled" and Time.get_ticks_msec() < deadline:
+	while table.round.phase != RoundState.Phase.SETTLED and Time.get_ticks_msec() < deadline:
 		await process_frame
 		if table._selecting:
 			table._commit_turn(actor.decide_turn(table.round, 2))
@@ -51,7 +51,7 @@ func _run() -> void:
 			var request: Dictionary = table.round._awaiting_response
 			var decision := actor.decide_response(table.round, 2, request.disc_seat, request.tile, request.options)
 			table._commit_response(decision.action)
-	t.expect(table.round.phase == "settled", "Lobby-to-table full game finishes")
+	t.expect(table.round.phase == RoundState.Phase.SETTLED, "Lobby-to-table full game finishes")
 	await process_frame
 	t.expect(table.result_layer.visible, "Lobby-launched game shows settlement")
 	var scores: Array = table.round.players.map(func(player): return player.score)

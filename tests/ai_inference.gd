@@ -24,7 +24,7 @@ func _run() -> void:
 	r.players[1].ready = true
 	r.players[1].discard_history = ["tong5"]
 	t.expect(ai._danger(r, 0, "tong5") > 0.0, "Discard history does not imply absolute safety without furiten")
-	r.phase = "playing"
+	r.phase = RoundState.Phase.PLAYING
 	r.wall = WallRing.new(TileSetFactory.create_deck())
 	r.players[1].melds.append({"kind": "kong", "tile": "wan9", "concealed": true, "after_discard": r.players[1].discard_count})
 	var seen := ai._seen_map(r, 0)
@@ -45,7 +45,7 @@ func _run() -> void:
 func _test_public_sampling() -> void:
 	var r := RoundState.new()
 	r.build_players(0)
-	r.phase = "playing"
+	r.phase = RoundState.Phase.PLAYING
 	r.wall = WallRing.new(TileSetFactory.create_deck())
 	r.players[0].concealed = ["wan1", "wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tong1", "tong2", "tong3", "tiao4", "tiao5", "tiao6", "tong9"]
 	r.players[1].ready = true

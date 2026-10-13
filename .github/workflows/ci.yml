@@ -1,0 +1,66 @@
+name: Pull request and push checks
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: "4.7.2"
+  GODOT_RELEASE: "4.7.2-stable"
+
+jobs:
+  quick-check:
+    name: Quick rules, scoring, audio and reconnect checks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Godot
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          sudo install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+
+      - name: Import project
+        shell: bash
+        run: godot --headless --path . --editor --import
+
+      - name: Run quick test suites
+        shell: bash
+        env:
+          AI_ROUNDS: "4"
+          AI_MIN_ROUNDS: "1"
+        run: |
+          set -euo pipefail
+          python -X utf8 tests/run_suites.py --godot "$(command -v godot)" \
+            --suite rules_complete rules_update smoke_scoring settlement_card scoring_audit \
+              legal_actions round_sync smoke_audio reconnect_control smoke_ai \
+            --simulation-timeout 180
+
+      - name: Run Python CI checks
+        shell: bash
+        run: python -m unittest discover -s tests -p 'test_ci_export.py'
+
+      - name: Upload quick-check logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-check-logs-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: build/test_results/**

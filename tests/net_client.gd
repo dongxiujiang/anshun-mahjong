@@ -18,7 +18,7 @@ func _run() -> void:
 	while elapsed < 20.0:
 		await process_frame
 		elapsed += 0.016
-		if net.game != null and net.game.phase == "settled":
+		if net.game != null and net.game.phase == RoundState.Phase.SETTLED:
 			print("[client] 收到结算同步 winner=%d 牌守恒=%s" % [net.game.round_meta.winner, str(_conserved(net.game))])
 			t.expect(_conserved(net.game), "客户端渲染牌应守恒")
 			net.rpc_id(1, "ack", "settled-ok winner=%d" % net.game.round_meta.winner)

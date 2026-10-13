@@ -61,10 +61,15 @@ static func profile(round, seat: int, hand: Array, melds: Array, flips: Dictiona
 
 static func pattern_points(pattern: Dictionary) -> float:
 	var result := 0.0
-	if pattern.get("seven_pairs", false):
-		result += CFG.SCORE_DRAGON_SEVEN_PAIRS if pattern.get("dragon_seven_pairs", false) else CFG.SCORE_SEVEN_PAIRS
-	if pattern.get("all_triplets", false): result += CFG.SCORE_BIG_SET
-	if pattern.get("flush", false): result += CFG.SCORE_FLUSH
+	for spec in CFG.PATTERNS:
+		var p: Dictionary = spec
+		var key: String = p.get("key", "")
+		if not pattern.get(key, false):
+			continue
+		if p.has("dragon_flag") and pattern.get(str(p.get("dragon_flag", "")), false):
+			result += float(p.get("dragon_self", 0.0))
+		else:
+			result += float(p.get("self", 0.0))
 	return result
 
 static func kong_base(melds: Array, payer: int) -> float:

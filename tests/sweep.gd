@@ -24,7 +24,7 @@ func _run() -> void:
 		r.controllers = ctrls
 		r.start_round(0, -1)
 		var m: Dictionary = r.round_meta
-		if not t.expect(r.phase == "settled", "第%d局未结算, phase=%s" % [i, r.phase]):
+		if not t.expect(r.phase == RoundState.Phase.SETTLED, "第%d局未结算, phase=%s" % [i, r.phase]):
 			continue
 		if m.winner >= 0:
 			stat.win += 1

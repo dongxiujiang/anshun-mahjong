@@ -12,10 +12,19 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
-	print("[smoke_ai] 开始 共%d局" % ROUNDS)
+	var rounds := ROUNDS
+	var requested := OS.get_environment("AI_ROUNDS")
+	if requested.is_valid_int():
+		rounds = maxi(1, int(requested))
+	var minimum_rounds := 1
+	var minimum_requested := OS.get_environment("AI_MIN_ROUNDS")
+	if minimum_requested.is_valid_int():
+		minimum_rounds = maxi(1, int(minimum_requested))
+	t.expect(rounds >= minimum_rounds, "配置要求至少%d局 AI 对战，当前为%d局" % [minimum_rounds, rounds])
+	print("[smoke_ai] 开始 共%d局" % rounds)
 	var stats := {"win": 0, "penzu": 0, "self": 0}
 	var tiles_ok := true
-	for i in ROUNDS:
+	for i in rounds:
 		var r := RoundState.new()
 		r.set_rng_seed(1000 + i)
 		var ctrls := []
@@ -23,7 +32,7 @@ func _run() -> void:
 			ctrls.append(AiPlayer.new("AI%d" % s))
 		r.controllers = ctrls
 		r.start_round(0, -1)
-		if not t.expect(r.phase == "settled", "第%d局应结算, 实际 phase=%s" % [i, r.phase]):
+		if not t.expect(r.phase == RoundState.Phase.SETTLED, "第%d局应结算, 实际 phase=%s" % [i, r.phase]):
 			continue
 		var res = r.last_result
 		t.expect(is_zero_approx(res.total_delta), "第%d局总分变化必须为0, 实际 %s" % [i, str(res.total_delta)])

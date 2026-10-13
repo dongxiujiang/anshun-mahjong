@@ -1,5 +1,13 @@
 # GitHub Actions 构建与热更新
 
+## 自动测试门禁
+
+`.github/workflows/ci.yml` 会在 `main`/`master` 推送和 Pull Request 上运行快速检查，覆盖规则、结算、语音、合法操作、同步、重连控制和 4 局 AI 自战，并执行 Python 导出配置测试。快速检查失败时，提交不会通过 CI。
+
+`.github/workflows/build-release.yml` 在完整构建或 `V1.0.*` 标签构建时运行发布前回归：自动执行 `tests/run_all.gd` 注册的完整测试清单，强制进行至少 50 局真实 AI 自战，并启动多进程局域网、在线房间和断线重连测试。网络和重连回归失败时不会进入签名、导出或发布步骤。
+
+测试日志会保存为 Actions artifact：普通提交使用 `quick-check-logs-*`，发布构建使用 `ci-logs-*`。其中包含每个 Godot 套件的标准输出和错误日志，不包含签名文件或密码。
+
 工作流文件是 `.github/workflows/build-release.yml`。它会先完成测试和构建，再按 `publish_release` 选项自动创建 GitHub Release 并上传附件；不开启时只上传 Actions artifact，不会修改项目版本号。首次完整构建同时保存 `baseline`，供同一安装基线的小版本热补丁使用。
 
 ## 必需的 Secrets

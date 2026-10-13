@@ -11,13 +11,13 @@ func _initialize() -> void: call_deferred("_run")
 func _run() -> void:
 	var r := RoundState.new()
 	r.build_players(0)
-	r.phase = "playing"
+	r.phase = RoundState.Phase.PLAYING
 	r.wall = WallRing.new(TileSetFactory.create_deck())
 	r.controllers = [null, PassingAI.new(), null, null]
 	r.ai_delay_seconds = 3.0
 	r.last_discard = {"seat": 0, "tile": "tiao3"}
 	r.players[1].concealed = ["tiao3", "tiao3", "wan1", "wan2", "wan4", "wan5", "wan7", "wan8", "tong1", "tong3", "tong5", "tong7", "tong9"]
-	r._response_stage = "meld"
+	r._response_stage = RoundState.ResponseStage.MELD
 	r._pending_responders = [1]
 	var start := Time.get_ticks_usec()
 	r._ask_next_responder(0, "tiao3")

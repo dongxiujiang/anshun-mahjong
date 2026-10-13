@@ -158,7 +158,7 @@ func _test_kong_ui() -> void:
 	for owner in 4:
 		for offset in [1, 2, 3]:
 			var item := _reference_item("kong", "明杠", ["tong2", "tong2", "tong2", "tong2"], 4)
-			item.merge({"kong_kind": "exposed", "from_seat": posmod(owner + offset, 4), "base_amount": 4})
+			item.merge({"kong_kind": RoundState.KongKind.EXPOSED, "from_seat": posmod(owner + offset, 4), "base_amount": 4})
 			table.round.last_result.items[owner].append(item)
 	for dimensions in [Vector2i(1440, 1520), Vector2i(1280, 720), Vector2i(1080, 1920), Vector2i(960, 540)]:
 		root.size = dimensions
@@ -192,7 +192,7 @@ func _test_kong_ui() -> void:
 	table.round.last_result.items[1] = []
 	for kind in ["concealed", "add_kong"]:
 		var item := _reference_item("kong", "暗杠" if kind == "concealed" else "加杠", ["tiao9", "tiao9", "tiao9", "tiao9"], 4)
-		item.merge({"kong_kind": kind, "base_amount": 4, "from_seat": 2})
+		item.merge({"kong_kind": RoundState._kong_kind_from_name(kind), "base_amount": 4, "from_seat": 2})
 		table.round.last_result.items[1].append(item)
 	table.round.last_result.round_points = [0.0, 8.0, 0.0, 0.0]
 	table.round.last_result.status = ["叫牌", "叫牌", "叫牌", "叫牌"]
@@ -229,14 +229,14 @@ func _reference_item(kind: String, label: String, tiles: Array, amount: float) -
 	return {"kind": kind, "label": label, "tiles": tiles, "amount": amount, "note": ""}
 
 func _show_reference() -> void:
-	table.round.phase = "settled"
+	table.round.phase = RoundState.Phase.SETTLED
 	table.round.round_meta.winner = 3
 	table.round.round_meta.self_draw = true
 	table.round.round_meta.flip_tile = "tiao1"
 	var dark := _reference_item("kong", "暗杠", ["tiao9", "tiao9", "tiao9", "tiao9"], 4)
-	dark.merge({"kong_kind": "concealed", "base_amount": 4, "owner": 2})
+	dark.merge({"kong_kind": RoundState.KongKind.CONCEALED, "base_amount": 4, "owner": 2})
 	var exposed := _reference_item("kong", "明杠", ["tong2", "tong2", "tong2", "tong2"], 4)
-	exposed.merge({"kong_kind": "exposed", "from_seat": 3, "base_amount": 4, "owner": 2})
+	exposed.merge({"kong_kind": RoundState.KongKind.EXPOSED, "from_seat": 3, "base_amount": 4, "owner": 2})
 	table.round.last_result = {"round_points": [17.0, 0.0, 4.0, 15.0],
 		"pairwise": ScoringEngine.pairwise_payments(_reference_transfers()),
 		"status": ["叫牌", "未叫牌", "叫牌", "自摸"], "items": [
@@ -254,7 +254,7 @@ func _test_ui() -> void:
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(table)
 	await process_frame
-	table.round.phase = "idle"
+	table.round.phase = RoundState.Phase.IDLE
 	_show_reference()
 	await process_frame
 	await process_frame
@@ -311,10 +311,10 @@ func _test_ui() -> void:
 	# 来源牌位置覆盖上/对/下家；暗杠和加杠全部竖放。
 	for source_offset in [1, 2, 3]:
 		for owner in 4:
-			var item := {"kind": "kong", "kong_kind": "exposed", "from_seat": posmod(owner + source_offset, 4)}
+			var item := {"kind": "kong", "kong_kind": RoundState.KongKind.EXPOSED, "from_seat": posmod(owner + source_offset, 4)}
 			t.expect(table._result_sideways_index(item, owner) == {1: 3, 2: 3, 3: 0}[source_offset], "明杠横牌按该玩家自己的方向显示")
-	t.expect(table._result_sideways_index({"kind": "kong", "kong_kind": "add_kong"}, 0) == -1, "加杠四张竖放")
-	t.expect(table._result_sideways_index({"kind": "kong", "kong_kind": "concealed"}, 0) == -1, "暗杠没有来源横牌")
+	t.expect(table._result_sideways_index({"kind": "kong", "kong_kind": RoundState.KongKind.ADD_KONG}, 0) == -1, "加杠四张竖放")
+	t.expect(table._result_sideways_index({"kind": "kong", "kong_kind": RoundState.KongKind.CONCEALED}, 0) == -1, "暗杠没有来源横牌")
 	table.human_seat = 0
 	table.round.last_result.items[0] = [_reference_item("charge", "冲锋鸡", ["tiao1", "tong8"], 8)]
 	table._show_result()

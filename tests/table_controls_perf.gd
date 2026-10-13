@@ -45,7 +45,7 @@ func _run() -> void:
 			var layout: Dictionary = table._meld_tile_layout({"kind": "pung", "tile": chicken, "charge_marker": true, "from_seat": (seat + 3) % 4}, seat, 1.35, 4.0)
 			t.expect(layout.sideways == -1 and layout.positions.size() == 3, "Chicken pung stays upright for every seat")
 	# 大号下一局底部区域要与玩家结算明细分开。
-	table.round.phase = "settled"
+	table.round.phase = RoundState.Phase.SETTLED
 	table.round.last_result = ScoringEngine.settle(table.round)
 	table._show_result()
 	t.expect(table._next_round_button.size == table.NEXT_ROUND_BUTTON_SIZE and table._next_round_button.size.y == table.DISCARD_BUTTON_SIZE.y, "Next round matches discard touch height")

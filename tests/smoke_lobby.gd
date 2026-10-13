@@ -11,7 +11,7 @@ func _run() -> void:
 	network.reset()
 	t.expect(network.start_host(false, true, 7532, "001234", "准备测试"), "Host opens room")
 	var net: NetGameNode = network.net_node
-	t.expect(net.game.phase == "idle" and net.game.players.is_empty(), "No tiles before readiness")
+	t.expect(net.game.phase == RoundState.Phase.IDLE and net.game.players.is_empty(), "No tiles before readiness")
 	t.expect(not net.start_net_game(9), "Unready start rejected")
 	t.expect(net.lobby.seats.size() == 4, "Four seats published")
 	for seat in range(1, 4):

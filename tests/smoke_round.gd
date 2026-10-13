@@ -61,8 +61,8 @@ func _run() -> void:
 	_round.controllers = ctrls
 	_round.start_round(0, 3)  # human_seat=0, die=3（仅作测试贯穿）
 	# 同步控制器会在 start_round 内递归跑到底
-	t.expect(_round.phase == "settled", "应已结算, 实际 phase=%s" % _round.phase)
-	if _round.phase != "settled":
+	t.expect(_round.phase == RoundState.Phase.SETTLED, "应已结算, 实际 phase=%s" % _round.phase)
+	if _round.phase != RoundState.Phase.SETTLED:
 		quit(t.finish("smoke_round"))
 		return
 	# 结算结果

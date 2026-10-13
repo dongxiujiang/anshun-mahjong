@@ -15,7 +15,7 @@ func _run() -> void:
 	while t < 20.0:
 		await get_tree().process_frame
 		t += 0.016
-		if net.game != null and net.game.phase == "settled":
+		if net.game != null and net.game.phase == RoundState.Phase.SETTLED:
 			print("[client] 收到结算同步 winner=%d 牌守恒=%s" % [net.game.round_meta.winner, str(_conserved(net.game))])
 			if not _conserved(net.game):
 				push_error("[client] 客户端渲染牌应守恒")
@@ -32,7 +32,7 @@ func _run() -> void:
 				var request: Dictionary = net.game._awaiting_response
 				net.submit_client_response(request.tile, actor.decide_response(net.game, net.my_seat, request.disc_seat, request.tile, request.options))
 				net.game.awaiting = false
-			elif net.game.current_turn == net.my_seat and net.game.phase == "playing":
+			elif net.game.current_turn == net.my_seat and net.game.phase == RoundState.Phase.PLAYING:
 				net.submit_client_turn(actor.decide_turn(net.game, net.my_seat))
 				net.game.awaiting = false
 	print("[client] 超时未收到结算同步")

@@ -33,6 +33,7 @@ func start_client(ip: String, port: int = 0, number: String = "", owner_token: S
 	return true
 
 func reset() -> void:
+	if net_node != null and net_node.host_mode and net_node.game != null: net_node.game.export_replay()
 	mode = ""
 	discovery.stop_search()
 	discovery.stop_advertise()

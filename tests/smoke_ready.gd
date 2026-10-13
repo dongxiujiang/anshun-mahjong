@@ -20,7 +20,7 @@ func _run() -> void:
 	r.controllers = [null, null, null, null]
 	r.wall = WallRing.new(TileSetFactory.create_deck())
 	r.wall.set_head(0)
-	r.phase = "playing"
+	r.phase = RoundState.Phase.PLAYING
 	var ps = r.players[0]
 	ps.concealed = TENPAI13.duplicate()
 	ps.concealed.append("tong1")      # 14 张，打 tong1 后听牌

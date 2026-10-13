@@ -5,8 +5,10 @@ const WIN := ["tiao1", "tiao2", "tiao3", "wan4", "wan5", "wan6", "tong7", "tong8
 const WAIT := ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
 const MELD_WAIT := ["wan1", "wan2", "wan3", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
 const NEIGHBORS := {1: [9, 1, 2], 2: [1, 2, 3], 3: [2, 3, 4], 4: [3, 4, 5], 5: [4, 5, 6], 6: [5, 6, 7], 7: [6, 7, 8], 8: [7, 8, 9], 9: [8, 9, 1]}
+const EXPECTED_DIGEST := "858bf1e71f4ea9adb47dcc51cd9e0262a2f3ab622f112976a56f35bdf61b4485"
 var t := H.new()
 var settlement_count := 0
+var result_digest := HashingContext.new()
 
 func _initialize() -> void: call_deferred("_run")
 
@@ -14,7 +16,7 @@ func fixture() -> RoundState:
 	var r := RoundState.new()
 	r.build_players(0)
 	r.controllers = [null, null, null, null]
-	r.phase = "playing"
+	r.phase = RoundState.Phase.PLAYING
 	r.wall = WallRing.new(TileSetFactory.create_deck())
 	r.wall.set_head(0)
 	r.wall._ring[0] = "tiao7"
@@ -25,6 +27,7 @@ func blank_matrix() -> Array:
 
 func check_ledger(r: RoundState, gross: Array, label: String) -> void:
 	var result := ScoringEngine.settle(r)
+	result_digest.update(var_to_bytes(result))
 	settlement_count += 1
 	var total := 0.0
 	for seat in 4:
@@ -217,6 +220,7 @@ func _test_bonus_and_burn() -> void:
 	t.expect(r.last_result.items[0].size() == 1 and r.last_result.items[0][0].label == "抢杠烧鸡", "Burned player has no stale chicken or added-kong score items")
 
 func _run() -> void:
+	result_digest.start(HashingContext.HASH_SHA256)
 	if "--finish-only" in OS.get_cmdline_user_args():
 		_test_finish_once_and_sync()
 		quit(t.finish("scoring_audit"))
@@ -227,4 +231,7 @@ func _run() -> void:
 	_test_bonus_and_burn()
 	_test_finish_once_and_sync()
 	print("[scoring_audit] independently calculated settlements: %d" % settlement_count)
+	var digest := result_digest.finish().hex_encode()
+	print("[scoring_audit] result digest: %s" % digest)
+	t.expect(digest == EXPECTED_DIGEST, "3,792种场景完整结算结果与拆分前完全相同")
 	quit(t.finish("scoring_audit"))

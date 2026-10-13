@@ -153,10 +153,21 @@ jobs:
 
       - name: Run core tests
         shell: bash
+        env:
+          AI_ROUNDS: "50"
+          AI_MIN_ROUNDS: "50"
         run: |
+          set -euo pipefail
+          # 不指定 --suite，自动执行 tests/run_all.gd 注册的完整回归清单。
           python -X utf8 tests/run_suites.py --godot "$(command -v godot)" \
-            --suite ai_mcts ai_value ai_inference shanten_cache smoke_ai \
             --simulation-timeout 600
+
+      - name: Run real network and reconnect regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -X utf8 tests/run_network.py --godot "$(command -v godot)" --section all
+          python -X utf8 tests/run_reconnect.py --godot "$(command -v godot)"
 
       - name: Configure Android signing
         if: ${{ env.RELEASE_KIND == 'full' }}

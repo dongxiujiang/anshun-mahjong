@@ -16,7 +16,7 @@ func fixture() -> RoundState:
 	var round := RoundState.new()
 	round.build_players(0)
 	round.controllers = [null, null, null, null]
-	round.phase = "playing"
+	round.phase = RoundState.Phase.PLAYING
 	round.current_turn = 0
 	round.awaiting = true
 	round.wall = WallRing.new(TileSetFactory.create_deck())
@@ -214,12 +214,12 @@ func _test_discard_win_restrictions() -> void:
 	expect(source_ready.can_win_on_discard(1, 0, "wan9"), "Ready source permits ordinary discard win")
 	var after_kong := fixture()
 	after_kong.players[1].concealed = thirteen.duplicate()
-	after_kong.last_discard = {"seat": 0, "tile": "wan9", "after_kong": true, "kong_kind": "add_kong"}
+	after_kong.last_discard = {"seat": 0, "tile": "wan9", "after_kong": true, "kong_kind": RoundState.KongKind.ADD_KONG}
 	expect(after_kong.can_win_on_discard(1, 0, "wan9"), "Post-kong discard permits ordinary discard win")
 	var rob := fixture()
 	rob.players[1].concealed = thirteen.duplicate()
 	rob._pending_kong = {"seat": 0, "tile": "wan9", "index": 0}
-	expect(rob.can_win_on_discard(1, 0, "wan9", "rob"), "Robbed added kong permits discard win")
+	expect(rob.can_win_on_discard(1, 0, "wan9", RoundState.ResponseStage.ROB), "Robbed added kong permits discard win")
 
 func _test_wall_and_patterns() -> void:
 	var expected := [2, 32, 6, 90, 10, 40]
@@ -259,5 +259,5 @@ func _test_private_sync() -> void:
 		expect(view.players[seat].just_drew == "hidden0", "Draw identity must stay hidden")
 	expect(view.players[2].melds[0].tile == "hidden0", "Opponent concealed kong stays private")
 	expect(round.players[2].melds[0].tile == "tong8" and round.players[0].concealed == WAIT, "Privacy filtering cannot alter host state")
-	round.phase = "settled"
+	round.phase = RoundState.Phase.SETTLED
 	expect(round.serialize_for_seat(1).players[0].concealed == WAIT, "Settlement reveals all hands")

@@ -17,25 +17,21 @@ func _init(label := "AI") -> void:
 
 func decide_turn(round, seat: int) -> Dictionary:
 	var player: PlayerState = round.players[seat]
-	if player.just_drew != "" and RuleEngine.analyze(player.concealed, player.melds).win:
-		return {"self_win": true}
-	if player.ready:
-		return {"discard": player.just_drew}
-	if round._wall_count() > 0:
-		for tile in Tiles.to_counts(player.concealed):
-			if Tiles.count(player.concealed, tile) == 4 and _kong_helps(round, seat, tile, false):
-				return {"kong_declares": [tile]}
-		for meld in player.melds:
-			if meld.kind == "pung" and player.concealed.has(meld.tile) and _add_kong_helps(round, seat, meld.tile):
-				return {"add_kong": [meld.tile]}
+	var options: Dictionary = round.legal_turn_options(seat)
+	if options.self_win: return {"self_win": true}
+	if player.ready: return {"discard": player.just_drew}
+	for tile in options.kong_declares:
+		if _kong_helps(round, seat, tile, false): return {"kong_declares": [tile]}
+	for tile in options.add_kong:
+		if _add_kong_helps(round, seat, tile): return {"add_kong": [tile]}
 	var choice := _pick_discard(round, seat)
-	return {"discard": choice.tile, "ready": choice.ready_capable}
+	return {"discard": choice.tile, "ready": choice.ready_capable and options.ready_discards.has(choice.tile)}
 
 func _pick_discard(round, seat: int) -> Dictionary:
 	var player: PlayerState = round.players[seat]
 	var seen := _seen_map(round, seat)
 	var context := opponent_model.observe(round, seat, seen)
-	var after_kong: bool = round._kong_draw_turn and round._kong_draw_kind in ["concealed", "add_kong"]
+	var after_kong: bool = round._kong_draw_turn and round._kong_draw_kind in [RoundState.KongKind.CONCEALED, RoundState.KongKind.ADD_KONG]
 	last_analysis = _discard_options(round, seat, player.concealed, player.melds, seen, context, round.can_declare_ready(seat), after_kong)
 	var ordinary := last_analysis.filter(func(candidate): return not bool(candidate.get("declare_ready", false)))
 	var search_candidates: Array = ordinary.duplicate(true)

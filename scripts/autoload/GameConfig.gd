@@ -29,6 +29,15 @@ const SCORE_DRAGON_SEVEN_PAIRS := 44.0 # 七对中含四张同牌，替代小七
 const SCORE_FLUSH := 24.0         # 清一色 自摸+24 / 胡别人者给24
 const SCORE_READY := 24.0         # 报听：自摸每家给24；被杀给24；胡别家别家给24
 
+# ---------- 番型表 ----------
+# 统一番型定义：key 对应 RuleEngine.analyze 的返回标志；self/discard 为自摸/放炮时各家应付分值。
+# dragon_* 为“龙七对”变体，仅在 dragon_flag 为真时替换 seven_pairs 的基础值。
+const PATTERNS := [
+	{"key": "seven_pairs", "label": "小七对", "self": SCORE_SEVEN_PAIRS, "discard": SCORE_SEVEN_PAIRS, "dragon_flag": "dragon_seven_pairs", "dragon_label": "龙七对", "dragon_self": SCORE_DRAGON_SEVEN_PAIRS, "dragon_discard": SCORE_DRAGON_SEVEN_PAIRS},
+	{"key": "all_triplets", "label": "大队子", "self": SCORE_BIG_SET, "discard": SCORE_BIG_SET_DISCARD},
+	{"key": "flush", "label": "清一色", "self": SCORE_FLUSH, "discard": SCORE_FLUSH},
+]
+
 # ---------- 座位 ----------
 const SEAT_DEALER := 0  # 庄（下）
 const SEAT_RIGHT := 1   # 下家（右）

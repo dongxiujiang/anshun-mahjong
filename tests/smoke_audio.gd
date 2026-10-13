@@ -70,7 +70,7 @@ func _fixture() -> RoundState:
 	game.controllers = [null, null, null, null]
 	game.wall = WallRing.new(TileSetFactory.create_deck())
 	game.wall.set_head(0)
-	game.phase = "playing"
+	game.phase = RoundState.Phase.PLAYING
 	for player in game.players:
 		player.concealed = HAND13.duplicate()
 	return game
@@ -381,7 +381,7 @@ func _test_ui() -> void:
 			t.expect(root.get_texture().get_image().save_png("res://docs/audio_settings_mobile.png") == OK, "保存实际拉伸模式手机截图")
 	sound.close(false)
 	# 使用生产牌桌信号连接，验证本机和三个 AI 座位的声音入口。
-	table.round.phase = "idle"
+	table.round.phase = RoundState.Phase.IDLE
 	table.round = _fixture()
 	table._connect_audio_round()
 	played.clear()

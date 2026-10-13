@@ -25,7 +25,7 @@ func _fixture(dealer: int = 0) -> RoundState:
 	game.controllers = [null, null, null, null]
 	game.wall = WallRing.new(TileSetFactory.create_deck(), dealer)
 	game.wall.set_head(0)
-	game.phase = "playing"
+	game.phase = RoundState.Phase.PLAYING
 	return game
 
 func _test_dragon() -> void:
@@ -158,7 +158,7 @@ func _test_score_ui() -> void:
 	root.size = Vector2i(900, 950)
 	root.add_child(table)
 	await process_frame
-	table.round.phase = "idle"
+	table.round.phase = RoundState.Phase.IDLE
 	table.round = _fixture(2)
 	for player in table.round.players:
 		player.concealed = CALLED.duplicate()
@@ -170,7 +170,7 @@ func _test_score_ui() -> void:
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		t.expect(root.get_texture().get_image().save_png("res://docs/table_current_scores.png") == OK, "保存四家分数与新庄家截图")
-	table.round.phase = "idle"
+	table.round.phase = RoundState.Phase.IDLE
 	table.queue_free()
 	await process_frame
 	await create_timer(0.2).timeout

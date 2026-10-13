@@ -11,7 +11,7 @@ func _run() -> void:
 	await get_tree().process_frame
 	# 自动代打真人座位若干回合，让盘面有弃牌/碰杠，便于视觉核对
 	var t := 0.0
-	while t < 2.2 and table.round != null and table.round.phase != "settled":
+	while t < 2.2 and table.round != null and table.round.phase != RoundState.Phase.SETTLED:
 		await get_tree().process_frame
 		t += 0.016
 		var r = table.round

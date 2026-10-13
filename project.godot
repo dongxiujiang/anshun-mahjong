@@ -38,8 +38,7 @@ window/size/window_width_override=1280
 window/size/window_height_override=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-# Android uses the device's landscape sensor orientation. This keeps the table
-# horizontal on phones and tablets while allowing a 180° landscape rotation.
+; Keep Android in landscape, allowing a 180-degree landscape rotation.
 window/handheld/orientation=4
 
 [editor_plugins]

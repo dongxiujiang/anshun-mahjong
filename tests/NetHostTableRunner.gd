@@ -23,7 +23,7 @@ func _run() -> void:
 		elapsed += 0.016
 		var r = table.round
 		if r == null: continue
-		if r.phase == "settled":
+		if r.phase == RoundState.Phase.SETTLED:
 			print("[nethost] 结算 winner=%d 牌守恒=%s deltas=%s" % [r.round_meta.winner, str(_conserved(r)), str(r.last_result.deltas)])
 			if not _conserved(r):
 				push_error("[nethost] 牌应守恒")

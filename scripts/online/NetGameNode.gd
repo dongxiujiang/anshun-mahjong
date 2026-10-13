@@ -86,6 +86,7 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	_owner_token = owner_token
 	_owner_peer = 0 if dedicated else 1
 	game = RoundState.new()
+	game._recorder.auto_save = true
 	for seat in 4:
 		_seat_peer[seat] = -1
 		_ctrl_hint[seat] = AUTO
@@ -235,7 +236,7 @@ func all_ready() -> bool:
 	return true
 
 func _check_start() -> void:
-	var can_start := not _started or (game != null and game.phase == "settled" and _ready_round == round_number)
+	var can_start := not _started or (game != null and game.phase == RoundState.Phase.SETTLED and _ready_round == round_number)
 	if not can_start or not all_ready():
 		_countdown = -1.0
 	elif _countdown < 0.0:
@@ -269,7 +270,7 @@ func _local_peer() -> int:
 func _exit_tree() -> void:
 	# Cancel delayed AI decisions belonging to a room that has been closed.
 	if host_mode and game != null:
-		game.phase = "idle"
+		game.phase = RoundState.Phase.IDLE
 
 func _submit_lobby(action: String, data: Dictionary) -> void:
 	if _reconnecting or _resume_sync_pending: return
@@ -411,7 +412,7 @@ func _on_host_require_response(_seat: int, _disc_seat: int, _tile: String, _opts
 	_host_broadcast()
 
 func _host_broadcast() -> void:
-	if not host_mode or game == null or game.phase == "idle": return
+	if not host_mode or game == null or game.phase == RoundState.Phase.IDLE: return
 	_prepare_round_ready()
 	if _state_queued:
 		state_metrics.coalesced += 1
@@ -421,7 +422,7 @@ func _host_broadcast() -> void:
 
 func _flush_host_state() -> void:
 	_state_queued = false
-	if not host_mode or game == null or game.phase == "idle": return
+	if not host_mode or game == null or game.phase == RoundState.Phase.IDLE: return
 	_state_revision += 1
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer):
@@ -445,21 +446,21 @@ func next_round() -> void:
 	set_ready(true)
 
 func _prepare_round_ready() -> void:
-	if game.phase != "settled" or _ready_round == round_number: return
+	if game.phase != RoundState.Phase.SETTLED or _ready_round == round_number: return
 	_ready_round = round_number
 	_invalidate_ready()
 	_check_start()
 	_publish_lobby()
 
 func _apply_round_ready(peer: int, data: Dictionary) -> void:
-	if game == null or game.phase != "settled" or int(data.get("round_number", -1)) != round_number: return
+	if game == null or game.phase != RoundState.Phase.SETTLED or int(data.get("round_number", -1)) != round_number: return
 	_prepare_round_ready()
 	_members[peer].ready = bool(data.get("value", false))
 	_check_start()
 	_publish_lobby()
 
 func _start_next_round() -> void:
-	if not host_mode or game == null or game.phase != "settled" or _ready_round != round_number or not all_ready() or _countdown > 0.0: return
+	if not host_mode or game == null or game.phase != RoundState.Phase.SETTLED or _ready_round != round_number or not all_ready() or _countdown > 0.0: return
 	_ready_round = -1
 	_invalidate_ready()
 	round_number += 1
@@ -478,6 +479,7 @@ func _apply_member_names() -> void:
 		else:
 			game.players[seat].name_label = "人机%d" % (seat + 1)
 			game.players[seat].is_human = false
+	game._recorder.update_players(game)
 
 func client(ip: String, port: int = 0, number: String = "", player_name: String = "", owner_token: String = "") -> bool:
 	_server_ip = ip
@@ -514,7 +516,7 @@ func _begin_reconnect(_reason: String) -> void:
 		connection_error.emit("连接失败，房间可能已关闭或网络不可达")
 		return
 	_reconnecting = true
-	_resume_sync_pending = game != null and game.phase != "idle"
+	_resume_sync_pending = game != null and game.phase != RoundState.Phase.IDLE
 	_reconnect_attempt = 0
 	_reconnect_wait = 0.2
 	reconnecting.emit(0, 5)
@@ -536,7 +538,7 @@ func _on_client_sync(state: Dictionary) -> void:
 	var revision := int(state.get("revision", _received_revision + 1))
 	if revision <= _received_revision: return
 	_received_revision = revision
-	var first := game.phase == "idle"
+	var first := game.phase == RoundState.Phase.IDLE
 	round_number = int(state.get("round_number", 1))
 	game.apply_sync(state)
 	_resume_sync_pending = false
@@ -571,11 +573,19 @@ func notice(message: String) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func send_turn(seat: int, dict: Dictionary) -> void:
-	if host_mode and _started and _seat_peer.get(seat, -1) == multiplayer.get_remote_sender_id() and int(dict.get("prompt_id", -1)) == game.prompt_id: game.submit_turn(seat, dict)
+	if not host_mode or not _started or game == null: return
+	if _seat_peer.get(seat, -1) != multiplayer.get_remote_sender_id() or int(dict.get("prompt_id", -1)) != game.prompt_id:
+		game._recorder.request(seat, "turn", dict, false, "座位身份或提示编号不匹配")
+		return
+	game.submit_turn(seat, dict)
 
 @rpc("any_peer", "call_remote", "reliable")
 func send_response(seat: int, tile: String, dict: Dictionary) -> void:
-	if host_mode and _started and _seat_peer.get(seat, -1) == multiplayer.get_remote_sender_id() and int(dict.get("prompt_id", -1)) == game.prompt_id: game.submit_response(seat, tile, dict)
+	if not host_mode or not _started or game == null: return
+	if _seat_peer.get(seat, -1) != multiplayer.get_remote_sender_id() or int(dict.get("prompt_id", -1)) != game.prompt_id:
+		game._recorder.request(seat, "response", dict, false, "座位身份或提示编号不匹配")
+		return
+	game.submit_response(seat, tile, dict)
 
 @rpc("authority", "call_remote", "reliable")
 func your_turn(seat: int) -> void:

@@ -3,6 +3,7 @@ extends CanvasLayer
 signal exit_requested
 signal exit_confirmed
 signal ai_speed_selected(speed_key: String)
+signal replay_export_requested
 ## 主菜单和牌桌共用的声音面板，独立于旋转、缩放的牌桌。
 
 const PANEL_SIZE := Vector2(680, 520)
@@ -21,6 +22,8 @@ var table_mode := false
 var exit_confirmation: Panel
 var confirm_exit_button: Button
 var cancel_exit_button: Button
+var replay_export_button: Button
+var replay_status: Label
 
 func _ready() -> void:
 	layer = 20
@@ -92,6 +95,8 @@ func _ready() -> void:
 			speed_buttons[speed_key] = speed_button
 		var exit_button := _button("退出房间", Vector2(716, 422), Vector2(288, 126), func(): exit_requested.emit())
 		exit_button.name = "ExitRoomButton"
+		replay_export_button = _button("保存本局记录", Vector2(36, 496), Vector2(356, 70), func(): replay_export_requested.emit())
+		replay_status = _label("", Vector2(404, 562), Vector2(600, 28), 18)
 		exit_confirmation = Panel.new()
 		exit_confirmation.name = "ExitConfirmation"
 		exit_confirmation.size = TABLE_PANEL_SIZE

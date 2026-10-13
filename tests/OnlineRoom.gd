@@ -38,7 +38,7 @@ func _run() -> void:
 	Network.start_client(str(room.host), int(room.port), str(room.number), _arg("--owner-token"))
 	var net := Network.net_node
 	t.expect(await _wait_until(func(): return not net.lobby.is_empty()), "Cloud room handshake")
-	t.expect(net.game.phase == "idle" and net.game.players.is_empty(), "Online waits before dealing")
+	t.expect(net.game.phase == RoundState.Phase.IDLE and net.game.players.is_empty(), "Online waits before dealing")
 	t.expect(net.is_room_owner() == room_owner, "Creator exclusively owns room")
 	if room_owner:
 		net.set_ai_speed("medium")
@@ -59,7 +59,7 @@ func _run() -> void:
 		net.set_ready(true)
 	else:
 		net.set_ready(true)
-	t.expect(await _wait_until(func(): return net.game.phase == "playing"), "Ready online room starts")
+	t.expect(await _wait_until(func(): return net.game.phase == RoundState.Phase.PLAYING), "Ready online room starts")
 	t.expect(net.game.dealer_seat == 2, "Applicant becomes initial dealer")
 	for seat in 4:
 		if seat != net.my_seat:
@@ -74,7 +74,7 @@ func _run() -> void:
 		for candidate in directory.rooms:
 			if candidate.number == "654321": t.expect(bool(candidate.started), "Directory reflects started game")
 	var deadline := Time.get_ticks_msec() + 100000
-	while net.game.phase != "settled" and Time.get_ticks_msec() < deadline:
+	while net.game.phase != RoundState.Phase.SETTLED and Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
 		if not net.game.awaiting: continue
 		if net.game._awaiting_response.get("seat", -1) == net.my_seat:
@@ -84,7 +84,7 @@ func _run() -> void:
 		elif net.game.current_turn == net.my_seat:
 			net.submit_client_turn(actor.decide_turn(net.game, net.my_seat))
 			net.game.awaiting = false
-	t.expect(net.game.phase == "settled", "Dedicated room plays complete match")
+	t.expect(net.game.phase == RoundState.Phase.SETTLED, "Dedicated room plays complete match")
 	var scores: Array = net.game.players.map(func(player): return player.score)
 	var dealer: int = net.game.next_dealer_seat
 	t.expect(await _wait_until(func(): return int(net.lobby.get("ready_round", -1)) == 1), "Online settlement initializes readiness")

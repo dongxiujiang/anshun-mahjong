@@ -152,6 +152,7 @@ func new_game() -> void:
 		_result_restore.hide()
 	_round_number += 1
 	round = RoundState.new()
+	round._recorder.auto_save = true
 	_connect_audio_round()
 	round.next_chicken_multiplier = chicken_multiplier
 	round.next_dealer_seat = next_dealer
@@ -182,7 +183,7 @@ func _setup_host_view() -> void:
 	round.require_response.connect(_on_require_response)
 	round.round_finished.connect(_on_round_finished)
 	round.state_update.connect(_refresh)
-	if round.phase != "idle":
+	if round.phase != RoundState.Phase.IDLE:
 		_on_net_prompt(human_seat)
 		_refresh()
 	network.connection_error.connect(_on_connection_error)
@@ -248,6 +249,7 @@ func _build_static_ui() -> void:
 	# 返回、声音和 AI 速度统一收进大号设置面板，避免右上角小按钮难以点击。
 	_sound_settings.exit_requested.connect(_confirm_quit)
 	_sound_settings.exit_confirmed.connect(_on_quit)
+	_sound_settings.replay_export_requested.connect(_export_current_replay)
 	_settings_button = sound_button
 	for seat in 4:
 		var station := Control.new()
@@ -359,7 +361,7 @@ func _refresh_layout_contents() -> void:
 	var had_result := _result_panel != null and is_instance_valid(_result_panel) and _result_shown
 	var showing_result := had_result and _result_panel.visible
 	_refresh()
-	if had_result and round.phase == "settled":
+	if had_result and round.phase == RoundState.Phase.SETTLED:
 		_show_result()
 		_toggle_result_panel(showing_result)
 	if _result_restore != null and is_instance_valid(_result_restore):
@@ -464,7 +466,7 @@ func _draw() -> void:
 		return
 	for seat in 4:
 		var avatar: Label = avatars[seat]
-		var active := round.phase == "playing" and round.current_turn == seat
+		var active := round.phase == RoundState.Phase.PLAYING and round.current_turn == seat
 		draw_style_box(_style(Color("#263f35"), GOLD if active else Color("#61786b"), 8, 2), Rect2(avatar.position, avatar.size))
 		var wind: Label = wind_labels[seat]
 		if active and wind.visible:
@@ -497,7 +499,7 @@ func _refresh() -> void:
 		return
 	if not _landscape:
 		_layout()
-	if round.phase != "settled":
+	if round.phase != RoundState.Phase.SETTLED:
 		_result_shown = false
 		result_layer.hide()
 		if _result_restore != null and is_instance_valid(_result_restore):
@@ -513,7 +515,7 @@ func _refresh() -> void:
 	_refresh_status()
 	_update_interactivity()
 	queue_redraw()
-	if round.phase == "settled" and not _result_shown:
+	if round.phase == RoundState.Phase.SETTLED and not _result_shown:
 		_result_shown = true
 		_show_result.call_deferred()
 
@@ -550,7 +552,7 @@ func _refresh_seat(seat: int) -> void:
 	center_labels[seat].size = Vector2(70, 110) if relative == 1 or relative == 3 else Vector2(164, 64)
 	var plans: Array = _exposed_layouts.get(seat, [])
 	var key := var_to_bytes([human_seat, _design_size(), round.audio_session, player.concealed, player.just_drew, player.melds,
-		player.discards, player.discard_ids, player.discard_count, round.phase == "settled", round.last_discard, plans,
+		player.discards, player.discard_ids, player.discard_count, round.phase == RoundState.Phase.SETTLED, round.last_discard, plans,
 		round.round_meta.get("charge_chickens", {}), _hand_layout(seat)])
 	if _seat_visual_keys.get(seat) == key: return
 	_seat_visual_keys[seat] = key
@@ -607,7 +609,7 @@ func _refresh_seat(seat: int) -> void:
 	width = TileView.BASE_W * hand_unit
 	var x := hand_x
 	var y: float = metrics.hand_y
-	var reveal := own or round.phase == "settled"
+	var reveal := own or round.phase == RoundState.Phase.SETTLED
 	for card in cards:
 		var tile := _make_tile(card if reveal else "", reveal, hand_unit)
 		_put_tile(hand_box[seat], tile, Vector2(x, y))
@@ -828,7 +830,7 @@ func _refresh_center() -> void:
 	var number: int = _round_number if _net_mode() == "" else _net_node().round_number
 	round_label.text = "第 %02d 局    ·    %s" % [maxi(1, number), "单机对局" if _net_mode() == "" else "联机对局"]
 	for seat in 4:
-		wind_labels[seat].add_theme_color_override("font_color", GOLD if round.current_turn == seat and round.phase == "playing" else MUTED)
+		wind_labels[seat].add_theme_color_override("font_color", GOLD if round.current_turn == seat and round.phase == RoundState.Phase.PLAYING else MUTED)
 	_update_speed_buttons()
 
 func _set_ai_speed(speed_key: String) -> void:
@@ -899,27 +901,12 @@ func _on_require_turn(seat: int) -> void:
 
 func _build_turn_options(player: PlayerState) -> void:
 	_clear_actions()
-	if player.just_drew != "" and RuleEngine.analyze(player.concealed, player.melds).win:
+	var options := round.legal_turn_options(player.seat)
+	if options.self_win:
 		_add_action("自摸", func(): _commit_turn({"self_win": true}), true)
-	var concealed_kongs: Array = []
-	for card in (Tiles.sort_hand(player.concealed) if not player.ready and round._wall_count() > 0 else []):
-		if Tiles.count(player.concealed, card) >= 4 and not concealed_kongs.has(card):
-			concealed_kongs.append(card)
-	_add_kong_choices("暗杠", "kong_declares", concealed_kongs)
-	var added_kongs: Array = []
-	for meld in (player.melds if not player.ready and round._wall_count() > 0 else []):
-		if meld.kind == "pung" and Tiles.count(player.concealed, meld.tile) > 0:
-			added_kongs.append(meld.tile)
-	_add_kong_choices("加杠", "add_kong", added_kongs)
-	_ready_discards.clear()
-	if round.can_declare_ready(human_seat):
-		for card in player.concealed:
-			if _ready_discards.has(card):
-				continue
-			var after := player.concealed.duplicate()
-			after.erase(card)
-			if RuleEngine.is_tenpai(after, player.melds):
-				_ready_discards.append(card)
+	_add_kong_choices("暗杠", "kong_declares", Tiles.sort_hand(options.kong_declares))
+	_add_kong_choices("加杠", "add_kong", options.add_kong)
+	_ready_discards = options.ready_discards.duplicate()
 	if not _ready_discards.is_empty():
 		_add_action("报听", _toggle_ready)
 	var discard := _add_action("出牌", _discard_selected, true)
@@ -963,9 +950,10 @@ func _update_interactivity() -> void:
 	if round == null or human_seat >= round.players.size():
 		return
 	var player: PlayerState = round.players[human_seat]
+	var legal_discards: Array = round.legal_turn_options(human_seat).discards if _selecting else []
 	for box in [hand_box[human_seat], draw_box[human_seat]]:
 		for tile in box.get_children():
-			var enabled: bool = _selecting and (not player.ready or tile.get_meta("drawn", false))
+			var enabled: bool = _selecting and legal_discards.has(tile.tile) and (not player.ready or tile.get_meta("drawn", false))
 			if _declaring_ready:
 				enabled = enabled and _ready_discards.has(tile.tile)
 			tile.set_interactive(enabled)
@@ -978,6 +966,7 @@ func _safe_discard() -> String:
 	return player.just_drew if player.just_drew != "" else (player.concealed[0] if not player.concealed.is_empty() else "")
 
 func _commit_turn(decision: Dictionary) -> void:
+	if not round._valid_turn(human_seat, decision): return
 	_selecting = false
 	_declaring_ready = false
 	_clear_actions()
@@ -1015,7 +1004,7 @@ func _on_client_state_updated() -> void:
 	_selecting = false
 	_response_disc = ""
 	_clear_actions()
-	if round.phase == "settled":
+	if round.phase == RoundState.Phase.SETTLED:
 		_add_action("结算", _show_result)
 	_refresh()
 
@@ -1030,14 +1019,9 @@ func _on_net_prompt(seat: int) -> void:
 	if not response.is_empty():
 		if int(response.get("seat", -1)) == human_seat:
 			var tile: String = response.tile
-			var player: PlayerState = round.players[seat]
-			var options: Dictionary = response.get("options", {
-				"can_win": round.can_win_on_discard(seat, int(response.get("disc_seat", -1)), tile, str(response.get("stage", ""))),
-				"can_pong": Tiles.count(player.concealed, tile) >= 2,
-				"can_kong": Tiles.count(player.concealed, tile) >= 3,
-			})
+			var options := round.legal_response_options(seat, int(response.get("disc_seat", -1)), tile, int(response.get("stage", RoundState.ResponseStage.NONE)))
 			_on_require_response(seat, response.disc_seat, tile, options)
-	elif round.current_turn == human_seat and round.phase == "playing":
+	elif round.current_turn == human_seat and round.phase == RoundState.Phase.PLAYING:
 		_on_require_turn(seat)
 	_update_interactivity()
 
@@ -1172,7 +1156,7 @@ func _result_sideways_index(item: Dictionary, seat: int) -> int:
 		return 0
 	if item.get("kind", "") != "kong":
 		return -1
-	if item.get("kong_kind", "") == "exposed":
+	if item.get("kong_kind", RoundState.KongKind.NONE) == RoundState.KongKind.EXPOSED:
 		return int({1: 3, 2: 3, 3: 0}.get(posmod(int(item.get("from_seat", -1)) - seat, 4), -1))
 	return -1
 
@@ -1180,7 +1164,7 @@ func _result_group_note(item: Dictionary, seat: int) -> String:
 	if item.get("kind", "") != "kong":
 		return str(item.get("note", ""))
 	var text := ""
-	if item.get("kong_kind", "") == "exposed":
+	if item.get("kong_kind", RoundState.KongKind.NONE) == RoundState.KongKind.EXPOSED:
 		var direction: String = ["本人", "下家", "对家", "上家"][posmod(int(item.get("from_seat", -1)) - seat, 4)]
 		text = "只收%s杠分%.0f" % [direction, float(item.get("base_amount", 0.0))]
 	else:
@@ -1205,8 +1189,8 @@ func _draw_result_group(flow: HFlowContainer, item: Dictionary, seat: int, max_w
 	var widest := 0.0
 	var content_height := tile_height
 	if item.get("kind", "") == "kong":
-		var meld := {"kind": "add_kong" if item.get("kong_kind", "") == "add_kong" else "kong",
-			"concealed": item.get("kong_kind", "") == "concealed", "from_seat": item.get("from_seat", -1)}
+		var meld := {"kind": "add_kong" if item.get("kong_kind", RoundState.KongKind.NONE) == RoundState.KongKind.ADD_KONG else "kong",
+			"concealed": item.get("kong_kind", RoundState.KongKind.NONE) == RoundState.KongKind.CONCEALED, "from_seat": item.get("from_seat", -1)}
 		var layout := _meld_tile_layout(meld, seat, RESULT_TILE_UNIT, 8.0)
 		for index in tiles.size():
 			positions.append(Vector2(layout.positions[index]) + Vector2(0, y))
@@ -1238,7 +1222,7 @@ func _draw_result_group(flow: HFlowContainer, item: Dictionary, seat: int, max_w
 	flow.add_child(group)
 	var heading := str(item.get("label", ""))
 	if is_kong:
-		if item.get("kong_kind", "") == "exposed":
+		if item.get("kong_kind", RoundState.KongKind.NONE) == RoundState.KongKind.EXPOSED:
 			var direction: String = ["本人", "下家", "对家", "上家"][posmod(int(item.get("from_seat", -1)) - seat, 4)]
 			heading += " · %s杠分%.0f" % [direction, float(item.get("base_amount", 0.0))]
 		else:
@@ -1297,7 +1281,7 @@ func _next_round() -> void:
 		new_game()
 
 func _refresh_next_round_controls() -> void:
-	if _net_mode() == "" or round == null or round.phase != "settled" or not is_instance_valid(_next_round_button): return
+	if _net_mode() == "" or round == null or round.phase != RoundState.Phase.SETTLED or not is_instance_valid(_next_round_button): return
 	var network = _net_node()
 	var state: Dictionary = network.lobby
 	var seats: Array = state.get("seats", [])
@@ -1418,10 +1402,15 @@ func _cn(card: String) -> String:
 	return "%d%s" % [Tiles.rank(card), {"wan": "万", "tiao": "条", "tong": "筒"}.get(Tiles.suit(card), "")]
 
 func _on_quit() -> void:
+	if round != null: round.export_replay()
 	quit_to_menu.emit()
 	if _net_mode() != "":
 		Network.reset()
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+
+func _export_current_replay() -> void:
+	var path := round.export_replay() if round != null else ""
+	_sound_settings.replay_status.text = "已保存到本机对局记录目录" if path != "" else "完整记录保存在房主或服务器上"
 
 func _confirm_quit() -> void:
 	_sound_settings.confirm_exit()

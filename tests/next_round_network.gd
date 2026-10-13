@@ -37,7 +37,7 @@ func _run() -> void:
 	if role == 0:
 		await create_timer(0.3).timeout
 		net.game._finish()
-	t.expect(await _wait_until(func(): return net.game.phase == "settled" and net.lobby.get("ready_round", -1) == 1), "Settlement ready state reaches every human")
+	t.expect(await _wait_until(func(): return net.game.phase == RoundState.Phase.SETTLED and net.lobby.get("ready_round", -1) == 1), "Settlement ready state reaches every human")
 	await process_frame
 	await process_frame
 	t.expect(table.result_layer.visible and not table._next_round_button.disabled, "Every player has an enabled settlement ready button")
@@ -80,7 +80,7 @@ func _run() -> void:
 	if role == 0:
 		await create_timer(0.4).timeout
 		net.game._finish()
-	t.expect(await _wait_until(func(): return net.game.phase == "settled" and net.lobby.get("ready_round", -1) == 2), "Next settlement resets readiness again")
+	t.expect(await _wait_until(func(): return net.game.phase == RoundState.Phase.SETTLED and net.lobby.get("ready_round", -1) == 2), "Next settlement resets readiness again")
 	t.expect(not net.lobby.seats[net.my_seat].ready, "No previous ready flag leaks into next settlement")
 	# 模拟上一局延迟到达的准备消息，不能把新结算的玩家标记为已准备。
 	if role == 0:

@@ -20,7 +20,7 @@ func fixture() -> RoundState:
 	r.controllers = [null, null, null, null]
 	r.wall = WallRing.new(TileSetFactory.create_deck())
 	r.wall.set_head(0)
-	r.phase = "playing"
+	r.phase = RoundState.Phase.PLAYING
 	r.awaiting = true
 	return r
 
@@ -54,7 +54,7 @@ func _test_flip_cycle() -> void:
 func _test_charges() -> void:
 	for same_seat in [false, true]:
 		var r := fixture()
-		r.phase = "idle"
+		r.phase = RoundState.Phase.IDLE
 		var second := 0 if same_seat else 2
 		r.players[0].concealed = ["wan2", "tiao1", "tiao1"]
 		r.players[second].concealed.append("tong8")
@@ -95,13 +95,13 @@ func _test_claims() -> void:
 			var client := RoundState.new()
 			client.apply_sync(r.serialize_for_seat(1))
 			check(client.is_charge_meld(1, 0) and client.players[0].discard_count == 1, "Claim and chronology sync to clients")
-			r.phase = "idle"
+			r.phase = RoundState.Phase.IDLE
 			r.players[2].concealed = [tile]
 			r._discard(2, tile)
 			check(not r.is_charge_discard(2, 0), "Claimed charge never permits another first of the same kind")
 	# A later identical discard may be claimed without moving the earlier charge.
 	var r := fixture()
-	r.phase = "idle"
+	r.phase = RoundState.Phase.IDLE
 	r.players[0].concealed = ["tiao1", "tiao1"]
 	r._discard(0, "tiao1")
 	r._discard(0, "tiao1")
@@ -113,7 +113,7 @@ func _test_claims() -> void:
 func _test_chicken_values() -> void:
 	for tile in ["tiao1", "tong8"]:
 		var r := fixture()
-		r.phase = "idle"
+		r.phase = RoundState.Phase.IDLE
 		r.players[0].concealed = [tile, tile]
 		r._discard(0, tile)
 		r._discard(0, tile)
@@ -210,7 +210,7 @@ func _test_multiplier() -> void:
 	var r := fixture()
 	for multiplier in [1, 2, 2]:
 		r.round_meta.chicken_multiplier = multiplier
-		r.phase = "playing"
+		r.phase = RoundState.Phase.PLAYING
 		for player in r.players:
 			player.concealed = WAIT.duplicate()
 		r._penzu()
@@ -242,7 +242,7 @@ func _test_multiplier() -> void:
 	host._started = true
 	host.round_number = 1
 	host.game = r
-	r.phase = "settled"
+	r.phase = RoundState.Phase.SETTLED
 	r.next_chicken_multiplier = 2
 	host.next_round()
 	host._process(1.01)
@@ -319,7 +319,7 @@ func _test_concealed_kong_reveal() -> void:
 		_check_kong_visibility(r, owner, [true, true])
 		# Settlement reveals even a kong whose next discard has not yet occurred.
 		player.discard_count = 4
-		r.phase = "settled"
+		r.phase = RoundState.Phase.SETTLED
 		_check_kong_visibility(r, owner, [true, true])
 	# Kongs declared in different turns must reveal independently.
 	var r := fixture()

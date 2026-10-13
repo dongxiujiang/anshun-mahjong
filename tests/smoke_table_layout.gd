@@ -57,7 +57,7 @@ func _run() -> void:
 
 func _new_fixture() -> void:
 	if table.round != null:
-		table.round.phase = "idle"
+		table.round.phase = RoundState.Phase.IDLE
 	table._clear_actions()
 	table._response_disc = ""
 	table._declaring_ready = false
@@ -69,7 +69,7 @@ func _new_fixture() -> void:
 	table.round.wall = WallRing.new(TileSetFactory.create_deck())
 	table.round.wall.set_head(0)
 	table.round.current_turn = table.human_seat
-	table.round.phase = "playing"
+	table.round.phase = RoundState.Phase.PLAYING
 	table.round.awaiting = true
 	table.round.require_turn.connect(table._on_require_turn)
 	table.round.require_response.connect(table._on_require_response)
@@ -571,7 +571,7 @@ func _test_meld_markers() -> void:
 	table.round.players[1].melds = [{"kind": "kong", "tile": "tiao9", "concealed": true}, {"kind": "add_kong", "tile": "wan7", "from_seat": 2}]
 	table.round.players[1].concealed = ["wan1", "wan2", "wan3", "tong1", "tong2", "tong3", "wan9", "wan9"]
 	table.round.players[1].just_drew = "wan9"
-	table.round.phase = "settled"
+	table.round.phase = RoundState.Phase.SETTLED
 	table._result_shown = true
 	table._refresh()
 	table.result_layer.hide()
@@ -624,7 +624,7 @@ func _test_concealed_kong_reveal() -> void:
 				await RenderingServer.frame_post_draw
 				var suffix := "revealed" if revealed else "hidden"
 				_expect(root.get_texture().get_image().save_png("res://docs/table_concealed_kong_%s.png" % suffix) == OK)
-	host.phase = "settled"
+	host.phase = RoundState.Phase.SETTLED
 	table._result_shown = true
 	for player in host.players:
 		player.discard_count = 4
@@ -638,7 +638,7 @@ func _test_concealed_kong_reveal() -> void:
 
 func _test_result() -> void:
 	table._result_shown = true
-	table.round.phase = "settled"
+	table.round.phase = RoundState.Phase.SETTLED
 	table.round.round_meta.winner = 0
 	table.round.round_meta.self_draw = true
 	table.round.round_meta.flip_tile = "tong8"
@@ -705,7 +705,7 @@ func _test_next_round() -> void:
 	_expect(table.round.round_meta.chicken_multiplier == 2, "Next game carries the chicken multiplier")
 	_expect(not table.round_label.text.contains("鸡分 ×2"), "The active multiplier stays inside settlement details")
 	_expect(not table.result_layer.visible)
-	_expect(table.round.phase == "playing")
+	_expect(table.round.phase == RoundState.Phase.PLAYING)
 
 func _physical_rect(control: Control) -> Rect2:
 	return root.get_screen_transform() * _control_rect(control)

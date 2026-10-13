@@ -36,7 +36,7 @@ func _play(seed_value: int, upgraded_seat: int) -> RoundState:
 	r.set_rng_seed(seed_value)
 	for seat in 4: r.controllers.append(MeasuredAi.new() if seat == upgraded_seat else BEFORE.new())
 	r.start_round(0)
-	t.expect(r.phase == "settled" and is_zero_approx(r.last_result.total_delta), "Benchmark round settles with zero-sum payments")
+	t.expect(r.phase == RoundState.Phase.SETTLED and is_zero_approx(r.last_result.total_delta), "Benchmark round settles with zero-sum payments")
 	var counts := {}
 	for player in r.players:
 		for tile in player.concealed + player.discards:

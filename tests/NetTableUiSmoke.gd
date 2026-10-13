@@ -39,11 +39,11 @@ func _run() -> void:
 			continue
 		var seat: int = table.human_seat
 		_expect(table._relative_seat(seat) == 0, "Local seat must be at the bottom")
-		if not host_mode and round.phase != "settled":
+		if not host_mode and round.phase != RoundState.Phase.SETTLED:
 			for opponent in 4:
 				if opponent != seat:
 					_expect(round.players[opponent].concealed.all(func(tile): return tile == "hidden0"), "Opponent hand values must stay private")
-		if round.phase == "settled":
+		if round.phase == RoundState.Phase.SETTLED:
 			_expect(audio_events > 0, "Host and client table must both receive audio events")
 			_expect(AudioManager._last_event_id == round.audio_event_id, "Table audio must reach the latest synced event")
 			if host_mode:
