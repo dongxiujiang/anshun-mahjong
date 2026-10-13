@@ -189,7 +189,96 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 
 运行 `tests/smoke_table_layout.gd` 可检查各座位从开局到四组碰杠的位置、放大后的牌面、鸡牌顺序与溢出布局。使用非 headless 模式还会生成 `docs/` 下的实际游戏截图，包括 `table_melds_0.png`（开局）、`table_melds_1.png`（一组碰牌）、`table_reference.png`（与参考图对应的碰→鸡→杠布局）。
 
-## 十、声音与替换素材
+## 十、UI 构成与修改指南
+
+本项目的 UI 采用“场景只提供入口、脚本在运行时创建控件”的方式。修改界面时，优先查看对应脚本，而不是在 `.tscn` 里寻找不存在的按钮。三个入口场景只有一个根 `Control` 和一个脚本绑定：
+
+| 界面 | 场景 | 脚本 | 主要职责 |
+| --- | --- | --- | --- |
+| 主菜单 | `scenes/MainMenu.tscn` | `scripts/ui/MainMenu.gd` | 单机、联机、声音、规则、更新、退出入口 |
+| 联机大厅 | `scenes/Lobby.tscn` | `scripts/ui/Lobby.gd` | 局域网/在线切换、创建/搜索/加入、选座、换座、准备 |
+| 牌桌 | `scenes/GameTable.tscn` | `scripts/ui/GameTable.gd` | 四方牌面、手牌、摸牌、碰杠、弃牌、操作按钮、结算 |
+
+### 10.1 通用布局规则
+
+- 三个界面都是全屏根 `Control`，脚本通过 `resized` 重新计算缩放和居中。
+- 主菜单设计画布为 `MENU_SIZE = Vector2(1800, 1000)`；联机大厅为 `DESIGN = Vector2(1480, 860)`。
+- 牌桌固定使用横屏设计画布 `LANDSCAPE_SIZE = Vector2(2280, 1280)`，窗口比例变化只缩放并留边，不切换为竖屏。Android 安全区域由 `GameTable._usable_rect()` 处理。
+- 颜色、圆角、边框由各脚本中的 `_style()` 和 `_button()` 生成。要统一风格，优先修改这些辅助函数，而不是逐个按钮改颜色。
+- 牌面不是场景节点：`TileView` 在运行时创建，并使用 `BASE_W = 48`、`BASE_H = 64` 作为基础尺寸，再乘以 `unit`。
+
+### 10.2 主菜单
+
+`MainMenu.gd` 在 `content` 设计画布内创建左侧介绍区和右侧操作区。入口按钮使用 `ENTRY_BUTTON_SIZE = Vector2(760, 184)`，字号为 44；普通按钮默认约 `224×108`，字号为 28。需要调整主菜单整体大小时改 `MENU_SIZE`；调整“单机对局/联机房间”点击区域时改 `ENTRY_BUTTON_SIZE`；调整按钮位置直接改 `_ready()` 中对应的 `position`。
+
+主菜单还会动态挂载 `SoundSettings`、`RuleGuide` 和 `UpdatePanel`。启动时 `UpdateManager.maybe_check()` 触发自动检查更新，更新面板由 `UpdatePanel.gd` 管理，不要在主菜单重复实现下载逻辑。
+
+### 10.3 联机大厅
+
+`Lobby.gd` 使用同一张 `1480×860` 横屏设计画布。浏览区由左侧创建面板和右侧房间列表组成；等待区由四个座位按钮、庄家意愿、准备按钮和换座请求行组成。
+
+- 创建面板、房间列表和等待区的尺寸与位置在 `_ready()` 的 `_panel()`、`_field()`、`_button()` 调用中定义。
+- 四个座位按钮的顺序是东、南、西、北，位置数组为 `locations`，当前点击区域约 `440×168`。
+- 准备按钮当前约 `366×78`；`_render_waiting()` 负责同步昵称、房主、准备、断线和想当庄状态。
+- `Lobby._layout()` 只负责将设计画布按窗口比例缩放居中。调整控件间距应修改设计坐标，通常不需要改缩放函数。
+
+### 10.4 牌桌节点层级
+
+`GameTable._build_static_ui()` 创建牌桌静态节点。每个座位都有一个 `SeatRoot0..3`，座位根节点通过旋转映射到四个方向；其下的运行时容器如下：
+
+| 变量 | 用途 | 调整入口 |
+| --- | --- | --- |
+| `hand_box[seat]` | 手牌，不含独立摸牌位 | `_refresh_seat()`、`_hand_layout()` |
+| `draw_box[seat]` | 最右侧独立摸牌位/胡牌位 | `_hand_layout()`、`DRAW_GAP` |
+| `meld_box[seat]` | 碰、明杠、暗杠、加杠 | `_meld_tile_layout()`、`_prepare_exposed_layouts()` |
+| `chicken_box[seat]` | 打出的幺鸡/八筒，冲锋鸡横放 | `_exposed_groups()`、`_refresh_seat()` |
+| `discard_scroll[seat]` | 普通弃牌区 | `_seat_metrics()`、`_refresh_discards()` |
+| `wall_box[seat]` | 牌墙数据的旧显示容器，当前隐藏 | `_refresh_walls()` |
+| `avatars/center_labels` | 风位、昵称/相对位置和当前分数 | `_refresh_seat()` |
+
+牌桌中央的骰子、余牌和回合信息由 `_refresh_center()` 更新。牌桌不绘制牌墙，但牌墙仍由核心逻辑用于骰子、发牌和摸牌。
+
+### 10.5 四方牌面和尺寸
+
+四家显示先由 `_relative_seat()` 转为“你、下家、对家、上家”，再使用 `ROTATIONS` 旋转座位根节点。`_seat_metrics()` 控制各方手牌基线、碰杠起点、弃牌区位置和容器大小；`_hand_layout()` 计算手牌与独立摸牌位的居中位置。
+
+- `OWN_HAND_TILE_UNIT`：自己的手牌和摸牌，当前为 `2.40`。
+- `OWN_PLAYER_TILE_UNIT`：自己的碰杠和鸡牌，当前为 `1.60`。
+- `PLAYER_TILE_UNIT`：其他三家的手牌、碰杠和鸡牌，当前为 `1.35`。
+- `TILE_UNIT`：弃牌牌面，当前为 `1.10`；放大弃牌区应改 `river_size`，不要改这个值。
+- `RESULT_TILE_UNIT`：结算卡片中的牌，当前为 `1.60`。
+- `TILE_GAP`、`EXPOSED_HAND_GAP`、`DRAW_GAP`：牌间距、碰杠与手牌间距、手牌与摸牌间距。
+
+要放大自己的牌，优先只改 `OWN_HAND_TILE_UNIT`；要让所有操作按钮变大，改 `DISCARD_BUTTON_SIZE`，按钮由 `_add_action()` 统一创建。`_layout_actions()` 会把出牌、报听、碰、杠、胡、自摸等按钮放在摸牌位上方，并避开自己的弃牌区。
+
+### 10.6 碰杠、冲锋鸡和弃牌区
+
+`_meld_tile_layout()` 同时服务牌桌和结算卡片。碰牌三张全部竖放且不标来源；明杠按来源横放一张（下家右横、上家左横、对家上横）；暗杠和加杠四张竖放。`_prepare_exposed_layouts()` 按实际矩形逐组寻找位置，空间不足时向内换行，并避开手牌、弃牌区、按钮、分数和中央区域。
+
+`_refresh_discards()` 只把普通弃牌放进 `discard_scroll`；鸡牌会转入 `chicken_box`，冲锋鸡横放。东西两家弃牌区通过 `_seat_metrics().river_size` 扩大，滚动条设为 `SCROLL_MODE_SHOW_NEVER`，牌面大小仍由 `TILE_UNIT` 控制。
+
+### 10.7 结算卡片
+
+`_show_result()` 动态创建遮罩和 `SettlementCard`，卡片内四行按“你、上家、对家、下家”显示。每行由 `_draw_result_details()` 创建独立滚动区，`_draw_result_group()` 绘制牌组、分值和说明。鸡牌按同类型/同分值合并，杠牌集中在最后；`_result_sideways_index()` 和 `_meld_tile_layout()` 保证结算中的横牌方向与牌桌一致。
+
+“查看结算/看牌桌”按钮位置由 `RESULT_TOGGLE_SIZE`、`_result_toggle_position()` 和 `panel_position_for_result_toggle()` 控制；下一局按钮由 `NEXT_ROUND_BUTTON_SIZE` 和 `_refresh_next_round_controls()` 控制。调整结算卡片整体大小时改 `_result_card_size()` 相关常量，同时检查每行 `ScrollContainer` 的宽高。
+
+### 10.8 牌组件与弹窗
+
+- `scripts/ui/TileView.gd`：单张牌的牌面、牌背、选中抬起、悬停和程序化绘制。替换牌素材或改变基础牌比例时从这里开始。
+- `scripts/ui/SoundSettings.gd`：声音开关、音乐/语音/落桌音效滑块、AI 快中慢和退出房间二次确认。牌桌右上角的“设置”按钮打开它。
+- `scripts/ui/RuleGuide.gd`：首次进入时的规则/教程分页。修改新手引导文字直接编辑 `PAGES`。
+- `scripts/ui/UpdatePanel.gd`：版本检查、补丁下载、进度、重启和回滚，不负责游戏牌桌布局。
+
+### 10.9 推荐的 UI 修改流程
+
+1. 先改一个设计常量或一个布局函数，避免同时改场景和运行时坐标。
+2. 运行 `godot --headless --script res://tests/smoke_table_layout.gd` 检查四方牌组、横牌和溢出。
+3. 运行 `godot --headless --script res://tests/smoke_ui.gd` 检查主菜单、联机入口、牌桌按钮和结算切换。
+4. 有声音或弹窗改动时再运行 `smoke_audio.gd`；有大厅改动时运行 `smoke_lobby.gd`。
+5. 用非 headless 运行一次，在 Windows 和 Android 横屏分别观察触控区域、文字是否被裁切、结算卡片滚动是否正常，再提交代码。
+
+## 十一、声音与替换素材
 
 素材说明及文件名见 `res/audio/README.md`。当前使用随工程打包的四套柔和普通话座位语音、Kevin MacLeod《Ripples》舒缓拨弦背景音乐和落桌音效，运行时全部离线播放。
 
