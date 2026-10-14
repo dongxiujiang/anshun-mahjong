@@ -1,4 +1,3 @@
-class_name TableAnimationLayer
 extends Control
 ## Presentation only; owns temporary nodes and interruptible cubic easing.
 signal finished(event_id: int)

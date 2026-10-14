@@ -158,7 +158,7 @@ var _seat_visual_keys: Dictionary:
 var _remaining_label: Label:
 	get: return _table_layout._remaining_label
 	set(value): _table_layout._remaining_label = value
-var _animation_layer: TableAnimationLayer:
+var _animation_layer:
 	get: return _table_animation_controller._animation_layer
 	set(value): _table_animation_controller._animation_layer = value
 var _animation_busy: bool:

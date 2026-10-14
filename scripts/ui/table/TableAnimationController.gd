@@ -1,7 +1,8 @@
 extends "res://scripts/ui/table/TableComponent.gd"
 ## Consumes authoritative events; owns presentation only, never waits in RoundState.
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
-var _animation_layer: TableAnimationLayer
+const ANIMATION_LAYER := preload("res://scripts/ui/TableAnimationLayer.gd")
+var _animation_layer
 var _animation_busy := false
 var _animation_last_id := 0
 var _animation_queue: Array = []
@@ -38,7 +39,7 @@ func cancel(skip_next_event: bool = false) -> void:
 	if is_instance_valid(_animation_layer): _animation_layer.cancel()
 
 func build() -> void:
-	_animation_layer = TableAnimationLayer.new()
+	_animation_layer = ANIMATION_LAYER.new()
 	_animation_layer.name = "AnimationLayer"
 	table.add_child(_animation_layer)
 	_skip_button = table._button("跳过开局", _skip_opening, Vector2(240, 86))
