@@ -153,7 +153,7 @@ func _test_claimed_charge_settlement() -> void:
 	pong.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "meld", "meld_index": 0}}
 	var pong_profile := ScoringEngine.chicken_profile(pong, 1, "")
 	check(pong_profile.total == 6.0, "被碰冲锋鸡归碰家，每张2分")
-	check(pong_profile.items.size() == 1 and pong_profile.items[0].kind == "charge" and pong_profile.items[0].label == "冲锋鸡" and pong_profile.items[0].unit_amount == 2.0, "被碰后保留冲锋鸡标识并按每张2分展示")
+	check(pong_profile.items.size() == 1 and pong_profile.items[0].kind == "chicken" and pong_profile.items[0].label == "普通鸡" and pong_profile.items[0].unit_amount == 2.0, "被碰冲锋鸡在结算中显示为普通鸡且每张2分")
 
 	# 冲锋鸡被明杠：四张归杠家，每张2分；原放牌者额外支付固定杠4分。
 	var kong := fixture()

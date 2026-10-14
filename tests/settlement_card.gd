@@ -328,6 +328,26 @@ func _test_ui() -> void:
 		if tile is TileView and not is_zero_approx(tile.rotation):
 			sideways += 1
 	t.expect(sideways == 2, "两种同分冲锋鸡合并后均横放")
+	# 被碰/杠转入的冲锋鸡在结算里显示成普通鸡并竖向按碰摆放，不再横放或标冲锋字样。
+	var claimed := fixture()
+	claimed.players[1].melds = [{"kind": "pung", "tile": "tiao1", "from_seat": 0}]
+	claimed.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "meld", "meld_index": 0}}
+	var claimed_profile := ScoringEngine.chicken_profile(claimed, 1, "wan5")
+	t.expect(claimed_profile.items.size() == 1 and claimed_profile.items[0].kind == "chicken" and claimed_profile.items[0].label == "普通鸡" and claimed_profile.items[0].count == 3, "被碰冲锋鸡识别为普通鸡")
+	table.round.last_result.items = [[], claimed_profile.items, [], []]
+	table._show_result()
+	await process_frame
+	await process_frame
+	var claimed_groups: HFlowContainer = table._result_panel.get_node("ResultSeat1/Details/ScoreGroups/Groups")
+	var saw_claimed_chicken := false
+	for group in claimed_groups.get_children():
+		var item: Dictionary = group.get_meta("score_item")
+		if str(item.get("kind", "")) == "chicken" and str(item.get("label", "")) == "普通鸡":
+			saw_claimed_chicken = true
+			for tile in group.get_children():
+				if tile is TileView:
+					t.expect(is_zero_approx(tile.rotation), "被碰冲锋鸡在结算中竖向摆放")
+	t.expect(saw_claimed_chicken, "被碰冲锋鸡应归入普通鸡组")
 
 func _run() -> void:
 	_test_kongs()
