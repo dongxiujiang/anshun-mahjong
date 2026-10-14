@@ -39,6 +39,9 @@ static func _serialize_player(player: PlayerState) -> Dictionary:
 		"score": player.score, "ready": player.ready, "name": player.name_label,
 		"is_human": player.is_human, "is_dealer": player.is_dealer, "just_drew": player.just_drew,
 		"first_turn_done": player.first_turn_done, "charge_chicken": player.charge_chicken,
+		"passed_win_until_draw": player.passed_win_until_draw,
+		"passed_pong_tiles": player.passed_pong_tiles.duplicate(),
+		"forbidden_discard_tile": player.forbidden_discard_tile,
 	}
 
 static func apply_sync(round_state, state: Dictionary) -> void:
@@ -62,6 +65,9 @@ static func apply_sync(round_state, state: Dictionary) -> void:
 		player.just_drew = data.get("just_drew", "")
 		player.first_turn_done = data.get("first_turn_done", false)
 		player.charge_chicken = data.get("charge_chicken", false)
+		player.passed_win_until_draw = bool(data.get("passed_win_until_draw", false))
+		player.passed_pong_tiles.assign(data.get("passed_pong_tiles", []))
+		player.forbidden_discard_tile = str(data.get("forbidden_discard_tile", ""))
 		round_state.players.append(player)
 	round_state.current_turn = int(state.current_turn)
 	round_state.phase = round_state._phase_from_name(str(state.get("phase", "idle")))

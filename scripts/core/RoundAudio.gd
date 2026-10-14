@@ -34,7 +34,9 @@ func emit_win(meta: Dictionary) -> void:
 	if int(meta.get("winner", -1)) < 0 or win_emitted:
 		return
 	win_emitted = true
-	emit_action("zimo" if meta.get("self_draw", false) else "hu", int(meta.winner), str(meta.get("win_tile", "")))
+	# 抢杠的结算按自摸付款，但语音仍播“胡”，让玩家知道是抢杠胡。
+	var action := "zimo" if meta.get("self_draw", false) and not meta.get("robbed_kong", false) else "hu"
+	emit_action(action, int(meta.winner), str(meta.get("win_tile", "")))
 
 ## 初次加入/重连只接收当前进度，不重播此前牌名及已结束的胡牌。
 func apply_sync(state: Dictionary) -> void:

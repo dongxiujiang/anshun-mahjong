@@ -9,7 +9,9 @@ static func turn_options(round, seat: int) -> Dictionary:
 	if player.ready:
 		if player.just_drew != "" and player.concealed.has(player.just_drew): options.discards.append(player.just_drew)
 		return options
-	options.discards = Tiles.to_counts(player.concealed).keys()
+	for tile in Tiles.to_counts(player.concealed).keys():
+		if tile != player.forbidden_discard_tile:
+			options.discards.append(tile)
 	if round._wall_count() > 0:
 		for tile in options.discards:
 			if Tiles.count(player.concealed, tile) >= 4: options.kong_declares.append(tile)
@@ -45,7 +47,7 @@ static func response_options(round, seat: int, source: int, tile: String, stage:
 	if seat < 0 or seat >= round.players.size() or source == seat or tile == "": return options
 	var player: PlayerState = round.players[seat]
 	options.can_win = can_win_on_discard(round, seat, source, tile, stage)
-	options.can_pong = stage == RoundState.ResponseStage.MELD and not player.ready and Tiles.count(player.concealed, tile) >= 2
+	options.can_pong = stage == RoundState.ResponseStage.MELD and not player.ready and not player.passed_pong_tiles.has(tile) and Tiles.count(player.concealed, tile) >= 2
 	options.can_kong = stage == RoundState.ResponseStage.MELD and not player.ready and round._wall_count() > 0 and Tiles.count(player.concealed, tile) >= 3
 	return options
 
@@ -59,6 +61,8 @@ static func has_self_kong(player: PlayerState) -> bool:
 static func can_win_on_discard(round, seat: int, source: int, tile: String, stage: int) -> bool:
 	if seat < 0 or seat >= round.players.size() or source == seat: return false
 	var player: PlayerState = round.players[seat]
+	if player.passed_win_until_draw:
+		return false
 	if not RuleEngine.can_win_on(player.concealed, player.melds, tile): return false
 	if stage == RoundState.ResponseStage.ROB or player.ready: return true
 	if source >= 0 and source < round.players.size() and round.players[source].ready: return true
@@ -67,4 +71,6 @@ static func can_win_on_discard(round, seat: int, source: int, tile: String, stag
 	var combined := player.concealed.duplicate()
 	combined.append(tile)
 	var pattern := RuleEngine.analyze(combined, player.melds)
-	return bool(pattern.get("seven_pairs", false) or pattern.get("all_triplets", false) or pattern.get("flush", false) or has_self_kong(player))
+	return bool(pattern.get("all_triplets", false) or pattern.get("flush", false)
+		or pattern.get("seven_pairs", false) or RuleEngine.special_pattern_key(pattern) != ""
+		or has_self_kong(player))

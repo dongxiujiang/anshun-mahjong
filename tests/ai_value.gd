@@ -1,6 +1,7 @@
 extends SceneTree
 const H := preload("res://tests/test_harness.gd")
 const VALUE := preload("res://scripts/ai/AiValueModel.gd")
+const OPPONENT := preload("res://scripts/ai/AiOpponentModel.gd")
 var t := H.new()
 const NORMAL := ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9", "wan9"]
 const WAIT := ["wan2", "wan3", "wan4", "wan5", "wan6", "wan7", "tiao5", "tiao6", "tiao7", "tong4", "tong5", "tong6", "tong9"]
@@ -54,6 +55,9 @@ func _fixture(index: int) -> RoundState:
 	return r
 
 func _run() -> void:
+	t.expect(OPPONENT._discard_win_primary_fee(0.0, false) == 4.0, "普通牌点炮估值只收自摸基础4，不错误叠加干扣")
+	t.expect(OPPONENT._discard_win_primary_fee(24.0, false) == 24.0, "大牌点炮估值收完整牌型分")
+	t.expect(OPPONENT._discard_win_primary_fee(0.0, true) == 24.0, "报听普通点炮估值按报听24分")
 	var cases := 0
 	for index in 6:
 		for flip in Tiles.all_values():
@@ -66,7 +70,7 @@ func _run() -> void:
 						var flips := VALUE.flip_distribution({}, flip)
 						var actual := ScoringEngine.settle(r)
 						var expected := VALUE.win_value(r, 0, r.players[0].concealed, r.players[0].melds, flips, _profiles(r, flip), ready, self_draw, 1)
-						t.expect(is_equal_approx(expected, float(actual.deltas[0])), "Exact win payments case %d: expected %s, actual %s" % [cases, expected, actual.deltas[0]])
+						t.expect(is_equal_approx(expected, float(actual.deltas[0])), "Exact win payments case %d idx%d flip%s mult%d self%s ready%s chickens%s: expected %s, actual %s" % [cases, index, flip, multiplier, self_draw, ready, actual.points, expected, actual.deltas[0]])
 						var profile := VALUE.profile(r, 0, r.players[0].concealed, r.players[0].melds, flips)
 						var original := ScoringEngine.chicken_profile(r, 0, flip)
 						t.expect(is_equal_approx(float(profile.total), float(original.total)) and is_equal_approx(float(profile.discarded), float(original.discarded)), "Chicken expectation matches scoring engine")

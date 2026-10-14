@@ -46,7 +46,7 @@ func _test_dragon() -> void:
 	game.round_meta.winner = 0
 	game.round_meta.self_draw = true
 	var scored := ScoringEngine.settle(game)
-	t.expect(scored.deltas == [168.0, -56.0, -56.0, -56.0], "龙七对44加手中鸡8加自摸4，每家付56")
+	t.expect(scored.deltas == [156.0, -52.0, -52.0, -52.0], "龙七对44含自摸基础，加手中鸡8，每家付52")
 	var pattern_items: Array = scored.items[0].filter(func(item): return item.kind == "pattern")
 	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "龙七对" and pattern_items[0].amount == 44, "龙七对只记44，不叠普通七对24")
 	t.expect(scored.status[0].contains("龙七对"), "结算显示龙七对")
@@ -60,7 +60,7 @@ func _test_dragon() -> void:
 	game.players[0].concealed = ["wan1", "wan1", "wan1", "wan1", "wan2", "wan2", "wan4", "wan4", "wan6", "wan6", "wan8", "wan8", "wan9", "wan9"]
 	scored = ScoringEngine.settle(game)
 	pattern_items = scored.items[0].filter(func(item): return item.kind == "pattern")
-	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "清龙七对" and scored.round_points[0] == 102, "清龙七对88替代普通牌型，加无鸡14")
+	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "清龙对" and scored.round_points[0] == 64, "清龙对64替代普通牌型，不叠加干扣")
 	game.players[0].concealed = two_quads
 	scored = ScoringEngine.settle(game)
 	t.expect(scored.deltas == [68.0, -8.0, -52.0, -8.0], "两组四张龙七对牌型仍44，手中鸡8逐家收取")
@@ -94,7 +94,7 @@ func _test_next_dealer() -> void:
 		var multiple := _fixture(dealer)
 		multiple.players[dealer].concealed = CALLED.duplicate()
 		multiple._penzu()
-		t.expect(multiple.next_dealer_seat == posmod(dealer + 1, 4), "多人未叫按庄家顺时针第一位")
+		t.expect(multiple.next_dealer_seat == posmod(dealer + GameConfig.TURN_DIRECTION, 4), "多人未叫按庄家后的摸牌方向选第一位")
 
 func _test_deal() -> void:
 	for dealer in 4:
@@ -118,10 +118,10 @@ func _test_deal() -> void:
 			for batch in 3:
 				for offset in 4:
 					for tile in 4:
-						expected[posmod(dealer + offset, 4)].append(ring[posmod(index, 108)])
+						expected[posmod(dealer + GameConfig.TURN_DIRECTION * offset, 4)].append(ring[posmod(index, 108)])
 						index += 1
 			for offset in 4:
-				expected[posmod(dealer + offset, 4)].append(ring[posmod(index, 108)])
+				expected[posmod(dealer + GameConfig.TURN_DIRECTION * offset, 4)].append(ring[posmod(index, 108)])
 				index += 1
 			expected[dealer].append(ring[posmod(index, 108)])
 			for seat in 4:

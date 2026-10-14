@@ -22,7 +22,8 @@ static func pay_uncalled(deltas: Array, transfers: Array, called: Array, discard
 			continue
 		for receiver in 4:
 			if called[receiver]:
-				transfer(deltas, transfers, payer, receiver, discard_points[receiver], "未叫牌补打出鸡")
+				var amount := float(discard_points[payer]) + float(discard_points[receiver])
+				transfer(deltas, transfers, payer, receiver, amount, "荒牌包鸡")
 
 static func pairwise_payments(transfers: Array) -> Array:
 	var matrix: Array = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]

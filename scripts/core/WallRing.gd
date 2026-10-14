@@ -119,7 +119,7 @@ func _wall_seg_for_seat(seat: int) -> Dictionary:
 func remaining_in_wall_until_empty() -> bool:
 	return remaining <= 0
 
-## 剩余最后四张（用于"最后四张自摸+9"）：当前尚未摸的张数 <=4 且将要摸
+## 剩余最后四张（用于"最后四张自摸+5"）：当前尚未摸的张数 <=4 且将要摸
 func is_global_tail_four() -> bool:
 	return remaining <= 4
 

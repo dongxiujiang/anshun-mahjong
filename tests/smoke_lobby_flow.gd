@@ -62,7 +62,11 @@ func _run() -> void:
 	table._next_round()
 	t.expect(network.net_node.round_number == 1 and table.result_layer.visible, "Readying keeps settlement until countdown completes")
 	t.expect(table._next_round_button.text.contains("1 秒"), "Settlement shows one-second countdown")
-	await create_timer(1.15).timeout
+	# 固定等待在整组回归的高负载下会偶发抖动，改为轮询直到牌局真正推进并完成结算。
+	var advance_deadline := Time.get_ticks_msec() + 8000
+	while network.net_node.round_number != 2 and Time.get_ticks_msec() < advance_deadline:
+		await process_frame
+	await process_frame
 	t.expect(network.net_node.round_number == 2, "Next-round table button advances network round")
 	t.expect(table.round.dealer_seat == next_dealer, "Next-round button uses result dealer")
 	t.expect(table.round.players.map(func(player): return player.score) == scores, "Next-round button keeps scores")

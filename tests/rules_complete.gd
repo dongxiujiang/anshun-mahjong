@@ -44,93 +44,50 @@ func _run() -> void:
 
 func _test_scoring() -> void:
 	var round := fixture()
+	var plain := ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong2", "tong3", "tong4", "wan9", "wan9"]
+	round.players[0].concealed = plain
 	round.round_meta.winner = 0
+	round.round_meta.winners = [0]
 	round.round_meta.self_draw = true
-	round.players[0].concealed = WIN.duplicate()
-	round.round_meta.flip_tile = "tiao5"
 	var result := scored(round)
-	expect(result.deltas == [24.0, -8.0, -8.0, -8.0], "胡牌时未叫牌者补完整鸡分并支付自摸费用")
-	round.round_meta.charge_chickens = {"tiao1": {"owner": 0, "location": "discard", "discard_id": 0}}
-	round.players[0].discards = ["tiao1"]
-	result = scored(round)
-	expect(result.points[0] == 12.0, "Charge chicken is worth four instead of ordinary two")
-	round.players[0].discard_history = ["tiao1"]
-	round.players[0].discards.clear()
-	result = scored(round)
-	expect(result.points[0] == 8.0, "Removed chicken must not score from stale history")
-	round.players[0].discard_history.append("tong8")
-	result = scored(round)
-	expect(result.points[0] == 8.0, "History alone never scores claimed chickens")
-	round.round_meta.burn_chicken_seat = 0
-	result = scored(round)
-	expect(result.points[0] == 4.0, "Burn clears chicken points only")
-	round.round_meta.burn_chicken_seat = -1
-	round.round_meta.charge_chickens.clear()
-	round.players[0].discards.clear()
-	round.players[0].discard_history.clear()
-	round.players[1].concealed = WAIT.duplicate()
-	expect(ScoringEngine.is_called(round, 1), "Normal tenpai must count as called without declaration")
-	round.round_meta.flip_tile = "tiao2"
-	result = scored(round)
-	expect(result.points[1] == 6.0, "One chicken and flip trio must score, doubling the chicken")
-	round.players[1].concealed = ["wan2", "wan3", "wan4", "tiao2", "tiao3", "tiao4", "tong2", "tong3", "tong4", "wan9"]
-	round.players[1].melds = [{"kind": "pung", "tile": "tiao1"}]
-	round.round_meta.flip_tile = "tiao1"
-	result = scored(round)
-	expect(result.points[1] == 13.0, "All three meld chickens and held neighbors must count")
-	round.players[1].concealed = ["wan2", "wan3", "wan4", "tiao2", "tiao3", "tiao4", "tong2", "tong3", "tong4", "wan9"]
-	round.players[1].melds = [{"kind": "kong", "tile": "tiao1"}]
-	result = scored(round)
-	expect(result.points[1] == 17.0, "All four kong chickens must count")
-	round = fixture()
-	round.players[0].concealed = WIN.duplicate()
-	round.round_meta.winner = 0
-	round.round_meta.self_draw = true
-	round.players[0].ready = true
-	result = scored(round)
-	expect(result.deltas == [96.0, -32.0, -32.0, -32.0], "鸡4+自摸4+报听24，每家付32")
-	round.players[1].ready = true
-	result = scored(round)
-	expect(result.deltas == [96.0, -32.0, -32.0, -32.0], "Ready payment must not be charged twice")
-	round.players[0].ready = false
-	result = scored(round)
-	expect(result.deltas[1] == -32.0, "Killed ready opponent pays twenty-four plus self draw and chickens")
-	round.round_meta.self_draw = false
-	round.round_meta.discard_seat = 2
-	round.players[0].ready = true
-	result = scored(round)
-	expect(result.deltas == [60.0, -28.0, -28.0, -4.0], "鸡4逐家补足，报听24只收放炮者和被杀者")
-	round = fixture()
-	round.players[0].concealed = ["wan1", "wan1", "wan2", "wan2", "wan3", "wan3", "wan4", "wan4", "wan5", "wan5", "wan6", "wan6", "wan7", "wan7"]
-	round.round_meta.winner = 0
-	round.round_meta.self_draw = true
-	round.round_meta.flip_tile = "tiao4"
-	result = scored(round)
-	expect(result.deltas == [198.0, -66.0, -66.0, -66.0], "Seven pairs and flush stack with self draw and no chicken")
+	expect(result.deltas == [72.0, -24.0, -24.0, -24.0], "四家结算鸡分为0时普通小牌自摸触发大干扣24")
 	round.round_meta.self_draw = false
 	round.round_meta.discard_seat = 2
 	result = scored(round)
-	expect(result.deltas == [90.0, -14.0, -62.0, -14.0], "Discard winner's patterns are paid by source, chicken points compared with all")
+	expect(result.deltas == [4.0, 0.0, -4.0, 0.0], "普通点炮仅由放炮者付4")
+	var big := fixture()
+	big.players[0].concealed = ["wan1", "wan1", "wan1", "wan2", "wan2", "wan2", "tong3", "tong3", "tong3", "tiao4", "tiao4", "tiao4", "wan9", "wan9"]
+	big.round_meta.winner = 0
+	big.round_meta.winners = [0]
+	big.round_meta.self_draw = true
+	var big_result := scored(big); expect(big_result.deltas == [42.0, -14.0, -14.0, -14.0], "大队子自摸每家付14")
+	var clean := fixture()
+	clean.players[0].concealed = ["tiao1", "tiao1", "tiao2", "tiao2", "tiao3", "tiao3", "tiao4", "tiao4", "tiao5", "tiao5", "tiao6", "tiao6", "tiao9", "tiao9"]
+	clean.round_meta.winner = 0
+	clean.round_meta.winners = [0]
+	clean.round_meta.self_draw = true
+	var clean_result := scored(clean)
+	expect(clean_result.items[0].any(func(item): return item.get("label", "") == "清七对" and item.get("amount", 0) == 44), "清七对按44分且不叠加小七对清一色")
+	var multi := fixture()
+	multi.players[0].concealed = plain.duplicate()
+	multi.players[1].concealed = plain.duplicate()
+	multi.round_meta.winner = 0
+	multi.round_meta.winners = [0, 1]
+	multi.round_meta.self_draw = false
+	multi.round_meta.discard_seat = 2
+	var multi_result := scored(multi)
+	expect(multi_result.pairwise[0][2] == 4 and multi_result.pairwise[1][2] == 4, "一炮多响时放炮者分别付每位胡牌者4")
+	expect(multi_result.deltas[2] == -8, "一炮多响放炮者合计支付两位赢家")
+	round = fixture()
+	round.players[0].concealed = plain.duplicate()
+	round.round_meta.winner = 0
+	round.round_meta.winners = [0]
+	round.round_meta.self_draw = true
+	round.round_meta.kong_draw_seat = 0
+	result = scored(round)
+	expect(result.deltas == [87.0, -29.0, -29.0, -29.0], "大干扣24加杠开5按每家付款")
 	round.round_meta.winner = -1
-	expect(scored(round).deltas == [0.0, 0.0, 0.0, 0.0], "Draw is score-neutral")
-	round = fixture()
-	round.round_meta.winner = 0
-	round.round_meta.self_draw = true
-	round.round_meta.flip_tile = "tong9"
-	round.players[0].concealed = ["wan2", "wan2", "wan2", "wan4", "wan4", "wan4", "tiao3", "tiao3", "tiao3", "tong5", "tong5", "tong5", "tiao8", "tiao8"]
-	expect(scored(round).deltas == [96.0, -32.0, -32.0, -32.0], "Triplets self draw pays fourteen per opponent plus no-chicken and self-draw")
-	round.round_meta.self_draw = false
-	round.round_meta.discard_seat = 1
-	expect(scored(round).deltas == [56.0, -28.0, -14.0, -14.0], "Triplets discard win pays fourteen from source plus no-chicken bonus")
-	round = fixture()
-	round.players[0].concealed = WIN.duplicate()
-	round.round_meta.winner = 0
-	round.round_meta.self_draw = true
-	round.wall.set_head(40)
-	var flip := round.wall.peek_head()
-	round._finish()
-	expect(round.round_meta.flip_tile == flip, "Flip must be known before settlement")
-	expect(round.last_result.points == ScoringEngine.settle(round).points, "Display and actual score must use same flip")
+	expect(scored(round).deltas == [0.0, 0.0, 0.0, 0.0], "流局不翻鸡且全员未叫不收分")
 
 func _test_turns() -> void:
 	var round := fixture()

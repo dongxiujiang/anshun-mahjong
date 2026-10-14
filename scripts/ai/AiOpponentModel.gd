@@ -72,8 +72,13 @@ func _infer(round, spec: Dictionary, pool: Array[int], flips: Dictionary, random
 				var pattern := RuleEngine.analyze(full, melds)
 				if not pattern.win: continue
 				var full_profile := VALUE.profile(round, int(spec.seat), full, melds, flips)
-				var cost: float = VALUE.pattern_points(pattern) + float(full_profile.no_chicken) + float(full_profile.total)
-				if spec.ready: cost += VALUE.CFG.SCORE_READY
+				var pattern_fee := VALUE.pattern_points(pattern)
+				# A discard win is charged as ordinary 4 points unless it is a
+				# declared-ready or scoring-pattern win.  Dry-hand bonuses are
+				# self-draw-only and must not inflate opponent ron estimates.
+				var primary_fee := _discard_win_primary_fee(pattern_fee, bool(spec.ready))
+				var cost: float = primary_fee + float(full_profile.total)
+				if spec.ready and pattern_fee > 0.0: cost += VALUE.CFG.SCORE_READY
 				cost += VALUE.kong_base(melds, -1) # Source-specific bases are added by risk().
 				var uncalled_cost: float = cost - float(full_profile.total) + float(full_profile.discarded) + float(full_profile.kong_chickens)
 				hits[tile] = float(hits.get(tile, 0.0)) + weight
@@ -137,10 +142,15 @@ func risk(context: Dictionary, tile: String, source_ready: bool = false, after_s
 		var payment := float(costs.get(tile, 0.0)) + VALUE.kong_base(opponent.melds, source) - VALUE.kong_base(opponent.melds, -1)
 		if source_ready and not opponent.ready: payment += VALUE.CFG.SCORE_READY
 		if not rob_kong: payment -= own_chickens
-		# Seat-order priority permits only one winner for a discard.
-		expected_loss += (1.0 - probability) * p * maxf(0.0, payment)
-		probability += (1.0 - probability) * p
+		# 一张弃牌可被多家同胡，分别累加每位胡牌者的预期损失。
+		expected_loss += p * maxf(0.0, payment)
+		probability = 1.0 - (1.0 - probability) * (1.0 - p)
 	return {"probability": probability, "loss": expected_loss}
+
+static func _discard_win_primary_fee(pattern_fee: float, declared_ready: bool) -> float:
+	if pattern_fee > 0.0:
+		return pattern_fee
+	return VALUE.CFG.SCORE_READY if declared_ready else VALUE.CFG.SCORE_SELF_DRAW
 
 func _tile_weights(spec: Dictionary) -> Array[float]:
 	var weights: Array[float] = []

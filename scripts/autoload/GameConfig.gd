@@ -13,15 +13,16 @@ const SCORE_CALL_CHICKEN := 2.0   # 叫牌鸡：打出的/没打出的鸡牌每�
 const MAX_CHICKEN_MULTIPLIER := 2 # 连续四家叫牌流局后倍率保留2倍，不继续累乘。
 const SCORE_FLIP_CHICKEN := 1.0   # 翻牌鸡：翻牌及上下相邻张，手中每张 +1
 const SCORE_FLIP_DOUBLE := 2.0    # 翻牌张含一条/八筒 → 该张翻倍(倍率)
-const SCORE_NO_CHICKEN := 14.0    # 无鸡：手中既无鸡牌也无翻牌三张 +14
+const SCORE_NO_CHICKEN := 14.0    # 干扣：普通自摸且赢家无鸡时，总计14分（含基础4）。
+const SCORE_BIG_NO_CHICKEN := 24.0 # 大干扣：四家均无鸡时，总计24分（含基础4），替代干扣。
 
 # ---------- 番型 / 情境 ----------
 const BASE_ROB := 0.0
 const BASE_SELF_DRAW := 0.0
 const SCORE_SELF_DRAW := 4.0      # 自摸 +4（额外自摸奖）
-const SCORE_KONG_DRAW := 9.0      # 杠开（杠上开花） +9
+const SCORE_KONG_DRAW := 5.0      # 杠开（杠上开花）+5。
 const SCORE_DRAW_KONG := 4.0      # 无人胡牌查叫：暗/加杠由未叫者各付，明杠由未叫的放杠者付。
-const SCORE_LAST_FOUR := 9.0      # 最后四张自摸（海底） +9
+const SCORE_LAST_FOUR := 5.0      # 最后四张任意牌自摸（海底）+5。
 const SCORE_BIG_SET := 14.0       # 大队子（对对胡）自摸每家14
 const SCORE_BIG_SET_DISCARD := 14.0 # 大队子放炮者支付14。
 const SCORE_SEVEN_PAIRS := 24.0   # 小七对 自摸+24 / 胡别人者给24
@@ -29,20 +30,29 @@ const SCORE_DRAGON_SEVEN_PAIRS := 44.0 # 七对中含四张同牌，替代小七
 const SCORE_FLUSH := 24.0         # 清一色 自摸+24 / 胡别人者给24
 const SCORE_CLEAN_BIG_TRIPLETS := 34.0 # 清大对（清一色大对子）
 const SCORE_CLEAN_SINGLE_WAIT := 54.0 # 清单吊
-const SCORE_CLEAN_DRAGON_SEVEN_PAIRS := 88.0 # 清龙七对
+const SCORE_BIG_SET_SINGLE_WAIT := 24.0 # 大队子单吊。
+const SCORE_CLEAN_SEVEN_PAIRS := 44.0 # 清七对。
+const SCORE_CLEAN_BIG_SET_SINGLE_WAIT := 44.0 # 清大队单吊；与清单吊同时成立时采用54分。
+const SCORE_CLEAN_DRAGON_SEVEN_PAIRS := 64.0 # 清龙对。
 const SCORE_READY := 24.0         # 报听：自摸每家给24；被杀给24；胡别家别家给24
 
 # ---------- 番型表 ----------
-# 统一番型定义：key 对应 RuleEngine.analyze 的返回标志；self/discard 为自摸/放炮时各家应付分值。
-# dragon_* 为“龙七对”变体，仅在 dragon_flag 为真时替换 seven_pairs 的基础值。
+# 牌型值均包含基础4分；点炮由放炮者支付同一完整牌型分。
 const PATTERNS := [
-	{"key": "seven_pairs", "label": "小七对", "self": SCORE_SEVEN_PAIRS, "discard": SCORE_SEVEN_PAIRS, "dragon_flag": "dragon_seven_pairs", "dragon_label": "龙七对", "dragon_self": SCORE_DRAGON_SEVEN_PAIRS, "dragon_discard": SCORE_DRAGON_SEVEN_PAIRS},
-	{"key": "all_triplets", "label": "大队子", "self": SCORE_BIG_SET, "discard": SCORE_BIG_SET_DISCARD},
-	{"key": "flush", "label": "清一色", "self": SCORE_FLUSH, "discard": SCORE_FLUSH},
-	{"key": "clean_big_triplets", "label": "清大对", "self": SCORE_CLEAN_BIG_TRIPLETS, "discard": SCORE_CLEAN_BIG_TRIPLETS},
-	{"key": "clean_single_wait", "label": "清单吊", "self": SCORE_CLEAN_SINGLE_WAIT, "discard": SCORE_CLEAN_SINGLE_WAIT},
-	{"key": "clean_dragon_seven_pairs", "label": "清龙七对", "self": SCORE_CLEAN_DRAGON_SEVEN_PAIRS, "discard": SCORE_CLEAN_DRAGON_SEVEN_PAIRS},
+	{"key": "seven_pairs", "label": "小七对", "score": SCORE_SEVEN_PAIRS},
+	{"key": "dragon_seven_pairs", "label": "龙七对", "score": SCORE_DRAGON_SEVEN_PAIRS},
+	{"key": "all_triplets", "label": "大队子", "score": SCORE_BIG_SET},
+	{"key": "big_triplet_single_wait", "label": "大队子单吊", "score": SCORE_BIG_SET_SINGLE_WAIT},
+	{"key": "flush", "label": "清一色", "score": SCORE_FLUSH},
+	{"key": "clean_big_triplets", "label": "清大对", "score": SCORE_CLEAN_BIG_TRIPLETS},
+	{"key": "clean_big_single_wait", "label": "清大队单吊", "score": SCORE_CLEAN_BIG_SET_SINGLE_WAIT},
+	{"key": "clean_seven_pairs", "label": "清七对", "score": SCORE_CLEAN_SEVEN_PAIRS},
+	{"key": "clean_single_wait", "label": "清单吊", "score": SCORE_CLEAN_SINGLE_WAIT},
+	{"key": "clean_dragon_seven_pairs", "label": "清龙对", "score": SCORE_CLEAN_DRAGON_SEVEN_PAIRS},
 ]
+
+# 座位编号递增为顺时针，因此 -1 表示本规则要求的逆时针。
+const TURN_DIRECTION := -1
 
 # ---------- 座位 ----------
 const SEAT_DEALER := 0  # 庄（下）

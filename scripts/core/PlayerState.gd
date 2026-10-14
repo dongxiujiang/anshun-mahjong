@@ -18,6 +18,9 @@ var announced_ready := false  # 是否已用过报听机会
 var first_turn_done := false  # 是否已打过第一手（报听窗口=各自第一手）
 var just_drew := ""           # 本轮摸到的牌（未打）
 var charge_chicken := false   # 当前是否持有任一种冲锋鸡（可由碰杠转入）。
+var passed_win_until_draw := false # 过胡后，到自己下一次摸牌前只能自摸。
+var passed_pong_tiles: Array[String] = [] # 过碰后，同一张牌在自己下次摸牌前不能再碰。
+var forbidden_discard_tile := "" # 碰牌后不能立即打出刚碰的牌。
 
 func init_seat(s: int, human: bool, dealer: bool, nm: String) -> void:
 	seat = s

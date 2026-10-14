@@ -151,6 +151,8 @@ func _test_action_events() -> void:
 	robbed.players[0].melds = [{"kind": "pung", "tile": "tiao5"}]
 	robbed.players[0].concealed = HAND13.slice(0, 10) + ["tiao5"]
 	robbed.players[0].just_drew = "tiao5"
+	robbed.players[2].concealed.clear()
+	robbed.players[3].concealed.clear()
 	t.expect(robbed.submit_turn(0, {"add_kong": ["tiao5"]}), "可被抢的加杠宣告被接受")
 	t.expect(robbed.audio_events.size() == 1 and robbed.audio_events[0].action == "kong", "被抢前先喊杠")
 	t.expect(robbed.submit_response(1, "tiao5", {"action": "win"}), "抢杠胡被接受")

@@ -60,21 +60,18 @@ static func profile(round, seat: int, hand: Array, melds: Array, flips: Dictiona
 	return result
 
 static func pattern_points(pattern: Dictionary) -> float:
-	var result := 0.0
 	var special := RuleEngine.special_pattern_key(pattern)
-	for spec in CFG.PATTERNS:
-		var p: Dictionary = spec
-		var key: String = p.get("key", "")
-		if special != "":
-			if key != special:
-				continue
-		elif not pattern.get(key, false):
-			continue
-		if p.has("dragon_flag") and pattern.get(str(p.get("dragon_flag", "")), false):
-			result += float(p.get("dragon_self", 0.0))
-		else:
-			result += float(p.get("self", 0.0))
-	return result
+	var key := special
+	if key == "":
+		if pattern.get("dragon_seven_pairs", false): key = "dragon_seven_pairs"
+		elif pattern.get("seven_pairs", false): key = "seven_pairs"
+		elif pattern.get("all_triplets", false): key = "all_triplets"
+		elif pattern.get("flush", false): key = "flush"
+	for raw in CFG.PATTERNS:
+		var spec: Dictionary = raw
+		if spec.get("key", "") == key:
+			return float(spec.get("score", 0.0))
+	return 0.0
 
 static func kong_base(melds: Array, payer: int) -> float:
 	var result := 0.0
@@ -88,7 +85,9 @@ static func has_self_kong(melds: Array) -> bool:
 	return melds.any(func(meld): return meld.kind == "add_kong" or (meld.kind == "kong" and meld.get("concealed", false)))
 
 static func allows_ron(pattern: Dictionary, melds: Array, declared_ready: bool) -> bool:
-	return declared_ready or has_self_kong(melds) or pattern.get("seven_pairs", false) or pattern.get("all_triplets", false) or pattern.get("flush", false)
+	return declared_ready or has_self_kong(melds) or pattern.get("all_triplets", false) \
+		or pattern.get("flush", false) or pattern.get("seven_pairs", false) \
+		or RuleEngine.special_pattern_key(pattern) != ""
 
 ## Estimate pattern routes before completion; exact patterns replace this at tenpai.
 static func potential_pattern(hand: Array, melds: Array) -> float:
@@ -117,20 +116,30 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 	var own := profile(round, seat, hand, melds, flips, discard)
 	var pattern := RuleEngine.analyze(hand, melds)
 	var points := pattern_points(pattern) if pattern.win else potential_pattern(hand, melds)
-	var bonus: float = own.no_chicken + (CFG.SCORE_SELF_DRAW if self_draw else 0.0)
-	if kong_draw: bonus += CFG.SCORE_KONG_DRAW
-	if self_draw and round._wall_count() <= 4: bonus += CFG.SCORE_LAST_FOUR
+	var primary := points
+	if primary <= 0.0:
+		primary = CFG.SCORE_READY if declared_ready else CFG.SCORE_SELF_DRAW
+		if self_draw and float(own.total) <= 0.0:
+			var all_dry := true
+			for opponent in opponents:
+				if float(opponent.tenpai_probability) > 0.0 and float(opponent.chickens) > 0.0:
+					all_dry = false
+					break
+			primary = CFG.SCORE_BIG_NO_CHICKEN if all_dry else CFG.SCORE_NO_CHICKEN
+	var bonus := (CFG.SCORE_KONG_DRAW if kong_draw else 0.0) + (CFG.SCORE_LAST_FOUR if self_draw and round._wall_count() <= 4 else 0.0)
 	var total := 0.0
 	for opponent in opponents:
 		var payer := int(opponent.seat)
 		var called := float(opponent.tenpai_probability)
-		total += called * (float(own.total) - float(opponent.chickens))
-		total += (1.0 - called) * float(own.total)
+		# 鸡分采用四家两两比较：赢家向叫牌对手收差额，向未叫牌对手收自己的全部鸡分。
+		total += called * (float(own.total) - float(opponent.chickens)) + (1.0 - called) * float(own.total)
 		total += kong_base(melds, payer) - called * kong_base(opponent.melds, seat)
 		total += bonus
-		if self_draw or payer == source: total += points
-		# Declared winner / declared loser are a single payment, not two fees.
-		if (declared_ready and (self_draw or payer == source)) or opponent.ready: total += CFG.SCORE_READY
+		var base_payer := self_draw or payer == source
+		if base_payer: total += primary
+		# 清牌型上报听另加24；普通报听已用24替换基础4。报听者被杀也只付一份。
+		if opponent.ready or (declared_ready and points > 0.0 and base_payer):
+			total += CFG.SCORE_READY
 	return total
 
 static func draw_value(round, seat: int, hand: Array, melds: Array, opponents: Array, discard: String = "") -> Dictionary:
@@ -140,8 +149,8 @@ static func draw_value(round, seat: int, hand: Array, melds: Array, opponents: A
 	var uncalled_value := 0.0
 	for opponent in opponents:
 		var probability := float(opponent.tenpai_probability)
-		called_value += (1.0 - probability) * (float(own.discarded) + float(own.kong_chickens) + kong_base(melds, int(opponent.seat)))
-		uncalled_value -= probability * (float(opponent.draw_discarded) + float(opponent.draw_kong_chickens) + kong_base(opponent.melds, seat))
+		called_value += (1.0 - probability) * (float(own.discarded) + float(opponent.draw_discarded) + float(own.kong_chickens) + kong_base(melds, int(opponent.seat)))
+		uncalled_value -= probability * (float(opponent.draw_discarded) + float(own.discarded) + float(opponent.draw_kong_chickens) + kong_base(opponent.melds, seat))
 	return {"called": called_value, "uncalled": uncalled_value}
 
 static func settlement_value(round, seat: int, hand: Array, melds: Array, flips: Dictionary, opponents: Array, discard: String = "") -> Dictionary:

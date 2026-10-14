@@ -40,7 +40,7 @@ func _run() -> void:
 	print("  B deltas=", b.deltas)
 	# 小七对每家24，加自摸4和手中鸡4。
 	t.expect(RuleEngine.analyze(wsel.concealed, wsel.melds).seven_pairs, "应判小七对")
-	t.expect(b.deltas == [-32.0, 96.0, -32.0, -32.0], "小七对自摸含手中鸡逐家支付应正确; 实际 %s" % str(b.deltas))
+	t.expect(b.deltas == [-28.0, 84.0, -28.0, -28.0], "小七对24已含自摸基础，另逐家支付手中鸡4; 实际 %s" % str(b.deltas))
 
 	# —— 场景C：吃胡（放炮），清一色 ——
 	var r3 := RoundState.new()

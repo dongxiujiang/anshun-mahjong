@@ -42,9 +42,12 @@ func _run() -> void:
 	var before := round.serialize()
 	t.expect(not round.submit_turn(0, {"discard": "invalid"}) and round.serialize() == before, "非法提交不改变牌局")
 	round.players[1].concealed = ["tiao1", "tiao1", "tiao1"]
-	for stage in [RoundState.ResponseStage.WIN, RoundState.ResponseStage.MELD, RoundState.ResponseStage.ROB]:
-		var response := round.legal_response_options(1, 0, "tiao1", stage)
-		t.expect(response.can_pong == (stage == RoundState.ResponseStage.MELD) and not response.can_kong, "响应阶段和空墙统一约束")
+	var response := round.legal_response_options(1, 0, "tiao1", RoundState.ResponseStage.MELD)
+	t.expect(response.can_pong and not response.can_kong, "牌墙为空时三张同牌可碰但不能杠（实际=%s）" % str(response))
+	response = round.legal_response_options(1, 0, "tiao1", RoundState.ResponseStage.WIN)
+	t.expect(not response.can_pong and not response.can_kong, "胡牌响应阶段不显示碰杠")
+	response = round.legal_response_options(1, 0, "tiao1", RoundState.ResponseStage.ROB)
+	t.expect(not response.can_pong and not response.can_kong, "抢杠响应阶段不显示碰杠")
 	var invalid := round.legal_response_options(-1, 0, "tiao1", RoundState.ResponseStage.MELD)
 	t.expect(not invalid.can_win and not invalid.can_pong, "非法座位返回空选项")
 	quit(t.finish("legal_actions"))

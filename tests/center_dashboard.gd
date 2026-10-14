@@ -99,7 +99,7 @@ func _run() -> void:
 	client._awaiting_response = {"seat": 2, "disc_seat": 1, "tile":"wan1", "stage": RoundState.ResponseStage.WIN}
 	var logical_turn_before_response: int = client.current_turn
 	table._refresh_center()
-	t.expect(table._table_layout.turn_indicator.active_side == table._relative_seat(2), "Response window lights the theoretical next discarder")
+	t.expect(table._table_layout.turn_indicator.active_side == table._relative_seat(posmod(1 + GameConfig.TURN_DIRECTION, 4)), "Response window lights the theoretical next discarder")
 	var response_side: int = table._table_layout.turn_indicator.active_side
 	client._awaiting_response.seat = 3
 	table._refresh_center()

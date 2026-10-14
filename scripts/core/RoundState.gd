@@ -84,6 +84,7 @@ var _pending_responders: Array = []
 var _awaiting_response := {}
 var _response_stage: ResponseStage = ResponseStage.NONE
 var _pending_kong := {}
+var _pending_wins: Array = []
 var _last_deltas: Array = [0.0, 0.0, 0.0, 0.0]
 var _last_lines: Array = []
 var _last_total := 0.0
@@ -152,7 +153,7 @@ func _reset_meta() -> void:
 		"charge_chickens": {}, "flip_tile": "", "chicken_multiplier": 1,
 		"kong_draw_seat": -1, "last_four_self_draw_seat": -1,
 		"robber_seat": -1, "burn_chicken_seat": -1, "burn_chicken_reason": "",
-		"winner": -1, "self_draw": false, "win_tile": "", "discard_seat": -1,
+		"winner": -1, "winners": [], "self_draw": false, "win_tile": "", "discard_seat": -1,
 	}
 
 func build_players(human_seat: int) -> void:
@@ -181,6 +182,7 @@ func start_round(human_seat: int, die_override: int = -1) -> void:
 	next_chicken_multiplier = 1
 	last_discard = {}
 	_pending_kong = {}
+	_pending_wins.clear()
 	_awaiting_response = {}
 	_response_stage = ResponseStage.NONE
 	_pending_responders.clear()
@@ -229,7 +231,7 @@ func _initial_deal() -> void:
 	for batch in 3:
 		var batch_info: Array = []
 		for offset in 4:
-			var seat := posmod(dealer_seat + offset, 4)
+			var seat := posmod(dealer_seat + CFG.TURN_DIRECTION * offset, 4)
 			var cards: Array = []
 			for index in 4:
 				var card := wall.draw_head()
@@ -238,7 +240,7 @@ func _initial_deal() -> void:
 			batch_info.append({"seat": seat, "cards": cards})
 		batches.append(batch_info)
 	for offset in 4:
-		var seat := posmod(dealer_seat + offset, 4)
+		var seat := posmod(dealer_seat + CFG.TURN_DIRECTION * offset, 4)
 		var card := wall.draw_head()
 		players[seat].concealed.append(card)
 		batches.append([{"seat": seat, "cards": [card], "dealer_extra": seat == dealer_seat}])
@@ -263,6 +265,8 @@ func _begin_turn() -> void:
 		_penzu()
 		return
 	var player: PlayerState = players[current_turn]
+	# 过胡/过碰锁只持续到本人的下一次摸牌；摸牌前清除碰后禁打牌。
+	_clear_draw_locks(player)
 	player.just_drew = tile
 	player.concealed.append(tile)
 	_emit_visual_event("draw", {"seat": current_turn, "tile": tile, "kind": "head"})
@@ -326,7 +330,7 @@ func _valid_turn(seat: int, decision: Dictionary) -> bool:
 func legal_turn_options(seat: int) -> Dictionary:
 	if seat < 0 or seat >= players.size(): return ACTIONS.turn_options(self, seat)
 	var player: PlayerState = players[seat]
-	var key := var_to_bytes([seat, player.concealed, player.melds, player.just_drew, player.ready, player.first_turn_done, _wall_count()])
+	var key := var_to_bytes([seat, player.concealed, player.melds, player.just_drew, player.ready, player.first_turn_done, player.forbidden_discard_tile, _wall_count()])
 	if key != _legal_turn_key:
 		_legal_turn_key = key
 		_legal_turn_cache = ACTIONS.turn_options(self, seat)
@@ -406,7 +410,12 @@ func _after_discard() -> void:
 	_ask_next_responder(last_discard.seat, last_discard.tile)
 
 func _seat_order(source: int) -> Array:
-	return [(source + 1) % 4, (source + 2) % 4, (source + 3) % 4]
+	return [posmod(source + CFG.TURN_DIRECTION, 4), posmod(source + CFG.TURN_DIRECTION * 2, 4), posmod(source + CFG.TURN_DIRECTION * 3, 4)]
+
+func _clear_draw_locks(player: PlayerState) -> void:
+	player.passed_win_until_draw = false
+	player.passed_pong_tiles.clear()
+	player.forbidden_discard_tile = ""
 
 ## Returns the seat represented by the turn light for presentation only.
 ## During a discard-response window the light stays on the theoretical next
@@ -416,7 +425,7 @@ func presentation_turn_seat() -> int:
 		return -1
 	if not _awaiting_response.is_empty() or _response_stage != ResponseStage.NONE:
 		var source := int(last_discard.get("seat", -1))
-		return posmod(source + 1, 4) if source >= 0 else -1
+		return posmod(source + CFG.TURN_DIRECTION, 4) if source >= 0 else -1
 	return current_turn
 
 func _response_options(seat: int, tile: String) -> Dictionary:
@@ -434,15 +443,26 @@ func _ask_next_responder(source: int, tile: String) -> void:
 		return
 	if _pending_responders.is_empty():
 		if _response_stage == ResponseStage.WIN:
+			if not _pending_wins.is_empty():
+				_awaiting_response = {}
+				_response_stage = ResponseStage.NONE
+				_finish_discard_wins(source, tile)
+				return
 			_response_stage = ResponseStage.MELD
 			_pending_responders = _seat_order(source)
 			_ask_next_responder(source, tile)
 		elif _response_stage == ResponseStage.ROB:
-			_complete_add_kong()
+			if bool(_pending_kong.get("robbed", false)):
+				_finish_rob_kong_wins(source, tile)
+			else:
+				_complete_add_kong()
 		else:
 			_awaiting_response = {}
 			_response_stage = ResponseStage.NONE
-			current_turn = (source + 1) % 4
+			current_turn = posmod(source + CFG.TURN_DIRECTION, 4)
+			if not _pending_wins.is_empty():
+				_finish_discard_wins(source, tile)
+				return
 			_begin_turn()
 		return
 	var seat: int = _pending_responders[0]
@@ -508,22 +528,36 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 	if action == "win" and options.can_win:
 		if _response_stage == ResponseStage.ROB:
 			var player: PlayerState = players[source]
-			player.concealed.erase(tile)
-			player.just_drew = ""
+			if not bool(_pending_kong.get("robbed", false)):
+				player.concealed.erase(tile)
+				player.just_drew = ""
+				_pending_kong["robbed"] = true
 			round_meta.robber_seat = seat
 			round_meta.burn_chicken_seat = source
-			_pending_kong = {}
-			_discard_win(seat, source, tile, true)
+			round_meta.burn_chicken_reason = "robbed_added_kong"
+			_pending_wins.append({"seat": seat, "source": source, "tile": tile})
+			if not _pending_responders.is_empty() and _pending_responders[0] == seat:
+				_pending_responders.pop_front()
+			_ask_next_responder(source, tile)
 		else:
 			if bool(last_discard.get("after_kong", false)):
 				round_meta.robber_seat = seat
 				round_meta.burn_chicken_seat = source
 				round_meta.burn_chicken_reason = "after_kong_discard"
-			_discard_win(seat, source, tile)
+			# 同一张牌允许多家同胡；等响应窗口结束后统一落账。
+			_pending_wins.append({"seat": seat, "source": source, "tile": tile})
+			if not _pending_responders.is_empty() and _pending_responders[0] == seat:
+				_pending_responders.pop_front()
+			_ask_next_responder(source, tile)
 		return
 	if not _pending_responders.is_empty() and _pending_responders[0] == seat:
 		_pending_responders.pop_front()
 	var player: PlayerState = players[seat]
+	if action == "pass":
+		if _response_stage in [ResponseStage.WIN, ResponseStage.ROB]:
+			player.passed_win_until_draw = true
+		elif _response_stage == ResponseStage.MELD and options.can_pong and not player.passed_pong_tiles.has(tile):
+			player.passed_pong_tiles.append(tile)
 	if action == "kong" and options.can_kong:
 		_remove_n(player.concealed, tile, 3)
 		player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
@@ -539,6 +573,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		player.melds.append({"kind": "pung", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
 		_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
 		player.just_drew = ""
+		player.forbidden_discard_tile = tile
 		current_turn = seat
 		_kong_draw_turn = false
 		_emit_visual_event("meld", {"seat": seat, "source": source, "tile": tile, "kind": "pung", "index": player.melds.size() - 1})
@@ -547,6 +582,49 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		return
 	_ask_next_responder(source, tile)
 
+func _finish_discard_wins(source: int, tile: String) -> void:
+	if _pending_wins.is_empty():
+		return
+	_pending_wins.sort_custom(func(a, b): return _seat_order(source).find(int(a.seat)) < _seat_order(source).find(int(b.seat)))
+	var winners: Array = []
+	for entry in _pending_wins:
+		var seat := int(entry.get("seat", -1))
+		if seat < 0 or seat >= players.size():
+			continue
+		winners.append(seat)
+	# 牌只从弃牌者记录移除一次，每位胡牌者各收到一张逻辑胡牌牌。
+	_remove_from_discards(source, tile, winners[0], "hand")
+	for seat in winners:
+		players[seat].concealed.append(tile)
+		players[seat].just_drew = tile
+	round_meta.winners = winners.duplicate()
+	round_meta.winner = winners[0]
+	round_meta.self_draw = false
+	round_meta.discard_seat = source
+	round_meta.win_tile = tile
+	_pending_wins.clear()
+	_finish()
+
+func _finish_rob_kong_wins(source: int, tile: String) -> void:
+	var winners: Array = []
+	for entry in _pending_wins:
+		var seat := int(entry.get("seat", -1))
+		if seat < 0 or seat >= players.size():
+			continue
+		winners.append(seat)
+	for seat in winners:
+		players[seat].concealed.append(tile)
+		players[seat].just_drew = tile
+	round_meta.winners = winners.duplicate()
+	round_meta.winner = winners[0]
+	round_meta.self_draw = true # 抢杠按自摸的付款口径结算。
+	round_meta.robbed_kong = true
+	round_meta.discard_seat = source
+	round_meta.win_tile = tile
+	_pending_wins.clear()
+	_pending_kong = {}
+	_finish()
+
 func _state_after_kong_draw() -> void:
 	_draw_remaining_before = wall.remaining
 	var tile := wall.draw_tail()
@@ -554,6 +632,7 @@ func _state_after_kong_draw() -> void:
 		_penzu()
 		return
 	var player: PlayerState = players[current_turn]
+	_clear_draw_locks(player)
 	player.just_drew = tile
 	player.concealed.append(tile)
 	_emit_visual_event("draw", {"seat": current_turn, "tile": tile, "kind": "tail"})
@@ -602,6 +681,7 @@ func _complete_add_kong() -> void:
 
 func _do_self_win(seat: int) -> void:
 	round_meta.winner = seat
+	round_meta.winners = [seat]
 	round_meta.self_draw = true
 	round_meta.win_tile = str(players[seat].just_drew)
 	# 胡牌后传入实际胡牌张，供清单吊牌型精确判定。
@@ -613,6 +693,7 @@ func _do_self_win(seat: int) -> void:
 
 func _discard_win(seat: int, source: int, tile: String = "", robbed: bool = false) -> void:
 	round_meta.winner = seat
+	round_meta.winners = [seat]
 	round_meta.self_draw = false
 	round_meta.discard_seat = source
 	var win_tile := tile if tile != "" else str(last_discard.get("tile", ""))
@@ -679,6 +760,7 @@ func _remove_from_discards(seat: int, tile: String, receiver: int = -1, location
 
 func _penzu() -> void:
 	round_meta.winner = -1
+	round_meta.winners = []
 	_finish()
 
 func _finish() -> void:
@@ -711,7 +793,7 @@ func _finish() -> void:
 	last_result = build_result()
 	_recorder.finish(self)
 	if int(round_meta.winner) >= 0:
-		_emit_visual_event("win", {"seat": int(round_meta.winner), "tile": str(round_meta.get("win_tile", "")), "self_draw": bool(round_meta.get("self_draw", false))})
+		_emit_visual_event("win", {"seat": int(round_meta.winner), "winners": round_meta.get("winners", [int(round_meta.winner)]).duplicate(), "tile": str(round_meta.get("win_tile", "")), "self_draw": bool(round_meta.get("self_draw", false))})
 	_audio.emit_win(round_meta)
 	round_finished.emit(last_result)
 	state_update.emit()
@@ -723,9 +805,9 @@ func _choose_next_dealer(called: Array) -> int:
 			return winner
 		var source := int(round_meta.get("discard_seat", -1))
 		return source if source in SEATS else winner
-	# 多人未叫时，从本局庄家开始顺时针取第一位；全员叫牌则连庄。
+	# 多人未叫时，从本局庄家开始按本局摸牌方向取第一位；全员叫牌则连庄。
 	for offset in 4:
-		var seat := posmod(dealer_seat + offset, 4)
+		var seat := posmod(dealer_seat + CFG.TURN_DIRECTION * offset, 4)
 		if not called[seat]:
 			return seat
 	return dealer_seat

@@ -1,74 +1,95 @@
 extends RefCounted
-## 自摸/杠开/末四张/无鸡额外分，以及牌型和报听费用。
+## 计算单个赢家的牌型、自摸、报听和特殊摸牌得分。
 const CFG := preload("res://scripts/autoload/GameConfig.gd")
 const PAY := preload("res://scripts/core/PaymentLedger.gd")
+const CHICKEN := preload("res://scripts/core/ChickenScoring.gd")
 const SEAT_NAMES := ["庄家", "下家", "对家", "上家"]
 
-static func bonuses(round, points: Array, items: Array, lines: Array, flip: String) -> void:
+static func settle_winner(round, winner: int, chicken_points: Array, winner_seats: Array, deltas: Array, transfers: Array, items: Array, lines: Array) -> Dictionary:
 	var meta: Dictionary = round.round_meta
-	var winner: int = meta.winner
-	var self_draw: bool = meta.get("self_draw", false)
-	if self_draw:
-		points[winner] += CFG.SCORE_SELF_DRAW
-		lines.append("自摸 +4")
-		items[winner].append({"kind": "bonus", "label": "自摸", "tile": "", "tiles": [], "amount": CFG.SCORE_SELF_DRAW, "note": ""})
-	if meta.get("kong_draw_seat", -1) == winner:
-		points[winner] += CFG.SCORE_KONG_DRAW
-		lines.append("杠开 +9")
-		items[winner].append({"kind": "bonus", "label": "杠开", "tile": "", "tiles": [], "amount": CFG.SCORE_KONG_DRAW, "note": ""})
-	if meta.get("last_four_self_draw_seat", -1) == winner:
-		points[winner] += CFG.SCORE_LAST_FOUR
-		lines.append("最后四张自摸 +9")
-		items[winner].append({"kind": "bonus", "label": "最后四张自摸", "tile": "", "tiles": [], "amount": CFG.SCORE_LAST_FOUR, "note": ""})
-	if _no_chicken_hand(round.players[winner], flip):
-		points[winner] += CFG.SCORE_NO_CHICKEN
-		lines.append("无鸡 +14")
-		items[winner].append({"kind": "bonus", "label": "无鸡", "tile": "", "tiles": [], "amount": CFG.SCORE_NO_CHICKEN, "note": ""})
-
-static func charges(round, deltas: Array, transfers: Array, items: Array, lines: Array) -> Dictionary:
-	var meta: Dictionary = round.round_meta
-	var winner: int = meta.winner
-	var self_draw: bool = meta.get("self_draw", false)
-	var dealer: int = meta.get("dealer_seat", 0)
-	var pattern := RuleEngine.hand_pattern(round.players[winner].concealed, round.players[winner].melds, str(meta.get("win_tile", "")))
-	var special := RuleEngine.special_pattern_key(pattern)
-	for spec in CFG.PATTERNS:
-		var p: Dictionary = spec
-		var key: String = p.get("key", "")
-		if special != "":
-			if key != special:
-				continue
-		elif not pattern.get(key, false):
+	var player: PlayerState = round.players[winner]
+	var self_draw: bool = bool(meta.get("self_draw", false))
+	var pattern := RuleEngine.hand_pattern(player.concealed, player.melds, str(meta.get("win_tile", "")))
+	var pattern_info := _pattern_info(pattern)
+	var primary_amount: float = float(pattern_info.get("score", 0.0))
+	var primary_label := str(pattern_info.get("label", ""))
+	var ready_primary := false
+	if primary_amount <= 0.0:
+		if player.ready:
+			primary_amount = CFG.SCORE_READY
+			primary_label = "报听胡牌"
+			ready_primary = true
+			items[winner].append(_item("ready", primary_label, primary_amount, "含自摸基础4分"))
+		elif self_draw and CHICKEN.chicken_profile(round, winner, str(meta.get("flip_tile", ""))).total == 0.0:
+			# 大干扣按最终参与比较的四家鸡分判断；未叫牌者的结算鸡分为 0。
+			var all_chickenless := true
+			for other in 4:
+				if float(chicken_points[other]) > 0.0:
+					all_chickenless = false
+					break
+			primary_amount = CFG.SCORE_BIG_NO_CHICKEN if all_chickenless else CFG.SCORE_NO_CHICKEN
+			primary_label = "大干扣" if all_chickenless else "干扣"
+			items[winner].append(_item("bonus", primary_label, primary_amount, "含自摸基础4分"))
+		else:
+			primary_amount = CFG.SCORE_SELF_DRAW
+			primary_label = "自摸基础分"
+			items[winner].append(_item("bonus", "自摸", primary_amount, ""))
+	else:
+		items[winner].append(_item("pattern", primary_label, primary_amount, "牌型分含基础4分"))
+	lines.append("%s：%s付 %.0f" % [primary_label, "每家" if self_draw else _nm(int(meta.get("discard_seat", -1)), int(meta.get("dealer_seat", 0))), primary_amount])
+	var ready_extra_recorded := false
+	for payer in 4:
+		if payer == winner:
 			continue
-		var dragon: bool = p.has("dragon_flag") and pattern.get(str(p.get("dragon_flag", "")), false)
-		var label: String = str(p.get("dragon_label", "")) if dragon else str(p.get("label", ""))
-		var amount: float = float(p.get("dragon_self" if dragon else "self", 0.0)) if self_draw else float(p.get("dragon_discard" if dragon else "discard", 0.0))
-		PAY.pay_win(deltas, transfers, winner, meta, amount, label)
-		lines.append("%s：%s付 %.0f" % [label, "每家" if self_draw else _nm(meta.get("discard_seat", -1), dealer), amount])
-		items[winner].append({"kind": "pattern", "label": label, "tile": "", "tiles": [], "amount": amount, "note": "每家付" if self_draw else "%s付" % _nm(meta.get("discard_seat", -1), dealer)})
-	var ready_payments := {}
-	if round.players[winner].ready:
-		for seat in 4:
-			if seat != winner and (self_draw or seat == meta.get("discard_seat", -1)):
-				ready_payments[seat] = true
-		lines.append("报听胡牌：每名应付者付 24")
-		items[winner].append({"kind": "ready", "label": "报听胡牌", "tile": "", "tiles": [], "amount": CFG.SCORE_READY, "note": "每名应付者付"})
-	# 被杀 means a declared-ready player loses to another player's win.
-	for seat in 4:
-		if seat != winner and round.players[seat].ready:
-			ready_payments[seat] = true
-			lines.append("%s 报听被杀：付 24" % _nm(seat, dealer))
-			items[seat].append({"kind": "penalty", "label": "报听被杀", "tile": "", "tiles": [], "amount": -CFG.SCORE_READY, "note": "付给%s" % _nm(winner, dealer)})
-	for payer in ready_payments:
-		PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_READY, "报听")
+		var base_payer := self_draw or payer == int(meta.get("discard_seat", -1))
+		if base_payer:
+			PAY.transfer(deltas, transfers, payer, winner, primary_amount, primary_label)
+		var kills_ready: bool = bool(round.players[payer].ready and not winner_seats.has(payer))
+		var winner_ready_fee: bool = bool(player.ready and pattern_info.get("key", "") != "" and base_payer)
+		if kills_ready or (winner_ready_fee and not ready_primary):
+			PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_READY, "杀报" if kills_ready else "报听")
+			if kills_ready:
+				items[payer].append({"kind": "penalty", "label": "杀报", "tile": "", "tiles": [], "amount": -CFG.SCORE_READY, "note": "付给%s" % _nm(winner, int(meta.get("dealer_seat", 0)))})
+				lines.append("%s 杀报：付给%s %.0f" % [_nm(payer, int(meta.get("dealer_seat", 0))), _nm(winner, int(meta.get("dealer_seat", 0))), CFG.SCORE_READY])
+			else:
+				ready_extra_recorded = true
+	if ready_extra_recorded:
+		items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "牌型分外加"))
+		lines.append("报听胡牌：牌型分外加 %.0f" % CFG.SCORE_READY)
+	if self_draw and int(meta.get("kong_draw_seat", -1)) == winner:
+		_apply_extra(round, winner, CFG.SCORE_KONG_DRAW, "杠开", chicken_points, winner_seats, deltas, transfers, items, lines)
+	if self_draw and int(meta.get("last_four_self_draw_seat", -1)) == winner:
+		_apply_extra(round, winner, CFG.SCORE_LAST_FOUR, "海底捞", chicken_points, winner_seats, deltas, transfers, items, lines)
 	return pattern
 
-static func _no_chicken_hand(player: PlayerState, flip: String) -> bool:
-	var related: Array = Tiles.flip_related(flip) if flip != "" else []
-	for tile in player.all_hand_tiles():
-		if Tiles.is_chicken(tile) or tile in related:
-			return false
-	return true
+static func _apply_extra(round, winner: int, amount: float, label: String, _chicken_points: Array, _winner_seats: Array, deltas: Array, transfers: Array, items: Array, lines: Array) -> void:
+	for payer in 4:
+		if payer != winner:
+			PAY.transfer(deltas, transfers, payer, winner, amount, label)
+	items[winner].append(_item("bonus", label, amount, ""))
+	lines.append("%s +%.0f" % [label, amount])
+
+static func _pattern_info(pattern: Dictionary) -> Dictionary:
+	var key := RuleEngine.special_pattern_key(pattern)
+	if key == "":
+		if pattern.get("dragon_seven_pairs", false):
+			key = "dragon_seven_pairs"
+		elif pattern.get("seven_pairs", false):
+			key = "seven_pairs"
+		elif pattern.get("all_triplets", false):
+			key = "all_triplets"
+		elif pattern.get("flush", false):
+			key = "flush"
+	if key == "":
+		return {}
+	for raw in CFG.PATTERNS:
+		var spec: Dictionary = raw
+		if spec.get("key", "") == key:
+			return {"key": key, "label": str(spec.get("label", "")), "score": float(spec.get("score", 0.0))}
+	return {}
+
+static func _item(kind: String, label: String, amount: float, note: String) -> Dictionary:
+	return {"kind": kind, "label": label, "tile": "", "tiles": [], "amount": amount, "note": note}
 
 static func _nm(seat: int, dealer: int = 0) -> String:
 	return SEAT_NAMES[posmod(seat - dealer, 4)] if seat >= 0 and seat < 4 else "-"

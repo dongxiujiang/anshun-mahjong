@@ -194,14 +194,18 @@ func _test_draw_payments() -> void:
 	r.round_meta.charge_chickens = {"tiao1": {"owner": 0, "location": "discard", "discard_id": 0}, "tong8": {"owner": 0, "location": "discard", "discard_id": 1}}
 	r.round_meta.flip_tile = "tiao1" # Must be ignored without a winner.
 	var result := settle(r)
-	check(result.deltas == [16.0, 4.0, -10.0, -10.0], "Each uncalled pays eight and two; called players never compare on wall exhaustion")
+	check(result.deltas == [16.0, 4.0, -10.0, -10.0], "荒牌未叫者向每位叫牌者补付双方出牌鸡")
 	check(result.transfers.all(func(t): return t.from in [2, 3] and t.to in [0, 1]), "Draw transfers only cross from uncalled to called")
 	check(result.discard_points == [8.0, 2.0, 0.0, 0.0], "No flip during wall exhaustion")
 	r.players[0].discards.clear()
 	r.players[0].discard_history = ["tiao1", "tong8"]
-	check(settle(r).deltas == [0.0, 4.0, -2.0, -2.0], "Claimed discard histories do not generate draw compensation")
+	var after_history := settle(r)
+	check(after_history.deltas == [0.0, 4.0, -2.0, -2.0], "已移除弃牌不再重复计入，但仍补叫牌者保留出牌鸡")
+	r.players[1].discards = ["tong8"]
+	r.players[1].discard_ids = [0]
 	r.players[1].concealed = []
-	check(settle(r).deltas == [0.0, 0.0, 0.0, 0.0], "Uncalled players do not collect their own discarded chickens")
+	var uncalled_chicken := settle(r)
+	check(uncalled_chicken.deltas == [2.0, -2.0, 0.0, 0.0], "未叫牌者支付自己的鸡分加叫牌者鸡分")
 
 func _test_kong_payments() -> void:
 	for kind in ["concealed", "add_kong", "kong", "pung"]:

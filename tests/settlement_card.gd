@@ -106,7 +106,7 @@ func _test_groups() -> void:
 	r.wall.set_head(0)
 	r.wall._ring[0] = "tiao8"
 	r._finish()
-	t.expect(r.last_result.round_points[0] == 56, "小七对自摸报听：手中鸡4+自摸4+七对24+报听24，计56一次")
+	t.expect(r.last_result.round_points[0] == 52, "小七对24已含自摸基础，另计手中鸡4和报听24，共52")
 	var client := RoundState.new()
 	client.apply_sync(r.serialize_for_seat(2))
 	t.expect(client.last_result.round_points == r.last_result.round_points and client.last_result.pairwise == r.last_result.pairwise, "联机必须同步本局分和实际三家收付")
@@ -132,10 +132,12 @@ func _test_chicken_kong_example() -> void:
 				_check_pairs(result)
 				var chickens: float = 8.0 * multiplier
 				var source_amount: float = 0.0 if is_draw and source_called else chickens + 4.0
-				t.expect(result.pairwise[0][1] == source_amount, "四张幺鸡明杠：放杠者鸡8+杠4；查叫已叫牌来源不付")
-				t.expect(result.pairwise[0][2] == chickens and result.pairwise[0][3] == chickens, "另外两家各付鸡8，不付明杠基础4；翻倍局只翻鸡分")
-				t.expect(result.round_points[0] == chickens, "本人通用本局分只含四张鸡分，定向杠4另列")
-				t.expect(result.items[0].size() == 1 and result.items[0][0].chicken_amount == chickens, "杠牌只显示一次，四张鸡不重复列入普通鸡组")
+				var expected_source := (chickens + 8.0) if not is_draw else (0.0 if source_called else chickens + 4.0)
+				t.expect(result.pairwise[0][1] == expected_source, "四张幺鸡明杠付款：期望%s，实际%s" % [expected_source, result.pairwise[0][1]])
+				t.expect(result.pairwise[0][2] == chickens and result.pairwise[0][3] == chickens, "另两家各付鸡%s；实际%s/%s" % [chickens, result.pairwise[0][2], result.pairwise[0][3]])
+				t.expect(result.round_points[0] == chickens + (4.0 if not is_draw else 0.0), "本人本局得分点期望%s，实际%s" % [chickens + (4.0 if not is_draw else 0.0), result.round_points[0]])
+				var kong_items: Array = result.items[0].filter(func(item): return item.get("kind", "") == "kong")
+				t.expect(kong_items.size() == 1 and kong_items[0].chicken_amount == chickens, "杠内鸡展示一次，实际条目%s" % str(result.items[0]))
 
 func _tile_rect(tile: TileView) -> Rect2:
 	return tile.get_global_transform() * Rect2(Vector2.ZERO, tile.size)

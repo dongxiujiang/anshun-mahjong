@@ -94,7 +94,7 @@ func _test_special_actions() -> void:
 	for action in ["pong", "kong"]:
 		var claimed := _fixture()
 		claimed.wall._ring[0] = "tiao1"
-		claimed.players[1].concealed = ["tiao1", "tiao1", "tiao1", "wan1", "wan2", "wan4", "wan5", "wan7", "wan8", "tong1", "tong3", "tong5", "tong7"]
+		claimed.players[1].concealed = (["tiao1", "tiao1"] if action == "pong" else ["tiao1", "tiao1", "tiao1"]) + ["wan1", "wan2", "wan4", "wan5", "wan7", "wan8", "tong1", "tong3", "tong5", "tong7"]
 		_start_fixture(claimed)
 		t.expect(claimed.submit_turn(0, {"discard": "tiao1"}), "记录冲锋鸡出牌")
 		t.expect(claimed.submit_response(1, "tiao1", {"action": action}), "记录碰杠转移鸡牌归属")

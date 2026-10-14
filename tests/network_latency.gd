@@ -21,7 +21,8 @@ func _run() -> void:
 	r._pending_responders = [1]
 	var start := Time.get_ticks_usec()
 	r._ask_next_responder(0, "tiao3")
-	t.expect(r.current_turn == 1 and r.awaiting and r._awaiting_response.is_empty(), "AI pass advances immediately even at slow three-second speed")
+	var next_seat := posmod(0 + GameConfig.TURN_DIRECTION, 4)
+	t.expect(r.current_turn == next_seat and r.awaiting and r._awaiting_response.is_empty(), "AI pass advances immediately even at slow three-second speed")
 	t.expect(Time.get_ticks_usec() - start < 100000, "AI pass adds no deliberate timer delay")
 	# 快照与操作提示一起应用；旧快照不能把提示、牌面回退。
 	var client = load("res://scripts/online/NetGameNode.gd").new()
@@ -32,13 +33,13 @@ func _run() -> void:
 	state.revision = 2
 	state.round_number = 1
 	client._on_client_sync(state)
-	t.expect(client.game.current_turn == 1 and client.game.awaiting and client.game.prompt_id == r.prompt_id, "Snapshot supplies a valid action prompt in one application")
+	t.expect(client.game.current_turn == next_seat and client.game.awaiting and client.game.prompt_id == r.prompt_id, "Snapshot supplies a valid action prompt in one application")
 	var old := state.duplicate(true)
 	old.revision = 1
-	old.current_turn = 3
+	old.current_turn = posmod(next_seat + 1, 4)
 	old.prompt_id = 0
 	client._on_client_sync(old)
-	t.expect(client.game.current_turn == 1 and client.game.prompt_id == r.prompt_id, "Old revision cannot replace current tiles or prompt")
+	t.expect(client.game.current_turn == next_seat and client.game.prompt_id == r.prompt_id, "Old revision cannot replace current tiles or prompt")
 	client.free()
 	# 同一帧重复广播只生成一个快照。
 	var host = load("res://scripts/online/NetGameNode.gd").new()
