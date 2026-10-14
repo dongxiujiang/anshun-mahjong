@@ -97,13 +97,14 @@ func _run() -> void:
 	client.last_discard = {"seat": 1, "tile":"wan1"}
 	client._response_stage = RoundState.ResponseStage.WIN
 	client._awaiting_response = {"seat": 2, "disc_seat": 1, "tile":"wan1", "stage": RoundState.ResponseStage.WIN}
+	var logical_turn_before_response: int = client.current_turn
 	table._refresh_center()
 	t.expect(table._table_layout.turn_indicator.active_side == table._relative_seat(2), "Response window lights the theoretical next discarder")
-	var response_side := table._table_layout.turn_indicator.active_side
+	var response_side: int = table._table_layout.turn_indicator.active_side
 	client._awaiting_response.seat = 3
 	table._refresh_center()
 	t.expect(table._table_layout.turn_indicator.active_side == response_side, "Response light does not reveal which seat has an option")
-	t.expect(client.current_turn != 2 and client.current_turn != 3, "Response light does not change the logical turn")
+	t.expect(client.current_turn == logical_turn_before_response, "Response light does not change the logical turn")
 	client._awaiting_response.clear()
 	client._response_stage = RoundState.ResponseStage.NONE
 	client.phase = RoundState.Phase.DEALING
