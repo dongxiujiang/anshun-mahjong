@@ -46,24 +46,24 @@ func _test_dragon() -> void:
 	game.round_meta.winner = 0
 	game.round_meta.self_draw = true
 	var scored := ScoringEngine.settle(game)
-	t.expect(scored.deltas == [144.0, -48.0, -48.0, -48.0], "龙七对44加自摸4每家付48")
+	t.expect(scored.deltas == [168.0, -56.0, -56.0, -56.0], "龙七对44加手中鸡8加自摸4，每家付56")
 	var pattern_items: Array = scored.items[0].filter(func(item): return item.kind == "pattern")
 	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "龙七对" and pattern_items[0].amount == 44, "龙七对只记44，不叠普通七对24")
 	t.expect(scored.status[0].contains("龙七对"), "结算显示龙七对")
 	game.round_meta.self_draw = false
 	game.round_meta.discard_seat = 2
 	scored = ScoringEngine.settle(game)
-	t.expect(scored.deltas == [44.0, 0.0, -44.0, 0.0], "放炮者独付龙七对44")
+	t.expect(scored.deltas == [68.0, -8.0, -52.0, -8.0], "每家付鸡8，放炮者另付龙七对44")
 	game.players[0].concealed = DRAGON.slice(0, 13)
 	t.expect(game.can_win_on_discard(0, 2, "tiao9"), "龙七对可直接胡别人")
 	t.expect(RuleEngine.waiting_tiles(game.players[0].concealed, []).has("tiao9"), "龙七对听牌等待正确")
 	game.players[0].concealed = ["wan1", "wan1", "wan1", "wan1", "wan2", "wan2", "wan4", "wan4", "wan6", "wan6", "wan8", "wan8", "wan9", "wan9"]
 	scored = ScoringEngine.settle(game)
 	pattern_items = scored.items[0].filter(func(item): return item.kind == "pattern")
-	t.expect(pattern_items.size() == 2 and scored.round_points[0] == 82, "清一色龙七对继续叠加清一色24和无鸡14")
+	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "清龙七对" and scored.round_points[0] == 102, "清龙七对88替代普通牌型，加无鸡14")
 	game.players[0].concealed = two_quads
 	scored = ScoringEngine.settle(game)
-	t.expect(scored.deltas == [44.0, 0.0, -44.0, 0.0], "两组四张龙七对仍按44")
+	t.expect(scored.deltas == [68.0, -8.0, -52.0, -8.0], "两组四张龙七对牌型仍44，手中鸡8逐家收取")
 
 func _test_next_dealer() -> void:
 	for dealer in 4:

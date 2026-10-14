@@ -3,6 +3,7 @@ extends SceneTree
 ## 运行： godot --headless --script res://tests/smoke_ai.gd
 
 const H := preload("res://tests/test_harness.gd")
+const ORACLE := preload("res://tests/settlement_oracle.gd")
 
 const ROUNDS := 24
 
@@ -35,6 +36,7 @@ func _run() -> void:
 		if not t.expect(r.phase == RoundState.Phase.SETTLED, "第%d局应结算, 实际 phase=%s" % [i, r.phase]):
 			continue
 		var res = r.last_result
+		ORACLE.check(r, res, t, "AI局%d" % i)
 		t.expect(is_zero_approx(res.total_delta), "第%d局总分变化必须为0, 实际 %s" % [i, str(res.total_delta)])
 		var scores_total := 0.0
 		for player in r.players:

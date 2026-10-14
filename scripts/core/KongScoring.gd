@@ -36,7 +36,8 @@ static func pay(round, deltas: Array, transfers: Array, called: Array, items: Ar
 				PAY.transfer(deltas, transfers, payer, receiver, CFG.SCORE_DRAW_KONG, ("查叫" if is_draw else "") + kind_name)
 			var chicken_payers: Array = []
 			for payer in 4:
-				if payer != receiver and not called[payer] and chicken_value > 0:
+				# 胡牌局杠内鸡已纳入完整鸡分两两比较；只在流局查叫时单独补付。
+				if is_draw and payer != receiver and not called[payer] and chicken_value > 0:
 					PAY.transfer(deltas, transfers, payer, receiver, chicken_value, "杠中鸡")
 					chicken_payers.append(payer)
 			if is_draw and payers.is_empty() and chicken_payers.is_empty():

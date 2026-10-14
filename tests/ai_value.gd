@@ -82,6 +82,13 @@ func _run() -> void:
 		values = VALUE.draw_value(r, 0, r.players[0].concealed, r.players[0].melds, _profiles(r, ""))
 		t.expect(is_equal_approx(float(values.uncalled), float(ScoringEngine.settle(r).deltas[0])), "Uncalled draw pays only called opponents")
 	var sample := _fixture(0)
+	# 胡牌局的条件收益也必须计入完整鸡分，不能继续使用流局补付范围。
+	# tiao1翻鸡：本人出牌鸡14+手中二条翻鸡1=15；两名叫牌对手各6，一名未叫牌0。
+	var normal_value := VALUE.settlement_value(sample, 0, sample.players[0].concealed, [], {"tiao1": 1.0}, _profiles(sample, "tiao1"))
+	t.expect(normal_value.called == 33 and normal_value.uncalled == -12, "胡牌局收益：15-6、15-0、15-6，未叫牌时付两家各6")
+	# tiao6翻鸡：本人10；两名叫牌对手各有出牌鸡4+手中翻鸡3=7。
+	normal_value = VALUE.settlement_value(sample, 0, sample.players[0].concealed, [], {"tiao6": 1.0}, _profiles(sample, "tiao6"))
+	t.expect(normal_value.called == 16 and normal_value.uncalled == -14, "未叫牌风险需包含对手手中翻鸡，不能仅算其打出的鸡")
 	var seen := {"wan1": 4, "tong7": 3, "tiao9": 2}
 	var distribution := VALUE.flip_distribution(seen)
 	var average := VALUE.profile(sample, 0, sample.players[0].concealed, [], distribution)

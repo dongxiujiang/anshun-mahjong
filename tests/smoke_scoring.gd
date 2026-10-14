@@ -25,8 +25,8 @@ func _run() -> void:
 	var a = ScoringEngine.settle(r)
 	print("  A deltas=", a.deltas)
 	print("  A lines=", a.lines)
-	# 对手未叫牌，不补手中鸡；每家只付自摸4分。
-	t.expect(a.deltas == [12.0, -4.0, -4.0, -4.0], "未叫牌只补出牌鸡，另付自摸费用; 实际 %s" % str(a.deltas))
+	# 胡牌按完整鸡分逐家比较；未叫牌者也要补胜者手中鸡，再付自摸4分。
+	t.expect(a.deltas == [24.0, -8.0, -8.0, -8.0], "胡牌逐家比较完整鸡分并支付自摸费用; 实际 %s" % str(a.deltas))
 
 	# —— 场景B：小七对自摸（每家给24）——
 	var r2 := RoundState.new()
@@ -38,9 +38,9 @@ func _run() -> void:
 	wsel.concealed = ["tiao1","tiao1","wan2","wan2","wan3","wan3","tiao4","tiao4","tiao5","tiao5","tong6","tong6","tong7","tong7"]
 	var b = ScoringEngine.settle(r2)
 	print("  B deltas=", b.deltas)
-	# 小七对每家24，加自摸4；未叫牌不补手中鸡。
+	# 小七对每家24，加自摸4和手中鸡4。
 	t.expect(RuleEngine.analyze(wsel.concealed, wsel.melds).seven_pairs, "应判小七对")
-	t.expect(b.deltas == [-28.0, 84.0, -28.0, -28.0], "小七对自摸支付应正确; 实际 %s" % str(b.deltas))
+	t.expect(b.deltas == [-32.0, 96.0, -32.0, -32.0], "小七对自摸含手中鸡逐家支付应正确; 实际 %s" % str(b.deltas))
 
 	# —— 场景C：吃胡（放炮），清一色 ——
 	var r3 := RoundState.new()
@@ -55,7 +55,21 @@ func _run() -> void:
 	print("  C deltas=", c.deltas)
 	print("  C lines=", c.lines)
 	t.expect(RuleEngine.analyze(w3.concealed, w3.melds).flush, "应清一色")
-	# 放炮者付清一色24；未叫牌不补手中翻牌鸡。
-	t.expect(c.deltas == [24.0, 0.0, 0.0, -24.0], "清一色放炮及未叫牌支付应正确; 实际 %s" % str(c.deltas))
+	# 放炮者付清一色24；完整翻鸡6由三家逐家比较。
+	t.expect(c.deltas == [42.0, -6.0, -6.0, -30.0], "清一色放炮及完整翻鸡逐家支付应正确; 实际 %s" % str(c.deltas))
+
+	# 24分补足回归：鸡20+自摸4，三家均须付24；准确截图牌面见scoring_pairwise。
+	var r4 := RoundState.new()
+	r4.build_players(0)
+	r4.round_meta.winner = 0
+	r4.round_meta.self_draw = true
+	r4.round_meta.flip_tile = "tiao1"
+	r4.players[0].concealed = ["tiao1", "tiao2", "tiao3", "tiao1", "tiao2", "tiao3", "wan4", "wan5", "wan6", "tong7", "tong8", "tong9", "wan9", "wan9"]
+	r4.players[0].discards = ["tiao1"]
+	r4.players[0].discard_ids = [0]
+	r4.round_meta.charge_chickens = {"tiao1": {"owner": 0, "location": "discard", "discard_id": 0}}
+	var d = ScoringEngine.settle(r4)
+	t.expect(d.round_points[0] == 24.0 and d.deltas == [72.0, -24.0, -24.0, -24.0], "24分胜者三家逐家补足24; 实际本局%s 收付%s" % [d.round_points[0], d.deltas])
+	t.expect(d.pairwise[0][1] == 24.0 and d.pairwise[0][2] == 24.0 and d.pairwise[0][3] == 24.0, "24分场景收付矩阵不能压成20")
 
 	quit(t.finish("smoke_scoring"))

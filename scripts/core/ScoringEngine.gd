@@ -1,5 +1,5 @@
 class_name ScoringEngine
-## Called players compare chicken totals; uncalled players pay retained discard chickens.
+## 胡牌局完整鸡分逐家比较（未叫牌者0分）；流局只查叫补出牌鸡与杠。
 ##
 ## settle() 产出两套信息：
 ##   lines    —— 纯文本摘要（日志/兼容用）
@@ -77,8 +77,8 @@ static func settle(round) -> Dictionary:
 		return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, all_called, next_multiplier)
 	var chicken_points := points.duplicate()
 	WIN.bonuses(round, points, items, lines, flip)
+	# 鸡分（含杠内鸡/翻鸡）只在这里结算一次；未叫牌者鸡分为0。
 	PAY.compare_chickens(deltas, transfers, called_seats, chicken_points)
-	PAY.pay_uncalled(deltas, transfers, called_seats, discard_points)
 	var bonus: float = points[winner] - chicken_points[winner]
 	for seat in 4:
 		if seat != winner:

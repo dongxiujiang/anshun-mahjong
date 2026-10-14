@@ -154,7 +154,7 @@ func _pump_visual_animation() -> void:
 			return
 		var deal: Dictionary = deals[0]
 		for index in range(1, deals.size()):
-			var rest := deals[index].duplicate(true)
+			var rest: Dictionary = deals[index].duplicate(true)
 			_animation_queue.push_front({"id": event.get("id", 0), "type": "deal", "seat": rest.get("seat", 0), "cards": rest.get("cards", [])})
 		event["type"] = "deal"
 		event["seat"] = deal.get("seat", 0)

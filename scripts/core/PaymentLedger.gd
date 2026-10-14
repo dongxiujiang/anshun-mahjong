@@ -43,9 +43,12 @@ static func relative_payments(matrix: Array, seat: int) -> Array:
 	return out
 
 static func compare_chickens(deltas: Array, transfers: Array, called: Array, points: Array) -> void:
+	# 胡牌局：完整鸡分两两比较，未叫牌者按0分参与。
+	# 包括手中、碰杠、保留出牌鸡和翻鸡；杠基础分及胡牌费用另按付款人收取。
 	for first in 4:
 		for second in range(first + 1, 4):
-			if not called[first] or not called[second]: continue
-			var difference: float = points[first] - points[second]
+			var first_points: float = float(points[first]) if called[first] else 0.0
+			var second_points: float = float(points[second]) if called[second] else 0.0
+			var difference: float = first_points - second_points
 			if difference > 0: transfer(deltas, transfers, second, first, difference, "鸡分差额")
 			elif difference < 0: transfer(deltas, transfers, first, second, -difference, "鸡分差额")

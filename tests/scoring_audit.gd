@@ -5,7 +5,7 @@ const WIN := ["tiao1", "tiao2", "tiao3", "wan4", "wan5", "wan6", "tong7", "tong8
 const WAIT := ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
 const MELD_WAIT := ["wan1", "wan2", "wan3", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
 const NEIGHBORS := {1: [9, 1, 2], 2: [1, 2, 3], 3: [2, 3, 4], 4: [3, 4, 5], 5: [4, 5, 6], 6: [5, 6, 7], 7: [6, 7, 8], 8: [7, 8, 9], 9: [8, 9, 1]}
-const EXPECTED_DIGEST := "301cd6af3435bd220c48607a4a3d4cff8ecb8109b0eaf5efa7bbb38a8499f601"
+const EXPECTED_DIGEST := "bd5e154290c223a6b13c7a5fc948f2f87470775a0ac227d99f8c6bbaf7ebf50d"
 var t := H.new()
 var settlement_count := 0
 var result_digest := HashingContext.new()
@@ -101,6 +101,7 @@ func _test_call_masks_and_kongs() -> void:
 								var payer_called := bool(mask & (1 << payer))
 								if mask & 1 and not (draw and payer_called):
 									gross[payer][0] += owner_chickens if payer_called else 4 * multiplier + kong_chickens
+									if not payer_called and not draw: gross[payer][0] += kong_flip
 									if kind != "kong" or payer == source: gross[payer][0] += 4
 								if not draw:
 									gross[payer][0] += 4 # self draw
@@ -157,11 +158,11 @@ func _test_finish_once_and_sync() -> void:
 	r.round_meta.self_draw = true
 	r.apply_scores([-4, 204, 300, 300])
 	r._finish()
-	t.expect(r.last_result.deltas == [24.0, -8.0, -8.0, -8.0], "Finish applies discarded charge4 + selfdraw4 per uncalled payer")
-	t.expect(r.last_result.scores == [20.0, 196.0, 292.0, 292.0], "Actual balances apply one settlement, including negative starting balance")
+	t.expect(r.last_result.deltas == [36.0, -12.0, -12.0, -12.0], "Finish applies held chickens4 + discarded charge4 + selfdraw4 per payer")
+	t.expect(r.last_result.scores == [32.0, 192.0, 288.0, 288.0], "Actual balances apply one settlement, including negative starting balance")
 	var saved := r.last_result.duplicate(true)
 	r._finish()
-	t.expect(r.last_result == saved and r.players[0].score == 20, "Repeated finish must not charge the same round twice")
+	t.expect(r.last_result == saved and r.players[0].score == 32, "Repeated finish must not charge the same round twice")
 	for seat in 4:
 		var client := RoundState.new()
 		client.apply_sync(r.serialize_for_seat(seat))
@@ -171,7 +172,7 @@ func _test_finish_once_and_sync() -> void:
 		t.expect(client.players.map(func(p): return p.score) == r.last_result.scores, "Repeated snapshot must not add scores again")
 	r.set_rng_seed(700)
 	r.start_round(0, 1)
-	t.expect(r.last_result.is_empty() and r.players[0].score == 20, "New round clears settlement guard and preserves accumulated scores")
+	t.expect(r.last_result.is_empty() and r.players[0].score == 32, "New round clears settlement guard and preserves accumulated scores")
 	for player in r.players:
 		player.concealed.clear()
 		player.melds.clear()
@@ -182,7 +183,7 @@ func _test_finish_once_and_sync() -> void:
 	r.round_meta.winner = 0
 	r.round_meta.self_draw = true
 	r._finish()
-	t.expect(r.last_result.deltas == [12.0, -4.0, -4.0, -4.0] and r.players[0].score == 32, "Next round is still allowed to settle once")
+	t.expect(r.last_result.deltas == [24.0, -8.0, -8.0, -8.0] and r.players[0].score == 56, "Next round is still allowed to settle once")
 
 func _test_bonus_and_burn() -> void:
 	for multiplier in [1, 2]:
@@ -196,11 +197,11 @@ func _test_bonus_and_burn() -> void:
 			r.players[0].concealed = WIN.duplicate()
 			var gross := blank_matrix()
 			var bonus: int = 4 + (9 if bonuses & 1 else 0) + (9 if bonuses & 2 else 0)
-			for payer in [1, 2, 3]: gross[payer][0] = bonus
+			for payer in [1, 2, 3]: gross[payer][0] = bonus + 4 * multiplier
 			check_ledger(r, gross, "Selfdraw/kongdraw/lastfour stack; no carry multiplication")
-			# 换成不含鸡牌的普通手牌，只有无鸡14增加，仍不受两倍鸡影响。
+			# 换成无鸡普通手牌后鸡分清零，改收无鸡14，仍不受两倍鸡影响。
 			r.players[0].concealed = ["tiao2", "tiao3", "tiao4", "wan4", "wan5", "wan6", "tong1", "tong2", "tong3", "wan3", "wan4", "wan5", "wan9", "wan9"]
-			for payer in [1, 2, 3]: gross[payer][0] += 14
+			for payer in [1, 2, 3]: gross[payer][0] = bonus + 14
 			check_ledger(r, gross, "No chicken14 stacks with bonuses without carry multiplication")
 	# 抢杠后的原碰仍是三张；被抢者鸡分全烧，不能凭未完成的加杠收4分。
 	var r := fixture()
@@ -217,7 +218,7 @@ func _test_bonus_and_burn() -> void:
 	t.expect(r.submit_turn(0, {"add_kong": ["tiao1"]}), "Real turn begins robbable added kong")
 	t.expect(r.submit_response(1, "tiao1", {"action": "win"}), "Real response wins by robbing kong")
 	t.expect(r.round_meta.burn_chicken_seat == 0 and r.players[0].melds[0].kind == "pung", "Rob keeps original pung and burns source chickens")
-	t.expect(r.last_result.deltas == [-4.0, 4.0, 0.0, 0.0], "Rob winner's two chickens4 collected from called source; no kong fee or selfdraw bonus")
+	t.expect(r.last_result.deltas == [-4.0, 12.0, -4.0, -4.0], "Rob winner's two chickens4 collected from each opponent; no kong fee or selfdraw bonus")
 	t.expect(r.last_result.items[0].size() == 1 and r.last_result.items[0][0].label == "抢杠烧鸡", "Burned player has no stale chicken or added-kong score items")
 
 func _run() -> void:

@@ -49,7 +49,7 @@ func _test_scoring() -> void:
 	round.players[0].concealed = WIN.duplicate()
 	round.round_meta.flip_tile = "tiao5"
 	var result := scored(round)
-	expect(result.deltas == [12.0, -4.0, -4.0, -4.0], "Uncalled opponents pay self-draw bonus but not held chickens")
+	expect(result.deltas == [24.0, -8.0, -8.0, -8.0], "胡牌时未叫牌者补完整鸡分并支付自摸费用")
 	round.round_meta.charge_chickens = {"tiao1": {"owner": 0, "location": "discard", "discard_id": 0}}
 	round.players[0].discards = ["tiao1"]
 	result = scored(round)
@@ -88,18 +88,18 @@ func _test_scoring() -> void:
 	round.round_meta.self_draw = true
 	round.players[0].ready = true
 	result = scored(round)
-	expect(result.deltas == [84.0, -28.0, -28.0, -28.0], "Declared-ready self draw pays twenty-four plus self draw from each opponent")
+	expect(result.deltas == [96.0, -32.0, -32.0, -32.0], "鸡4+自摸4+报听24，每家付32")
 	round.players[1].ready = true
 	result = scored(round)
-	expect(result.deltas == [84.0, -28.0, -28.0, -28.0], "Ready payment must not be charged twice")
+	expect(result.deltas == [96.0, -32.0, -32.0, -32.0], "Ready payment must not be charged twice")
 	round.players[0].ready = false
 	result = scored(round)
-	expect(result.deltas[1] == -28.0, "Killed ready opponent pays twenty-four plus self draw")
+	expect(result.deltas[1] == -32.0, "Killed ready opponent pays twenty-four plus self draw and chickens")
 	round.round_meta.self_draw = false
 	round.round_meta.discard_seat = 2
 	round.players[0].ready = true
 	result = scored(round)
-	expect(result.deltas == [48.0, -24.0, -24.0, 0.0], "Ready discard win charges source and killed ready player")
+	expect(result.deltas == [60.0, -28.0, -28.0, -4.0], "鸡4逐家补足，报听24只收放炮者和被杀者")
 	round = fixture()
 	round.players[0].concealed = ["wan1", "wan1", "wan2", "wan2", "wan3", "wan3", "wan4", "wan4", "wan5", "wan5", "wan6", "wan6", "wan7", "wan7"]
 	round.round_meta.winner = 0

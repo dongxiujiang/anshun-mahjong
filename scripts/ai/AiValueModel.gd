@@ -125,7 +125,7 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 		var payer := int(opponent.seat)
 		var called := float(opponent.tenpai_probability)
 		total += called * (float(own.total) - float(opponent.chickens))
-		total += (1.0 - called) * (float(own.discarded) + float(own.kong_chickens))
+		total += (1.0 - called) * float(own.total)
 		total += kong_base(melds, payer) - called * kong_base(opponent.melds, seat)
 		total += bonus
 		if self_draw or payer == source: total += points
@@ -150,7 +150,7 @@ static func settlement_value(round, seat: int, hand: Array, melds: Array, flips:
 	var uncalled_value := 0.0
 	for opponent in opponents:
 		var probability := float(opponent.tenpai_probability)
-		called_value += probability * (float(own.total) - float(opponent.chickens)) + (1.0 - probability) * (float(own.discarded) + float(own.kong_chickens))
+		called_value += probability * (float(own.total) - float(opponent.chickens)) + (1.0 - probability) * float(own.total)
 		called_value += kong_base(melds, int(opponent.seat)) - probability * kong_base(opponent.melds, seat)
-		uncalled_value -= probability * (float(opponent.discarded) + float(opponent.kong_chickens) + kong_base(opponent.melds, seat))
+		uncalled_value -= probability * (float(opponent.chickens) + kong_base(opponent.melds, seat))
 	return {"called": called_value, "uncalled": uncalled_value}

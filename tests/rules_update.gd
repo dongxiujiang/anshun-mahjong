@@ -173,13 +173,17 @@ func _test_win_payments() -> void:
 	r.players[0].discards = ["tiao1"]
 	r.players[1].concealed = WAIT.duplicate()
 	r.round_meta.charge_chickens = {"tiao1": {"owner": 0, "location": "discard", "discard_id": 0}}
-	check(settle(r).deltas == [28.0, -12.0, -8.0, -8.0], "Win: called compare full chickens; uncalled pay discarded charge; all pay self draw")
+	var probe := settle(r)
+	check(probe.deltas == [36.0, -12.0, -12.0, -12.0], "Win: called compare full chickens; uncalled pay full chicken; all pay self draw")
 	r.round_meta.flip_tile = "tiao2"
-	check(settle(r).deltas == [42.0, -18.0, -12.0, -12.0], "Win flip doubles retained charge and held chicken; ordinary flipped tiles count only for called players")
+	probe = settle(r)
+	check(probe.deltas == [58.0, -14.0, -22.0, -22.0], "Win flip doubles retained charge and held chicken; uncalled pays full chicken")
 	r.round_meta.chicken_multiplier = 2
-	check(settle(r).deltas == [72.0, -32.0, -20.0, -20.0], "Carry doubles chicken differences and compensation but not self draw")
+	probe = settle(r)
+	check(probe.deltas == [104.0, -24.0, -40.0, -40.0], "Carry doubles chicken differences and full chicken compensation but not self draw")
 	r.round_meta.burn_chicken_seat = 1
-	check(settle(r).deltas == [76.0, -36.0, -20.0, -20.0], "Burned called player has zero chicken points but still pays")
+	probe = settle(r)
+	check(probe.deltas == [108.0, -36.0, -36.0, -36.0], "Burned called player has zero chicken points but still pays")
 
 func _test_draw_payments() -> void:
 	var r := fixture()
