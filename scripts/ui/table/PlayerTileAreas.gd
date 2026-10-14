@@ -172,9 +172,7 @@ func _refresh_seat(seat: int) -> void:
 		var meld: Dictionary = group.meld
 		var count = 3 if meld.kind == "pung" else 4
 		var layout: Dictionary = group.layout
-		var charge_index = -1
-		if table.round.is_charge_meld(seat, group.meld_index) and meld.kind != "pung":
-			charge_index = int(layout.sideways) if int(layout.sideways) >= 0 else 0
+		var charge_index := -1
 		var up: bool = table.round.is_meld_revealed(seat, group.meld_index)
 		for index in count:
 			var tile: TileView = table._make_tile(meld.tile if up else "", up, player_unit)

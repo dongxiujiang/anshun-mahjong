@@ -18,7 +18,7 @@ func center_rect() -> Rect2:
 func refresh_turn_indicator() -> void:
 	var side := -1
 	if table.round != null:
-		var seat := table.round.presentation_turn_seat()
+		var seat: int = table.round.presentation_turn_seat()
 		if seat >= 0:
 			side = table._relative_seat(seat)
 	turn_indicator.set_active(side)

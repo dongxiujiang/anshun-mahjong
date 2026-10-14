@@ -162,7 +162,9 @@ func _update_interactivity() -> void:
 			if _declaring_ready:
 				enabled = enabled and _ready_discards.has(tile.tile)
 			tile.set_interactive(enabled)
-			tile.modulate = Color.WHITE if enabled or not _selecting else UI.DISABLED_TILE_TINT
+			# Keep the hand visually calm while waiting for a draw/response; legal
+			# input is still controlled by interactive and the turn state.
+			tile.modulate = Color.WHITE
 	for button in action_bar.get_children(): button.disabled = input_locked()
 
 func _safe_discard() -> String:

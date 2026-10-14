@@ -28,6 +28,7 @@ func _run() -> void:
 	_test_sync()
 	_test_network_reset()
 	_test_charge_chickens()
+	_test_claimed_charge_kong_marker()
 	await _test_anchored_rows()
 	await _test_current_scores()
 	_build_midgame()
@@ -109,6 +110,12 @@ func _test_ready() -> void:
 	var player: PlayerState = table.round.players[0]
 	player.concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao1", "tiao2", "tiao3", "tong1", "tong2", "tong3", "wan9", "tong9"]
 	player.just_drew = "tong9"
+	table._on_require_turn(0)
+	table._refresh()
+	table._table_actions._selecting = false
+	table._update_interactivity()
+	for tile in table.hand_box[0].get_children() + table.draw_box[0].get_children():
+		_expect(not tile.interactive and tile.modulate == Color.WHITE, "Waiting for a response keeps tiles bright but non-interactive")
 	table._on_require_turn(0)
 	table._refresh()
 	_expect(table._ready_discards.has("tong9"))
@@ -450,6 +457,16 @@ func _test_charge_chickens() -> void:
 			_assert_claimed_charge(seat, other_seat, card, other)
 			_check_layout()
 	print("[layout] both charge chickens, four seats, claims, repeats and client sync passed")
+
+func _test_claimed_charge_kong_marker() -> void:
+	_new_fixture()
+	table.round.players[1].melds = [{"kind": "kong", "tile": "tong8", "from_seat": 0}]
+	table.round.round_meta.charge_chickens = {"tong8": {"owner": 1, "location": "meld", "meld_index": 0}}
+	table.round._refresh_charge_flags()
+	table._refresh()
+	_expect(table.round.is_charge_meld(1, 0), "Claimed charge ownership remains intact in game state")
+	for tile in table.meld_box[1].get_children():
+		_expect(not tile.get_meta("charge_chicken", false), "A claimed kong does not display a charge badge")
 
 func _assert_charge_row(seat: int, card: String) -> void:
 	var chickens: Control = table.chicken_box[seat]
