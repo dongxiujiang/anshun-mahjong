@@ -1,6 +1,8 @@
 class_name UpdatePanel
 extends CanvasLayer
-const PANEL_SIZE := Vector2(860, 640)
+const STYLE := preload("res://scripts/ui/UiStyle.gd")
+const MOTION := preload("res://scripts/ui/UiMotion.gd")
+const PANEL_SIZE := Vector2(860, 660)
 var overlay: Control
 var panel: Panel
 var summary: Label
@@ -29,7 +31,7 @@ func _ready() -> void:
 	style.border_color = Color("#cbb279")
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(16)
-	panel.add_theme_stylebox_override("panel", style)
+	panel.add_theme_stylebox_override("panel", STYLE.panel())
 	var ui_theme := Theme.new()
 	ui_theme.default_font = TileView._font()
 	ui_theme.default_font_size = 24
@@ -46,6 +48,7 @@ func _ready() -> void:
 	notes.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	notes.placeholder_text = "有新版本时，这里会显示更新内容"
 	notes.add_theme_font_size_override("font_size", 23)
+	STYLE.field(notes)
 	panel.add_child(notes)
 	progress = ProgressBar.new()
 	progress.position = Vector2(32, 446)
@@ -54,9 +57,9 @@ func _ready() -> void:
 	panel.add_child(progress)
 	detail = _label("", Vector2(32, 480), Vector2(796, 60), 21)
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	check_button = _button("检查更新", Vector2(32, 554), Vector2(224, 58), func(): _manager.check_updates())
-	action_button = _button("下载新版", Vector2(274, 554), Vector2(310, 58), _action)
-	_button("关闭", Vector2(602, 554), Vector2(226, 58), close)
+	check_button = _button("检查更新", Vector2(32, 554), Vector2(224, 72), func(): _manager.check_updates())
+	action_button = _button("下载新版", Vector2(274, 554), Vector2(310, 72), _action)
+	_button("关闭", Vector2(602, 554), Vector2(226, 72), close)
 	rollback_button = _button("恢复上一小版本", Vector2(610, 20), Vector2(218, 48), func(): _manager.rollback_and_restart())
 	rollback_button.add_theme_font_size_override("font_size", 19)
 	_manager.state_changed.connect(_sync)
@@ -81,23 +84,21 @@ func _button(text: String, pos: Vector2, dimensions: Vector2, callback: Callable
 	button.text = text
 	button.position = pos
 	button.size = dimensions
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color("#345e48") if state == "normal" else Color("#48795a")
-		if state == "disabled": style.bg_color = Color("#304b3c")
-		style.set_corner_radius_all(8)
-		button.add_theme_stylebox_override(state, style)
+	STYLE.button(button, text == "下载新版")
 	button.pressed.connect(callback)
 	panel.add_child(button)
 	return button
 
 func _layout() -> void:
+	MOTION.stop(panel)
 	var viewport_size := get_viewport().get_visible_rect().size
 	var screen_scale := get_viewport().get_screen_transform().get_scale().abs()
-	var physical_size := viewport_size * screen_scale
+	var available := STYLE.usable_rect(overlay)
+	if not available.has_area(): available = Rect2(Vector2.ZERO, viewport_size)
+	var physical_size := available.size * screen_scale
 	var factor := minf(1.0, minf((physical_size.x - 32.0) / PANEL_SIZE.x, (physical_size.y - 32.0) / PANEL_SIZE.y))
 	panel.scale = Vector2.ONE * maxf(0.1, factor / maxf(0.01, screen_scale.x))
-	panel.position = (viewport_size - PANEL_SIZE * panel.scale) / 2.0
+	panel.position = available.position + (available.size - PANEL_SIZE * panel.scale) / 2.0
 
 func _sync() -> void:
 	summary.text = _manager.message
@@ -155,10 +156,13 @@ func _action() -> void:
 func open() -> void:
 	_sync()
 	_layout()
-	overlay.show()
+	MOTION.appear(overlay)
+	MOTION.slide_in(panel)
 	if _manager.state == "idle": _manager.check_updates()
 
 func close() -> void:
+	MOTION.stop(overlay)
+	MOTION.stop(panel)
 	overlay.hide()
 
 func is_open() -> bool:

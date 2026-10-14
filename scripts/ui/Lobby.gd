@@ -1,4 +1,6 @@
 extends Control
+const STYLE := preload("res://scripts/ui/UiStyle.gd")
+const MOTION := preload("res://scripts/ui/UiMotion.gd")
 ## 搜索与等待房间共用横屏画布；所有发牌由 NetGameNode 准备状态控制。
 const DESIGN := Vector2(1480, 860)
 const WINDS := ["东", "南", "西", "北"]
@@ -52,9 +54,9 @@ func _ready() -> void:
 	update_panel = UpdatePanel.new()
 	add_child(update_panel)
 	_button(content, "检查更新", Vector2(1200, 24), Vector2(244, 58), update_panel.open)
-	lan_button = _button(content, "局域网", Vector2(36, 100), Vector2(200, 64), func(): _set_mode(false))
-	online_button = _button(content, "在线", Vector2(250, 100), Vector2(200, 64), func(): _set_mode(true))
-	server_button = _button(content, "服务器设置", Vector2(1200, 100), Vector2(244, 64), _open_server)
+	lan_button = _button(content, "局域网", Vector2(36, 100), Vector2(200, 80), func(): _set_mode(false))
+	online_button = _button(content, "在线", Vector2(250, 100), Vector2(200, 80), func(): _set_mode(true))
+	server_button = _button(content, "服务器设置", Vector2(1200, 100), Vector2(244, 80), _open_server)
 	browser = Control.new()
 	browser.position = Vector2(36, 194)
 	browser.size = Vector2(1408, 530)
@@ -67,14 +69,14 @@ func _ready() -> void:
 	room_input = _field(browser, Vector2(24, 228), Vector2(374, 56), "输入房间号", str(randi_range(100000, 999999)), 8)
 	_label(browser, "房间名称", Vector2(24, 300), Vector2(374, 34), 24)
 	room_name_input = _field(browser, Vector2(24, 340), Vector2(374, 56), "朋友麻将局", "朋友麻将局", 24)
-	create_button = _button(browser, "创建房间", Vector2(24, 438), Vector2(374, 64), _create)
+	create_button = _button(browser, "创建房间", Vector2(24, 438), Vector2(374, 80), _create)
 	_panel(browser, Vector2(446, 0), Vector2(962, 530))
 	filter_input = _field(browser, Vector2(470, 20), Vector2(530, 60), "搜索房间号或名称", "", 32)
 	filter_input.text_changed.connect(func(_value): _render_rooms())
-	search_button = _button(browser, "刷新房间", Vector2(1024, 20), Vector2(360, 60), _search)
+	search_button = _button(browser, "刷新房间", Vector2(1024, 20), Vector2(360, 80), _search)
 	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(470, 98)
-	scroll.size = Vector2(914, 406)
+	scroll.position = Vector2(470, 118)
+	scroll.size = Vector2(914, 386)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	browser.add_child(scroll)
 	room_rows = VBoxContainer.new()
@@ -118,7 +120,7 @@ func _ready() -> void:
 	swap_row.hide()
 	status = _label(content, "", Vector2(36, 738), Vector2(1408, 44), 24)
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_button(content, "返回 / 离开房间", Vector2(36, 794), Vector2(304, 60), _back)
+	_button(content, "返回 / 离开房间", Vector2(36, 780), Vector2(304, 78), _back)
 	_label(content, "选座后点击准备 · 人机默认准备 · 全部准备后开局", Vector2(376, 800), Vector2(1068, 48), 24)
 	_build_server_dialog()
 	Network.discovery.rooms_updated.connect(_render_rooms)
@@ -131,9 +133,10 @@ func _ready() -> void:
 	_set_mode(false)
 
 func _layout() -> void:
-	var factor := minf((size.x - 28.0) / DESIGN.x, (size.y - 28.0) / DESIGN.y)
+	var available := STYLE.usable_rect(self)
+	var factor := minf((available.size.x - 28.0) / DESIGN.x, (available.size.y - 28.0) / DESIGN.y)
 	content.scale = Vector2.ONE * maxf(0.1, factor)
-	content.position = (size - DESIGN * content.scale) / 2.0
+	content.position = available.position + (available.size - DESIGN * content.scale) / 2.0
 
 func _panel(parent: Control, position_value: Vector2, dimensions: Vector2) -> void:
 	var panel := Panel.new()
@@ -145,7 +148,7 @@ func _panel(parent: Control, position_value: Vector2, dimensions: Vector2) -> vo
 	style.border_color = Color("#5b826d")
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(16)
-	panel.add_theme_stylebox_override("panel", style)
+	panel.add_theme_stylebox_override("panel", STYLE.panel(Color("#1c4738")))
 	parent.add_child(panel)
 
 func _label(parent: Control, text_value: String, pos: Vector2, dimensions: Vector2, font_size: int) -> Label:
@@ -166,6 +169,7 @@ func _field(parent: Control, pos: Vector2, dimensions: Vector2, placeholder: Str
 	field.placeholder_text = placeholder
 	field.text = value
 	field.max_length = limit
+	STYLE.field(field)
 	parent.add_child(field)
 	return field
 
@@ -175,14 +179,7 @@ func _button(parent: Control, text_value: String, pos: Vector2, dimensions: Vect
 	button.position = pos
 	button.size = dimensions
 	button.custom_minimum_size = dimensions
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color("#355f48") if state == "normal" else Color("#49775a")
-		if state == "disabled": style.bg_color = Color("#304b3c")
-		style.border_color = Color("#9cba93")
-		style.set_border_width_all(1)
-		style.set_corner_radius_all(10)
-		button.add_theme_stylebox_override(state, style)
+	STYLE.button(button, text_value in ["创建房间", "准备", "加入"])
 	button.pressed.connect(callback)
 	if parent != null: parent.add_child(button)
 	return button
@@ -222,9 +219,15 @@ func _render_rooms() -> void:
 	for room in list:
 		if query != "" and not (str(room.number).contains(query) or str(room.name).to_lower().contains(query)): continue
 		shown += 1
+		var card := PanelContainer.new()
+		card.add_theme_stylebox_override("panel", STYLE.panel(Color("#244e3c")))
+		room_rows.add_child(card)
+		var margin := MarginContainer.new()
+		for side in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 16)
+		card.add_child(margin)
 		var row := HBoxContainer.new()
 		row.custom_minimum_size.y = 90
-		room_rows.add_child(row)
+		margin.add_child(row)
 		var label := Label.new()
 		label.text = "%s  ·  房间 %s\n真人 %d / 4  ·  %s" % [room.name, room.number, int(room.get("players", 0)), "游戏中" if room.get("started", false) else "等待准备"]
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -239,7 +242,11 @@ func _render_rooms() -> void:
 		var empty := Label.new()
 		empty.text = "没有匹配的房间" if query != "" else ("暂无在线房间，可创建新房间" if online and Network.directory.base_url != "" else ("先配置房间服务器，再搜索在线房间" if online else "正在搜索 Wi-Fi 和手机热点内的房间…\n请先在另一台设备创建房间并保持等待，发现后会自动显示。"))
 		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		empty.custom_minimum_size = Vector2(870, 120)
+		empty.custom_minimum_size = Vector2(870, 294)
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		empty.add_theme_color_override("font_color", STYLE.MUTED)
+		empty.add_theme_font_size_override("font_size", 26)
 		room_rows.add_child(empty)
 
 func _create() -> void:
@@ -412,6 +419,10 @@ func _build_server_dialog() -> void:
 	server_dialog.title = "在线服务器设置"
 	server_dialog.min_size = Vector2i(800, 260)
 	server_dialog.ok_button_text = "保存并搜索"
+	server_dialog.theme = theme.duplicate()
+	server_dialog.theme.set_constant("buttons_min_height", "AcceptDialog", 76)
+	server_dialog.theme.set_constant("buttons_min_width", "AcceptDialog", 240)
+	server_dialog.add_theme_stylebox_override("panel", STYLE.panel())
 	server_dialog.cancel_button_text = "取消"
 	add_child(server_dialog)
 	var box := VBoxContainer.new()
@@ -425,12 +436,20 @@ func _build_server_dialog() -> void:
 	server_input.placeholder_text = "https://你的房间服务器"
 	server_input.custom_minimum_size = Vector2(760, 60)
 	box.add_child(server_input)
+	STYLE.field(server_input)
+	for button in [server_dialog.get_ok_button(), server_dialog.get_cancel_button()]:
+		button.custom_minimum_size = Vector2(240, 76)
+		STYLE.button(button, button == server_dialog.get_ok_button())
 	server_dialog.confirmed.connect(func():
 		if Network.directory.configure(server_input.text): _search())
 
 func _open_server() -> void:
 	server_input.text = Network.directory.base_url
-	server_dialog.popup_centered()
+	server_dialog.popup_centered(Vector2i(880, 360))
+	_refresh_server_buttons.call_deferred()
+
+func _refresh_server_buttons() -> void:
+	server_dialog.get_ok_button().add_theme_color_override("font_color", Color("#283a2e"))
 
 func _back() -> void:
 	if _transitioning: return

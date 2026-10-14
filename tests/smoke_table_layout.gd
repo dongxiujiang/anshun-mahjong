@@ -15,6 +15,9 @@ func _initialize() -> void:
 
 func _run() -> void:
 	await process_frame
+	if rendering:
+		while table.round.phase == RoundState.Phase.DEALING or table._table_animation_controller.input_locked():
+			await process_frame
 	_check_layout()
 	_test_ai_speed()
 	await _test_input()
@@ -50,7 +53,7 @@ func _run() -> void:
 		_expect(root.get_texture().get_image().save_png("res://docs/table_result.png") == OK)
 	await _test_draw_results()
 	await _test_landscape_stretch()
-	_test_next_round()
+	await _test_next_round()
 	if not failed:
 		print("[smoke_table_layout] selection, ready, kong, sync, layout, settlement passed")
 	quit(1 if failed else 0)
@@ -96,21 +99,10 @@ func _test_input() -> void:
 	await process_frame
 	event.pressed = false
 	Input.parse_input_event(event)
-	_expect(drawn.selected)
-	_expect(drawn.position.y < drawn._table_position.y)
-	_expect(table.round.players[0].concealed == before, "Selecting must not discard")
-	var button: Button = table.action_bar.get_child(table.action_bar.get_child_count() - 1)
-	_expect(not button.disabled)
-	var confirm := InputEventMouseButton.new()
-	confirm.button_index = MOUSE_BUTTON_LEFT
-	confirm.position = button.get_global_rect().get_center()
-	confirm.pressed = true
-	Input.parse_input_event(confirm)
 	await process_frame
-	confirm.pressed = false
-	Input.parse_input_event(confirm)
-	await process_frame
-	_expect(table.round.players[0].discard_count == 1, "Confirm must record a discard even if the tile is then claimed")
+	_expect(table.round.players[0].discard_count == 1, "One completed tap records exactly one discard, even when claimed")
+	for button in table.action_bar.get_children():
+		_expect(button.text != "出牌", "Discard never requires a separate button")
 
 func _test_ready() -> void:
 	_new_fixture()
@@ -290,6 +282,8 @@ func _check_layout() -> void:
 				var transform: Transform2D = tile.get_global_transform()
 				_expect(is_equal_approx(transform.x.length(), table.surface.scale.x) and is_equal_approx(transform.y.length(), table.surface.scale.y), "No player or tile category may use a smaller display scale")
 				var rect := _tile_rect(tile)
+				var settings_hot: Rect2 = table._settings_button.get_global_transform() * table._settings_button.touch_rect()
+				_expect(not rect.grow(-0.5).intersects(settings_hot), "Settings touch target must not steal taps from any tile")
 				if box in table.discard_box[seat]:
 					rect = rect.intersection(_control_rect(table.discard_scroll[seat]))
 					if rect.size.x <= 1.0 or rect.size.y <= 1.0:
@@ -352,7 +346,10 @@ func _test_anchored_rows() -> void:
 			if meld_count > 0:
 				var meld_tile: TileView = table.meld_box[seat].get_child(0)
 				var metrics: Dictionary = table._seat_metrics(seat)
-				_expect(is_equal_approx(meld_tile.position.x, metrics.left) or meld_tile.position.y < metrics.hand_y, "Melds start at the edge or wrap inward when a centered hand occupies that row")
+				var transform := Transform2D(table.ROTATIONS[table._relative_seat(seat)], table._table_center())
+				var edge: Rect2 = transform * Rect2(Vector2(metrics.left, metrics.exposed_y), meld_tile.size)
+				var hot: Rect2 = Rect2(table._settings_button.position + table._settings_button.touch_rect().position, table._settings_button.touch_rect().size).grow(8.0)
+				_expect(is_equal_approx(meld_tile.position.x, metrics.left) or meld_tile.position.y < metrics.hand_y or edge.intersects(hot), "Melds start at the edge, wrap for hands or shift inward to avoid the settings touch zone")
 		_check_layout()
 		if rendering and meld_count in [0, 1, 4]:
 			await RenderingServer.frame_post_draw
@@ -409,7 +406,10 @@ func _test_anchored_rows() -> void:
 			if meld_count == 0:
 				var group: Dictionary = table._exposed_layouts[seat][0]
 				var metrics: Dictionary = table._seat_metrics(seat)
-				_expect(is_equal_approx(group.origin.x, metrics.left) or group.origin.y < metrics.hand_y, "Chickens start at the edge or wrap inward without displacing the centered hand")
+				var transform := Transform2D(table.ROTATIONS[table._relative_seat(seat)], table._table_center())
+				var edge: Rect2 = transform * Rect2(Vector2(metrics.left, metrics.exposed_y), Vector2(group.layout.size))
+				var hot: Rect2 = Rect2(table._settings_button.position + table._settings_button.touch_rect().position, table._settings_button.touch_rect().size).grow(8.0)
+				_expect(is_equal_approx(group.origin.x, metrics.left) or group.origin.y < metrics.hand_y or edge.intersects(hot), "Chickens stay anchored or avoid hand/settings obstacles without displacing the centered hand")
 	print("[layout] table-edge groups, centered hands, separate draws and overflow passed")
 
 func _test_charge_chickens() -> void:
@@ -697,6 +697,9 @@ func _test_next_round() -> void:
 	table.round.next_dealer_seat = 3
 	table.human_seat = 3
 	table.new_game()
+	if rendering:
+		while table.round.phase == RoundState.Phase.DEALING or table._table_animation_controller.input_locked():
+			await process_frame
 	_expect(table.round.players[0].score == 224.0)
 	_expect(table.round.players[3].score == -24.0, "Next game carries negative cumulative score before play")
 	_expect(table.round.dealer_seat == 3 and table.round.current_turn == 3, "New game starts from the newly selected dealer")

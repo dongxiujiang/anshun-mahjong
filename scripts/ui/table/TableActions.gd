@@ -1,0 +1,226 @@
+extends "res://scripts/ui/table/TableComponent.gd"
+## 管理选牌、合法操作按钮、报听和提交；不自行改变牌局规则。
+
+const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
+
+var action_bar: HBoxContainer
+var _selecting := false
+var _response_disc := ""
+var _selected_tile: TileView
+var _declaring_ready := false
+var _ready_discards: Array = []
+var _last_tile_input_ms := -1000
+var _pressed_tile: TileView
+var _press_position := Vector2.ZERO
+var _dragged := false
+var _touch_index := -1
+
+func input_locked() -> bool:
+	return table.round == null or table.round.phase == RoundState.Phase.DEALING or table._table_animation_controller.input_locked()
+
+func build() -> void:
+	action_bar = HBoxContainer.new()
+	action_bar.position = Vector2(810, 1450)
+	action_bar.size = Vector2(560, 58)
+	action_bar.alignment = BoxContainer.ALIGNMENT_END
+	action_bar.add_theme_constant_override("separation", UI.ACTION_SEPARATION)
+	table.surface.add_child(action_bar)
+
+func _layout_actions() -> void:
+	if action_bar == null:
+		return
+	var right: float = table._table_center().x + 574.0
+	var top: float = table._table_center().y + float(table._seat_metrics(table.human_seat).hand_y)
+	if table.round != null and table.round.players.size() == 4:
+		right = table._table_center().x + float(table._hand_layout(table.human_seat).draw_x) + TileView.BASE_W * UI.OWN_HAND_TILE_UNIT
+	# The rightmost action aligns with the right edge of the drawn tile.  The row
+	# grows leftwards as optional actions appear, keeping all actions above it.
+	var count = action_bar.get_child_count()
+	action_bar.visible = count > 0
+	var row_size = Vector2(0, UI.ACTION_BUTTON_SIZE.y)
+	for button in action_bar.get_children():
+		row_size.x += button.custom_minimum_size.x
+		row_size.y = maxf(row_size.y, button.custom_minimum_size.y)
+	row_size.x += maxi(0, count - 1) * action_bar.get_theme_constant("separation")
+	action_bar.size = row_size
+	# With a short hand, keep the buttons to the right of our river. The
+	# next player's river may sit underneath, as requested, but our tiles stay clear.
+	var metrics: Dictionary = table._seat_metrics(table.human_seat)
+	var river = Rect2(table._table_center() + Vector2(metrics.river_position), Vector2(metrics.river_size))
+	var next_hand_left: float = table._table_center().x + table._seat_metrics(posmod(table.human_seat + 1, 4)).hand_y
+	var right_limit = minf(table._table_bounds().end.x - UI.ACTION_EDGE_GAP, next_hand_left - UI.ACTION_EDGE_GAP)
+	var left = minf(maxf(right - row_size.x, river.end.x + UI.ACTION_EDGE_GAP), right_limit - row_size.x)
+	var row_top = top - row_size.y - UI.ACTION_HAND_GAP
+	if Rect2(Vector2(left, row_top), row_size).intersects(river):
+		row_top = minf(row_top, river.position.y - row_size.y - UI.ACTION_EDGE_GAP)
+	action_bar.position = Vector2(left, row_top)
+
+func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
+	if not _selecting or not tile.interactive or input_locked():
+		return
+	var released := false
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			if _touch_index >= 0: return
+			_touch_index = event.index
+			_begin_press(tile, event.position)
+		elif event.index == _touch_index:
+			_touch_index = -1
+			released = true
+	elif event is InputEventScreenDrag:
+		if event.index == _touch_index and event.position.distance_to(_press_position) > 20.0: _dragged = true
+	elif event is InputEventMouseMotion:
+		if is_instance_valid(_pressed_tile) and event.position.distance_to(_press_position) > 20.0: _dragged = true
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		# 原生触控优先，忽略系统模拟的鼠标事件，避免一指提交两次。
+		if OS.has_feature("android") or _touch_index >= 0: return
+		if event.pressed: _begin_press(tile, event.position)
+		else: released = true
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER, KEY_SPACE]:
+		_begin_press(tile, Vector2.ZERO)
+		released = true
+	if not released: return
+	var valid := is_instance_valid(_pressed_tile) and _pressed_tile == tile and not _dragged and tile._has_point(event.position if not event is InputEventKey else Vector2.ZERO)
+	_pressed_tile = null
+	if not valid: return
+	var now := Time.get_ticks_msec()
+	if now - _last_tile_input_ms < UI.TILE_INPUT_DEBOUNCE_MS: return
+	_last_tile_input_ms = now
+	table._submit_discard(tile.tile)
+
+func _begin_press(tile: TileView, position: Vector2) -> void:
+	_pressed_tile = tile
+	_press_position = position
+	_dragged = false
+
+func _reset_press() -> void:
+	_pressed_tile = null
+	_touch_index = -1
+	_dragged = false
+
+func _on_require_turn(seat: int) -> void:
+	if seat != table.human_seat:
+		return
+	_selecting = true
+	_declaring_ready = false
+	_response_disc = ""
+	table._build_turn_options(table.round.players[seat])
+
+func _build_turn_options(player: PlayerState) -> void:
+	table._clear_actions()
+	var options = table.round.legal_turn_options(player.seat)
+	if options.self_win:
+		table._add_action("自摸", func(): table._commit_turn({"self_win": true}), true)
+	table._add_kong_choices("暗杠", "kong_declares", Tiles.sort_hand(options.kong_declares))
+	table._add_kong_choices("加杠", "add_kong", options.add_kong)
+	_ready_discards = options.ready_discards.duplicate()
+	if not _ready_discards.is_empty():
+		table._add_action("报听", table._toggle_ready)
+
+func _add_kong_choices(title: String, decision_key: String, cards: Array) -> void:
+	if cards.is_empty():
+		return
+	if cards.size() == 1:
+		table._add_action(title, func(): table._commit_turn({decision_key: [cards[0]]}), false, title + " " + table._cn(cards[0]))
+		return
+	var choices = PopupMenu.new()
+	choices.name = "TileChoices"
+	choices.add_theme_font_size_override("font_size", 24)
+	choices.add_theme_constant_override("v_separation", 24)
+	for index in cards.size():
+		choices.add_item(table._cn(cards[index]), index)
+	choices.id_pressed.connect(func(index): table._commit_turn({decision_key: [cards[index]]}))
+	var button = table._add_action(title, func(): choices.popup_centered(Vector2i(240, 0)))
+	button.add_child(choices)
+
+func _discard_selected() -> void:
+	if is_instance_valid(_selected_tile):
+		table._submit_discard(_selected_tile.tile)
+
+func _toggle_ready() -> void:
+	_declaring_ready = not _declaring_ready
+	if is_instance_valid(_selected_tile):
+		_selected_tile.set_selected(false)
+	_selected_tile = null
+	for button in action_bar.get_children():
+		if button.get_meta("discard", false):
+			button.disabled = true
+		elif button.text == "报听" or button.text == "取消":
+			button.text = "取消" if _declaring_ready else "报听"
+	table._update_interactivity()
+	table._refresh_status()
+
+func _update_interactivity() -> void:
+	if not _selecting or input_locked(): _reset_press()
+	if table.round == null or table.human_seat >= table.round.players.size():
+		return
+	var player: PlayerState = table.round.players[table.human_seat]
+	var legal_discards: Array = table.round.legal_turn_options(table.human_seat).discards if _selecting else []
+	for box in [table.hand_box[table.human_seat], table.draw_box[table.human_seat]]:
+		for tile in box.get_children():
+			var enabled: bool = not input_locked() and _selecting and legal_discards.has(tile.tile) and (not player.ready or tile.get_meta("drawn", false))
+			if _declaring_ready:
+				enabled = enabled and _ready_discards.has(tile.tile)
+			tile.set_interactive(enabled)
+			tile.modulate = Color.WHITE if enabled or not _selecting else UI.DISABLED_TILE_TINT
+	for button in action_bar.get_children(): button.disabled = input_locked()
+
+func _safe_discard() -> String:
+	if is_instance_valid(_selected_tile):
+		return _selected_tile.tile
+	var player: PlayerState = table.round.players[table.human_seat]
+	return player.just_drew if player.just_drew != "" else (player.concealed[0] if not player.concealed.is_empty() else "")
+
+func _commit_turn(decision: Dictionary) -> void:
+	if not _selecting or input_locked() or not table.round._valid_turn(table.human_seat, decision): return
+	_selecting = false
+	_declaring_ready = false
+	table._clear_actions()
+	table._update_interactivity()
+	table._emit_turn(decision)
+
+func _submit_discard(tile: String) -> void:
+	if not _selecting or (_declaring_ready and not _ready_discards.has(tile)):
+		return
+	table._commit_turn({"discard": tile, "ready": _declaring_ready})
+
+func _on_require_response(seat: int, discarded_seat: int, tile: String, options: Dictionary) -> void:
+	if seat != table.human_seat:
+		return
+	_selecting = false
+	_declaring_ready = false
+	_response_disc = tile
+	table._clear_actions()
+	if options.get("can_win", false):
+		table._add_action("胡", func(): table._commit_response("win"), true)
+	if options.get("can_pong", false):
+		table._add_action("碰", func(): table._commit_response("pong"), true)
+	if options.get("can_kong", false):
+		table._add_action("杠", func(): table._commit_response("kong"), true)
+	table._add_action("过", func(): table._commit_response("pass"))
+	table._update_interactivity()
+
+func _commit_response(action: String) -> void:
+	if input_locked() or _response_disc == "": return
+	var prompt: Dictionary = table.round.allowed_actions(table.human_seat)
+	if prompt.get("kind", "") != "response": return
+	var tile = _response_disc
+	_response_disc = ""
+	table._clear_actions()
+	table._emit_response(tile, {"action": action})
+
+func _add_action(text: String, callback: Callable, primary: bool = false, tooltip: String = "") -> Button:
+	# 仅需要选择的操作显示大按钮；出牌直接轻点手牌。
+	var button: Button = table._button(text, callback, UI.DISCARD_BUTTON_SIZE, primary)
+	button.add_theme_font_size_override("font_size", UI.ACTION_FONT_SIZE)
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	button.tooltip_text = tooltip
+	action_bar.add_child(button)
+	table._layout_actions()
+	return button
+
+func _clear_actions() -> void:
+	_reset_press()
+	if action_bar != null:
+		table._clear_box(action_bar)
+		table._layout_actions()

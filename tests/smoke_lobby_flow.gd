@@ -33,6 +33,9 @@ func _run() -> void:
 	if table == null or not table.has_method("_on_net_prompt"):
 		quit(1)
 		return
+	var opening_deadline := Time.get_ticks_msec() + 12000
+	while table.round.phase == RoundState.Phase.DEALING and Time.get_ticks_msec() < opening_deadline:
+		await process_frame
 	t.expect(table.human_seat == 2 and table.round.dealer_seat == 2, "Seat and dealer preserved across scene")
 	t.expect(table._selecting and table.draw_box[2].get_child_count() == 1, "First dealer prompt remains playable after scene change")
 	t.expect(table.hand_box[2].get_child_count() == 13, "Hand fully drawn on entry")

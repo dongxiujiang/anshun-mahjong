@@ -1,4 +1,6 @@
 extends Control
+const STYLE := preload("res://scripts/ui/UiStyle.gd")
+const MOTION := preload("res://scripts/ui/UiMotion.gd")
 
 const MENU_SIZE := Vector2(1800, 1000)
 const ENTRY_BUTTON_SIZE := Vector2(760, 184)
@@ -33,7 +35,7 @@ func _ready() -> void:
 	hero.size = Vector2(858, 830)
 	hero.add_theme_stylebox_override("panel", _style(Color("#173c32"), Color("#37614c")))
 	content.add_child(hero)
-	_label(hero, "安 顺 麻 将", Vector2(68, 72), Vector2(722, 116), 82, Color("#f2deb0"))
+	_label(hero, "安顺 · 捉鸡麻将", Vector2(68, 72), Vector2(722, 116), 64, Color("#f2deb0"))
 	_label(hero, "捉鸡 · 熟悉的牌，熟悉的玩法", Vector2(72, 202), Vector2(716, 54), 32, Color("#b6cbb9"))
 	var tiles := HBoxContainer.new()
 	tiles.position = Vector2(70, 326)
@@ -61,25 +63,27 @@ func _ready() -> void:
 	sound_settings = SoundSettings.new()
 	add_child(sound_settings)
 	var sound := _button("声音设置", sound_settings.open)
-	sound.position = Vector2(984, 724)
+	sound.position = Vector2(984, 846)
 	content.add_child(sound)
 	rule_guide = load("res://scripts/ui/RuleGuide.gd").new()
 	add_child(rule_guide)
 	var rules := _button("新手规则", rule_guide.open)
-	rules.position = Vector2(984, 838)
+	rules.position = Vector2(984, 724)
+	rules.custom_minimum_size = Vector2(760, 88)
+	rules.size = rules.custom_minimum_size
 	content.add_child(rules)
 	update_panel = UpdatePanel.new()
 	add_child(update_panel)
 	update_button = _button("检查更新", func():
 		if UpdateManager.state == "error": UpdateManager.check_updates()
 		update_panel.open())
-	update_button.position = Vector2(1252, 724)
+	update_button.position = Vector2(1252, 846)
 	content.add_child(update_button)
 	var exit := _button("退出游戏", func(): get_tree().quit())
-	exit.position = Vector2(1520, 724)
+	exit.position = Vector2(1520, 846)
 	content.add_child(exit)
-	_label(content, "版本 " + UpdateManager.current_version(), Vector2(984, 906), Vector2(760, 48), 26, Color("#adc6b5"))
-	update_status_label = _label(content, "启动时自动检查更新", Vector2(984, 950), Vector2(760, 42), 22, Color("#adc6b5"))
+	_label(content, "版本 " + UpdateManager.current_version(), Vector2(60, 940), Vector2(600, 42), 26, Color("#adc6b5"))
+	update_status_label = _label(content, "启动时自动检查更新", Vector2(690, 954), Vector2(1080, 34), 22, Color("#adc6b5"))
 	UpdateManager.state_changed.connect(_update_badge)
 	_update_badge()
 	resized.connect(_layout)
@@ -107,9 +111,10 @@ func _update_badge() -> void:
 	if UpdateManager.claim_startup_prompt(): update_panel.open()
 
 func _layout() -> void:
-	var factor := minf((size.x - 48) / MENU_SIZE.x, (size.y - 48) / MENU_SIZE.y)
+	var available := STYLE.usable_rect(self)
+	var factor := minf((available.size.x - 48.0) / MENU_SIZE.x, (available.size.y - 48.0) / MENU_SIZE.y)
 	content.scale = Vector2.ONE * maxf(0.1, factor)
-	content.position = (size - MENU_SIZE * content.scale) / 2.0
+	content.position = available.position + (available.size - MENU_SIZE * content.scale) / 2.0
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
@@ -132,6 +137,8 @@ func _style(background: Color, border: Color) -> StyleBoxFlat:
 	style.border_color = border
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(24)
+	style.shadow_color = Color(0, 0, 0, 0.2)
+	style.shadow_size = 16
 	return style
 
 func _button(text: String, callback: Callable, entry: bool = false) -> Button:
@@ -142,10 +149,6 @@ func _button(text: String, callback: Callable, entry: bool = false) -> Button:
 	button.add_theme_font_size_override("font_size", 44 if entry else 28)
 	button.add_theme_color_override("font_color", Color("#f7eccb") if entry else Color("#dceadd"))
 	button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	for state in ["normal", "hover", "pressed", "focus"]:
-		var background := Color("#35694d") if entry else Color("#214737")
-		if state == "hover": background = background.lightened(0.1)
-		if state == "pressed": background = background.darkened(0.15)
-		button.add_theme_stylebox_override(state, _style(background, Color("#c7af73") if entry else Color("#52775d")))
+	STYLE.button(button, entry)
 	button.pressed.connect(callback)
 	return button

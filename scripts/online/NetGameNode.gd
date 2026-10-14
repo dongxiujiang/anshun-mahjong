@@ -268,6 +268,7 @@ func _local_peer() -> int:
 	return 1 if host_mode else multiplayer.get_unique_id()
 
 func _exit_tree() -> void:
+	if game != null: game.cancel_opening()
 	# Cancel delayed AI decisions belonging to a room that has been closed.
 	if host_mode and game != null:
 		game.phase = RoundState.Phase.IDLE
@@ -386,6 +387,7 @@ func start_net_game(seed_value: int = -1) -> bool:
 		ctrls.append(AiPlayer.new("AI%d" % seat) if _ctrl_hint[seat] == AUTO else null)
 	game.controllers = ctrls
 	game.ai_delay_seconds = float({"fast": 1, "medium": 2, "slow": 3}[ai_speed]) if dedicated else get_node("/root/GameConfig").ai_delay_seconds()
+	game.opening_delay_seconds = GameConfig.OPENING_WAIT_SECONDS if dedicated or DisplayServer.get_name() != "headless" else 0.0
 	game.require_turn.connect(_on_host_require_turn)
 	game.require_response.connect(_on_host_require_response)
 	game.state_update.connect(_host_broadcast)

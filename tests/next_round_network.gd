@@ -44,6 +44,10 @@ func _run() -> void:
 	t.expect(table._next_round_button.text == "准备下一局", "Guests get ready button instead of return to lobby")
 	t.expect(table._next_round_button.size.y >= table.DISCARD_BUTTON_SIZE.y, "All humans have large next-round touch buttons")
 	t.expect(not net.lobby.seats[net.my_seat].ready, "Own readiness resets at settlement")
+	t.expect(table._settlement_card._ready_chips.size() == 4, "Every viewer sees four readiness cards")
+	var footer: Control = table._result_panel.get_node("ReadinessFooter")
+	for chip in table._settlement_card._ready_chips:
+		t.expect(not Rect2(footer.position + chip.position, chip.size).intersects(table._next_round_button.get_rect()), "Readiness card never covers the prepare button")
 	var scores: Array = net.game.players.map(func(player): return player.score)
 	var dealer: int = net.game.next_dealer_seat
 	if role != 3:
@@ -56,6 +60,7 @@ func _run() -> void:
 		table._next_round_button.pressed.emit()
 	t.expect(await _wait_until(func(): return int(net.lobby.countdown) == 1), "All four ready synchronizes countdown")
 	t.expect(table.result_layer.visible and table._next_round_hint.text.contains("1 秒"), "Settlement stays visible while waiting")
+	t.expect(table._next_round_status.text.contains("4 / 4"), "All four acknowledgements update the readiness summary")
 	if role == 3:
 		await create_timer(0.2).timeout
 		table._next_round_button.pressed.emit()

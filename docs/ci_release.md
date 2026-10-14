@@ -2,7 +2,7 @@
 
 ## 自动测试门禁
 
-`.github/workflows/ci.yml` 会在 `main`/`master` 推送和 Pull Request 上运行快速检查，覆盖规则、结算、语音、合法操作、同步、重连控制和 4 局 AI 自战，并执行 Python 导出配置测试。快速检查失败时，提交不会通过 CI。
+`.github/workflows/ci.yml` 会在 `main`/`master` 推送和 Pull Request 上运行快速检查，覆盖规则、结算、语音、合法操作、同步、重连控制、牌桌组件隔离与退出生命周期和 4 局 AI 自战，并执行 Python 导出配置测试。快速检查失败时，提交不会通过 CI。
 
 `.github/workflows/build-release.yml` 在完整构建或 `V1.0.*` 标签构建时运行发布前回归：自动执行 `tests/run_all.gd` 注册的完整测试清单，强制进行至少 50 局真实 AI 自战，并启动多进程局域网、在线房间和断线重连测试。网络和重连回归失败时不会进入签名、导出或发布步骤。
 
@@ -45,3 +45,5 @@
 它们是校验基线，不是玩家下载的安装包。上传后，运行 `patch` 时选择 `baseline_source=release`、标签 `V1.0.0`，并填写下一个未发布版本（目前应为 `1.0.5`）。先用 `publish_release=false` 验证；确认 `patch-release` artifact 正确后，再用相同参数运行一次并选择 `publish_release=true`，或直接在首次成功后使用自动发布。
 
 工作流也会在推送 `V1.0.*` 标签时运行完整构建检查，但不会替你发布 Release。发布前请核对 `update-manifest.json`、SHA-256、Android 签名和版本号，再手动上传附件。
+
+`ui_presentation.gd` 已加入普通提交的快速检查，验证动效事件、秘密牌过滤、快照去重、重连基线、触控热区和小屏规则面板；图形截图脚本需实际窗口运行，不放进 headless CI。

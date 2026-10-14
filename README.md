@@ -27,16 +27,17 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 
 ## 二、玩法操作
 
-- 轮到你：点击**手牌**选中，牌会抬起；再次点击同一张或点「出牌」打出。若可自摸/暗杠/加杠/报听，右下操作区会出现对应按钮。
+- 轮到你：轻点一次**手牌或摸牌**即可打出，不再显示「出牌」按钮。拖动不会误出牌；开局发牌和自己的摸牌动画完成前不能出牌。若可自摸/暗杠/加杠/报听，右下操作区会出现对应按钮。
 - 别家打出牌：底部出现 **胡 / 碰 / 杠 / 过**，点选即可。
 - 报听：在自己第一次摸牌后的出牌机会，打出一张即可听牌时可点「报听」；此前允许连续暗杠并从牌尾补牌，但不能有碰、明杠或加杠。报听后只能打摸到的牌。
 - 暗杠：四张牌全部反扣，自己和其他玩家的牌桌视图都不露牌面。暗杠补牌后的本轮出牌仍保持反扣，下一轮该玩家出牌后四张一起翻开；同一轮连续暗杠一起翻开，不同轮暗杠各自等待。亮出后联机公开牌面，AI也开始计入可见牌；提前结算时展示完整牌面。
 - 四家分数默认各 200，可为负；牌桌各玩家名字下显示当前累计分数，叫牌和本局记分明细放在局末结算卡片。单机可继续下一局，保留累计分数。
+- 牌桌中央只保留四家的累计分数：单机不显示东南西北或相对称呼；联机在分数上方显示玩家自己输入的姓名，AI 统一显示“人机”。四个分数相对中央正方形的上、右、下、左边水平/垂直居中，庄家标识紧贴自己的分数。当前出牌玩家对应的正方形外边缘会出现淡黄色散射光；等待碰杠胡、发牌、结算时熄灭。
 - **胡牌那张牌停在摸牌位**：自摸或胡别人打出的牌，那张牌都单独显示在右侧摸牌位，不并回手牌排序里，一眼能看出胡的是哪张。
 - **结算卡片**：从上到下为你、上家、对家、下家。每家第一行显示累计分数、自己的「本局分」，以及从该玩家自己视角与上家、对家、下家的三笔收付（正数收款，负数付款）。本局分是得分点合计，明杠基础4分仅向放杠者收，不混入通用本局分。明细显示叫牌状态、自摸等奖励及完整牌面：同类型、同单张分值的牌合并一组，普通鸡2、金鸡4、冲锋鸡4、冲锋金鸡8分别展示，翻鸡也按张数合计。所有杠集中放在最后，四张牌与基础杠分、杠内鸡分一并展示；暗杠、加杠四张都竖放。明杠来源是下家时第四张右横，上家时第一张左横，对家时三张竖牌上方居中横放第四张。明细多时独立换行和滚动。卡片右上角「看牌桌」与「查看结算」在同一位置切换。
-- 牌桌按四向围坐排布，Windows 与 Android 固定横屏：自己的手牌和摸牌使用 2.40 倍牌面（上版的 1.5 倍），自己的碰杠牌和鸡牌使用 1.60 倍，其他三家使用 1.35 倍，弃牌保持 1.10 倍；牌墙数据继续用于骰子和发牌，但牌桌不绘制牌墙。东西两家手牌与摸牌位整体水平居中，操作按钮放在摸牌位上方，出牌、报听、碰、杠、胡、自摸等操作按钮统一为 177×126（原按钮的 1.5 倍），字号为 42，与手牌留出 56 像素的空隙；手牌变短时按钮会向右避开自己的弃牌区，允许覆盖下家弃牌区。碰杠后仍会按空间向内换行。东西两家的弃牌容器扩大并隐藏滚动条，牌面尺寸不变。幺鸡、八筒各自全场首张打出的牌横放表示冲锋鸡；被碰杠后原弃牌区和记录移除，冲锋标记跟随到领取者的碰杠组。碰不标来源；明杠与结算采用相同的上/对/下家横牌排列；暗杠、加杠全部四竖。联机时自己的座位始终在下方。
+- 牌桌按四向围坐排布，Windows 与 Android 固定横屏：自己的手牌和摸牌使用 2.40 倍牌面（上版的 1.5 倍），自己的碰杠牌和鸡牌使用 1.60 倍，其他三家使用 1.35 倍，弃牌保持 1.10 倍；牌墙数据继续用于骰子和发牌，但牌桌不绘制牌墙。东西两家手牌与摸牌位整体水平居中，操作按钮放在摸牌位上方，报听、碰、杠、胡、自摸等选择按钮统一为 177×126（原按钮的 1.5 倍），字号为 42，与手牌留出 56 像素的空隙；手牌变短时按钮会向右避开自己的弃牌区，允许覆盖下家弃牌区。碰杠后仍会按空间向内换行。东西两家的弃牌容器扩大并隐藏滚动条，牌面尺寸不变。幺鸡、八筒各自全场首张打出的牌横放表示冲锋鸡；被碰杠后原弃牌区和记录移除，冲锋标记跟随到领取者的碰杠组。碰不标来源；明杠与结算采用相同的上/对/下家横牌排列；暗杠、加杠全部四竖。联机时自己的座位始终在下方。
 - 右上角可调 AI 出牌速度：**快 1 秒 / 中 2 秒 / 慢 3 秒**，单机和主机即时生效。
-- 主菜单「声音设置」或牌桌右上角「声音」可分别开关、调整背景音乐、出牌/动作语音和落桌音效。设置自动保存，下次运行继续使用。默认背景音乐12%、语音80%，音乐较轻，不盖过喊牌。
+- 主菜单「声音设置」或牌桌右上角「设置」可分别开关、调整背景音乐、出牌/动作语音和落桌音效。设置自动保存，下次运行继续使用。默认背景音乐12%、语音80%，音乐较轻，不盖过喊牌。
 - 进入牌桌循环播放 Kevin MacLeod《Ripples》（57 BPM，舒缓拨弦风格，CC BY 4.0），已降低响度并在声音设置中署名。四家使用两男两女的不同普通话声音，绑定座位，换庄也保留原声音。每次实际出牌喊对应牌名（一条喊「幺鸡」），碰、明杠/暗杠/加杠、报听分别喊「碰」「杠」「报听」，自摸喊「自摸」，胡别人或抢杠喊「胡了」。无效动作和流局不喊胡；加杠从宣告到完成只喊一次，暗杠不喊具体牌名。喊牌时音乐自动降低音量，语音结束后恢复；返回大厅停止牌桌音频。声音设置可分别试听四套声音。素材随工程运行，PC/Android 均无需联网或安装语音引擎。
 
 ## 三、联机
@@ -110,7 +111,12 @@ scripts/
   ai/          AiPlayer(出牌/碰杠/报听决策) · AiValueModel(预期收付)
                AiOpponentModel(公开信息手牌采样与放炮风险) · AiMctsSearch(有界随机展望)
   online/      NetGameNode(等待房间/选座/准备/权威游戏) · LanDiscovery · OnlineDirectory
-  ui/          TileView(程序化牌面) / MainMenu / Lobby / GameTable / SoundSettings
+  ui/          TileView(程序化牌面) / MainMenu / Lobby / GameTable(牌局与联机事件协调) / SoundSettings
+    table/     TableUiConfig(尺寸/颜色/间距/动画参数) · TableLayout(布局与背景)
+               PlayerTileAreas(四家牌区) · TableActions(选牌与操作区)
+               SettlementCard(结算卡片) · TableAnimationController(视觉事件队列)
+               TableWidgets(统一控件样式) · TableComponent(弱引用生命周期)
+               TableViewBridge(组件宿主与原 UI 接口兼容转发)
 res/audio/     四个座位各32段牌名/动作语音、Ripples背景音乐、落桌音效与署名
 tools/audio/   可选的素材生成工具（游戏运行不依赖）
 tests/         headless 冒烟与联机测试
@@ -157,6 +163,7 @@ godot --headless --script res://tests/smoke_ui.gd        # UI 异步闭环
 godot --headless --script res://tests/smoke_audio.gd     # 音频素材/真实出牌/胡牌/同步去重/音量/后台/设置布局
 godot --headless --script res://tests/sweep.gd           # 多种子扫描（胡/碰/杠/报听统计）
 godot --headless --script res://tests/smoke_table_layout.gd  # 牌桌布局与溢出
+godot --headless --script res://tests/table_components.gd   # 多牌桌隔离、操作提交边界、动画取消与退出释放
 godot --headless --script res://tests/smoke_lan_discovery.gd # 热点单播/主动通知，广播被屏蔽及网卡缺失
 godot --headless --script res://tests/smoke_lobby.gd     # 准备/AI/选座/随机庄家/横屏等待房间
 godot --headless --script res://tests/smoke_update.gd    # GitHub 更新版本比较、地址/校验和平台处理
@@ -181,11 +188,11 @@ godot --headless res://tests/client_scene.tscn
 
 ## 九、牌桌 UI 可调参数
 
-主要布局参数集中在 `scripts/ui/GameTable.gd` 顶部：`OWN_HAND_TILE_UNIT` 控制自己的手牌和摸牌（当前 2.40 倍），`OWN_PLAYER_TILE_UNIT` 控制自己的碰杠和鸡牌（1.60 倍），`PLAYER_TILE_UNIT` 控制其他三家的同类牌（1.35 倍），`TILE_UNIT` 保持弃牌牌面（1.10 倍）；牌墙数据仍参与骰子和摸牌逻辑，但牌桌不再绘制牌墙。`DISCARD_BUTTON_SIZE` 统一控制出牌、报听、碰、杠、胡等操作按钮，`ACTION_HAND_GAP` 控制操作区与手牌上边的空隙。`RESULT_TILE_UNIT` 控制结算牌面和翻鸡牌；`DRAW_GAP` 是手牌与摸牌位之间的距离，`EXPOSED_HAND_GAP` 是碰杠/鸡牌与手牌的最小间隔。`_hand_layout()` 让手牌和摸牌位整体居中，预留摸牌位避免摸打时整排晃动；`_seat_metrics()` 控制各家的手牌、弃牌区和碰杠换行区域。东西两家的弃牌区扩大容器但仍使用 `TILE_UNIT`，滚动条隐藏；`_prepare_exposed_layouts()` 会在多组碰杠/鸡牌时向内换行并避开按钮、分数和中央区域。
+主要视觉参数集中在 [`scripts/ui/table/TableUiConfig.gd`](scripts/ui/table/TableUiConfig.gd)：`OWN_HAND_TILE_UNIT` 控制自己的手牌和摸牌（当前 2.40 倍），`OWN_PLAYER_TILE_UNIT` 控制自己的碰杠和鸡牌（1.60 倍），`PLAYER_TILE_UNIT` 控制其他三家的同类牌（1.35 倍），`TILE_UNIT` 保持弃牌牌面（1.10 倍）；牌墙数据仍参与骰子和摸牌逻辑，但牌桌不再绘制牌墙。`DISCARD_BUTTON_SIZE` 统一控制报听、碰、杠、胡等选择按钮（出牌改为点牌）；`SETTINGS_BUTTON_SIZE` 独立控制顶部设置入口（144×72），`SettingsButton.gd` 将触控范围向左、下扩大到 168×112，不增大可见按钮；碰杠牌区避开整个热区，`ACTION_HAND_GAP` 控制操作区与手牌上边的空隙。`RESULT_TILE_UNIT` 控制结算牌面和翻鸡牌；`DRAW_GAP` 是手牌与摸牌位之间的距离，`EXPOSED_HAND_GAP` 是碰杠/鸡牌与手牌的最小间隔。`TableLayout._hand_layout()` 让手牌和摸牌位整体居中，预留摸牌位避免摸打时整排晃动；`_seat_metrics()` 控制各家的手牌、弃牌区和碰杠换行区域。东西两家的弃牌区扩大容器但仍使用 `TILE_UNIT`，滚动条隐藏；`PlayerTileAreas._prepare_exposed_layouts()` 会在多组碰杠/鸡牌时向内换行并避开按钮、分数和中央区域。`GameTable` 中同名常量只保留兼容引用，调整数值请改配置文件。
 
 Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280），Android 使用 `window/handheld/orientation=4`。窗口比例变化只缩放和留边，不切回竖屏；`_usable_rect()` 为安卓安全区域留边，切换尺寸会自动刷新牌面、弃牌区和操作按钮。布局测试覆盖 16:9、20:9、16:10、方屏和竖屏窗口的横屏画布边界；截图见 `docs/android_table_*.png` 和 `docs/android_result_*.png`。
 
-`_meld_tile_layout()` 同时控制牌桌和结算的杠牌排列，`_prepare_exposed_layouts()` 负责四向牌组避让，`_show_result()` 控制四家结算行，`_draw_result_details()`/`_draw_result_group()` 控制得分牌组。`scripts/core/ScoringEngine.gd` 中 `round_points` 是本人得分点，`pairwise[本人][对方]` 是实际收付；`group_chicken_items()` 合并同类同分牌，`_pay_kongs()` 分别处理通用鸡分和定向明杠基础4分。
+`PlayerTileAreas._meld_tile_layout()` 同时控制牌桌和结算的杠牌排列，`_prepare_exposed_layouts()` 负责四向牌组避让；`SettlementCard._show_result()` 控制四家结算行，`_draw_result_details()`/`_draw_result_group()` 控制得分牌组。`scripts/core/ScoringEngine.gd` 中 `round_points` 是本人得分点，`pairwise[本人][对方]` 是实际收付；`group_chicken_items()` 合并同类同分牌，`_pay_kongs()` 分别处理通用鸡分和定向明杠基础4分。
 
 运行 `tests/smoke_table_layout.gd` 可检查各座位从开局到四组碰杠的位置、放大后的牌面、鸡牌顺序与溢出布局。使用非 headless 模式还会生成 `docs/` 下的实际游戏截图，包括 `table_melds_0.png`（开局）、`table_melds_1.png`（一组碰牌）、`table_reference.png`（与参考图对应的碰→鸡→杠布局）。
 
@@ -199,12 +206,26 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 | 联机大厅 | `scenes/Lobby.tscn` | `scripts/ui/Lobby.gd` | 局域网/在线切换、创建/搜索/加入、选座、换座、准备 |
 | 牌桌 | `scenes/GameTable.tscn` | `scripts/ui/GameTable.gd` | 四方牌面、手牌、摸牌、碰杠、弃牌、操作按钮、结算 |
 
+牌桌已采用组件组合：`GameTable.gd` 负责牌局、单机/联机事件和兼容入口，各区域持有自己的控件与显示状态。修改具体区域请进入 `scripts/ui/table/`：
+
+| 文件 | 调整内容 |
+| --- | --- |
+| `TableUiConfig.gd` | 统一尺寸、字号、颜色、间距、安全边距和动画时长 |
+| `TableLayout.gd` | 横屏缩放、安全区、四家坐标、手牌居中、背景与骰子 |
+| `PlayerTileAreas.gd` | 手牌/摸牌、碰杠/鸡牌、弃牌、暗杠显示与牌组避让 |
+| `TableActions.gd` | 点牌出牌、拖动防误触、开局输入锁、报听/碰/杠/胡按钮、操作区位置与提交 |
+| `SettlementCard.gd` | 四家结算、牌组、三笔收付展示、卡片切换、下一局准备 |
+| `TableAnimationController.gd` | 视觉事件去重、排队、回合重置与重连取消 |
+| `TableWidgets.gd` | 共用牌、标签、容器和按钮样式创建 |
+
+`TableComponent.gd` 用弱引用访问牌桌，退出时不会把牌桌留在内存中。`GameTable` 继承 `TableViewBridge.gd`，通过其中的属性和方法转发保留原 UI 接口，联机与测试仍按原方式调用；具体实现和状态位于上述组件，不需同时修改两个位置。`TableWidgets` 是无状态的控件工厂。规则、计分和权威提交仍由原核心与网络模块执行。
+
 ### 10.1 通用布局规则
 
 - 三个界面都是全屏根 `Control`，脚本通过 `resized` 重新计算缩放和居中。
 - 主菜单设计画布为 `MENU_SIZE = Vector2(1800, 1000)`；联机大厅为 `DESIGN = Vector2(1480, 860)`。
 - 牌桌固定使用横屏设计画布 `LANDSCAPE_SIZE = Vector2(2280, 1280)`，窗口比例变化只缩放并留边，不切换为竖屏。Android 安全区域由 `GameTable._usable_rect()` 处理。
-- 颜色、圆角、边框由各脚本中的 `_style()` 和 `_button()` 生成。要统一风格，优先修改这些辅助函数，而不是逐个按钮改颜色。
+- 牌桌调色板、按钮圆角和字体入口在 `TableUiConfig.gd`，共用样式由 `TableWidgets._style()`/`_button()` 创建。主菜单和大厅仍使用各自的样式辅助函数。
 - 牌面不是场景节点：`TileView` 在运行时创建，并使用 `BASE_W = 48`、`BASE_H = 64` 作为基础尺寸，再乘以 `unit`。
 
 ### 10.2 主菜单
@@ -224,7 +245,7 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 
 ### 10.4 牌桌节点层级
 
-`GameTable._build_static_ui()` 创建牌桌静态节点。每个座位都有一个 `SeatRoot0..3`，座位根节点通过旋转映射到四个方向；其下的运行时容器如下：
+`GameTable._build_static_ui()` 委托 `TableLayout` 创建画布，再由玩家牌区、操作区、结算和动画组件分别创建自己的节点。每个座位都有一个 `SeatRoot0..3`，座位根节点通过旋转映射到四个方向；其下的运行时容器如下：
 
 | 变量 | 用途 | 调整入口 |
 | --- | --- | --- |
@@ -240,7 +261,7 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 
 ### 10.5 四方牌面和尺寸
 
-四家显示先由 `_relative_seat()` 转为“你、下家、对家、上家”，再使用 `ROTATIONS` 旋转座位根节点。`_seat_metrics()` 控制各方手牌基线、碰杠起点、弃牌区位置和容器大小；`_hand_layout()` 计算手牌与独立摸牌位的居中位置。
+四家显示先由 `TableLayout._relative_seat()` 转为“你、下家、对家、上家”，再使用 `ROTATIONS` 旋转座位根节点。`_seat_metrics()` 控制各方手牌基线、碰杠起点、弃牌区位置和容器大小；`_hand_layout()` 计算手牌与独立摸牌位的居中位置。以下常量都在 `TableUiConfig.gd`：
 
 - `OWN_HAND_TILE_UNIT`：自己的手牌和摸牌，当前为 `2.40`。
 - `OWN_PLAYER_TILE_UNIT`：自己的碰杠和鸡牌，当前为 `1.60`。
@@ -249,17 +270,17 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 - `RESULT_TILE_UNIT`：结算卡片中的牌，当前为 `1.60`。
 - `TILE_GAP`、`EXPOSED_HAND_GAP`、`DRAW_GAP`：牌间距、碰杠与手牌间距、手牌与摸牌间距。
 
-要放大自己的牌，优先只改 `OWN_HAND_TILE_UNIT`；要让所有操作按钮变大，改 `DISCARD_BUTTON_SIZE`，按钮由 `_add_action()` 统一创建。`_layout_actions()` 会把出牌、报听、碰、杠、胡、自摸等按钮放在摸牌位上方，并避开自己的弃牌区。
+要放大自己的牌，优先只改 `OWN_HAND_TILE_UNIT`；要让所有操作按钮变大，改 `DISCARD_BUTTON_SIZE`，按钮由 `TableActions._add_action()` 统一创建。`_layout_actions()` 会把报听、碰、杠、胡、自摸等选择按钮放在摸牌位上方，并避开自己的弃牌区。`SIDE_RIVER_SIZE`/`MAIN_RIVER_SIZE` 调整弃牌容器，`RESULT_GRID_ORIGIN`/`RESULT_GRID_STRIDE`/`RESULT_ROW_SIZE` 调整结算行网格；`BUTTON_*` 常量调整按钮各状态颜色。
 
 ### 10.6 碰杠、冲锋鸡和弃牌区
 
-`_meld_tile_layout()` 同时服务牌桌和结算卡片。碰牌三张全部竖放且不标来源；明杠按来源横放一张（下家右横、上家左横、对家上横）；暗杠和加杠四张竖放。`_prepare_exposed_layouts()` 按实际矩形逐组寻找位置，空间不足时向内换行，并避开手牌、弃牌区、按钮、分数和中央区域。
+`PlayerTileAreas._meld_tile_layout()` 同时服务牌桌和结算卡片。碰牌三张全部竖放且不标来源；明杠按来源横放一张（下家右横、上家左横、对家上横）；暗杠和加杠四张竖放。`_prepare_exposed_layouts()` 按实际矩形逐组寻找位置，空间不足时向内换行，并避开手牌、弃牌区、按钮、分数和中央区域。
 
 `_refresh_discards()` 只把普通弃牌放进 `discard_scroll`；鸡牌会转入 `chicken_box`，冲锋鸡横放。东西两家弃牌区通过 `_seat_metrics().river_size` 扩大，滚动条设为 `SCROLL_MODE_SHOW_NEVER`，牌面大小仍由 `TILE_UNIT` 控制。
 
 ### 10.7 结算卡片
 
-`_show_result()` 动态创建遮罩和 `SettlementCard`，卡片内四行按“你、上家、对家、下家”显示。每行由 `_draw_result_details()` 创建独立滚动区，`_draw_result_group()` 绘制牌组、分值和说明。鸡牌按同类型/同分值合并，杠牌集中在最后；`_result_sideways_index()` 和 `_meld_tile_layout()` 保证结算中的横牌方向与牌桌一致。
+`SettlementCard._show_result()` 动态创建遮罩和卡片，卡片内四行按“你、上家、对家、下家”显示。每行由 `_draw_result_details()` 创建独立滚动区，`_draw_result_group()` 绘制牌组、分值和说明。鸡牌按同类型/同分值合并，杠牌集中在最后；`_result_sideways_index()` 复用玩家牌区的 `_meld_tile_layout()`，保证结算中的横牌方向与牌桌一致。
 
 “查看结算/看牌桌”按钮位置由 `RESULT_TOGGLE_SIZE`、`_result_toggle_position()` 和 `panel_position_for_result_toggle()` 控制；下一局按钮由 `NEXT_ROUND_BUTTON_SIZE` 和 `_refresh_next_round_controls()` 控制。调整结算卡片整体大小时改 `_result_card_size()` 相关常量，同时检查每行 `ScrollContainer` 的宽高。
 
@@ -269,10 +290,11 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 - `scripts/ui/SoundSettings.gd`：声音开关、音乐/语音/落桌音效滑块、AI 快中慢和退出房间二次确认。牌桌右上角的“设置”按钮打开它。
 - `scripts/ui/RuleGuide.gd`：首次进入时的规则/教程分页。修改新手引导文字直接编辑 `PAGES`。
 - `scripts/ui/UpdatePanel.gd`：版本检查、补丁下载、进度、重启和回滚，不负责游戏牌桌布局。
+- `scripts/ui/TableAnimationLayer.gd`：临时牌节点与 Tween。`TableAnimationController` 管理事件队列、实际牌位、临时遮挡和取消恢复；`TableUiConfig` 中 `DICE_DURATION`/`DEAL_DURATION`/`DRAW_DURATION`/`DISCARD_DURATION`/`MELD_DURATION` 和 `ANIMATION_TILE_UNIT` 调整表现。牌局立即完成操作，视觉异步播放；重连取消旧动画，headless 跳过 Tween。
 
 ### 10.9 推荐的 UI 修改流程
 
-1. 先改一个设计常量或一个布局函数，避免同时改场景和运行时坐标。
+1. 先改 `TableUiConfig.gd` 的一个常量，或对应组件的一处布局，避免同时改场景和运行时坐标。
 2. 运行 `godot --headless --script res://tests/smoke_table_layout.gd` 检查四方牌组、横牌和溢出。
 3. 运行 `godot --headless --script res://tests/smoke_ui.gd` 检查主菜单、联机入口、牌桌按钮和结算切换。
 4. 有声音或弹窗改动时再运行 `smoke_audio.gd`；有大厅改动时运行 `smoke_lobby.gd`。
@@ -290,3 +312,18 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 用自己的录音替换同名文件，回到 Godot 等待自动导入，然后重新运行即可。也支持同名 `.ogg` 或 `.mp3`，加载优先级为 OGG → WAV → MP3；同一名称建议只留一种格式。背景音乐会自动设置循环，牌名语音建议短于一秒以适配快档 AI。
 
 `AudioManager.gd` 管理独立音轨、音乐压低、优先胡牌语音、动作语音保留和本地设置（`user://audio_settings.cfg`）；`RoundState.gd` 在合法出牌、碰、杠宣告、报听和胡牌时产生事件；`GameTable.gd` 在单机、主机、客户端均监听这些事件；`SoundSettings.gd` 提供开关和音量面板。联机声音使用现有可靠状态同步，每局独立编号，刷新与重连不会重复喊以前的牌。
+
+
+### UI 截图检查与动效
+
+本次逐页检查记录见 [docs/ui_review.md](docs/ui_review.md)。主菜单、大厅、声音、规则、更新与退出弹窗共用 `UiStyle.gd` 的样式和安全区；`UiMotion.gd` 提供轻微按压、淡入与滑入，牌桌参数仍集中在 `table/TableUiConfig.gd`。牌桌支持骰子、顺时针两墩发牌、摸牌、打牌、碰、明杠、暗杠、加杠、暗杠亮牌、报听、胡牌及自摸动效；最终胡牌张有呼吸高亮。动画速度在设置中选择，开局可以跳过。
+
+动画只消费已完成的权威事件，其他人的摸牌始终显示牌背。普通快照不会打断动效，重连取消临时节点并跳过历史动作，客户端不依靠动画推进回合。`tests/ui_presentation.gd` 已加入快速 CI；`tests/capture_ui.gd` 和 `tests/capture_motion.gd` 在图形窗口中分别生成逐页截图与动效过程帧，输出在本地 `build/ui_review/`，不进入安装包。
+
+### 开局动画与结算准备的调整入口
+
+- `GameConfig.OPENING_DICE_SECONDS = 1.2`、`OPENING_DICE_HOLD_SECONDS = 0.5` 和 `OPENING_DEAL_SECONDS = 0.16` 定义共享开局节奏。骰子与发牌不受每个客户端的动画速度影响，日常摸打仍可调快慢。
+- 权威端先立即完成 52 张起手牌数据，保持 `DEALING`；共同开局等待结束后才摸庄家的第 14 张并发出行动提示。UI 额外等待本地发牌和摸牌动画完成，动画回调不提交操作、不推进权威端。普通 headless 回归默认跳过等待，专用服务器保留真实等待。
+- `TableActions._on_human_tile_gui()` 在短按松手时提交一次出牌，滑动超过阈值不出牌；所有提交入口都检查开局锁。原生触控和模拟鼠标不能重复提交。
+- `SettlementCard` 的 `ReadinessFooter` 独立显示四人的昵称与准备状态、等待提示、大号准备/取消按钮。每个真人各自准备，人机默认准备；全部准备后仍由权威端等待 1 秒开始下一局。
+- `tests/table_interaction.gd` 加入常规和 CI 快速检查；`tests/capture_table_controls.gd` 需真实窗口，保存本轮牌桌、结算、准备和骰子截图到 `build/ui_review/table_controls/`。

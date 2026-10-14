@@ -16,10 +16,10 @@ config/name="安顺麻将·捉鸡"
 config/name_localized={
 "en": "Anshun Mahjong"
 }
+config/version="1.0.0"
 run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://res/icons/game_icon.png"
-config/version="1.0.0"
 
 [autoload]
 
@@ -38,7 +38,6 @@ window/size/window_width_override=1280
 window/size/window_height_override=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-; Keep Android in landscape, allowing a 180-degree landscape rotation.
 window/handheld/orientation=4
 
 [editor_plugins]

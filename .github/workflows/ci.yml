@@ -49,7 +49,7 @@ jobs:
           set -euo pipefail
           python -X utf8 tests/run_suites.py --godot "$(command -v godot)" \
             --suite rules_complete rules_update smoke_scoring settlement_card scoring_audit scoring_pairwise \
-              legal_actions round_sync smoke_audio reconnect_control smoke_ai \
+              legal_actions round_sync smoke_audio reconnect_control table_components ui_presentation table_interaction center_dashboard smoke_ai \
             --simulation-timeout 180
 
       - name: Run Python CI checks

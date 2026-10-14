@@ -12,6 +12,12 @@ var interactive := false
 var _table_position := Vector2.ZERO
 var _hovered := false
 var touch_padding := 14.0
+var _lift_tween: Tween
+var _win_tween: Tween
+var _win_glow := 0.0:
+	set(value):
+		_win_glow = value
+		queue_redraw()
 
 const BASE_W := 48.0
 const BASE_H := 64.0
@@ -22,8 +28,8 @@ func _ready() -> void:
 	_apply_size()
 	set_interactive(interactive)
 	tooltip_text = "%d%s" % [Tiles.rank(tile), {"wan": "万", "tiao": "条", "tong": "筒"}.get(Tiles.suit(tile), "")] if face_up and tile != "" else ""
-	mouse_entered.connect(func(): _hovered = true; _update_lift())
-	mouse_exited.connect(func(): _hovered = false; _update_lift())
+	mouse_entered.connect(func(): _hovered = true; _update_lift(true))
+	mouse_exited.connect(func(): _hovered = false; _update_lift(true))
 
 func set_table_position(pos: Vector2) -> void:
 	_table_position = pos
@@ -31,7 +37,7 @@ func set_table_position(pos: Vector2) -> void:
 
 func set_selected(on: bool) -> void:
 	selected = on
-	_update_lift()
+	_update_lift(true)
 	queue_redraw()
 
 func set_interactive(on: bool) -> void:
@@ -41,15 +47,30 @@ func set_interactive(on: bool) -> void:
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if on else Control.CURSOR_ARROW
 	_update_lift()
 
+func set_winning(on: bool) -> void:
+	if _win_tween != null: _win_tween.kill()
+	_win_glow = 0.8 if on else 0.0
+	if on and is_inside_tree() and DisplayServer.get_name() != "headless":
+		_win_tween = create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		_win_tween.tween_property(self, "_win_glow", 0.35, 0.7)
+		_win_tween.tween_property(self, "_win_glow", 0.85, 0.7)
+
 ## 保持绘制尺寸不变，只扩展触控命中区域，避免相邻手牌被视觉放大后互相遮挡。
 func _has_point(point: Vector2) -> bool:
 	if not interactive:
 		return Rect2(Vector2.ZERO, size).has_point(point)
 	var padding := touch_padding * unit
-	return Rect2(-padding, -padding, size.x + padding * 2.0, size.y + padding * 2.0).has_point(point)
 
-func _update_lift() -> void:
-	position = _table_position + Vector2(0, -14.0 if selected else (-6.0 if _hovered and interactive else 0.0))
+	# Expand vertically; horizontal overlap would make the next tile steal taps.
+	return Rect2(-2.0, -padding, size.x + 4.0, size.y + padding * 2.0).has_point(point)
+
+func _update_lift(animate: bool = false) -> void:
+	var destination := _table_position + Vector2(0, -14.0 if selected else (-6.0 if _hovered and interactive else 0.0))
+	if _lift_tween != null: _lift_tween.kill()
+	if animate and is_inside_tree() and DisplayServer.get_name() != "headless":
+		_lift_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_lift_tween.tween_property(self, "position", destination, 0.16)
+	else: position = destination
 
 static func texture_path(t: String) -> String:
 	var s := Tiles.suit(t)
@@ -93,7 +114,7 @@ func _draw() -> void:
 	var w := BASE_W * unit
 	var h := BASE_H * unit
 	var depth := 5.0 * unit
-	draw_style_box(_tile_style(Color(0, 0, 0, 0.23), Color.TRANSPARENT), Rect2(2 * unit, 4 * unit, w, h))
+	draw_style_box(_tile_style(Color(0, 0, 0, 0.30), Color.TRANSPARENT), Rect2(2 * unit, 4 * unit, w, h))
 	draw_style_box(_tile_style(Color("#becbb9"), Color("#8a9c86")), Rect2(0, 0, w, h))
 	if face_up and tile != "":
 		draw_style_box(_tile_style(Color("#f6f7ed"), Color("#d9dfd2")), Rect2(0, 0, w, h - depth))
@@ -106,13 +127,18 @@ func _draw() -> void:
 			draw_circle(Vector2(w - 4 * unit, 4 * unit), 2 * unit, Color("#c5993e"))
 	else:
 		_draw_back(w, h - depth)
-	if highlight or selected:
+	if highlight or selected or _win_glow > 0:
+		var glow := _tile_style(Color.TRANSPARENT, Color(0.95, 0.80, 0.39, maxf(0.24, _win_glow)))
+		glow.set_border_width_all(4)
+		draw_style_box(glow, Rect2(-4, -4, w + 8, h + 8))
 		var outline := _tile_style(Color.TRANSPARENT, Color("#f1d47f"))
 		outline.set_border_width_all(2)
 		draw_style_box(outline, Rect2(-1, -1, w + 2, h + 2))
 		if highlight:
 			draw_circle(Vector2(w / 2, -5 * unit), 2.5 * unit, Color("#f1d47f"))
-	if bool(get_meta("charge_chicken", false)):
+	if bool(get_meta("charge_chicken", false)) and bool(get_meta("gold_chicken", false)):
+		_draw_badge(Vector2(w - 12 * unit, 12 * unit), Color("#d5af4e"), "冲金")
+	elif bool(get_meta("charge_chicken", false)):
 		_draw_badge(Vector2(w - 12 * unit, 12 * unit), Color("#db8246"), "冲")
 	elif bool(get_meta("gold_chicken", false)):
 		_draw_badge(Vector2(w - 12 * unit, 12 * unit), Color("#d5af4e"), "金")

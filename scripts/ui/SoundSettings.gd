@@ -1,5 +1,7 @@
 class_name SoundSettings
 extends CanvasLayer
+const STYLE := preload("res://scripts/ui/UiStyle.gd")
+const MOTION := preload("res://scripts/ui/UiMotion.gd")
 signal exit_requested
 signal exit_confirmed
 signal ai_speed_selected(speed_key: String)
@@ -7,8 +9,8 @@ signal animation_speed_selected(speed_key: String)
 signal replay_export_requested
 ## 主菜单和牌桌共用的声音面板，独立于旋转、缩放的牌桌。
 
-const PANEL_SIZE := Vector2(680, 520)
-const TABLE_PANEL_SIZE := Vector2(1040, 600)
+const PANEL_SIZE := Vector2(680, 560)
+const TABLE_PANEL_SIZE := Vector2(1120, 680)
 const TITLES := {"music": "背景音乐", "voice": "出牌 / 动作语音", "effects": "落桌音效"}
 var overlay: Control
 var panel: Panel
@@ -45,7 +47,7 @@ func _ready() -> void:
 	style.border_color = Color("#cbb279")
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(16)
-	panel.add_theme_stylebox_override("panel", style)
+	panel.add_theme_stylebox_override("panel", STYLE.panel())
 	var ui_theme := Theme.new()
 	ui_theme.default_font = TileView._font()
 	ui_theme.default_font_size = 24
@@ -88,33 +90,33 @@ func _ready() -> void:
 		voice_selector.add_item(title)
 	panel.add_child(voice_selector)
 	preview_button = _button("试听语音", Vector2(220, 422), Vector2(172, 62), _preview_voice)
-	_button("继续游戏" if table_mode else "关闭", Vector2(404, 422), Vector2(240, 126 if table_mode else 62), close)
+	_button("继续游戏" if table_mode else "关闭", Vector2(404, 514 if table_mode else 422), Vector2(240, 126 if table_mode else 72), close)
 	if table_mode:
 		_label("人机速度", Vector2(716, 24), Vector2(288, 48), 28)
 		for item in [["快 1 秒", "fast"], ["中 2 秒", "medium"], ["慢 3 秒", "slow"]]:
 			var speed_key: String = item[1]
-			var speed_button := _button(item[0], Vector2(716, 84 + speed_buttons.size() * 100), Vector2(288, 88), func(): _set_speed(speed_key))
+			var speed_button := _button(item[0], Vector2(716, 104 + speed_buttons.size() * 82), Vector2(368, 72), func(): _set_speed(speed_key))
 			speed_buttons[speed_key] = speed_button
-		_label("动画速度", Vector2(716, 294), Vector2(288, 38), 24)
+		_label("动画速度", Vector2(716, 366), Vector2(368, 38), 24)
 		for item in [["快", "fast"], ["标准", "standard"], ["慢", "slow"]]:
 			var animation_key: String = item[1]
-			var animation_button := _button(item[0], Vector2(716 + animation_speed_buttons.size() * 98, 332), Vector2(92, 64), func(): _set_animation_speed(animation_key))
+			var animation_button := _button(item[0], Vector2(716 + animation_speed_buttons.size() * 126, 418), Vector2(116, 72), func(): _set_animation_speed(animation_key))
 			animation_speed_buttons[animation_key] = animation_button
-		var exit_button := _button("退出房间", Vector2(716, 422), Vector2(288, 126), func(): exit_requested.emit())
+		var exit_button := _button("退出房间", Vector2(716, 514), Vector2(368, 126), func(): exit_requested.emit())
 		exit_button.name = "ExitRoomButton"
-		replay_export_button = _button("保存本局记录", Vector2(36, 496), Vector2(356, 70), func(): replay_export_requested.emit())
-		replay_status = _label("", Vector2(404, 562), Vector2(600, 28), 18)
+		replay_export_button = _button("保存本局记录", Vector2(36, 514), Vector2(356, 80), func(): replay_export_requested.emit())
+		replay_status = _label("", Vector2(36, 610), Vector2(610, 40), 18)
 		exit_confirmation = Panel.new()
 		exit_confirmation.name = "ExitConfirmation"
 		exit_confirmation.size = TABLE_PANEL_SIZE
 		exit_confirmation.add_theme_stylebox_override("panel", style)
 		panel.add_child(exit_confirmation)
-		var question := _label("确定退出当前房间？\n退出后返回主菜单", Vector2(100, 144), Vector2(840, 110), 32)
+		var question := _label("确定退出当前房间？\n退出后返回主菜单", Vector2(100, 176), Vector2(920, 110), 32)
 		question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		question.reparent(exit_confirmation, false)
-		confirm_exit_button = _button("退出房间", Vector2(184, 320), Vector2(288, 126), func(): exit_confirmed.emit())
+		confirm_exit_button = _button("退出房间", Vector2(224, 386), Vector2(288, 126), func(): exit_confirmed.emit())
 		confirm_exit_button.reparent(exit_confirmation, false)
-		cancel_exit_button = _button("继续游戏", Vector2(568, 320), Vector2(288, 126), func(): exit_confirmation.hide())
+		cancel_exit_button = _button("继续游戏", Vector2(608, 386), Vector2(288, 126), func(): exit_confirmation.hide())
 		cancel_exit_button.reparent(exit_confirmation, false)
 		exit_confirmation.hide()
 	AudioManager.settings_changed.connect(_sync)
@@ -140,25 +142,25 @@ func _button(text: String, pos: Vector2, dimensions: Vector2, callback: Callable
 	button.text = text
 	button.position = pos
 	button.size = dimensions
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color("#345e48") if state == "normal" else Color("#48795a")
-		style.set_corner_radius_all(8)
-		button.add_theme_stylebox_override(state, style)
+	button.add_theme_font_size_override("font_size", 25)
+	STYLE.button(button, text == "继续游戏")
 	button.pressed.connect(callback)
 	panel.add_child(button)
 	return button
 
 func _layout() -> void:
+	MOTION.stop(panel)
 	var viewport_size := get_viewport().get_visible_rect().size
 	# 牌桌使用横屏拉伸画布；按实际屏幕大小调整面板，
 	# 避免手机上再被整个游戏的缩放缩小一次。
 	var screen_scale := get_viewport().get_screen_transform().get_scale().abs()
-	var physical_size := viewport_size * screen_scale
+	var available := STYLE.usable_rect(overlay)
+	if not available.has_area(): available = Rect2(Vector2.ZERO, viewport_size)
+	var physical_size := available.size * screen_scale
 	var dimensions := TABLE_PANEL_SIZE if table_mode else PANEL_SIZE
 	var physical_factor := minf(1.0, minf((physical_size.x - 32) / dimensions.x, (physical_size.y - 32) / dimensions.y))
 	panel.scale = Vector2.ONE * maxf(0.1, physical_factor / maxf(0.01, screen_scale.x))
-	panel.position = (viewport_size - dimensions * panel.scale) / 2.0
+	panel.position = available.position + (available.size - dimensions * panel.scale) / 2.0
 
 func _sync() -> void:
 	for channel in AudioManager.CHANNELS:
@@ -183,6 +185,7 @@ func _set_speed(speed_key: String) -> void:
 func _set_animation_speed(speed_key: String) -> void:
 	GameConfig.set_animation_speed(speed_key)
 	animation_speed_selected.emit(speed_key)
+	_update_speed_buttons()
 
 func _update_speed_buttons() -> void:
 	var selected: String = GameConfig.ai_speed
@@ -198,7 +201,8 @@ func open() -> void:
 	_sync()
 	_update_speed_buttons()
 	_layout()
-	overlay.show()
+	MOTION.appear(overlay)
+	MOTION.slide_in(panel)
 	preview_button.grab_focus()
 
 func confirm_exit() -> void:
@@ -208,6 +212,8 @@ func confirm_exit() -> void:
 func close(persist: bool = true) -> void:
 	if persist and persist_changes:
 		AudioManager.save_settings()
+	MOTION.stop(overlay)
+	MOTION.stop(panel)
 	overlay.hide()
 	if exit_confirmation != null: exit_confirmation.hide()
 

@@ -1,4 +1,6 @@
 extends Control
+const STYLE := preload("res://scripts/ui/UiStyle.gd")
+const MOTION := preload("res://scripts/ui/UiMotion.gd")
 ## First-run rules/tutorial panel. It is deliberately self-contained so it can
 ## be hot-updated without changing scenes or autoload registration.
 
@@ -7,7 +9,7 @@ const PAGES := [
 	{"title": "先认识牌桌", "body": "四位玩家围成一桌。你的手牌在下方，摸到的牌单独放在最右侧。轮到你时，选择一张牌打出；牌桌上的分数是累计分。"},
 	{"title": "碰、杠和报听", "body": "只能碰和杠，不能吃。杠后从牌尾补牌。暗杠先扣在桌面，下一轮自己出牌后翻开。第一次摸牌后的出牌机会，打出后能听牌可以报听。"},
 	{"title": "鸡牌怎么计分", "body": "一条和八筒是鸡牌。两种鸡牌各自全场第一张打出的是冲锋鸡。胡牌时翻牌头的下一张，取本牌和首尾循环的上下牌；命中一条或八筒时对应鸡牌翻倍。"},
-	{"title": "常见胡牌", "body": "小七对 24 分，龙七对 44 分，大队子 14 分，清一色 24 分。自摸 +4，杠开 +9，最后四张自摸 +9，无鸡 +14。不同付款关系会在结算卡片逐项列出。"},
+	{"title": "常见胡牌", "body": "小七对 24 分，龙七对 44 分，大队子 14 分，清一色 24 分；清大对 34 分，清单吊 54 分，清龙七对 88 分。自摸 +4，杠开 +9，最后四张自摸 +9，无鸡 +14。不同付款关系会在结算卡片逐项列出。"},
 	{"title": "联机和断线", "body": "联机房间由房主/服务器权威处理，客户端接收可靠状态快照。掉线后会保留座位并由人机暂代；在保留时间内重新输入同一昵称即可恢复原座位和手牌。"},
 ]
 var panel: Panel
@@ -32,23 +34,36 @@ func _build() -> void:
 	panel = Panel.new()
 	panel.size = Vector2(1120, 650)
 	panel.add_theme_stylebox_override("panel", _style(Color("#173d31"), Color("#c7af73")))
+	panel.theme = Theme.new()
+	panel.theme.default_font = TileView._font()
 	add_child(panel)
 	title_label = _label("", Vector2(64, 54), Vector2(992, 64), 42, Color("#f2deb0"))
-	body_label = _label("", Vector2(64, 150), Vector2(992, 300), 30, Color("#e0ece1"))
+	body_label = _label("", Vector2(64, 150), Vector2(992, 210), 30, Color("#e0ece1"))
 	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	page_label = _label("", Vector2(64, 500), Vector2(260, 42), 24, Color("#adc6b5"))
 	previous_button = _button("上一步", _previous, Vector2(530, 548), Vector2(180, 68))
 	next_button = _button("下一步", _next, Vector2(730, 548), Vector2(180, 68))
 	_button("关闭", close, Vector2(930, 548), Vector2(130, 68))
+	var example := HBoxContainer.new()
+	example.name = "Examples"
+	example.position = Vector2(64, 370)
+	example.size = Vector2(992, 118)
+	example.alignment = BoxContainer.ALIGNMENT_CENTER
+	example.add_theme_constant_override("separation", 18)
+	panel.add_child(example)
 	resized.connect(_layout)
 	_layout()
 
 func open() -> void:
 	page = 0
-	visible = true
+	_layout()
+	MOTION.appear(self)
+	MOTION.slide_in(panel)
 	_refresh()
 
 func close() -> void:
+	MOTION.stop(self)
+	MOTION.stop(panel)
 	visible = false
 
 func _next() -> void:
@@ -60,6 +75,16 @@ func _previous() -> void:
 	_refresh()
 
 func _refresh() -> void:
+	var example := panel.get_node("Examples")
+	for child in example.get_children():
+		example.remove_child(child)
+		child.queue_free()
+	var samples: Array = [["wan1", "wan2", "wan3", "tong8", "tiao1"], ["tong4", "tong4", "tong4", "wan9", "wan9", "wan9", "wan9"], ["tiao1", "tong7", "tong8", "tong9"], ["wan1", "wan1", "wan2", "wan2", "wan3", "wan3"], []][page]
+	for card in samples:
+		var tile := TileView.new()
+		tile.set_card(card, true)
+		tile.set_unit(1.5)
+		example.add_child(tile)
 	var item: Dictionary = PAGES[page]
 	title_label.text = item.title
 	body_label.text = item.body
@@ -69,7 +94,11 @@ func _refresh() -> void:
 
 func _layout() -> void:
 	if panel == null: return
-	panel.position = (size - panel.size) / 2.0
+	MOTION.stop(panel)
+	var available := STYLE.usable_rect(self)
+	var factor := minf(1.0, minf((available.size.x - 48) / 1120.0, (available.size.y - 48) / 650.0))
+	panel.scale = Vector2.ONE * maxf(0.1, factor)
+	panel.position = available.position + (available.size - panel.size * panel.scale) / 2.0
 
 func _label(value: String, pos: Vector2, dimensions: Vector2, font_size: int, color: Color) -> Label:
 	var label := Label.new()
@@ -89,6 +118,7 @@ func _button(value: String, callback: Callable, pos: Vector2, dimensions: Vector
 	button.add_theme_font_size_override("font_size", 25)
 	button.add_theme_stylebox_override("normal", _style(Color("#35694d"), Color("#52775d")))
 	button.add_theme_stylebox_override("hover", _style(Color("#49775a"), Color("#c7af73")))
+	STYLE.button(button, value == "下一步")
 	button.pressed.connect(callback)
 	panel.add_child(button)
 	return button

@@ -9,7 +9,8 @@ func _run() -> void:
 	var table = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(table)
 	await process_frame
-	t.expect(table._settings_button.text == "设置" and table._settings_button.size == table.DISCARD_BUTTON_SIZE, "Settings entry has the same touch size as discard")
+	t.expect(table._settings_button.text == "设置" and table._settings_button.size == table.UI.SETTINGS_BUTTON_SIZE, "Settings uses its own compact touch size")
+	t.expect(table._settings_button.get_rect().end.y <= table._table_bounds().position.y, "Settings stays above the playing area")
 	table._settings_button.pressed.emit()
 	var settings = table._sound_settings
 	t.expect(settings.is_open() and settings.speed_buttons.size() == 3, "One settings panel contains sound and three AI speeds")

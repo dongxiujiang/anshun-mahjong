@@ -97,6 +97,8 @@ var _draw_remaining_before := 108
 var _kong_draw_turn := false
 var _kong_draw_kind: KongKind = KongKind.NONE
 var ai_delay_seconds := 0.0
+var opening_delay_seconds := 0.0
+var _opening_generation := 0
 var next_chicken_multiplier := 1
 const PRESENTATION := preload("res://scripts/core/RoundPresentation.gd")
 var _presentation := PRESENTATION.new()
@@ -162,6 +164,7 @@ func build_players(human_seat: int) -> void:
 		players.append(player)
 
 func start_round(human_seat: int, die_override: int = -1) -> void:
+	_opening_generation += 1
 	if _recorder.auto_save and not _recorder.record.is_empty(): _recorder.save()
 	var scores: Array = []
 	for player in players:
@@ -191,14 +194,35 @@ func start_round(human_seat: int, die_override: int = -1) -> void:
 	var die := die_override if die_override >= 1 and die_override <= 6 else _rng.randi_range(1, 6)
 	round_meta["die"] = die
 	round_meta["break"] = WallRing.compute_break(die, dealer_seat)
+	phase = Phase.DEALING
+	current_turn = dealer_seat
 	_emit_visual_event("dice", {"value": die, "dealer": dealer_seat})
 	wall.set_head(round_meta["break"])
 	phase = Phase.DEALING
 	_initial_deal()
+	if opening_delay_seconds > 0.0:
+		state_update.emit()
+		_wait_for_opening(_opening_generation)
+	else:
+		_finish_opening()
+
+func _wait_for_opening(generation: int) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null: return
+	await tree.create_timer(opening_delay_seconds).timeout
+	if generation == _opening_generation and phase == Phase.DEALING:
+		_finish_opening()
+
+func _finish_opening() -> void:
 	phase = Phase.PLAYING
-	current_turn = dealer_seat
 	_recorder.begin(self)
 	_begin_turn()
+
+func cancel_opening() -> void:
+	_opening_generation += 1
+	if phase == Phase.DEALING:
+		phase = Phase.IDLE
+		awaiting = false
 
 func _initial_deal() -> void:
 	var batches: Array = []
@@ -341,6 +365,7 @@ func _apply_turn_action(seat: int, decision: Dictionary) -> void:
 		player.ready = true
 		player.announced_ready = true
 		_emit_audio_event("ready", seat)
+		_emit_visual_event("ready", {"seat": seat})
 	_discard(seat, discard)
 
 func _discard(seat: int, tile: String) -> void:
@@ -366,6 +391,11 @@ func _discard(seat: int, tile: String) -> void:
 	if Tiles.is_chicken(tile) and not has_charge(tile):
 		round_meta.charge_chickens[tile] = {"owner": seat, "location": "discard", "discard_id": player.discard_count - 1}
 		_refresh_charge_flags()
+	_emit_visual_event("discard", {"seat": seat, "tile": tile, "charge": Tiles.is_chicken(tile) and is_charge_discard(seat, player.discards.size() - 1)})
+	for index in player.melds.size():
+		var meld: Dictionary = player.melds[index]
+		if meld.get("concealed", false) and player.discard_count == int(meld.get("after_discard", 0)) + 2:
+			_emit_visual_event("meld_reveal", {"seat": seat, "tile": meld.tile, "index": index})
 	_emit_audio_event("discard", seat, tile)
 	state_update.emit()
 	_after_discard()
@@ -377,6 +407,17 @@ func _after_discard() -> void:
 
 func _seat_order(source: int) -> Array:
 	return [(source + 1) % 4, (source + 2) % 4, (source + 3) % 4]
+
+## Returns the seat represented by the turn light for presentation only.
+## During a discard-response window the light stays on the theoretical next
+## discarder. It must never be used for permissions, AI decisions, or drawing.
+func presentation_turn_seat() -> int:
+	if phase != Phase.PLAYING:
+		return -1
+	if not _awaiting_response.is_empty() or _response_stage != ResponseStage.NONE:
+		var source := int(last_discard.get("seat", -1))
+		return posmod(source + 1, 4) if source >= 0 else -1
+	return current_turn
 
 func _response_options(seat: int, tile: String) -> Dictionary:
 	var source := int(_pending_kong.get("seat", -1)) if _response_stage == ResponseStage.ROB else int(last_discard.get("seat", -1))
@@ -490,6 +531,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		current_turn = seat
 		_kong_draw_kind = KongKind.EXPOSED
 		_emit_audio_event("kong", seat)
+		_emit_visual_event("meld", {"seat": seat, "source": source, "tile": tile, "kind": "kong", "index": player.melds.size() - 1})
 		_state_after_kong_draw()
 		return
 	if action == "pong" and options.can_pong:
@@ -499,6 +541,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		player.just_drew = ""
 		current_turn = seat
 		_kong_draw_turn = false
+		_emit_visual_event("meld", {"seat": seat, "source": source, "tile": tile, "kind": "pung", "index": player.melds.size() - 1})
 		_emit_audio_event("pong", seat)
 		_ask_turn_actor()
 		return
@@ -524,6 +567,7 @@ func _do_concealed_kong(seat: int, tile: String, player: PlayerState) -> void:
 	player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "concealed": true, "after_discard": player.discard_count})
 	current_turn = seat
 	_kong_draw_kind = KongKind.CONCEALED
+	_emit_visual_event("meld", {"seat": seat, "tile": "", "kind": "concealed", "index": player.melds.size() - 1})
 	# 只喊“杠”，公共声音事件不能泄露暗杠的牌。
 	_emit_audio_event("kong", seat)
 	_state_after_kong_draw()
@@ -549,6 +593,7 @@ func _complete_add_kong() -> void:
 	var player: PlayerState = players[seat]
 	player.concealed.erase(tile)
 	player.melds[_pending_kong.index].kind = "add_kong"
+	_emit_visual_event("meld", {"seat": seat, "tile": tile, "kind": "add_kong", "index": int(_pending_kong.index)})
 	_pending_kong = {}
 	_awaiting_response = {}
 	current_turn = seat
@@ -665,6 +710,8 @@ func _finish() -> void:
 	assert(is_zero_approx(_last_total), "Settlement must preserve the four players' total score")
 	last_result = build_result()
 	_recorder.finish(self)
+	if int(round_meta.winner) >= 0:
+		_emit_visual_event("win", {"seat": int(round_meta.winner), "tile": str(round_meta.get("win_tile", "")), "self_draw": bool(round_meta.get("self_draw", false))})
 	_audio.emit_win(round_meta)
 	round_finished.emit(last_result)
 	state_update.emit()

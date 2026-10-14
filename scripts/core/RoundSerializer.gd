@@ -95,7 +95,7 @@ static func serialize_for_seat(round_state, seat: int) -> Dictionary:
 			if not round_state.is_meld_revealed(int(player.seat), index):
 				player.melds[index].tile = "hidden0"
 	for event in state.get("visual_events", []):
-		if event.has("seat") and int(event.get("seat", -1)) != seat:
+		if event.get("type", "") in ["draw", "deal"] and int(event.get("seat", -1)) != seat:
 			if event.has("tile"): event.tile = "hidden0"
 			if event.has("cards") and event.cards is Array:
 				event.cards = event.cards.map(func(_card): return "hidden0")
