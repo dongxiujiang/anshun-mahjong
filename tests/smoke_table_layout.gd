@@ -283,9 +283,11 @@ func _check_layout() -> void:
 					expected_unit = table.OWN_HAND_TILE_UNIT if seat == table.human_seat else table.PLAYER_TILE_UNIT
 				elif player_tile:
 					expected_unit = table.OWN_PLAYER_TILE_UNIT if seat == table.human_seat else table.PLAYER_TILE_UNIT
+				else:
+					expected_unit = table.RIVER_TILE_UNIT
 				_expect(tile.size.is_equal_approx(Vector2(TileView.BASE_W, TileView.BASE_H) * expected_unit), "Tile size must match its table zone")
 				if not player_tile:
-					_expect(tile.size.is_equal_approx(Vector2(52.8, 70.4)), "Discarded tiles must keep their original dimensions")
+					_expect(tile.size.is_equal_approx(Vector2(TileView.BASE_W, TileView.BASE_H) * table.RIVER_TILE_UNIT), "Discarded tiles must use the readable river dimensions")
 				var transform: Transform2D = tile.get_global_transform()
 				_expect(is_equal_approx(transform.x.length(), table.surface.scale.x) and is_equal_approx(transform.y.length(), table.surface.scale.y), "No player or tile category may use a smaller display scale")
 				var rect := _tile_rect(tile)

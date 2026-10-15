@@ -161,8 +161,8 @@ func _seat_metrics(seat: int) -> Dictionary:
 	return {"hand_y": hand_y, "exposed_y": exposed_y,
 		"left": UI.SIDE_EXPOSED_LEFT if side else UI.EXPOSED_LEFT, "overflow_x": UI.SIDE_OVERFLOW_LEFT if side else UI.EXPOSED_LEFT,
 		"overflow_right": UI.SIDE_OVERFLOW_RIGHT if side else UI.OVERFLOW_RIGHT,
-		# Side-player discard zones are wider in their local axis.  Tile units stay
-		# at TILE_UNIT; only the available area grows.
+		# Side-player discard zones are wider in their local axis.  River tiles use
+		# their own readable size; hand and meld tile units remain independent.
 		"river_position": UI.SIDE_RIVER_POSITION if side else UI.MAIN_RIVER_POSITION,
 		"river_size": UI.SIDE_RIVER_SIZE if side else UI.MAIN_RIVER_SIZE, "river_columns": UI.RIVER_COLUMNS}
 

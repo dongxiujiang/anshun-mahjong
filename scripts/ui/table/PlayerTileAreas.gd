@@ -379,13 +379,13 @@ func _refresh_discards(seat: int) -> void:
 	var columns: int = metrics.river_columns
 	for box in discard_box[seat]:
 		table._clear_box(box)
-	var width = TileView.BASE_W * UI.TILE_UNIT
-	var height = TileView.BASE_H * UI.TILE_UNIT
+	var width = TileView.BASE_W * UI.RIVER_TILE_UNIT
+	var height = TileView.BASE_H * UI.RIVER_TILE_UNIT
 	var regular_index = 0
 	for index in player.discards.size():
 		if Tiles.is_chicken(player.discards[index]):
 			continue
-		var tile: TileView = table._make_tile(player.discards[index], true)
+		var tile: TileView = table._make_tile(player.discards[index], true, UI.RIVER_TILE_UNIT)
 		tile.set_meta("discard_id", player.discard_ids[index] if index < player.discard_ids.size() else index)
 		var latest: bool = table.round.last_discard.get("seat", -1) == seat and table.round.last_discard.get("tile", "") == tile.tile and index == player.discards.size() - 1
 		tile.set_highlight(latest)

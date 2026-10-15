@@ -8,6 +8,7 @@ const LANDSCAPE_SIZE := Vector2(2280, 1280)
 const LANDSCAPE_CENTER := Vector2(1140, 650)
 const LANDSCAPE_RESULT_SIZE := Vector2(2200, 1232)
 const TILE_UNIT := 1.1
+const RIVER_TILE_UNIT := 1.25
 const PLAYER_TILE_UNIT := 1.35
 const OWN_PLAYER_TILE_UNIT := 1.60
 const OWN_HAND_TILE_UNIT := OWN_PLAYER_TILE_UNIT * 1.5
@@ -46,10 +47,12 @@ const SIDE_OVERFLOW_LEFT := -544.0
 const SIDE_OVERFLOW_RIGHT := 530.0
 const OVERFLOW_RIGHT := 1000.0
 const SIDE_RIVER_POSITION := Vector2(-300, 390)
-const SIDE_RIVER_SIZE := Vector2(720, 170)
+## 弃牌牌面继续使用 TILE_UNIT；这里只扩大容器的可视宽度，给多行弃牌
+## 留出更清晰的间距。东西两家旋转后第二轴就是屏幕横向空间。
+const SIDE_RIVER_SIZE := Vector2(720, 190)
 const MAIN_RIVER_POSITION := Vector2(-350, 180)
-const MAIN_RIVER_SIZE := Vector2(700, 150)
-const RIVER_COLUMNS := 12
+const MAIN_RIVER_SIZE := Vector2(700, 180)
+const RIVER_COLUMNS := 10
 const RIVER_ROWS := 18
 const RIVER_INSET := 4.0
 const RIVER_CONTENT_MARGIN := 16.0
