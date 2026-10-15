@@ -94,7 +94,7 @@ func _test_next_dealer() -> void:
 		var multiple := _fixture(dealer)
 		multiple.players[dealer].concealed = CALLED.duplicate()
 		multiple._penzu()
-		t.expect(multiple.next_dealer_seat == posmod(dealer + GameConfig.TURN_DIRECTION, 4), "多人未叫按庄家后的摸牌方向选第一位")
+		t.expect(multiple.next_dealer_seat == posmod(dealer + GameConfig.DEAL_DIRECTION, 4), "多人未叫按庄家后的拿牌方向选第一位")
 
 func _test_deal() -> void:
 	for dealer in 4:
@@ -118,10 +118,10 @@ func _test_deal() -> void:
 			for batch in 3:
 				for offset in 4:
 					for tile in 4:
-						expected[posmod(dealer + GameConfig.TURN_DIRECTION * offset, 4)].append(ring[posmod(index, 108)])
+						expected[posmod(dealer + GameConfig.DEAL_DIRECTION * offset, 4)].append(ring[posmod(index, 108)])
 						index += 1
 			for offset in 4:
-				expected[posmod(dealer + GameConfig.TURN_DIRECTION * offset, 4)].append(ring[posmod(index, 108)])
+				expected[posmod(dealer + GameConfig.DEAL_DIRECTION * offset, 4)].append(ring[posmod(index, 108)])
 				index += 1
 			expected[dealer].append(ring[posmod(index, 108)])
 			for seat in 4:

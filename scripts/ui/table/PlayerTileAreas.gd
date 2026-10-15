@@ -146,6 +146,15 @@ func _refresh_seat(seat: int) -> void:
 	var has_draw = player.just_drew != "" and cards.has(player.just_drew)
 	if has_draw:
 		cards.erase(player.just_drew)
+	# Preserve each rendered tile's source index.  A tile name is not unique;
+	# the source index identifies the exact duplicate the player clicked.
+	var used_indices: Dictionary = {}
+	var drawn_index := -1
+	if has_draw:
+		for source_index in range(player.concealed.size() - 1, -1, -1):
+			if player.concealed[source_index] == player.just_drew:
+				drawn_index = source_index
+				break
 	var player_unit: float = table._player_tile_unit(seat)
 	var width = TileView.BASE_W * player_unit
 	var height = TileView.BASE_H * player_unit
@@ -160,12 +169,12 @@ func _refresh_seat(seat: int) -> void:
 		if group.has("chicken"):
 			var chicken: Dictionary = group.chicken
 			var tile: TileView = table._make_tile(chicken.tile, true, player_unit)
+			tile.set_meta("discard_id", int(chicken.history_index))
 			tile.set_meta("charge_chicken", chicken.charge)
 			tile.set_highlight(chicken.latest)
 			if chicken.charge:
 				tile.rotation = -PI / 2.0
 				table._put_tile(chicken_box[seat], tile, group_origin + Vector2(0, height))
-				tile.tooltip_text = "冲锋鸡 · " + table._cn(chicken.tile)
 			else:
 				table._put_tile(chicken_box[seat], tile, group_origin)
 			continue
@@ -179,7 +188,6 @@ func _refresh_seat(seat: int) -> void:
 			tile.set_meta("meld_index", int(group.meld_index))
 			tile.set_meta("charge_chicken", index == charge_index)
 			if index == charge_index:
-				tile.tooltip_text = "冲锋鸡 · " + table._cn(meld.tile)
 				tile.set_highlight(true)
 			if index == int(layout.sideways):
 				tile.rotation = -PI / 2.0
@@ -194,6 +202,14 @@ func _refresh_seat(seat: int) -> void:
 	var reveal = own or table.round.phase == RoundState.Phase.SETTLED
 	for card in cards:
 		var tile: TileView = table._make_tile(card if reveal else "", reveal, hand_unit)
+		if own:
+			for source_index in player.concealed.size():
+				if source_index == drawn_index or used_indices.has(source_index):
+					continue
+				if player.concealed[source_index] == card:
+					used_indices[source_index] = true
+					tile.set_meta("concealed_index", source_index)
+					break
 		table._put_tile(hand_box[seat], tile, Vector2(x, y))
 		if own:
 			tile.gui_input.connect(table._on_human_tile_gui.bind(tile))
@@ -206,6 +222,8 @@ func _refresh_seat(seat: int) -> void:
 		drawn.set_winning(table.round.phase == RoundState.Phase.SETTLED and int(table.round.round_meta.get("winner", -1)) == seat)
 		if own:
 			drawn.gui_input.connect(table._on_human_tile_gui.bind(drawn))
+			if drawn_index >= 0:
+				drawn.set_meta("concealed_index", drawn_index)
 	table._refresh_discards(seat)
 
 func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> Dictionary:
@@ -368,6 +386,7 @@ func _refresh_discards(seat: int) -> void:
 		if Tiles.is_chicken(player.discards[index]):
 			continue
 		var tile: TileView = table._make_tile(player.discards[index], true)
+		tile.set_meta("discard_id", player.discard_ids[index] if index < player.discard_ids.size() else index)
 		var latest: bool = table.round.last_discard.get("seat", -1) == seat and table.round.last_discard.get("tile", "") == tile.tile and index == player.discards.size() - 1
 		tile.set_highlight(latest)
 		var row_index = regular_index / columns

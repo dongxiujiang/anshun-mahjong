@@ -86,7 +86,7 @@ func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
 	var now := Time.get_ticks_msec()
 	if now - _last_tile_input_ms < UI.TILE_INPUT_DEBOUNCE_MS: return
 	_last_tile_input_ms = now
-	table._submit_discard(tile.tile)
+	table._submit_discard(tile.tile, int(tile.get_meta("concealed_index", -1)))
 
 func _begin_press(tile: TileView, position: Vector2) -> void:
 	_pressed_tile = tile
@@ -135,7 +135,7 @@ func _add_kong_choices(title: String, decision_key: String, cards: Array) -> voi
 
 func _discard_selected() -> void:
 	if is_instance_valid(_selected_tile):
-		table._submit_discard(_selected_tile.tile)
+		table._submit_discard(_selected_tile.tile, int(_selected_tile.get_meta("concealed_index", -1)))
 
 func _toggle_ready() -> void:
 	_declaring_ready = not _declaring_ready
@@ -181,10 +181,13 @@ func _commit_turn(decision: Dictionary) -> void:
 	table._update_interactivity()
 	table._emit_turn(decision)
 
-func _submit_discard(tile: String) -> void:
+func _submit_discard(tile: String, discard_index: int = -1) -> void:
 	if not _selecting or (_declaring_ready and not _ready_discards.has(tile)):
 		return
-	table._commit_turn({"discard": tile, "ready": _declaring_ready})
+	var decision := {"discard": tile, "ready": _declaring_ready}
+	if discard_index >= 0:
+		decision["discard_index"] = discard_index
+	table._commit_turn(decision)
 
 func _on_require_response(seat: int, discarded_seat: int, tile: String, options: Dictionary) -> void:
 	if seat != table.human_seat:

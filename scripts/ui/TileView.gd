@@ -27,7 +27,9 @@ static var _tex_cache := {}
 func _ready() -> void:
 	_apply_size()
 	set_interactive(interactive)
-	tooltip_text = "%d%s" % [Tiles.rank(tile), {"wan": "万", "tiao": "条", "tong": "筒"}.get(Tiles.suit(tile), "")] if face_up and tile != "" else ""
+	# Tile identity is already visible on the face; do not show a second text
+	# description when the pointer rests over a tile.
+	tooltip_text = ""
 	mouse_entered.connect(func(): _hovered = true; _update_lift(true))
 	mouse_exited.connect(func(): _hovered = false; _update_lift(true))
 
@@ -65,7 +67,9 @@ func _has_point(point: Vector2) -> bool:
 	return Rect2(-2.0, -padding, size.x + 4.0, size.y + padding * 2.0).has_point(point)
 
 func _update_lift(animate: bool = false) -> void:
-	var destination := _table_position + Vector2(0, -14.0 if selected else (-6.0 if _hovered and interactive else 0.0))
+	# Discarding is a direct tap.  Keep the tile at its layout position so a
+	# click or a later draw cannot leave a stale lifted tile behind.
+	var destination := _table_position
 	if _lift_tween != null: _lift_tween.kill()
 	if animate and is_inside_tree() and DisplayServer.get_name() != "headless":
 		_lift_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)

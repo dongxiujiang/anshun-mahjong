@@ -303,8 +303,8 @@ func _safe_discard() -> String:
 func _commit_turn(decision: Dictionary) -> void:
 	_table_actions._commit_turn(decision)
 
-func _submit_discard(tile: String) -> void:
-	_table_actions._submit_discard(tile)
+func _submit_discard(tile: String, discard_index: int = -1) -> void:
+	_table_actions._submit_discard(tile, discard_index)
 
 func _on_require_response(seat: int, discarded_seat: int, tile: String, options: Dictionary) -> void:
 	_table_actions._on_require_response(seat, discarded_seat, tile, options)

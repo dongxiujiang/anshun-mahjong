@@ -40,6 +40,10 @@ static func valid_turn(options: Dictionary, player: PlayerState, decision: Dicti
 	if not added.is_empty(): return added.size() == 1 and options.add_kong.has(added[0])
 	var tile: Variant = decision.get("discard", player.just_drew if player.ready else "")
 	if not tile is String or not options.discards.has(tile): return false
+	var discard_index := int(decision.get("discard_index", -1))
+	if discard_index >= 0:
+		if discard_index >= player.concealed.size() or str(player.concealed[discard_index]) != tile:
+			return false
 	return not bool(decision.get("ready", false)) or options.ready_discards.has(tile)
 
 static func response_options(round, seat: int, source: int, tile: String, stage: int) -> Dictionary:

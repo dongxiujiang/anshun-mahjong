@@ -231,7 +231,7 @@ func _initial_deal() -> void:
 	for batch in 3:
 		var batch_info: Array = []
 		for offset in 4:
-			var seat := posmod(dealer_seat + CFG.TURN_DIRECTION * offset, 4)
+			var seat := posmod(dealer_seat + CFG.DEAL_DIRECTION * offset, 4)
 			var cards: Array = []
 			for index in 4:
 				var card := wall.draw_head()
@@ -240,7 +240,7 @@ func _initial_deal() -> void:
 			batch_info.append({"seat": seat, "cards": cards})
 		batches.append(batch_info)
 	for offset in 4:
-		var seat := posmod(dealer_seat + CFG.TURN_DIRECTION * offset, 4)
+		var seat := posmod(dealer_seat + CFG.DEAL_DIRECTION * offset, 4)
 		var card := wall.draw_head()
 		players[seat].concealed.append(card)
 		batches.append([{"seat": seat, "cards": [card], "dealer_extra": seat == dealer_seat}])
@@ -365,18 +365,26 @@ func _apply_turn_action(seat: int, decision: Dictionary) -> void:
 		_do_add_kong(seat, str(decision.add_kong[0]))
 		return
 	var discard: String = player.just_drew if player.ready else decision.get("discard", "")
+	var discard_index := int(decision.get("discard_index", -1))
 	if decision.get("ready", false):
 		player.ready = true
 		player.announced_ready = true
 		_emit_audio_event("ready", seat)
 		_emit_visual_event("ready", {"seat": seat})
-	_discard(seat, discard)
+	_discard(seat, discard, discard_index)
 
-func _discard(seat: int, tile: String) -> void:
+func _discard(seat: int, tile: String, discard_index: int = -1) -> void:
 	var player: PlayerState = players[seat]
 	if not player.concealed.has(tile):
 		return
-	player.concealed.erase(tile)
+	# New clients submit the exact concealed-array index.  Keep the old tile-only
+	# path for older network peers and AI controllers.
+	var source_index := player.concealed.find(tile)
+	if discard_index >= 0 and discard_index < player.concealed.size() and str(player.concealed[discard_index]) == tile:
+		source_index = discard_index
+	if source_index < 0:
+		return
+	player.concealed.remove_at(source_index)
 	player.discards.append(tile)
 	player.discard_history.append(tile)
 	player.discard_ids.append(player.discard_count)
@@ -395,7 +403,8 @@ func _discard(seat: int, tile: String) -> void:
 	if Tiles.is_chicken(tile) and not has_charge(tile):
 		round_meta.charge_chickens[tile] = {"owner": seat, "location": "discard", "discard_id": player.discard_count - 1}
 		_refresh_charge_flags()
-	_emit_visual_event("discard", {"seat": seat, "tile": tile, "charge": Tiles.is_chicken(tile) and is_charge_discard(seat, player.discards.size() - 1)})
+	_emit_visual_event("discard", {"seat": seat, "tile": tile, "discard_index": source_index,
+		"discard_id": player.discard_count - 1, "charge": Tiles.is_chicken(tile) and is_charge_discard(seat, player.discards.size() - 1)})
 	for index in player.melds.size():
 		var meld: Dictionary = player.melds[index]
 		if meld.get("concealed", false) and player.discard_count == int(meld.get("after_discard", 0)) + 2:
@@ -805,9 +814,9 @@ func _choose_next_dealer(called: Array) -> int:
 			return winner
 		var source := int(round_meta.get("discard_seat", -1))
 		return source if source in SEATS else winner
-	# 多人未叫时，从本局庄家开始按本局摸牌方向取第一位；全员叫牌则连庄。
+	# 多人未叫时，从本局庄家开始按起手拿牌方向取第一位；全员叫牌则连庄。
 	for offset in 4:
-		var seat := posmod(dealer_seat + CFG.TURN_DIRECTION * offset, 4)
+		var seat := posmod(dealer_seat + CFG.DEAL_DIRECTION * offset, 4)
 		if not called[seat]:
 			return seat
 	return dealer_seat

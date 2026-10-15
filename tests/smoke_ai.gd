@@ -58,6 +58,10 @@ func _run() -> void:
 			for m in ps.melds:
 				accounted += 3 if m.kind == "pung" else 4
 		accounted += r.wall.remaining
+		# 多家同胡同一张弃牌时，每位赢家都需要把胡牌张放入逻辑手牌；
+		# 这张牌只有一张实体牌，因此守恒统计要扣除共享的重复引用。
+		if not bool(res.round_meta.get("self_draw", false)):
+			accounted -= maxi(0, res.round_meta.get("winners", []).size() - 1)
 		if not t.expect(accounted == 108, "局%d 牌不守恒: %d" % [i, accounted]):
 			tiles_ok = false
 		# 打印每局胜负

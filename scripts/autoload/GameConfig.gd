@@ -51,7 +51,8 @@ const PATTERNS := [
 	{"key": "clean_dragon_seven_pairs", "label": "清龙对", "score": SCORE_CLEAN_DRAGON_SEVEN_PAIRS},
 ]
 
-# 座位编号递增为顺时针，因此 -1 表示本规则要求的逆时针。
+# 座位编号递增为顺时针。起手拿牌按顺时针，出牌轮转按逆时针。
+const DEAL_DIRECTION := 1
 const TURN_DIRECTION := -1
 
 # ---------- 座位 ----------

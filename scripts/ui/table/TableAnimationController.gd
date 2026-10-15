@@ -42,10 +42,6 @@ func build() -> void:
 	_animation_layer = ANIMATION_LAYER.new()
 	_animation_layer.name = "AnimationLayer"
 	table.add_child(_animation_layer)
-	_skip_button = table._button("跳过开局", _skip_opening, Vector2(240, 86))
-	_skip_button.position = Vector2(1010, 820)
-	_animation_layer.add_child(_skip_button)
-	_skip_button.hide()
 
 func _skip_opening() -> void:
 	cancel()
@@ -67,10 +63,9 @@ func _on_visual_event(event: Dictionary) -> void:
 	var copy := event.duplicate(true)
 	if event.get("type", "") == "dice" and DisplayServer.get_name() != "headless":
 		_opening = true
-		_skip_button.show()
 	var seat := int(event.get("seat", 0))
 	if event.get("type", "") == "discard":
-		copy["from"] = _discard_origin(seat, str(event.get("tile", "")))
+		copy["from"] = _discard_origin(seat, str(event.get("tile", "")), int(event.get("discard_index", -1)))
 		copy["from_unit"] = table._hand_tile_unit(seat)
 		copy["from_rotation"] = UI.ROTATIONS[table._relative_seat(seat)]
 	elif event.get("type", "") == "meld" and event.has("source"):
@@ -93,7 +88,6 @@ func _pump_visual_animation() -> void:
 	_animation_busy = true
 	if _event.get("type", "") == "dice":
 		_opening = DisplayServer.get_name() != "headless"
-		_skip_button.visible = _opening
 	var seat := int(_event.get("seat", 0))
 	_event["to"] = _animation_target_for_seat(seat)
 	if not _event.has("from"): _event["from"] = table._table_center()
@@ -119,7 +113,11 @@ func _origin(box: Control, card: String) -> Vector2:
 		if tile.tile == card and tile.face_up: return _position(tile)
 	return _position(tiles.back()) if not tiles.is_empty() else table._table_center()
 
-func _discard_origin(seat: int, card: String) -> Vector2:
+func _discard_origin(seat: int, card: String, concealed_index: int = -1) -> Vector2:
+	if concealed_index >= 0:
+		for tile in _tiles_in(table.hand_box[seat]) + _tiles_in(table.draw_box[seat]):
+			if tile.face_up and int(tile.get_meta("concealed_index", -1)) == concealed_index:
+				return _position(tile)
 	for tile in _tiles_in(table.hand_box[seat]) + _tiles_in(table.draw_box[seat]):
 		if tile.face_up and tile.tile == card: return _position(tile)
 	return _origin(table.draw_box[seat] if table.round.players[seat].ready else table.hand_box[seat], card)
@@ -136,7 +134,10 @@ func _targets(event: Dictionary) -> Array[TileView]:
 	if type == "discard":
 		var candidates := _tiles_in(table.chicken_box[seat]) + _tiles_in(table.discard_scroll[seat])
 		for index in range(candidates.size() - 1, -1, -1):
-			if candidates[index].tile == str(event.get("tile", "")) and bool(candidates[index].get_meta("charge_chicken", false)) == bool(event.get("charge", false)): return [candidates[index]]
+			var candidate: TileView = candidates[index]
+			if event.has("discard_id") and int(candidate.get_meta("discard_id", -1)) == int(event.get("discard_id", -2)):
+				return [candidate]
+			if candidate.tile == str(event.get("tile", "")) and bool(candidate.get_meta("charge_chicken", false)) == bool(event.get("charge", false)): return [candidate]
 	return []
 
 func _destinations(event: Dictionary) -> Array:
@@ -185,7 +186,6 @@ func _on_visual_animation_finished() -> void:
 		_dealt[int(_event.get("seat", 0))] += _event.get("cards", []).size()
 	if _event.get("type", "") == "draw" or _animation_queue.is_empty():
 		_opening = false
-		_skip_button.hide()
 	_restore()
 	_animation_busy = false
 	table._update_interactivity()
