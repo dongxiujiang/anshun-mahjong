@@ -51,9 +51,10 @@ const PATTERNS := [
 	{"key": "clean_dragon_seven_pairs", "label": "清龙对", "score": SCORE_CLEAN_DRAGON_SEVEN_PAIRS},
 ]
 
-# 座位编号递增为顺时针。起手拿牌按顺时针，出牌轮转按逆时针。
-const DEAL_DIRECTION := 1
-const TURN_DIRECTION := -1
+# 按确认稿：座位编号递增为逆时针；起手拿牌顺时针，普通出牌逆时针。
+# 逻辑方向与牌桌画面位置分离，座位映射由 UI 单独处理。
+const DEAL_DIRECTION := -1
+const TURN_DIRECTION := 1
 
 # ---------- 座位 ----------
 const SEAT_DEALER := 0  # 庄（下）
