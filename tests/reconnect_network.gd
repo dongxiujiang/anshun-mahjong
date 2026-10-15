@@ -34,6 +34,7 @@ func _host_test() -> void:
 	if not await _wait_until(func(): return net.ack_text == "lobby-1", "Client initially ready"): return
 	var peer := _guest_peer()
 	var seat := int(net._peer_seat[peer])
+	t.expect(seat == posmod(GameConfig.TURN_DIRECTION, 4), "Guest occupies the next seat in configured turn order")
 	var token: String = net._members[peer].resume_token
 	_drop_guest()
 	t.expect(net._orphaned[seat].token == token, "Reservation belongs to original client")
@@ -92,6 +93,11 @@ func _host_test() -> void:
 
 func _client_test() -> void:
 	net.room_ready.connect(func(seat):
+		# Choose the seat immediately after the host using the real lobby API.
+		# A seat assignment from this move is not a reconnect.
+		if original_seat < 0 and seat != posmod(GameConfig.TURN_DIRECTION, 4):
+			net.select_seat(posmod(GameConfig.TURN_DIRECTION, 4))
+			return
 		joins += 1
 		if original_seat < 0: original_seat = seat
 		t.expect(seat == original_seat, "Reconnect retains original seat")
