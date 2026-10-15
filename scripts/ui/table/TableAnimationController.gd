@@ -42,6 +42,13 @@ func build() -> void:
 	_animation_layer = ANIMATION_LAYER.new()
 	_animation_layer.name = "AnimationLayer"
 	table.add_child(_animation_layer)
+	# Keep the opening animation skippable on desktop and mobile.  The button
+	# belongs to the animation layer so it follows the same canvas scaling as
+	# the dice and dealt tiles, and remains above the table controls.
+	_skip_button = table._button("跳过开局", _skip_opening, Vector2(240, 86))
+	_skip_button.position = Vector2(1010, 820)
+	_animation_layer.add_child(_skip_button)
+	_skip_button.hide()
 
 func _skip_opening() -> void:
 	cancel()
@@ -69,7 +76,7 @@ func _on_visual_event(event: Dictionary) -> void:
 		copy["from_unit"] = table._hand_tile_unit(seat)
 		copy["from_rotation"] = UI.ROTATIONS[table._relative_seat(seat)]
 	elif event.get("type", "") == "meld" and event.has("source"):
-		copy["from"] = _origin(table.discard_scroll[int(event.source)], str(event.get("tile", "")))
+		copy["from"] = _discard_visual_origin(int(event.get("source", -1)), str(event.get("tile", "")), int(event.get("source_discard_id", -1)))
 	_animation_queue.append(copy)
 	table._update_interactivity()
 	table.call_deferred("_pump_visual_animation")
@@ -88,6 +95,7 @@ func _pump_visual_animation() -> void:
 	_animation_busy = true
 	if _event.get("type", "") == "dice":
 		_opening = DisplayServer.get_name() != "headless"
+		if is_instance_valid(_skip_button): _skip_button.show()
 	var seat := int(_event.get("seat", 0))
 	_event["to"] = _animation_target_for_seat(seat)
 	if not _event.has("from"): _event["from"] = table._table_center()
@@ -107,20 +115,70 @@ func _tiles_in(node: Node) -> Array[TileView]:
 func _position(node: Control) -> Vector2:
 	return _animation_layer.get_global_transform().affine_inverse() * node.global_position
 
-func _origin(box: Control, card: String) -> Vector2:
+func _origin(box: Control, card: String, discard_id: int = -1) -> Vector2:
 	var tiles := _tiles_in(box)
+	if discard_id >= 0:
+		for tile in tiles:
+			if int(tile.get_meta("discard_id", -1)) == discard_id:
+				return _position(tile)
 	for tile in tiles:
 		if tile.tile == card and tile.face_up: return _position(tile)
 	return _position(tiles.back()) if not tiles.is_empty() else table._table_center()
 
 func _discard_origin(seat: int, card: String, concealed_index: int = -1) -> Vector2:
+	if seat < 0 or seat >= 4 or seat >= table.hand_box.size():
+		return table._table_center()
+	var tiles := _tiles_in(table.hand_box[seat]) + _tiles_in(table.draw_box[seat])
 	if concealed_index >= 0:
-		for tile in _tiles_in(table.hand_box[seat]) + _tiles_in(table.draw_box[seat]):
-			if tile.face_up and int(tile.get_meta("concealed_index", -1)) == concealed_index:
+		for tile in tiles:
+			if int(tile.get_meta("concealed_index", -1)) == concealed_index:
 				return _position(tile)
-	for tile in _tiles_in(table.hand_box[seat]) + _tiles_in(table.draw_box[seat]):
-		if tile.face_up and tile.tile == card: return _position(tile)
-	return _origin(table.draw_box[seat] if table.round.players[seat].ready else table.hand_box[seat], card)
+	# Prefer the separate draw slot only while the snapshot still identifies this
+	# card as the tile just drawn.  A normal discard should fall back to the hand
+	# row; using _animation_target_for_seat() here would incorrectly send it from
+	# the draw slot after a late network refresh.
+	var prefer_draw := false
+	if table.round != null and seat < table.round.players.size():
+		prefer_draw = str(table.round.players[seat].just_drew) == card
+	if prefer_draw:
+		for tile in _tiles_in(table.draw_box[seat]):
+			if tile.face_up and tile.tile == card:
+				return _position(tile)
+	for tile in _tiles_in(table.hand_box[seat]):
+		if tile.face_up and tile.tile == card:
+			return _position(tile)
+	if not prefer_draw:
+		for tile in _tiles_in(table.draw_box[seat]):
+			if tile.face_up and tile.tile == card:
+				return _position(tile)
+	# A late snapshot can replace the old hand before a visual event is handled.
+	# Keep the fallback in the same visual region even when the exact source tile
+	# is gone.  This is presentation-only and never changes the authoritative
+	# discard index.
+	var draw_tiles := _tiles_in(table.draw_box[seat])
+	if prefer_draw and not draw_tiles.is_empty(): return _position(draw_tiles[0])
+	if not tiles.is_empty():
+		return _position(tiles[0])
+	return _hand_animation_target_for_seat(seat)
+
+func _discard_visual_origin(seat: int, card: String, discard_id: int = -1) -> Vector2:
+	if seat < 0 or seat >= 4:
+		return table._table_center()
+	var tiles := _tiles_in(table.chicken_box[seat]) + _tiles_in(table.discard_scroll[seat])
+	if discard_id >= 0:
+		for tile in tiles:
+			if int(tile.get_meta("discard_id", -1)) == discard_id:
+				return _position(tile)
+	for tile in tiles:
+		if tile.tile == card and tile.face_up:
+			return _position(tile)
+	if not tiles.is_empty():
+		return _position(tiles.back())
+	if seat >= 0 and seat < 4 and is_instance_valid(table.discard_scroll[seat]):
+		var river: Control = table.discard_scroll[seat]
+		var center_global: Vector2 = river.global_position + river.size / 2.0
+		return _animation_layer.get_global_transform().affine_inverse() * center_global
+	return table._table_center()
 
 func _targets(event: Dictionary) -> Array[TileView]:
 	var seat := int(event.get("seat", 0))
@@ -186,6 +244,7 @@ func _on_visual_animation_finished() -> void:
 		_dealt[int(_event.get("seat", 0))] += _event.get("cards", []).size()
 	if _event.get("type", "") == "draw" or _animation_queue.is_empty():
 		_opening = false
+		if is_instance_valid(_skip_button): _skip_button.hide()
 	_restore()
 	_animation_busy = false
 	table._update_interactivity()
@@ -199,4 +258,13 @@ func _animation_target_for_seat(seat: int) -> Vector2:
 	if not tiles.is_empty(): return _position(tiles[0])
 	var layout: Dictionary = table._hand_layout(seat) if table.round.players.size() == 4 else {"draw_x": 0}
 	var local := Vector2(float(layout.draw_x), float(table._seat_metrics(seat).hand_y))
+	return _animation_layer.get_global_transform().affine_inverse() * (table.seat_roots[seat].get_global_transform() * local)
+
+func _hand_animation_target_for_seat(seat: int) -> Vector2:
+	if seat < 0 or seat >= 4 or seat >= table.hand_box.size():
+		return table._table_center()
+	var tiles := _tiles_in(table.hand_box[seat])
+	if not tiles.is_empty(): return _position(tiles[0])
+	var layout: Dictionary = table._hand_layout(seat) if table.round.players.size() == 4 else {"hand_x": 0}
+	var local := Vector2(float(layout.get("hand_x", 0.0)), float(table._seat_metrics(seat).hand_y))
 	return _animation_layer.get_global_transform().affine_inverse() * (table.seat_roots[seat].get_global_transform() * local)

@@ -313,11 +313,9 @@ func restore_human_control(seat: int) -> void:
 		_ask_next_responder(int(source.seat), str(source.tile))
 
 func submit_turn(seat: int, decision: Dictionary) -> bool:
-	if phase != Phase.PLAYING or not awaiting or not _awaiting_response.is_empty() or seat != current_turn:
-		_recorder.request(seat, "turn", decision, false, "不属于当前操作窗口")
-		return false
-	if not _valid_turn(seat, decision):
-		_recorder.request(seat, "turn", decision, false, "操作不符合当前允许清单")
+	if not ACTIONS.validate_turn_submission(self, seat, decision):
+		var window_ok: bool = phase == Phase.PLAYING and awaiting and _awaiting_response.is_empty() and seat == current_turn
+		_recorder.request(seat, "turn", decision, false, "操作不符合当前允许清单" if window_ok else "不属于当前操作窗口")
 		return false
 	_recorder.request(seat, "turn", decision, true, "")
 	awaiting = false
@@ -340,13 +338,7 @@ func legal_response_options(seat: int, source: int, tile: String, stage: Respons
 	return ACTIONS.response_options(self, seat, source, tile, stage)
 
 func allowed_actions(seat: int) -> Dictionary:
-	# 提示身份由权威端管理；不属于当前操作窗口时返回空清单。
-	if phase != Phase.PLAYING or not awaiting: return {}
-	if not _awaiting_response.is_empty():
-		if int(_awaiting_response.get("seat", -1)) != seat: return {}
-		return {"kind": "response", "prompt_id": prompt_id, "options": legal_response_options(seat, int(_awaiting_response.disc_seat), str(_awaiting_response.tile), int(_awaiting_response.get("stage", _response_stage)))}
-	if current_turn != seat: return {}
-	return {"kind": "turn", "prompt_id": prompt_id, "options": legal_turn_options(seat)}
+	return ACTIONS.allowed_actions(self, seat)
 
 func _apply_turn_action(seat: int, decision: Dictionary) -> void:
 	if not _valid_turn(seat, decision):
@@ -514,12 +506,9 @@ func _queue_ai_response(seat: int, source: int, tile: String, options: Dictionar
 	_process_response(seat, source, tile, decision)
 
 func submit_response(seat: int, tile: String, decision: Dictionary) -> bool:
-	if phase != Phase.PLAYING or not awaiting or _awaiting_response.get("seat", -1) != seat or _awaiting_response.get("tile", "") != tile:
-		_recorder.request(seat, "response", decision, false, "响应座位或牌面已过期")
-		return false
-	var options := _response_options(seat, tile)
-	if not ACTIONS.valid_response(options, decision):
-		_recorder.request(seat, "response", decision, false, "操作不符合当前允许清单")
+	if not ACTIONS.validate_response_submission(self, seat, tile, decision):
+		var window_ok: bool = phase == Phase.PLAYING and awaiting and _awaiting_response.get("seat", -1) == seat and _awaiting_response.get("tile", "") == tile
+		_recorder.request(seat, "response", decision, false, "操作不符合当前允许清单" if window_ok else "响应座位或牌面已过期")
 		return false
 	_recorder.request(seat, "response", decision, true, "")
 	var source: int = _awaiting_response.disc_seat
@@ -568,16 +557,18 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		elif _response_stage == ResponseStage.MELD and options.can_pong and not player.passed_pong_tiles.has(tile):
 			player.passed_pong_tiles.append(tile)
 	if action == "kong" and options.can_kong:
+		var source_discard_id: int = _discard_id_for_tile(source, tile)
 		_remove_n(player.concealed, tile, 3)
 		player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
 		_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
 		current_turn = seat
 		_kong_draw_kind = KongKind.EXPOSED
 		_emit_audio_event("kong", seat)
-		_emit_visual_event("meld", {"seat": seat, "source": source, "tile": tile, "kind": "kong", "index": player.melds.size() - 1})
+		_emit_visual_event("meld", {"seat": seat, "source": source, "source_discard_id": source_discard_id, "tile": tile, "kind": "kong", "index": player.melds.size() - 1})
 		_state_after_kong_draw()
 		return
 	if action == "pong" and options.can_pong:
+		var source_discard_id: int = _discard_id_for_tile(source, tile)
 		_remove_n(player.concealed, tile, 2)
 		player.melds.append({"kind": "pung", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
 		_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
@@ -585,7 +576,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		player.forbidden_discard_tile = tile
 		current_turn = seat
 		_kong_draw_turn = false
-		_emit_visual_event("meld", {"seat": seat, "source": source, "tile": tile, "kind": "pung", "index": player.melds.size() - 1})
+		_emit_visual_event("meld", {"seat": seat, "source": source, "source_discard_id": source_discard_id, "tile": tile, "kind": "pung", "index": player.melds.size() - 1})
 		_emit_audio_event("pong", seat)
 		_ask_turn_actor()
 		return
@@ -766,6 +757,15 @@ func _remove_from_discards(seat: int, tile: String, receiver: int = -1, location
 		if history_index >= 0:
 			player.discard_history.remove_at(history_index)
 		_refresh_charge_flags()
+
+func _discard_id_for_tile(seat: int, tile: String) -> int:
+	if seat < 0 or seat >= players.size():
+		return -1
+	var player: PlayerState = players[seat]
+	var index: int = player.discards.rfind(tile)
+	if index < 0:
+		return -1
+	return int(player.discard_ids[index]) if index < player.discard_ids.size() else index
 
 func _penzu() -> void:
 	round_meta.winner = -1

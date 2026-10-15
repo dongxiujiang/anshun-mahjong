@@ -202,14 +202,18 @@ func _refresh_seat(seat: int) -> void:
 	var reveal = own or table.round.phase == RoundState.Phase.SETTLED
 	for card in cards:
 		var tile: TileView = table._make_tile(card if reveal else "", reveal, hand_unit)
-		if own:
-			for source_index in player.concealed.size():
-				if source_index == drawn_index or used_indices.has(source_index):
-					continue
-				if player.concealed[source_index] == card:
-					used_indices[source_index] = true
-					tile.set_meta("concealed_index", source_index)
-					break
+		# Keep the logical source index on every rendered tile, including hidden
+		# opponent tiles.  A discard visual event is emitted before the next
+		# snapshot refreshes the UI, so this lets remote clients start an animation
+		# at the exact tile instead of falling back to the last tile in the row.
+		# The index is metadata only and never reveals a hidden tile value.
+		for source_index in player.concealed.size():
+			if source_index == drawn_index or used_indices.has(source_index):
+				continue
+			if player.concealed[source_index] == card:
+				used_indices[source_index] = true
+				tile.set_meta("concealed_index", source_index)
+				break
 		table._put_tile(hand_box[seat], tile, Vector2(x, y))
 		if own:
 			tile.gui_input.connect(table._on_human_tile_gui.bind(tile))
@@ -222,8 +226,8 @@ func _refresh_seat(seat: int) -> void:
 		drawn.set_winning(table.round.phase == RoundState.Phase.SETTLED and int(table.round.round_meta.get("winner", -1)) == seat)
 		if own:
 			drawn.gui_input.connect(table._on_human_tile_gui.bind(drawn))
-			if drawn_index >= 0:
-				drawn.set_meta("concealed_index", drawn_index)
+		if drawn_index >= 0:
+			drawn.set_meta("concealed_index", drawn_index)
 	table._refresh_discards(seat)
 
 func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> Dictionary:

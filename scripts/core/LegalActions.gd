@@ -24,6 +24,46 @@ static func turn_options(round, seat: int) -> Dictionary:
 			if RuleEngine.is_tenpai(after, player.melds): options.ready_discards.append(tile)
 	return options
 
+## 当前操作窗口的唯一公开入口。UI 只用它生成按钮，联机层用同一份
+## options 做提交前检查；非当前玩家不会看到其他玩家的可用操作。
+static func allowed_actions(round, seat: int) -> Dictionary:
+	if round.phase != RoundState.Phase.PLAYING or not round.awaiting:
+		return {}
+	var pending: Dictionary = round._awaiting_response
+	if not pending.is_empty():
+		if int(pending.get("seat", -1)) != seat:
+			return {}
+		var source := int(pending.get("disc_seat", -1))
+		var tile := str(pending.get("tile", ""))
+		var stage := int(pending.get("stage", round._response_stage))
+		return {"kind": "response", "prompt_id": round.prompt_id,
+			"options": response_options(round, seat, source, tile, stage)}
+	if round.current_turn != seat:
+		return {}
+	return {"kind": "turn", "prompt_id": round.prompt_id,
+		"options": turn_options(round, seat)}
+
+## 权威端和人类界面提交前都调用同一个入口。这里检查操作窗口，
+## valid_turn() 只负责检查动作本身，二者职责保持分离。
+static func validate_turn_submission(round, seat: int, decision: Dictionary) -> bool:
+	if round.phase != RoundState.Phase.PLAYING or not round.awaiting:
+		return false
+	if not round._awaiting_response.is_empty() or round.current_turn != seat:
+		return false
+	if seat < 0 or seat >= round.players.size():
+		return false
+	return valid_turn(turn_options(round, seat), round.players[seat], decision)
+
+static func validate_response_submission(round, seat: int, tile: String, decision: Dictionary) -> bool:
+	if round.phase != RoundState.Phase.PLAYING or not round.awaiting:
+		return false
+	var pending: Dictionary = round._awaiting_response
+	if pending.is_empty() or int(pending.get("seat", -1)) != seat or str(pending.get("tile", "")) != tile:
+		return false
+	var source := int(pending.get("disc_seat", -1))
+	var stage := int(pending.get("stage", round._response_stage))
+	return valid_response(response_options(round, seat, source, tile, stage), decision)
+
 static func ready_window(player: PlayerState) -> bool:
 	return not player.ready and not player.first_turn_done and player.just_drew != "" and player.melds.all(func(meld): return meld.kind == "kong" and meld.get("concealed", false))
 

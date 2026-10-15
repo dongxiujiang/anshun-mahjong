@@ -66,6 +66,10 @@ func _run() -> void:
 	_click(table, tile, true)
 	t.expect(submissions.is_empty(), "Dragging never discards")
 	var controller = table._table_animation_controller
+	t.expect(is_instance_valid(controller._skip_button) and not controller._skip_button.visible, "Opening animation keeps a hidden skip button ready")
+	controller._skip_button.show()
+	controller.cancel()
+	t.expect(not controller._skip_button.visible, "Cancelling opening hides the skip button")
 	controller._opening = true
 	_click(table, tile)
 	table._commit_turn({"discard": tile.tile})
