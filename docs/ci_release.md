@@ -8,6 +8,24 @@
 
 测试日志会保存为 Actions artifact：普通提交使用 `quick-check-logs-*`，发布构建使用 `ci-logs-*`。其中包含每个 Godot 套件的标准输出和错误日志，不包含签名文件或密码。
 
+## 云端发布前的本地检查
+
+Windows 上可以先双击项目根目录的 `本地build-release检查.cmd`。它会使用与云端相同的 Godot 4.7.2，依次执行工程导入、Python 导出配置检查、完整 Godot 回归（AI 50 局）、网络/联机/断线重连回归，并把每一步日志保存到 `build/local-build-release/<时间>/`。任一步失败都会显示错误并以非零状态结束，此时不要运行云端 Build release。
+
+命令行运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\release\local_build_release.ps1 -Mode Check
+```
+
+需要同时在本地导出 Windows 和 Android 完整包时运行 `-Mode Full`；这要求本机已有 Godot 导出模板、Android SDK、Java、正式签名凭据和 `apksigner`。生成的文件只放在本次日志目录，不会上传或发布：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\release\local_build_release.ps1 -Mode Full -Notes "本次发布说明"
+```
+
+生成热更新补丁时运行 `-Mode Patch -PatchVersion 1.0.5`；默认使用 `build/update_baselines/<base_id>/` 基线，也可以用 `-BaselinePath` 指定其他基线。网络环境暂时不可用时可以加 `-SkipNetwork`，但正式云端构建前应补跑完整检查。所有命令都支持 `-GodotPath` 指定本地 Godot 路径。
+
 工作流文件是 `.github/workflows/build-release.yml`。它会先完成测试和构建，再按 `publish_release` 选项自动创建 GitHub Release 并上传附件；不开启时只上传 Actions artifact，不会修改项目版本号。首次完整构建同时保存 `baseline`，供同一安装基线的小版本热补丁使用。
 
 ## 必需的 Secrets
