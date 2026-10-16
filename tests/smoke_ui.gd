@@ -42,9 +42,13 @@ func _drive() -> void:
 			# 别家弃牌回应
 			var seat: int = r._awaiting_response.seat
 			var tile: String = r._awaiting_response.tile
-			var ps = r.players[seat]
-			var can_win: bool = RuleEngine.can_win_on(ps.concealed, ps.melds, tile)
-			r.submit_response(seat, tile, {"action": "win" if can_win else "pass"})
+			var source: int = int(r._awaiting_response.get("disc_seat", -1))
+			var stage: int = int(r._awaiting_response.get("stage", r._response_stage))
+			# Use the same contextual legality check as the UI/network path.  A
+			# mathematically complete hand is not always allowed to win here (for
+			# example, the current response stage may require a special pattern).
+			var options: Dictionary = r.legal_response_options(seat, source, tile, stage)
+			r.submit_response(seat, tile, {"action": "win" if options.get("can_win", false) else "pass"})
 		else:
 			# 轮到真人（seat0）出牌
 			var seat: int = r.current_turn
@@ -63,12 +67,19 @@ func _on_audio_event(event: Dictionary) -> void:
 		audio_wins += 1
 
 func _decide(seat: int, ps, r) -> Dictionary:
-	if RuleEngine.analyze(ps.concealed, ps.melds).win:
+	var options: Dictionary = r.legal_turn_options(seat)
+	if options.get("self_win", false):
 		return {"self_win": true}
+	var candidates: Array = options.get("discards", [])
+	if candidates.is_empty():
+		# This should only be reachable for a malformed round state.  Keep the
+		# returned action legal so the smoke test can report a useful assertion
+		# instead of spinning on a rejected submission forever.
+		return {"discard": ps.just_drew if ps.just_drew != "" else ps.concealed[0]}
 	# 弃最低向听
-	var best: String = ps.concealed[0]
+	var best: String = candidates[0]
 	var bs := 99
-	for tile in ps.concealed.duplicate():
+	for tile in candidates:
 		var trial: Array = ps.concealed.duplicate()
 		trial.erase(tile)
 		var sh := Shanten.shanten(trial, ps.melds)
