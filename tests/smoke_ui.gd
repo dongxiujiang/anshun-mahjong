@@ -48,7 +48,11 @@ func _drive() -> void:
 			# mathematically complete hand is not always allowed to win here (for
 			# example, the current response stage may require a special pattern).
 			var options: Dictionary = r.legal_response_options(seat, source, tile, stage)
-			r.submit_response(seat, tile, {"action": "win" if options.get("can_win", false) else "pass"})
+			# The smoke test also verifies that every seat reaches the real discard
+			# path and emits its audio event.  A random deal can otherwise end on a
+			# first-turn discard win before one of the seats has ever discarded.
+			var can_win := bool(options.get("can_win", false)) and _all_seats_discarded(r)
+			r.submit_response(seat, tile, {"action": "win" if can_win else "pass"})
 		else:
 			# 轮到真人（seat0）出牌
 			var seat: int = r.current_turn
@@ -68,7 +72,9 @@ func _on_audio_event(event: Dictionary) -> void:
 
 func _decide(seat: int, ps, r) -> Dictionary:
 	var options: Dictionary = r.legal_turn_options(seat)
-	if options.get("self_win", false):
+	# Delay an otherwise legal early self-draw until each seat has made one
+	# discard, so the audio coverage below is independent of the random deal.
+	if options.get("self_win", false) and _all_seats_discarded(r):
 		return {"self_win": true}
 	var candidates: Array = options.get("discards", [])
 	if candidates.is_empty():
@@ -87,6 +93,12 @@ func _decide(seat: int, ps, r) -> Dictionary:
 			bs = sh
 			best = tile
 	return {"discard": best, "kong_declares": [], "add_kong": [], "ready": false, "self_win": false}
+
+func _all_seats_discarded(r) -> bool:
+	for player in r.players:
+		if player.discards.is_empty():
+			return false
+	return true
 
 func _conserved(r) -> bool:
 	var n := 0
