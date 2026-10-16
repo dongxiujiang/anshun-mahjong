@@ -52,6 +52,8 @@ static func expected(round: RoundState) -> Dictionary:
 		for meld in round.players[receiver].melds:
 			if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
 				continue
+			if _cancelled_kong(round, receiver, meld):
+				continue
 			var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
 			var source := int(meld.get("from_seat", -1))
 			for payer in 4:
@@ -74,30 +76,46 @@ static func expected(round: RoundState) -> Dictionary:
 			var pattern := RuleEngine.hand_pattern(player.concealed, player.melds, str(meta.get("win_tile", "")))
 			var pattern_fee := _pattern_fee(pattern)
 			var self_draw := bool(meta.get("self_draw", false))
-			var primary := pattern_fee
+			var robbed_kong := bool(meta.get("robbed_kong", false))
+			var source := int(meta.get("discard_seat", -1))
 			var ready_primary := false
-			if primary <= 0.0:
-				if player.ready:
-					primary = 24.0
+			var base_payers: Array = []
+			for payer in 4:
+				if payer != target_seat and (self_draw or payer == source):
+					base_payers.append(payer)
+			if self_draw:
+				var primary := pattern_fee
+				if primary <= 0.0:
+					if player.ready:
+						primary = 24.0
+						ready_primary = true
+					elif float(_chicken_values(round, target_seat, related, multiplier).total) <= 0.0:
+						var all_chickenless := true
+						for other in 4:
+							if float(chicken_values[other]) > 0.0:
+								all_chickenless = false
+								break
+						primary = 24.0 if all_chickenless else 14.0
+					else:
+						primary = 4.0
+				for payer in base_payers:
+					_credit(matrix, payer, target_seat, primary)
+			else:
+				var base := 12.0 if robbed_kong else (17.0 if source >= 0 and source < 4 and RuleEngine.is_tenpai(round.players[source].concealed, round.players[source].melds) else 21.0)
+				if source in range(4):
+					_credit(matrix, source, target_seat, base)
+				if pattern_fee <= 0.0 and player.ready:
+					pattern_fee = 24.0
 					ready_primary = true
-				elif self_draw and float(_chicken_values(round, target_seat, related, multiplier).total) <= 0.0:
-					var all_chickenless := true
-					for other in 4:
-						if float(chicken_values[other]) > 0.0:
-							all_chickenless = false
-							break
-					primary = 24.0 if all_chickenless else 14.0
-				else:
-					primary = 4.0
+				if pattern_fee > 0.0:
+					_credit(matrix, source, target_seat, pattern_fee)
 			for payer in 4:
 				if payer == target_seat:
 					continue
-				var base_payer: bool = self_draw or payer == int(meta.get("discard_seat", -1))
-				if base_payer:
-					_credit(matrix, payer, target_seat, primary)
-				if round.players[payer].ready and not winners.has(payer):
+				var base_payer: bool = base_payers.has(payer)
+				if round.players[payer].ready and not winners.has(payer) and base_payer:
 					_credit(matrix, payer, target_seat, 24.0)
-				elif player.ready and pattern_fee > 0.0 and base_payer and not ready_primary:
+				elif player.ready and pattern.get("win", false) and base_payer and not ready_primary:
 					_credit(matrix, payer, target_seat, 24.0)
 			if self_draw and int(meta.get("kong_draw_seat", -1)) == target_seat:
 				for payer in 4:
@@ -113,6 +131,21 @@ static func expected(round: RoundState) -> Dictionary:
 		for other in 4:
 			deltas[seat] += float(matrix[seat][other])
 	return {"pairwise": matrix, "deltas": deltas, "called": called, "chickens": chicken_values, "discard_chickens": discard_values}
+
+static func _cancelled_kong(round: RoundState, receiver: int, meld: Dictionary) -> bool:
+	if int(round.round_meta.get("burn_chicken_seat", -1)) != receiver or str(round.round_meta.get("burn_chicken_reason", "")) != "after_kong_discard":
+		return false
+	var last: Dictionary = round.last_discard
+	if not bool(last.get("after_kong", false)) or int(last.get("seat", -1)) != receiver:
+		return false
+	if meld.has("after_discard") and int(meld.get("after_discard", -1)) + 1 != int(round.players[receiver].discard_count):
+		return false
+	var kind := int(last.get("kong_kind", RoundState.KongKind.NONE))
+	if kind == RoundState.KongKind.CONCEALED:
+		return meld.kind == "kong" and bool(meld.get("concealed", false))
+	if kind == RoundState.KongKind.ADD_KONG:
+		return meld.kind == "add_kong"
+	return false
 
 static func _chicken_values(round: RoundState, seat: int, related: Array, multiplier: int) -> Dictionary:
 	if seat == int(round.round_meta.get("burn_chicken_seat", -1)):

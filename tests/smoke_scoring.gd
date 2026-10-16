@@ -55,8 +55,8 @@ func _run() -> void:
 	print("  C deltas=", c.deltas)
 	print("  C lines=", c.lines)
 	t.expect(RuleEngine.analyze(w3.concealed, w3.melds).flush, "应清一色")
-	# 放炮者付清一色24；完整翻鸡6由三家逐家比较。
-	t.expect(c.deltas == [42.0, -6.0, -6.0, -30.0], "清一色放炮及完整翻鸡逐家支付应正确; 实际 %s" % str(c.deltas))
+	# 未叫牌放炮者付21，再另付清一色24；完整翻鸡6由三家逐家比较。
+	t.expect(c.deltas == [63.0, -6.0, -6.0, -51.0], "清一色点炮及完整翻鸡逐家支付应正确; 实际 %s" % str(c.deltas))
 
 	# 24分补足回归：鸡20+自摸4，三家均须付24；准确截图牌面见scoring_pairwise。
 	var r4 := RoundState.new()

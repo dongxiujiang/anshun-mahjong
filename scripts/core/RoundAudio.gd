@@ -34,7 +34,7 @@ func emit_win(meta: Dictionary) -> void:
 	if int(meta.get("winner", -1)) < 0 or win_emitted:
 		return
 	win_emitted = true
-	# 抢杠的结算按自摸付款，但语音仍播“胡”，让玩家知道是抢杠胡。
+	# 抢杠的结算走专用12分基础费，但语音仍播“胡”，让玩家知道是抢杠胡。
 	var action := "zimo" if meta.get("self_draw", false) and not meta.get("robbed_kong", false) else "hu"
 	emit_action(action, int(meta.winner), str(meta.get("win_tile", "")))
 

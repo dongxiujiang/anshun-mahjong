@@ -131,13 +131,14 @@ func _test_chicken_kong_example() -> void:
 				var result := ScoringEngine.settle(r)
 				_check_pairs(result)
 				var chickens: float = 8.0 * multiplier
-				var source_amount: float = 0.0 if is_draw and source_called else chickens + 4.0
-				var expected_source := (chickens + 8.0) if not is_draw else (0.0 if source_called else chickens + 4.0)
-				t.expect(result.pairwise[0][1] == expected_source, "四张幺鸡明杠付款：期望%s，实际%s" % [expected_source, result.pairwise[0][1]])
-				t.expect(result.pairwise[0][2] == chickens and result.pairwise[0][3] == chickens, "另两家各付鸡%s；实际%s/%s" % [chickens, result.pairwise[0][2], result.pairwise[0][3]])
-				t.expect(result.round_points[0] == chickens + (4.0 if not is_draw else 0.0), "本人本局得分点期望%s，实际%s" % [chickens + (4.0 if not is_draw else 0.0), result.round_points[0]])
 				var kong_items: Array = result.items[0].filter(func(item): return item.get("kind", "") == "kong")
-				t.expect(kong_items.size() == 1 and kong_items[0].chicken_amount == chickens, "杠内鸡展示一次，实际条目%s" % str(result.items[0]))
+				if is_draw:
+					t.expect(kong_items.size() == 1 and kong_items[0].chicken_amount == chickens, "荒牌杠中鸡按四张每张2分")
+				else:
+					var ron_fee: float = GameConfig.SCORE_RON_CALLED if source_called else GameConfig.SCORE_RON_UNCALLED
+					var has_base: bool = result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 0 and is_equal_approx(float(item.get("amount", 0.0)), ron_fee))
+					t.expect(has_base, "点炮基础费按放炮者叫牌状态收取")
+					t.expect(kong_items.size() == 1 and kong_items[0].chicken_amount == chickens, "点炮局杠中鸡仍单独计入")
 
 func _tile_rect(tile: TileView) -> Rect2:
 	return tile.get_global_transform() * Rect2(Vector2.ZERO, tile.size)

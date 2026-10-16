@@ -57,7 +57,7 @@ func _test_payments() -> void:
 	var ordinary := score(PLAIN)
 	t.expect(ordinary.deltas == [72.0, -24.0, -24.0, -24.0], "四家结算鸡分均为0时大干扣24")
 	var gun := score(PLAIN, false, 2)
-	t.expect(gun.deltas == [4.0, 0.0, -4.0, 0.0], "普通点炮仅放炮者付4")
+	t.expect(gun.deltas == [21.0, 0.0, -21.0, 0.0], "普通点炮未叫牌由放炮者付21")
 	var big := ["wan1","wan1","wan1","wan2","wan2","wan2","tong3","tong3","tong3","tiao4","tiao4","tiao4","wan9","wan9"]
 	t.expect(score(big).deltas == [42.0, -14.0, -14.0, -14.0], "大队子自摸14")
 	var clean := ["tiao1","tiao1","tiao2","tiao2","tiao3","tiao3","tiao4","tiao4","tiao5","tiao5","tiao6","tiao6","tiao9","tiao9"]
@@ -67,7 +67,7 @@ func _test_payments() -> void:
 	multi.players[0].concealed = PLAIN.duplicate(); multi.players[1].concealed = PLAIN.duplicate()
 	multi.round_meta.winner = 0; multi.round_meta.winners = [0, 1]; multi.round_meta.self_draw = false; multi.round_meta.discard_seat = 2
 	var multi_result := ScoringEngine.settle(multi)
-	t.expect(multi_result.pairwise[0][2] == 4.0 and multi_result.pairwise[1][2] == 4.0 and multi_result.deltas[2] == -8.0, "一炮多响逐人收取4分")
+	t.expect(multi_result.pairwise[0][2] == 21.0 and multi_result.pairwise[1][2] == 21.0 and multi_result.deltas[2] == -42.0, "一炮多响逐人收取21分")
 	var ready := fixture(); ready.players[0].concealed = PLAIN.duplicate(); ready.players[0].ready = true; ready.round_meta.winner = 0; ready.round_meta.winners = [0]; ready.round_meta.self_draw = true
 	t.expect(ScoringEngine.settle(ready).deltas == [72.0, -24.0, -24.0, -24.0], "报听普通胡牌每家付24")
 	var killed := fixture(); killed.players[0].concealed = PLAIN.duplicate(); killed.players[1].concealed = PLAIN.duplicate(); killed.players[1].ready = true; killed.round_meta.winner = 0; killed.round_meta.winners = [0]; killed.round_meta.self_draw = true

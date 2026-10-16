@@ -20,6 +20,9 @@ const SCORE_BIG_NO_CHICKEN := 24.0 # 大干扣：四家均无鸡时，总计24�
 const BASE_ROB := 0.0
 const BASE_SELF_DRAW := 0.0
 const SCORE_SELF_DRAW := 4.0      # 自摸 +4（额外自摸奖）
+const SCORE_RON_CALLED := 17.0    # 点炮者已叫牌时的普通点炮基础分。
+const SCORE_RON_UNCALLED := 21.0  # 点炮者未叫牌时的普通点炮基础分（17+4）。
+const SCORE_ROB_KONG := 12.0      # 抢加杠胡由被抢杠者单独支付的基础分。
 const SCORE_KONG_DRAW := 5.0      # 杠开（杠上开花）+5。
 const SCORE_DRAW_KONG := 4.0      # 无人胡牌查叫：暗/加杠由未叫者各付，明杠由未叫的放杠者付。
 const SCORE_LAST_FOUR := 5.0      # 最后四张任意牌自摸（海底）+5。
@@ -37,7 +40,7 @@ const SCORE_CLEAN_DRAGON_SEVEN_PAIRS := 64.0 # 清龙对。
 const SCORE_READY := 24.0         # 报听：自摸每家给24；被杀给24；胡别家别家给24
 
 # ---------- 番型表 ----------
-# 牌型值均包含基础4分；点炮由放炮者支付同一完整牌型分。
+# 自摸牌型值包含基础4分；点炮另收17/21分基础费，再收牌型分。
 const PATTERNS := [
 	{"key": "seven_pairs", "label": "小七对", "score": SCORE_SEVEN_PAIRS},
 	{"key": "dragon_seven_pairs", "label": "龙七对", "score": SCORE_DRAGON_SEVEN_PAIRS},

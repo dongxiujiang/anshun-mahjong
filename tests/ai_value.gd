@@ -55,9 +55,9 @@ func _fixture(index: int) -> RoundState:
 	return r
 
 func _run() -> void:
-	t.expect(OPPONENT._discard_win_primary_fee(0.0, false) == 4.0, "普通牌点炮估值只收自摸基础4，不错误叠加干扣")
-	t.expect(OPPONENT._discard_win_primary_fee(24.0, false) == 24.0, "大牌点炮估值收完整牌型分")
-	t.expect(OPPONENT._discard_win_primary_fee(0.0, true) == 24.0, "报听普通点炮估值按报听24分")
+	t.expect(OPPONENT._discard_win_primary_fee(0.0, false) == 21.0, "普通点炮估值采用未叫牌21分基础")
+	t.expect(OPPONENT._discard_win_primary_fee(24.0, false) == 45.0, "大牌点炮估值为21分基础加牌型分")
+	t.expect(OPPONENT._discard_win_primary_fee(0.0, true) == 45.0, "报听点炮估值为21分基础加报听24分")
 	var cases := 0
 	for index in 6:
 		for flip in Tiles.all_values():

@@ -73,9 +73,7 @@ func _infer(round, spec: Dictionary, pool: Array[int], flips: Dictionary, random
 				if not pattern.win: continue
 				var full_profile := VALUE.profile(round, int(spec.seat), full, melds, flips)
 				var pattern_fee := VALUE.pattern_points(pattern)
-				# A discard win is charged as ordinary 4 points unless it is a
-				# declared-ready or scoring-pattern win.  Dry-hand bonuses are
-				# self-draw-only and must not inflate opponent ron estimates.
+				# 点炮基础费按放炮者叫牌状态区分；牌型分另行叠加。
 				var primary_fee := _discard_win_primary_fee(pattern_fee, bool(spec.ready))
 				var cost: float = primary_fee + float(full_profile.total)
 				if spec.ready and pattern_fee > 0.0: cost += VALUE.CFG.SCORE_READY
@@ -147,10 +145,11 @@ func risk(context: Dictionary, tile: String, source_ready: bool = false, after_s
 		probability = 1.0 - (1.0 - probability) * (1.0 - p)
 	return {"probability": probability, "loss": expected_loss}
 
-static func _discard_win_primary_fee(pattern_fee: float, declared_ready: bool) -> float:
+static func _discard_win_primary_fee(pattern_fee: float, declared_ready: bool, source_called: bool = false) -> float:
+	var base := VALUE.CFG.SCORE_RON_CALLED if source_called else VALUE.CFG.SCORE_RON_UNCALLED
 	if pattern_fee > 0.0:
-		return pattern_fee
-	return VALUE.CFG.SCORE_READY if declared_ready else VALUE.CFG.SCORE_SELF_DRAW
+		return base + pattern_fee
+	return base + (VALUE.CFG.SCORE_READY if declared_ready else 0.0)
 
 func _tile_weights(spec: Dictionary) -> Array[float]:
 	var weights: Array[float] = []

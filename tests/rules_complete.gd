@@ -55,7 +55,7 @@ func _test_scoring() -> void:
 	round.round_meta.self_draw = false
 	round.round_meta.discard_seat = 2
 	result = scored(round)
-	expect(result.deltas == [4.0, 0.0, -4.0, 0.0], "普通点炮仅由放炮者付4")
+	expect(result.deltas == [21.0, 0.0, -21.0, 0.0], "普通点炮未叫牌由放炮者付21")
 	var big := fixture()
 	big.players[0].concealed = ["wan1", "wan1", "wan1", "wan2", "wan2", "wan2", "tong3", "tong3", "tong3", "tiao4", "tiao4", "tiao4", "wan9", "wan9"]
 	big.round_meta.winner = 0
@@ -77,8 +77,8 @@ func _test_scoring() -> void:
 	multi.round_meta.self_draw = false
 	multi.round_meta.discard_seat = 2
 	var multi_result := scored(multi)
-	expect(multi_result.pairwise[0][2] == 4 and multi_result.pairwise[1][2] == 4, "一炮多响时放炮者分别付每位胡牌者4")
-	expect(multi_result.deltas[2] == -8, "一炮多响放炮者合计支付两位赢家")
+	expect(multi_result.pairwise[0][2] == 21 and multi_result.pairwise[1][2] == 21, "一炮多响时放炮者分别付每位胡牌者21")
+	expect(multi_result.deltas[2] == -42, "一炮多响放炮者合计支付两位赢家")
 	round = fixture()
 	round.players[0].concealed = plain.duplicate()
 	round.round_meta.winner = 0

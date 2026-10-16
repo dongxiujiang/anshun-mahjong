@@ -117,9 +117,9 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 	var pattern := RuleEngine.analyze(hand, melds)
 	var points := pattern_points(pattern) if pattern.win else potential_pattern(hand, melds)
 	var primary := points
-	if primary <= 0.0:
+	if self_draw and primary <= 0.0:
 		primary = CFG.SCORE_READY if declared_ready else CFG.SCORE_SELF_DRAW
-		if self_draw and float(own.total) <= 0.0:
+		if float(own.total) <= 0.0:
 			var all_dry := true
 			for opponent in opponents:
 				if float(opponent.tenpai_probability) > 0.0 and float(opponent.chickens) > 0.0:
@@ -134,11 +134,21 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 		# 鸡分采用四家两两比较：赢家向叫牌对手收差额，向未叫牌对手收自己的全部鸡分。
 		total += called * (float(own.total) - float(opponent.chickens)) + (1.0 - called) * float(own.total)
 		total += kong_base(melds, payer) - called * kong_base(opponent.melds, seat)
-		total += bonus
+		if self_draw:
+			total += bonus
 		var base_payer := self_draw or payer == source
-		if base_payer: total += primary
+		if base_payer:
+			if self_draw:
+				total += primary
+			else:
+				# 点炮基础费按放炮者是否叫牌区分；牌型费另计。
+				total += (CFG.SCORE_RON_CALLED if called > 0.5 else CFG.SCORE_RON_UNCALLED)
+				if points > 0.0:
+					total += points
+				elif declared_ready:
+					total += CFG.SCORE_READY
 		# 清牌型上报听另加24；普通报听已用24替换基础4。报听者被杀也只付一份。
-		if opponent.ready or (declared_ready and points > 0.0 and base_payer):
+		if base_payer and (opponent.ready or (declared_ready and points > 0.0)):
 			total += CFG.SCORE_READY
 	return total
 

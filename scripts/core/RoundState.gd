@@ -153,6 +153,7 @@ func _reset_meta() -> void:
 		"charge_chickens": {}, "flip_tile": "", "chicken_multiplier": 1,
 		"kong_draw_seat": -1, "last_four_self_draw_seat": -1,
 		"robber_seat": -1, "burn_chicken_seat": -1, "burn_chicken_reason": "",
+		"robbed_kong": false,
 		"winner": -1, "winners": [], "self_draw": false, "win_tile": "", "discard_seat": -1,
 	}
 
@@ -617,8 +618,10 @@ func _finish_rob_kong_wins(source: int, tile: String) -> void:
 		players[seat].just_drew = tile
 	round_meta.winners = winners.duplicate()
 	round_meta.winner = winners[0]
-	round_meta.self_draw = true # 抢杠按自摸的付款口径结算。
+	round_meta.self_draw = false
 	round_meta.robbed_kong = true
+	round_meta.burn_chicken_seat = source
+	round_meta.burn_chicken_reason = "robbed_added_kong"
 	round_meta.discard_seat = source
 	round_meta.win_tile = tile
 	_pending_wins.clear()
@@ -672,6 +675,7 @@ func _complete_add_kong() -> void:
 	var player: PlayerState = players[seat]
 	player.concealed.erase(tile)
 	player.melds[_pending_kong.index].kind = "add_kong"
+	player.melds[_pending_kong.index]["after_discard"] = player.discard_count
 	_emit_visual_event("meld", {"seat": seat, "tile": tile, "kind": "add_kong", "index": int(_pending_kong.index)})
 	_pending_kong = {}
 	_awaiting_response = {}
@@ -814,11 +818,7 @@ func _choose_next_dealer(called: Array) -> int:
 			return winner
 		var source := int(round_meta.get("discard_seat", -1))
 		return source if source in SEATS else winner
-	# 多人未叫时，从本局庄家开始按起手拿牌方向取第一位；全员叫牌则连庄。
-	for offset in 4:
-		var seat := posmod(dealer_seat + CFG.DEAL_DIRECTION * offset, 4)
-		if not called[seat]:
-			return seat
+	# 当前规则中所有流局都连庄；未叫牌者只影响荒牌付款，不影响庄家。
 	return dealer_seat
 
 func build_result() -> Dictionary:

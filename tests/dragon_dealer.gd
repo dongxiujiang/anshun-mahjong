@@ -53,17 +53,17 @@ func _test_dragon() -> void:
 	game.round_meta.self_draw = false
 	game.round_meta.discard_seat = 2
 	scored = ScoringEngine.settle(game)
-	t.expect(scored.deltas == [68.0, -8.0, -52.0, -8.0], "每家付鸡8，放炮者另付龙七对44")
+	t.expect(scored.deltas == [89.0, -8.0, -73.0, -8.0], "每家付鸡8，放炮者付21基础分和龙七对44")
 	game.players[0].concealed = DRAGON.slice(0, 13)
 	t.expect(game.can_win_on_discard(0, 2, "tiao9"), "龙七对可直接胡别人")
 	t.expect(RuleEngine.waiting_tiles(game.players[0].concealed, []).has("tiao9"), "龙七对听牌等待正确")
 	game.players[0].concealed = ["wan1", "wan1", "wan1", "wan1", "wan2", "wan2", "wan4", "wan4", "wan6", "wan6", "wan8", "wan8", "wan9", "wan9"]
 	scored = ScoringEngine.settle(game)
 	pattern_items = scored.items[0].filter(func(item): return item.kind == "pattern")
-	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "清龙对" and scored.round_points[0] == 64, "清龙对64替代普通牌型，不叠加干扣")
+	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "清龙对" and scored.round_points[0] == 85, "清龙对64另加点炮基础21，不重复普通牌型")
 	game.players[0].concealed = two_quads
 	scored = ScoringEngine.settle(game)
-	t.expect(scored.deltas == [68.0, -8.0, -52.0, -8.0], "两组四张龙七对牌型仍44，手中鸡8逐家收取")
+	t.expect(scored.deltas == [89.0, -8.0, -73.0, -8.0], "两组四张龙七对仍按44分并另收点炮基础")
 
 func _test_next_dealer() -> void:
 	for dealer in 4:
@@ -90,11 +90,11 @@ func _test_next_dealer() -> void:
 			for player in mixed.players:
 				player.concealed = CALLED.duplicate() if player.seat != uncalled else []
 			mixed._penzu()
-			t.expect(mixed.next_dealer_seat == uncalled and mixed.next_chicken_multiplier == 1, "未叫牌者下局为庄")
+			t.expect(mixed.next_dealer_seat == dealer and mixed.next_chicken_multiplier == 1, "流局有人未叫牌时当前庄家连庄")
 		var multiple := _fixture(dealer)
 		multiple.players[dealer].concealed = CALLED.duplicate()
 		multiple._penzu()
-		t.expect(multiple.next_dealer_seat == posmod(dealer + GameConfig.DEAL_DIRECTION, 4), "多人未叫按庄家后的拿牌方向选第一位")
+		t.expect(multiple.next_dealer_seat == dealer, "多人未叫牌时当前庄家连庄")
 
 func _test_deal() -> void:
 	for dealer in 4:

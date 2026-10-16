@@ -12,6 +12,10 @@ static func pay(round, deltas: Array, transfers: Array, called: Array, items: Ar
 		for meld in round.players[receiver].melds:
 			if meld.get("robbed", false) or meld.kind not in ["kong", "add_kong"]:
 				continue
+			# 暗杠/加杠后的第一张出牌被胡时，本次杠不产生杠基础分或杠内鸡分。
+			# 其他历史杠仍按正常规则结算。
+			if _cancelled_by_kong_discard(round, receiver, meld):
+				continue
 			var tile := str(meld.get("tile", ""))
 			var source := int(meld.get("from_seat", -1))
 			var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
@@ -52,3 +56,20 @@ static func pay(round, deltas: Array, transfers: Array, called: Array, items: Ar
 				"chicken_amount": chicken_value, "flip_amount": flip_value, "own_amount": own_amount,
 				"kong_kind": RoundState.KongKind.ADD_KONG if meld.kind == "add_kong" else (RoundState.KongKind.CONCEALED if own_kong else RoundState.KongKind.EXPOSED),
 				"from_seat": source, "owner": receiver, "payers": payers, "chicken_payers": chicken_payers, "draw": is_draw, "note": ""})
+
+static func _cancelled_by_kong_discard(round, receiver: int, meld: Dictionary) -> bool:
+	if int(round.round_meta.get("burn_chicken_seat", -1)) != receiver:
+		return false
+	if str(round.round_meta.get("burn_chicken_reason", "")) != "after_kong_discard":
+		return false
+	var last: Dictionary = round.last_discard
+	if not bool(last.get("after_kong", false)) or int(last.get("seat", -1)) != receiver:
+		return false
+	if meld.has("after_discard") and int(meld.get("after_discard", -1)) + 1 != int(round.players[receiver].discard_count):
+		return false
+	var kind := int(last.get("kong_kind", RoundState.KongKind.NONE))
+	if kind == RoundState.KongKind.CONCEALED:
+		return meld.kind == "kong" and bool(meld.get("concealed", false))
+	if kind == RoundState.KongKind.ADD_KONG:
+		return meld.kind == "add_kong"
+	return false
