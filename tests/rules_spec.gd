@@ -206,6 +206,7 @@ func _test_win_payments() -> void:
 	uncalled.round_meta.win_tile = "wan9"
 	var uncalled_result := settle(uncalled)
 	t.expect(uncalled_result.pairwise[0][1] == GameConfig.SCORE_RON_UNCALLED, "放炮者未叫牌支付21分")
+	t.expect(uncalled_result.items[0].all(func(item): return item.get("label", "") != "自摸" and item.get("label", "") != "自摸基础分"), "普通点炮不加自摸4分")
 	var big := fixture()
 	big.players[0].concealed = BIG.duplicate()
 	big.round_meta.winner = 0

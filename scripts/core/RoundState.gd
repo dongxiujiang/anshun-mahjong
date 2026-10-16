@@ -539,7 +539,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 				_pending_responders.pop_front()
 			_ask_next_responder(source, tile)
 		else:
-			if bool(last_discard.get("after_kong", false)):
+			if ACTIONS.is_post_kong_discard(last_discard):
 				round_meta.robber_seat = seat
 				round_meta.burn_chicken_seat = source
 				round_meta.burn_chicken_reason = "after_kong_discard"

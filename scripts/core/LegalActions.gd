@@ -102,6 +102,14 @@ static func valid_response(options: Dictionary, decision: Dictionary) -> bool:
 static func has_self_kong(player: PlayerState) -> bool:
 	return player.melds.any(func(meld): return meld.kind == "add_kong" or (meld.kind == "kong" and meld.get("concealed", false)))
 
+static func is_post_kong_discard(last_discard: Dictionary) -> bool:
+	## 只有暗杠或加杠补牌后的第一张弃牌属于“杠后放炮”窗口。
+	## 明杠补牌后的弃牌不享有该胡牌通行资格，也不触发烧鸡。
+	if not bool(last_discard.get("after_kong", false)):
+		return false
+	var kind := int(last_discard.get("kong_kind", RoundState.KongKind.NONE))
+	return kind in [RoundState.KongKind.CONCEALED, RoundState.KongKind.ADD_KONG]
+
 static func can_win_on_discard(round, seat: int, source: int, tile: String, stage: int) -> bool:
 	if seat < 0 or seat >= round.players.size() or source == seat: return false
 	var player: PlayerState = round.players[seat]
@@ -110,8 +118,8 @@ static func can_win_on_discard(round, seat: int, source: int, tile: String, stag
 	if not RuleEngine.can_win_on(player.concealed, player.melds, tile): return false
 	if stage == RoundState.ResponseStage.ROB or player.ready: return true
 	if source >= 0 and source < round.players.size() and round.players[source].ready: return true
-	# 暗杠、加杠补牌后打出的牌都开放抢胡，并由结算统一标记烧鸡。
-	if bool(round.last_discard.get("after_kong", false)): return true
+	# 只有暗杠、加杠补牌后打出的牌开放杠后放炮，并由结算统一标记烧鸡。
+	if is_post_kong_discard(round.last_discard): return true
 	var combined := player.concealed.duplicate()
 	combined.append(tile)
 	var pattern := RuleEngine.analyze(combined, player.melds)

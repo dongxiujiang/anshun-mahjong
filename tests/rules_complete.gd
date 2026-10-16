@@ -180,6 +180,14 @@ func _test_discard_win_restrictions() -> void:
 	after_kong._response_stage = RoundState.ResponseStage.WIN
 	after_kong._process_response(1, 0, "wan9", {"action": "win"})
 	expect(after_kong.round_meta.burn_chicken_seat == 0 and after_kong.round_meta.burn_chicken_reason == "after_kong_discard", "Post-kong discard win burns source chickens")
+	var exposed_after_kong := fixture()
+	exposed_after_kong.players[1].concealed = thirteen.duplicate()
+	exposed_after_kong.last_discard = {"seat": 0, "tile": "wan9", "after_kong": true, "kong_kind": RoundState.KongKind.EXPOSED}
+	expect(not exposed_after_kong.can_win_on_discard(1, 0, "wan9"), "Exposed-kong discard is not a post-kong gun win")
+	exposed_after_kong._pending_responders = [1]
+	exposed_after_kong._response_stage = RoundState.ResponseStage.WIN
+	exposed_after_kong._process_response(1, 0, "wan9", {"action": "win"})
+	expect(exposed_after_kong.round_meta.burn_chicken_seat == -1, "Exposed-kong discard cannot trigger burn chicken")
 	var dark_after_kong := fixture()
 	dark_after_kong.players[1].concealed = thirteen.duplicate()
 	dark_after_kong.players[0].discards = ["wan9"]

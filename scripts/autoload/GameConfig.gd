@@ -19,7 +19,7 @@ const SCORE_BIG_NO_CHICKEN := 24.0 # 大干扣：四家均无鸡时，总计24�
 # ---------- 番型 / 情境 ----------
 const BASE_ROB := 0.0
 const BASE_SELF_DRAW := 0.0
-const SCORE_SELF_DRAW := 4.0      # 自摸 +4（额外自摸奖）
+const SCORE_SELF_DRAW := 4.0      # 只有自摸 +4；普通点炮/抢杠胡不加自摸4。
 const SCORE_RON_CALLED := 17.0    # 点炮者已叫牌时的普通点炮基础分。
 const SCORE_RON_UNCALLED := 21.0  # 点炮者未叫牌时的普通点炮基础分（17+4）。
 const SCORE_ROB_KONG := 12.0      # 抢加杠胡由被抢杠者单独支付的基础分。

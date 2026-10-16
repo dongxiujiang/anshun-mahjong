@@ -52,7 +52,8 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 			PAY.transfer(deltas, transfers, payer, winner, primary_amount, primary_label)
 		lines.append("%s：每家付 %.0f" % [primary_label, primary_amount])
 	else:
-		# 点炮和抢杠胡均由来源玩家单独支付基础费；牌型分另行计入。
+		# 普通点炮和抢杠胡都按非自摸胡结算：来源玩家单独支付基础费，
+		# 牌型分另行计入；这里不会加入自摸4分。
 		var source_called: bool = source >= 0 and source < round.players.size() and RuleEngine.is_tenpai(round.players[source].concealed, round.players[source].melds)
 		var base_amount: float = CFG.SCORE_ROB_KONG if robbed_kong else (CFG.SCORE_RON_CALLED if source_called else CFG.SCORE_RON_UNCALLED)
 		var base_label: String = "抢杠胡基础分" if robbed_kong else ("点炮基础分（叫牌）" if base_amount == CFG.SCORE_RON_CALLED else "点炮基础分（未叫牌）")
