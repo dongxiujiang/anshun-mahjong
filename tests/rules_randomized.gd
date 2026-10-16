@@ -201,9 +201,8 @@ func _test_flow_and_priority() -> void:
 		_check(game.current_turn == game.dealer_seat, "普通回合流程", "庄家没有首先出牌", seed)
 		_check(game.round_meta.die == sample % 6 + 1, "牌墙与骰子", "骰子没有使用覆盖值", seed)
 		_check(game.round_meta.break == WallRing.compute_break(int(game.round_meta.die), game.dealer_seat), "牌墙与骰子", "破墙点与骰子不一致", seed)
-		_check(CFG.DEAL_DIRECTION == -1, "座位与方向", "规则稿要求起手顺时针，牌值方向应为-1", seed)
-		_check(CFG.TURN_DIRECTION == 1, "座位与方向", "规则稿要求出牌逆时针，座位递增方向应为+1", seed)
-		_check(game._seat_order(0) == [posmod(0 + CFG.TURN_DIRECTION, 4), posmod(0 + CFG.TURN_DIRECTION * 2, 4), posmod(0 + CFG.TURN_DIRECTION * 3, 4)], "座位与方向", "响应顺序没有使用配置的逆时针方向", seed)
+		_check(CFG.ROUND_DIRECTION == 1 and CFG.DEAL_DIRECTION == CFG.ROUND_DIRECTION and CFG.TURN_DIRECTION == CFG.ROUND_DIRECTION, "座位与方向", "起手和普通回合方向必须统一为同一个+1配置", seed)
+		_check(game._seat_order(0) == [posmod(0 + CFG.TURN_DIRECTION, 4), posmod(0 + CFG.TURN_DIRECTION * 2, 4), posmod(0 + CFG.TURN_DIRECTION * 3, 4)], "座位与方向", "响应顺序没有使用统一的+1方向", seed)
 		# 胡阶段只允许胡，不会在胡阶段提前碰杠；通过后才进入碰杠阶段。
 		var win_hand := _make_pattern("normal", rng)
 		game.players[1].concealed = win_hand.hand.slice(0, 13)

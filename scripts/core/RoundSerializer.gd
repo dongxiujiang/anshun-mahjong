@@ -79,6 +79,10 @@ static func apply_sync(round_state, state: Dictionary) -> void:
 	round_state._awaiting_response = state.get("awaiting_response", {}).duplicate(true)
 	if round_state._awaiting_response.has("stage"):
 		round_state._awaiting_response.stage = round_state._response_stage_from_name(str(round_state._awaiting_response.stage))
+	# Keep the internal response state in sync with the wire prompt.  The UI
+	# can read the prompt's stage directly, but reconnect/restore logic and
+	# authority-side helpers use _response_stage as their source of truth.
+	round_state._response_stage = int(round_state._awaiting_response.get("stage", round_state.ResponseStage.NONE)) if not round_state._awaiting_response.is_empty() else round_state.ResponseStage.NONE
 	round_state.last_result = _convert_kong_kinds(state.get("last_result", {}), false)
 	# 接收方没有完整牌墙，只保留各家的剩余数量。
 	round_state.wall = null

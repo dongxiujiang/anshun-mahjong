@@ -212,6 +212,11 @@ func _sample(spec: Dictionary, pool: Array[int], weights: Array[float], random: 
 		var allowed: Array[int] = []
 		for index in 27:
 			if weights[index] > 0.0: allowed.append(index)
+		if allowed.is_empty():
+			# A late information set can exhaust every tile in a preferred suit.
+			# Treat that hypothesis as unsampleable instead of indexing an empty
+			# fallback list and aborting the AI turn.
+			return {}
 		wait = allowed[random.randi_range(0, allowed.size() - 1)]
 	var pairs_route := melds.is_empty() and random.randf() < 0.20
 	var triplet_route := random.randf() < (0.25 + 0.12 * melds.size())

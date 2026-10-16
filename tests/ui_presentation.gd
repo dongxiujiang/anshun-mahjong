@@ -49,7 +49,7 @@ func _run() -> void:
 		game.players[1].concealed = ["tong4", "tong4", "tong4", "wan1"]
 		game._response_stage = RoundState.ResponseStage.MELD
 		game._process_response(1, 0, "tong4", {"action": action})
-		t.expect(_event(game, "meld").get("source", -1) == 0 and _event(game, "meld").get("kind", "") == ("pung" if action == "pong" else "kong"), "Pong/exposed-kong includes the proper source and completed group")
+		t.expect(_event(game, "meld").get("source", -1) == 0 and _event(game, "meld").get("source_discard_id", -1) == 0 and _event(game, "meld").get("kind", "") == ("pung" if action == "pong" else "kong"), "Pong/exposed-kong includes the source discard identity and completed group")
 	game = _round()
 	game._emit_visual_event("draw", {"seat": 1, "tile": "wan7"})
 	game._emit_visual_event("discard", {"seat": 1, "tile": "tong3"})

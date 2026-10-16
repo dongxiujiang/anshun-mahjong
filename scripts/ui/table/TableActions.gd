@@ -108,7 +108,12 @@ func _on_require_turn(seat: int) -> void:
 
 func _build_turn_options(player: PlayerState) -> void:
 	table._clear_actions()
-	var options = table.round.legal_turn_options(player.seat)
+	var window: Dictionary = table.round.allowed_actions(player.seat)
+	var options: Dictionary = window.get("options", {})
+	# 保留测试和重连快照尚未重新发出 prompt 时的只读回退；真实操作窗口
+	# 始终使用 LegalActions 返回的当前清单。
+	if window.get("kind", "") != "turn":
+		options = table.round.legal_turn_options(player.seat)
 	if options.self_win:
 		table._add_action("自摸", func(): table._commit_turn({"self_win": true}), true)
 	table._add_kong_choices("暗杠", "kong_declares", Tiles.sort_hand(options.kong_declares))

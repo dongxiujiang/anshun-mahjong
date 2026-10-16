@@ -16,6 +16,20 @@ func _run() -> void:
 	var candidates: Array = []
 	for tile in Tiles.to_counts(round.players[0].concealed): candidates.append({"tile": tile})
 	var search := MCTS.new()
+	var pool: Array[int] = search._pool(seen)
+	var pool_before: Array[int] = pool.duplicate()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 17
+	var drawn := search._draw_and_consume(pool, rng)
+	t.expect(drawn >= 0 and pool[drawn] == pool_before[drawn] - 1, "MCTS 摸牌必须立即扣减模拟牌池")
+	var empty_pool: Array[int] = []
+	empty_pool.resize(27)
+	empty_pool.fill(0)
+	t.expect(search._draw_and_consume(empty_pool, rng) == -1, "模拟牌池耗尽后不能继续摸牌")
+	var rollout_pool: Array[int] = search._pool(seen)
+	var rollout_before: Array[int] = rollout_pool.duplicate()
+	search._simulate(round, 0, round.players[0].concealed.duplicate(), [], rollout_pool, rng, context)
+	t.expect(rollout_pool == rollout_before, "每个 MCTS rollout 不能污染外部牌池")
 	var result := search.rank(round, 0, round.players[0].concealed, [], seen, candidates, context)
 	t.expect(result.size() == candidates.size(), "MCTS returns every legal discard root")
 	var visits := 0

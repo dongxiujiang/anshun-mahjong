@@ -1,5 +1,6 @@
 extends SceneTree
 const H := preload("res://tests/test_harness.gd")
+const LegalActions := preload("res://scripts/core/LegalActions.gd")
 var t := H.new()
 
 func _initialize() -> void: call_deferred("_run")
@@ -39,6 +40,10 @@ func _run() -> void:
 	t.expect(round.legal_turn_options(0).ready_discards.is_empty(), "第一次机会过后报听关闭")
 	player.first_turn_done = false
 	t.expect(round.allowed_actions(1).is_empty() and round.allowed_actions(0).kind == "turn", "只有当前座位能提交操作")
+	var current := round.allowed_actions(0)
+	t.expect(current.options.discards == round.legal_turn_options(0).discards, "界面当前清单与权威合法清单一致")
+	t.expect(LegalActions.validate_turn_submission(round, 0, {"discard": round.players[0].just_drew}), "统一入口接受当前座位合法出牌")
+	t.expect(not LegalActions.validate_turn_submission(round, 1, {"discard": round.players[0].just_drew}), "统一入口拒绝非当前座位出牌")
 	var before := round.serialize()
 	t.expect(not round.submit_turn(0, {"discard": "invalid"}) and round.serialize() == before, "非法提交不改变牌局")
 	round.players[1].concealed = ["tiao1", "tiao1", "tiao1"]

@@ -38,6 +38,7 @@ func _run() -> void:
 	_test_discard_win_restrictions()
 	_test_wall_and_patterns()
 	_test_private_sync()
+	_test_invariants()
 	if not failed:
 		print("[rules_complete] scoring, payments, flip, priority, rob/pass, ready, wall and patterns passed")
 	quit(1 if failed else 0)
@@ -252,3 +253,46 @@ func _test_private_sync() -> void:
 	expect(round.players[2].melds[0].tile == "tong8" and round.players[0].concealed == WAIT, "Privacy filtering cannot alter host state")
 	round.phase = RoundState.Phase.SETTLED
 	expect(round.serialize_for_seat(1).players[0].concealed == WAIT, "Settlement reveals all hands")
+
+func _check_settlement_invariants(result: Dictionary, label: String) -> void:
+	var matrix: Array = result.pairwise
+	var total := 0.0
+	for seat in 4:
+		expect(is_zero_approx(float(matrix[seat][seat])), "%s 付款矩阵对角线必须为0" % label)
+		var row := 0.0
+		for other in 4:
+			expect(is_zero_approx(float(matrix[seat][other]) + float(matrix[other][seat])), "%s 收付款必须相互抵消" % label)
+			row += float(matrix[seat][other])
+		expect(is_zero_approx(row - float(result.deltas[seat])), "%s 付款行合计必须等于净分" % label)
+		total += float(result.deltas[seat])
+	expect(is_zero_approx(total), "%s 四家结算必须零和" % label)
+
+func _tile_accounted(round: RoundState) -> int:
+	var accounted := 0
+	for player in round.players:
+		accounted += player.concealed.size() + player.discards.size()
+		for meld in player.melds:
+			accounted += 3 if meld.kind == "pung" else 4
+	if round.wall != null:
+		accounted += round.wall.remaining
+	return accounted
+
+func _test_invariants() -> void:
+	var plain := ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong2", "tong3", "tong4", "wan9", "wan9"]
+	var self_draw := fixture()
+	self_draw.players[0].concealed = plain.duplicate()
+	self_draw.round_meta.winner = 0
+	self_draw.round_meta.winners = [0]
+	self_draw.round_meta.self_draw = true
+	_check_settlement_invariants(ScoringEngine.settle(self_draw), "普通自摸")
+	var multi := fixture()
+	multi.players[0].concealed = plain.duplicate()
+	multi.players[1].concealed = plain.duplicate()
+	multi.round_meta.winner = 0
+	multi.round_meta.winners = [0, 1]
+	multi.round_meta.self_draw = false
+	multi.round_meta.discard_seat = 2
+	_check_settlement_invariants(ScoringEngine.settle(multi), "一炮多响")
+	var live := RoundState.new()
+	live.start_round(0, 1)
+	expect(_tile_accounted(live) == 108, "开局发牌后牌墙、手牌、弃牌和碰杠牌必须守恒")

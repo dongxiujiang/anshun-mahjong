@@ -28,6 +28,8 @@ func rank(round, seat: int, hand: Array, melds: Array, seen: Dictionary, candida
 		var root: Dictionary = roots[root_index]
 		var state: Array = hand.duplicate()
 		state.erase(root.tile)
+		# 每个 rollout 都必须从相同的未知牌池开始；模拟内的摸牌只影响
+		# 当前分支，不能污染其他候选牌或后续 rollout。
 		var reward := _simulate(round, seat, state, melds, pool, random, context)
 		root.visits = int(root.visits) + 1
 		root.value = float(root.value) + reward
@@ -61,9 +63,10 @@ func _pool(seen: Dictionary) -> Array[int]:
 
 func _simulate(round, seat: int, state: Array, melds: Array, pool: Array[int], random: RandomNumberGenerator, context: Dictionary) -> float:
 	var current := state.duplicate()
+	var remaining_pool: Array[int] = _copy_pool(pool)
 	var reward := 0.0
 	for depth in DEPTH:
-		var drawn := _draw(pool, random)
+		var drawn := _draw_and_consume(remaining_pool, random)
 		if drawn < 0: break
 		var tile := Tiles.from_index(drawn)
 		current.append(tile)
@@ -71,11 +74,11 @@ func _simulate(round, seat: int, state: Array, melds: Array, pool: Array[int], r
 			var flips: Dictionary = context.get("flips", {})
 			reward += 12.0 + 0.05 * VALUE.win_value(round, seat, current, melds, flips, context.get("opponents", []), false, true)
 			break
-		var discard := _quick_discard(current, melds, pool)
+		var discard := _quick_discard(current, melds, remaining_pool)
 		if discard == "": break
 		current.erase(discard)
 		var distance := Shanten.shanten(current, melds)
-		var outs := _outs(current, melds, pool)
+		var outs := _outs(current, melds, remaining_pool)
 		reward += (4.0 - float(distance)) * 2.2 + float(outs) * 0.06
 	# A small pattern term helps retain seven-pairs/flush routes when progress ties.
 	reward += 0.10 * VALUE.potential_pattern(current, melds)
@@ -90,6 +93,19 @@ func _draw(pool: Array[int], random: RandomNumberGenerator) -> int:
 		pick -= int(pool[index])
 		if pick <= 0: return index
 	return -1
+
+func _draw_and_consume(pool: Array[int], random: RandomNumberGenerator) -> int:
+	var drawn := _draw(pool, random)
+	if drawn >= 0 and drawn < pool.size():
+		pool[drawn] = maxi(0, int(pool[drawn]) - 1)
+	return drawn
+
+func _copy_pool(pool: Array[int]) -> Array[int]:
+	var copy: Array[int] = []
+	copy.resize(pool.size())
+	for index in pool.size():
+		copy[index] = int(pool[index])
+	return copy
 
 func _quick_discard(hand: Array, melds: Array, pool: Array[int]) -> String:
 	var best := ""

@@ -27,6 +27,7 @@ func _run() -> void:
 		t.expect(wire.awaiting_response.stage == stage_names[stage], "响应阶段在网络边界转字符串")
 		client.apply_sync(wire)
 		t.expect(client._awaiting_response.stage == stage, "旧响应字符串转换回枚举")
+		t.expect(client._response_stage == stage, "响应阶段同时恢复到内部状态机")
 		t.expect(host._awaiting_response.stage == stage, "序列化不修改权威状态")
 	var kong_names := ["", "exposed", "concealed", "add_kong"]
 	for kind in kong_names.size():
