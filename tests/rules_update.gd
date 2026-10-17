@@ -227,6 +227,14 @@ func _test_uncalled_kong_chicken_payments() -> void:
 	var win_result := settle(win)
 	check(win_result.transfers.any(func(item): return item.get("from", -1) == 0 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌杠中鸡" and float(item.get("amount", 0.0)) == 8.0),
 		"胡牌局未叫牌明杠幺鸡仍向叫牌赢家补8分")
+	win.round_meta.flip_tile = "wan5"
+	var no_gold_result := settle(win)
+	check(no_gold_result.transfers.any(func(item): return item.get("from", -1) == 0 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌杠中鸡" and float(item.get("amount", 0.0)) == 8.0),
+		"翻牌不关联幺鸡时杠中鸡仍为8分")
+	win.round_meta.flip_tile = "tiao1"
+	var gold_result := settle(win)
+	check(gold_result.transfers.any(func(item): return item.get("from", -1) == 0 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌杠中鸡" and float(item.get("amount", 0.0)) == 16.0),
+		"翻牌关联幺鸡时未叫牌杠中鸡翻倍为16分")
 
 func _test_win_payments() -> void:
 	var r := fixture()
