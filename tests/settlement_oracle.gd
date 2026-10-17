@@ -202,6 +202,17 @@ static func _chicken_values(round: RoundState, seat: int, related: Array, multip
 		var amount := (4.0 if charge else 2.0) * (2.0 if tile in related else 1.0) * multiplier
 		discarded += amount
 		total += amount
+	for raw_record in round.round_meta.get("resolved_chicken_discards", []):
+		var record: Dictionary = raw_record
+		if int(record.get("owner", -1)) != seat:
+			continue
+		var tile := str(record.get("tile", ""))
+		if tile not in ["tiao1", "tong8"]:
+			continue
+		var charge: bool = bool(record.get("charge", false))
+		var amount := (4.0 if charge else 2.0) * (2.0 if tile in related else 1.0) * multiplier
+		discarded += amount
+		total += amount
 	for tile_value in player.concealed:
 		total += _held_chicken(str(tile_value), related, multiplier)
 	for meld in player.melds:

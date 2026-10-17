@@ -82,7 +82,7 @@ static func settle(round) -> Dictionary:
 			status[seat] = _draw_status(seat, called_seats)
 		return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, all_called, next_multiplier, winners)
 	# 鸡分是全场逐对比较；胡牌费用则逐个赢家分别结算。
-	PAY.compare_chickens(deltas, transfers, called_seats, points)
+	PAY.compare_chickens(deltas, transfers, called_seats, points, discard_points)
 	for target in winners:
 		WIN.settle_winner(round, int(target), points, winners, deltas, transfers, items, lines)
 	KONG.pay(round, deltas, transfers, called_seats, items, flip, false)

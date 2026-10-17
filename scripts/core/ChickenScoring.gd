@@ -26,6 +26,21 @@ static func chicken_profile(round, seat: int, flip: String) -> Dictionary:
 			var amount: float = base * (CFG.SCORE_FLIP_DOUBLE if doubled else 1.0) * multiplier
 			discarded += amount
 			list.append(_chicken_item(tile, is_charge, doubled, amount, "打出", "discard"))
+		# 胡牌时被胡的弃牌会从 player.discards 移入赢家的逻辑手牌。
+		# 这张牌仍属于原出牌者的“打出鸡”，否则未叫牌者会漏付该鸡分。
+		for raw_record in round.round_meta.get("resolved_chicken_discards", []):
+			var record: Dictionary = raw_record
+			if int(record.get("owner", -1)) != seat:
+				continue
+			var tile := str(record.get("tile", ""))
+			if not Tiles.is_chicken(tile):
+				continue
+			var is_charge: bool = bool(record.get("charge", false))
+			var base: float = CFG.SCORE_CHARGE_CHICKEN if is_charge else CFG.SCORE_CALL_CHICKEN
+			var doubled: bool = tile in gold_chickens
+			var amount: float = base * (CFG.SCORE_FLIP_DOUBLE if doubled else 1.0) * multiplier
+			discarded += amount
+			list.append(_chicken_item(tile, is_charge, doubled, amount, "打出（胡牌）", "discard"))
 		for tile in player.concealed:
 			_append_hand_chicken(list, tile, related, gold_chickens, multiplier, "手中")
 		for meld_index in player.melds.size():

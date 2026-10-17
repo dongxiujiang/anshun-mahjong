@@ -87,6 +87,31 @@ func _test_six_pairs() -> void:
 	var scored := ScoringEngine.settle(equal)
 	t.expect(scored.round_points[1] == 4 and scored.round_points[2] == 4 and scored.pairwise[1][2] == 0, "相同鸡分四分互相不补")
 
+func _test_uncalled_discard_chicken() -> void:
+	# 被胡的弃牌会离开 source.discards；独立核账器和实际结算都必须
+	# 保留这张未叫牌出牌鸡，并逐家补给所有叫牌玩家。
+	for charge in [false, true]:
+		for multiplier in [1, 2]:
+			var r := RoundState.new()
+			r.build_players(0)
+			r.controllers = [null, null, null, null]
+			r.phase = RoundState.Phase.PLAYING
+			r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
+				"discard_seat": 1, "win_tile": "tiao1", "chicken_multiplier": multiplier}, true)
+			r.players[0].concealed = SCREENSHOT_WIN.duplicate()
+			r.players[2].concealed = WAIT.duplicate()
+			r.players[1].discards = ["tiao1"]
+			r.players[1].discard_ids = [0]
+			if charge:
+				r.round_meta.charge_chickens["tiao1"] = {"owner": 1, "location": "discard", "discard_id": 0}
+			r._remove_from_discards(1, "tiao1", 0, "hand")
+			var expected: float = (4.0 if charge else 2.0) * multiplier
+			var result := ScoringEngine.settle(r)
+			ORACLE.check(r, result, t, "未叫牌被胡出牌鸡 charge=%s x%d" % [charge, multiplier])
+			t.expect(result.discard_points[1] == expected, "被胡幺鸡仍计入未叫牌出牌鸡")
+			t.expect(result.pairwise[1][0] == -expected and result.pairwise[1][2] == -expected and result.pairwise[1][3] == 0.0,
+				"未叫牌出牌鸡逐家补付且不向未叫牌者补付")
+
 func _test_mutual_kongs() -> void:
 	# 同局两家有杠：既要抵消通用鸡分/暗加杠4，也要保留不同的明杠付款人。
 	for winner in 4:
@@ -138,6 +163,7 @@ func _test_result_ui() -> void:
 func _run() -> void:
 	_test_screenshot()
 	_test_six_pairs()
+	_test_uncalled_discard_chicken()
 	_test_mutual_kongs()
 	await _test_result_ui()
 	print("[scoring_pairwise] %d mixed six-pair settlements + screenshot, sync and UI" % settlements)

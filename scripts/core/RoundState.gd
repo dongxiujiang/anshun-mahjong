@@ -151,6 +151,9 @@ func _reset_meta() -> void:
 	round_meta = {
 		"dealer_seat": dealer_seat,
 		"charge_chickens": {}, "flip_tile": "", "chicken_multiplier": 1,
+		# 胡牌时被胡的弃牌会从 player.discards 移除，但它仍然是
+		# 出牌鸡，尤其需要保留未叫牌玩家的补付记录。
+		"resolved_chicken_discards": [],
 		"kong_draw_seat": -1, "last_four_self_draw_seat": -1,
 		"robber_seat": -1, "burn_chicken_seat": -1, "burn_chicken_reason": "",
 		"robbed_kong": false,
@@ -827,7 +830,15 @@ func _remove_from_discards(seat: int, tile: String, receiver: int = -1, location
 	var discards: Array = player.discards
 	var index := discards.rfind(tile)
 	if index >= 0:
-		if is_charge_discard(seat, index):
+		var was_charge := is_charge_discard(seat, index)
+		# 被胡的弃牌会进入赢家的逻辑手牌，不能再从出牌鸡结算中消失。
+		# 碰/杠时鸡牌转入面子，仍由面子所有者计分，因此只记录 hand。
+		if location == "hand" and Tiles.is_chicken(tile):
+			var resolved: Array = round_meta.get("resolved_chicken_discards", [])
+			resolved.append({"owner": seat, "tile": tile, "charge": was_charge,
+				"discard_id": player.discard_ids[index] if index < player.discard_ids.size() else -1})
+			round_meta["resolved_chicken_discards"] = resolved
+		if was_charge:
 			var charge: Dictionary = round_meta.charge_chickens[tile]
 			charge.owner = receiver
 			charge.location = location

@@ -47,7 +47,7 @@ static func relative_payments(matrix: Array, seat: int) -> Array:
 		out.append(matrix[seat][posmod(seat + offset, 4)])
 	return out
 
-static func compare_chickens(deltas: Array, transfers: Array, called: Array, points: Array) -> void:
+static func compare_chickens(deltas: Array, transfers: Array, called: Array, points: Array, discard_points: Array = []) -> void:
 	# 胡牌局：叫牌者按完整鸡分，未叫牌者以出牌鸡负分参与。
 	# 包括手中、碰杠、保留出牌鸡和翻鸡；杠基础分及胡牌费用另按付款人收取。
 	for first in 4:
@@ -58,6 +58,20 @@ static func compare_chickens(deltas: Array, transfers: Array, called: Array, poi
 				continue
 			var first_points: float = float(points[first])
 			var second_points: float = float(points[second])
+			# 未叫牌者打出的鸡必须逐家补给所有叫牌者。
+			# 将这部分从普通差额中拆出，既保留原总额，又让付款流水
+			# 明确记录“未叫牌出牌鸡”，避免该项在结算卡中不可追踪。
+			if not discard_points.is_empty():
+				if not called[first] and called[second]:
+					var first_discard := float(discard_points[first])
+					if first_discard > 0.0:
+						transfer(deltas, transfers, first, second, first_discard, "未叫牌出牌鸡")
+					first_points = 0.0
+				elif called[first] and not called[second]:
+					var second_discard := float(discard_points[second])
+					if second_discard > 0.0:
+						transfer(deltas, transfers, second, first, second_discard, "未叫牌出牌鸡")
+					second_points = 0.0
 			var difference: float = first_points - second_points
 			if difference > 0: transfer(deltas, transfers, second, first, difference, "鸡分差额")
 			elif difference < 0: transfer(deltas, transfers, first, second, -difference, "鸡分差额")

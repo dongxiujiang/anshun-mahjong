@@ -34,6 +34,7 @@ func _run() -> void:
 	_test_charges()
 	_test_claims()
 	_test_claimed_charge_settlement()
+	_test_uncalled_discard_chicken_payments()
 	_test_chicken_values()
 	_test_win_payments()
 	_test_draw_payments()
@@ -164,6 +165,34 @@ func _test_claimed_charge_settlement() -> void:
 	check(kong_result.items[0][0].chicken_amount == 8.0, "被杠冲锋鸡按四张每张2分")
 	check(kong_result.pairwise[0][1] == 16.0, "荒牌明杠的放杠者支付基础补付4、明杠4和杠中鸡8")
 	check(kong_result.pairwise[0][2] == 12.0 and kong_result.pairwise[0][3] == 12.0, "其他未叫牌者支付基础补付4和杠中鸡8")
+
+func _test_uncalled_discard_chicken_payments() -> void:
+	# 胡牌会把最后一张弃牌从 source.discards 移走；该牌仍必须作为
+	# 原出牌者的出牌鸡，逐家补给所有叫牌玩家。
+	for charge in [false, true]:
+		for multiplier in [1, 2]:
+			var r := fixture()
+			r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
+				"discard_seat": 1, "win_tile": "tiao1", "chicken_multiplier": multiplier}, true)
+			r.players[0].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong2", "tong3", "tong4", "wan9", "wan9"]
+			r.players[2].concealed = WAIT.duplicate()
+			r.players[1].discards = ["tiao1"]
+			r.players[1].discard_ids = [0]
+			if charge:
+				r.round_meta.charge_chickens["tiao1"] = {"owner": 1, "location": "discard", "discard_id": 0}
+			r._remove_from_discards(1, "tiao1", 0, "hand")
+			var expected: float = (4.0 if charge else 2.0) * multiplier
+			check(r.players[1].discards.is_empty(), "被胡弃牌从桌面记录移除")
+			check(r.round_meta.resolved_chicken_discards.size() == 1, "被胡幺鸡保留出牌鸡结算记录")
+			var result := settle(r)
+			check(result.discard_points[1] == expected, "未叫牌被胡幺鸡出牌分为%.0f" % expected)
+			check(result.pairwise[1][0] == -expected and result.pairwise[1][2] == -expected,
+				"未叫牌出牌鸡逐家补给两位叫牌玩家")
+			check(result.pairwise[1][3] == 0.0, "未叫牌之间不比较出牌鸡")
+			check(result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 0 and item.get("reason", "") == "未叫牌出牌鸡" and float(item.get("amount", 0.0)) == expected),
+				"付款流水明确记录给赢家的未叫牌出牌鸡")
+			check(result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌出牌鸡" and float(item.get("amount", 0.0)) == expected),
+				"付款流水明确记录给其他叫牌家的未叫牌出牌鸡")
 
 func _test_win_payments() -> void:
 	var r := fixture()
