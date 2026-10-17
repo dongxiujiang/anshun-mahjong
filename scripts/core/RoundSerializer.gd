@@ -109,6 +109,8 @@ static func serialize_for_seat(round_state, seat: int) -> Dictionary:
 			if event.has("tile"): event.tile = "hidden0"
 			if event.has("cards") and event.cards is Array:
 				event.cards = event.cards.map(func(_card): return "hidden0")
+		if event.get("type", "") == "discard" and int(event.get("seat", -1)) != seat and event.has("draw_tile"):
+			event.draw_tile = "hidden0"
 		if event.get("type", "") == "deal_batch":
 			for deal in event.get("deals", []):
 				if int(deal.get("seat", -1)) != seat:

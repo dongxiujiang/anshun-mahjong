@@ -116,10 +116,12 @@ static func can_win_on_discard(round, seat: int, source: int, tile: String, stag
 	if player.passed_win_until_draw:
 		return false
 	if not RuleEngine.can_win_on(player.concealed, player.melds, tile): return false
+	# 报听玩家可以在普通弃牌上胡；这类胡牌没有普通点炮基础分，
+	# 由结算按报听 24 分和鸡分逐家互付。抢杠仍只开放当前这张加杠牌。
 	if stage == RoundState.ResponseStage.ROB or player.ready: return true
-	if source >= 0 and source < round.players.size() and round.players[source].ready: return true
-	# 只有暗杠、加杠补牌后打出的牌开放杠后放炮，并由结算统一标记烧鸡。
+	# 只有暗杠、加杠补牌后的第一张弃牌开放普通牌型的杠后放炮窗口。
 	if is_post_kong_discard(round.last_discard): return true
+	# 非杠后弃牌不再允许普通牌型放炮；大牌仍可胡，但按牌型逐家结算。
 	var combined := player.concealed.duplicate()
 	combined.append(tile)
 	var pattern := RuleEngine.analyze(combined, player.melds)

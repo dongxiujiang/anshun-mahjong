@@ -133,17 +133,28 @@ func _refresh_seat(seat: int) -> void:
 		_status_labels[seat].hide()
 		return
 	var player: PlayerState = table.round.players[seat]
+	var opening: bool = table._table_animation_controller.opening_active()
+	var opening_dealt: int = table._table_animation_controller.dealt_count(seat)
+	var draw_hidden: bool = table._table_animation_controller.holds_draw_slot(seat)
 	var plans: Array = _exposed_layouts.get(seat, [])
 	var key = var_to_bytes([table.human_seat, table._design_size(), table.round.audio_session, player.concealed, player.just_drew, player.melds,
 		player.discards, player.discard_ids, player.discard_count, table.round.phase == RoundState.Phase.SETTLED, table.round.last_discard, plans,
-		table.round.round_meta.get("charge_chickens", {}), table._hand_layout(seat)])
+		table.round.round_meta.get("charge_chickens", {}), table._hand_layout(seat), opening, opening_dealt, draw_hidden])
 	if _seat_visual_keys.get(seat) == key: return
 	_seat_visual_keys[seat] = key
 	if seat == table.human_seat: table._selected_tile = null
 	table._clear_box(meld_box[seat])
 	table._clear_box(chicken_box[seat])
-	var cards = Tiles.sort_hand(player.concealed)
-	var has_draw = player.just_drew != "" and cards.has(player.just_drew)
+	var cards: Array = []
+	if opening:
+		# During the opening, the authoritative hand is already complete but the
+		# table must show only the packets that have physically landed.  Preserve
+		# append/deal order here; sorting waits for the separate sort animation.
+		for source_index in range(mini(opening_dealt, player.concealed.size())):
+			cards.append(player.concealed[source_index])
+	else:
+		cards = Tiles.sort_hand(player.concealed)
+	var has_draw = not opening and player.just_drew != "" and cards.has(player.just_drew)
 	if has_draw:
 		cards.erase(player.just_drew)
 	# Preserve each rendered tile's source index.  A tile name is not unique;
@@ -186,6 +197,11 @@ func _refresh_seat(seat: int) -> void:
 		for index in count:
 			var tile: TileView = table._make_tile(meld.tile if up else "", up, player_unit)
 			tile.set_meta("meld_index", int(group.meld_index))
+			# Keep the physical slot so a meld animation can place the claimed
+			# discard in the sideways kong position while the other tiles come from
+			# the caller's old concealed row.
+			tile.set_meta("meld_slot", index)
+			tile.set_meta("meld_sideways", int(layout.sideways))
 			tile.set_meta("charge_chicken", index == charge_index)
 			if index == charge_index:
 				tile.set_highlight(true)
@@ -222,6 +238,9 @@ func _refresh_seat(seat: int) -> void:
 	if has_draw:
 		var drawn: TileView = table._make_tile(player.just_drew if reveal else "", reveal, hand_unit)
 		table._put_tile(draw_box[seat], drawn, Vector2(draw_x, y))
+		# Keep the authoritative target available for positioning, but invisible
+		# until the temporary draw animation has reached this slot.
+		drawn.visible = not draw_hidden
 		drawn.set_meta("drawn", true)
 		drawn.set_winning(table.round.phase == RoundState.Phase.SETTLED and int(table.round.round_meta.get("winner", -1)) == seat)
 		if own:

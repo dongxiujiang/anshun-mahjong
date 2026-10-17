@@ -27,6 +27,7 @@ func play(event: Dictionary, target: Callable = Callable()) -> int:
 	match str(event.get("type", "")):
 		"dice": _dice(event)
 		"deal", "draw", "discard", "meld", "meld_reveal": _tiles(event)
+		"sort_hand": _sort_hand(event)
 		"win": _win(event)
 		"ready": _badge("报听", event, _duration(0.24))
 		_: _active.tween_interval(0.001)
@@ -62,30 +63,53 @@ func _tiles(event: Dictionary) -> void:
 	var type := str(event.get("type", ""))
 	var destinations: Array = event.get("destinations", [])
 	if destinations.is_empty():
-		destinations = [{"to": event.get("to", UI.LANDSCAPE_CENTER), "tile": event.get("tile", ""), "unit": UI.ANIMATION_TILE_UNIT, "rotation": 0.0}]
-	var duration := UI.DEAL_DURATION if type == "deal" else _duration(UI.DISCARD_DURATION if type == "discard" else (UI.MELD_DURATION if type == "meld" else UI.DRAW_DURATION))
+		destinations = [{"to": event.get("to", UI.LANDSCAPE_CENTER), "from": event.get("from", UI.LANDSCAPE_CENTER), "tile": event.get("tile", ""), "unit": UI.ANIMATION_TILE_UNIT, "rotation": 0.0}]
+	var duration := UI.DEAL_DURATION if type == "deal" else _duration(UI.REVEAL_DURATION if type == "meld_reveal" else (UI.DISCARD_DURATION if type == "discard" else (UI.MELD_DURATION if type == "meld" else UI.DRAW_DURATION)))
+	var stagger := UI.DEAL_TILE_STAGGER if type == "deal" else (UI.DRAW_TILE_STAGGER if type == "draw" else (UI.DISCARD_TILE_STAGGER if type == "discard" else UI.MELD_TILE_STAGGER))
+	var arc_height := UI.DEAL_ARC_HEIGHT if type == "deal" else (UI.DRAW_ARC_HEIGHT if type == "draw" else (UI.DISCARD_ARC_HEIGHT if type == "discard" else UI.MELD_ARC_HEIGHT))
 	for index in destinations.size():
 		var data: Dictionary = destinations[index]
 		var tile := TileView.new()
 		var card := str(data.get("tile", ""))
 		tile.set_card(card, card != "" and card != "hidden0")
 		tile.set_unit(float(data.get("unit", UI.ANIMATION_TILE_UNIT)))
-		tile.rotation = float(data.get("rotation", 0.0))
 		var to := Vector2(data.get("to", UI.LANDSCAPE_CENTER))
+		var from := Vector2(data.get("from", event.get("from", UI.LANDSCAPE_CENTER)))
+		var final_rotation := float(data.get("rotation", 0.0))
+		var start_rotation := float(data.get("from_rotation", event.get("from_rotation", final_rotation)))
 		_add(tile)
-		tile.position = Vector2(event.get("from", UI.LANDSCAPE_CENTER)) + Vector2(index * 16.0, -24)
+		tile.position = from
 		if type == "meld_reveal":
 			tile.position = to
+			tile.rotation = final_rotation
 			tile.set_card(card, false)
 			tile.pivot_offset = tile.size / 2.0
 			_active.parallel().tween_property(tile, "scale:x", 0.05, duration / 2.0)
 		else:
-			tile.scale = Vector2.ONE * (float(event.get("from_unit", tile.unit)) / tile.unit if type == "discard" else 0.78)
-			var final_rotation := tile.rotation
-			if type == "discard": tile.rotation = float(event.get("from_rotation", final_rotation))
-			_active.parallel().tween_property(tile, "rotation", final_rotation, duration)
-			_active.parallel().tween_property(tile, "position", to, duration)
-			_active.parallel().tween_property(tile, "scale", Vector2.ONE, duration)
+			var start_scale := float(event.get("from_unit", tile.unit)) / tile.unit if type == "discard" and tile.unit > 0.0 else 0.78
+			tile.scale = Vector2.ONE * start_scale
+			tile.rotation = start_rotation
+			var delay := stagger * float(index)
+			var flight_duration := duration + delay
+			var apex := from.lerp(to, 0.5) + Vector2(0, -arc_height)
+			var motion := func(progress: float):
+				var elapsed := progress * flight_duration
+				var local := clampf((elapsed - delay) / duration, 0.0, 1.0)
+				if local <= 0.0:
+					tile.position = from
+					tile.rotation = start_rotation
+					tile.scale = Vector2.ONE * start_scale
+					return
+				var eased := _smoothstep(local)
+				tile.position = _quad_bezier(from, apex, to, eased)
+				tile.rotation = lerp_angle(start_rotation, final_rotation, eased)
+				var settle := 0.0
+				if local > 0.82:
+					settle = _smoothstep((local - 0.82) / 0.18)
+					tile.position = tile.position.lerp(to, settle) + Vector2(0, -sin(settle * PI) * UI.TILE_SETTLE_LIFT)
+				var bounce := 1.0 + sin(settle * PI) * (UI.TILE_SETTLE_SCALE - 1.0)
+				tile.scale = Vector2.ONE * lerpf(start_scale, 1.0, eased) * bounce
+			_active.parallel().tween_method(motion, 0.0, 1.0, flight_duration)
 	if type == "meld_reveal":
 		_active.tween_callback(func():
 			for tile in _temporary:
@@ -93,6 +117,121 @@ func _tiles(event: Dictionary) -> void:
 		for tile in _temporary:
 			_active.parallel().tween_property(tile, "scale:x", 1.0, duration / 2.0)
 	if type == "meld": _badge("碰" if event.get("kind", "") == "pung" else "杠", event, duration)
+	if type == "discard" and bool(event.get("discard_from_hand", false)):
+		_hand_motion(event, duration)
+
+func _sort_hand(event: Dictionary) -> void:
+	# Move the persistent hand nodes themselves.  The opening hand is already
+	# visible in deal order; moving these nodes gives the player a real
+	# interleaving/sort pass without a masked duplicate row underneath.
+	# Opening timing is shared across clients, just like dice and deal packets.
+	var duration := UI.SORT_DURATION
+	var destinations: Array = event.get("destinations", [])
+	for index in destinations.size():
+		var data: Dictionary = destinations[index]
+		var tile = data.get("node")
+		if not is_instance_valid(tile) or not (tile is TileView): continue
+		var from: Vector2 = tile.position
+		var to := Vector2(data.get("to", from))
+		var start_rotation := float(tile.rotation)
+		var final_rotation := float(data.get("rotation", start_rotation))
+		var delay := float(data.get("delay", UI.SORT_TILE_STAGGER * float(index)))
+		var flight_duration := duration + delay
+		var apex := from.lerp(to, 0.5) + Vector2(0, -UI.SORT_ARC_HEIGHT)
+		var motion := func(progress: float):
+			var elapsed := progress * flight_duration
+			var local := clampf((elapsed - delay) / duration, 0.0, 1.0)
+			if local <= 0.0:
+				tile.position = from
+				tile.rotation = start_rotation
+				return
+			var eased := _smoothstep(local)
+			tile.position = _quad_bezier(from, apex, to, eased)
+			tile.rotation = lerp_angle(start_rotation, final_rotation, eased)
+		_active.parallel().tween_method(motion, 0.0, 1.0, flight_duration)
+
+func _hand_motion(event: Dictionary, duration: float) -> void:
+	# During a hand discard the authoritative refresh is held. The discarded
+	# slot stays visibly empty while the remaining row shifts horizontally; only
+	# after that gap is ready does the drawn tile slide in from the draw slot.
+	var move_required := bool(event.get("hand_move_required", false))
+	var total_duration := duration * (3.0 if move_required else 2.0)
+	var move_start := duration
+	var insert_start := duration * (2.0 if move_required else 1.0)
+	for data in event.get("hand_moves", []):
+		var persistent_node = data.get("node")
+		var persistent := is_instance_valid(persistent_node) and persistent_node is TileView
+		var tile: TileView
+		if persistent:
+			tile = persistent_node
+			tile.set_interactive(false)
+		else:
+			tile = TileView.new()
+			var card := str(data.get("tile", ""))
+			tile.set_card(card, card != "" and card != "hidden0")
+			tile.set_unit(float(data.get("unit", UI.ANIMATION_TILE_UNIT)))
+			_add(tile)
+			# Keep the fallback safe for snapshots that arrived without a live node.
+			tile.set_table_position(Vector2(data.get("from", UI.LANDSCAPE_CENTER)))
+			tile.rotation = float(data.get("rotation", 0.0))
+		var move_from := Vector2(data.get("from", UI.LANDSCAPE_CENTER))
+		var move_to := Vector2(data.get("to", move_from))
+		var layer_transform := get_global_transform()
+		var from_global := layer_transform * move_from
+		var to_global := layer_transform * move_to
+		if persistent:
+			tile.global_position = from_global
+		var motion := func(progress: float):
+			var elapsed := progress * total_duration
+			var local := clampf((elapsed - move_start) / duration, 0.0, 1.0) if move_required else 0.0
+			var eased := _smoothstep(local)
+			# This is a table-plane translation. For side seats the parent rotation
+			# turns it vertical on screen, while each player's own row still moves
+			# horizontally along the hand.
+			if persistent:
+				tile.global_position = from_global.lerp(to_global, eased)
+			else:
+				tile.position = move_from.lerp(move_to, eased)
+		_active.parallel().tween_method(motion, 0.0, 1.0, total_duration)
+	if not event.get("hand_insert", {}).is_empty():
+		var data: Dictionary = event.get("hand_insert", {})
+		var tile := TileView.new()
+		var card := str(data.get("tile", ""))
+		tile.set_card(card, card != "" and card != "hidden0")
+		tile.set_unit(float(data.get("unit", UI.ANIMATION_TILE_UNIT)))
+		var initial_scale := (float(data.get("from_unit", tile.unit)) / tile.unit if tile.unit > 0.0 else 1.0) * 0.9
+		tile.scale = Vector2.ONE * initial_scale
+		_add(tile)
+		# As above, set the captured draw-slot position after the node enters the
+		# tree so TileView._ready() cannot overwrite it with (0, 0).
+		tile.set_table_position(Vector2(data.get("from", UI.LANDSCAPE_CENTER)))
+		tile.rotation = float(data.get("rotation", 0.0))
+		var insert_from := tile.position
+		var insert_to := Vector2(data.get("to", tile.position))
+		# Keep the whole discard effect continuous while delaying the insert until
+		# the row has moved out of the way (when a new gap is required).
+		var source_node = data.get("source_node")
+		var has_source := is_instance_valid(source_node) and source_node is TileView
+		if has_source:
+			tile.modulate.a = 0.0
+		var motion := func(progress: float):
+			var elapsed := progress * total_duration
+			var local := clampf((elapsed - insert_start) / duration, 0.0, 1.0)
+			var eased := _smoothstep(local)
+			if has_source and elapsed >= insert_start:
+				source_node.visible = false
+			tile.modulate.a = eased if has_source else 1.0
+			tile.position = insert_from.lerp(insert_to, eased) + Vector2(0, -sin(eased * PI) * 1.5)
+			tile.scale = Vector2.ONE * lerpf(initial_scale, 1.0, eased)
+		_active.parallel().tween_method(motion, 0.0, 1.0, total_duration)
+
+func _smoothstep(value: float) -> float:
+	var t := clampf(value, 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
+
+func _quad_bezier(a: Vector2, b: Vector2, c: Vector2, t: float) -> Vector2:
+	var u := 1.0 - t
+	return u * u * a + 2.0 * u * t * b + t * t * c
 
 func _badge(text: String, event: Dictionary, duration: float) -> void:
 	var badge := Label.new()

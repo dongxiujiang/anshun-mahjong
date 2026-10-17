@@ -59,30 +59,37 @@ function Invoke-LoggedStep {
     Write-Host "[RUN] $Name" -ForegroundColor Yellow
     Write-Host "      日志：$logPath" -ForegroundColor DarkGray
     $previousErrorActionPreference = $ErrorActionPreference
+    $writer = $null
     try {
-        # Windows PowerShell 会把原生命令的 stderr 包装成 ErrorRecord；收集后统一写日志，避免误判或刷屏。
+        # Stream each native-process line to both the console and its log.  The
+        # old implementation buffered the complete AI regression, which made a
+        # healthy ten-minute run look frozen at the core_tests stage.
         $ErrorActionPreference = "Continue"
-        $captured = @(& $FilePath @Arguments 2>&1)
-        $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
-        $outputLines = foreach ($item in $captured) {
-            if ($item -is [System.Management.Automation.ErrorRecord]) {
-                $message = [string]$item.Exception.Message
-                if ($message -ne "") { $message }
+        $writer = [IO.StreamWriter]::new($logPath, $false, [Text.UTF8Encoding]::new($false))
+        $writer.WriteLine("# Step: $Name")
+        $writer.Flush()
+        & $FilePath @Arguments 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                $line = [string]$_.Exception.Message
             }
             else {
-                [string]$item
+                $line = [string]$_
+            }
+            if ($line -ne "") {
+                $writer.WriteLine($line)
+                $writer.Flush()
+                Write-Host $line
             }
         }
-        $output = $outputLines -join [Environment]::NewLine
-        $header = "# Step: $Name`r`n# Exit code: $exitCode`r`n"
-        if ($output -ne "") { $header += "`r`n" }
-        [IO.File]::WriteAllText($logPath, $header + $output, [Text.UTF8Encoding]::new($false))
-        if ($output -ne "") { Write-Host $output.TrimEnd() }
+        $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+        $writer.WriteLine("# Exit code: $exitCode")
+        $writer.Flush()
     }
     catch {
         throw "[$Name] 启动失败：$($_.Exception.Message)。日志：$logPath"
     }
     finally {
+        if ($null -ne $writer) { $writer.Dispose() }
         $ErrorActionPreference = $previousErrorActionPreference
     }
     if ($exitCode -ne 0) {

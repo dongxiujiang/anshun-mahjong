@@ -38,6 +38,16 @@ func _run() -> void:
 	t.expect(table.round.phase == RoundState.Phase.PLAYING and table.round.awaiting and table.round.wall.remaining == 55, "Opening preserves the dealer draw and wall count")
 	t.expect(Time.get_ticks_msec() - start >= int(config.OPENING_WAIT_SECONDS * 1000), "Visual unlock cannot precede the authoritative opening deadline")
 	t.expect(not controller.input_locked() and table.draw_box[0].get_child(0).interactive, "The drawn tile becomes clickable after its slow animation finishes")
+	# Replaying a draw event against the current snapshot verifies the visual
+	# contract independently from the opening timer: the tile is already visible
+	# in the draw slot before movement starts, then remains visible after it lands.
+	var replay_draw: TileView = table.draw_box[0].get_child(0)
+	var replay_id: int = int(controller._animation_last_id) + 1
+	controller._on_visual_event({"id": replay_id, "type": "draw", "seat": 0, "tile": str(table.round.players[0].just_drew), "kind": "head"})
+	controller.refresh_masks()
+	t.expect(is_equal_approx(replay_draw.modulate.a, 1.0), "Replay draw keeps the slot visible before animation starts")
+	while controller._animation_busy or not controller._animation_queue.is_empty(): await process_frame
+	t.expect(is_equal_approx(replay_draw.modulate.a, 1.0), "Replay draw reveals the slot after animation finishes")
 	await _shot("01_table")
 	# 验证按钮可见区域下方的扩大热区通过实际 GUI 命中设置入口。
 	var setting_tap := InputEventMouseButton.new()

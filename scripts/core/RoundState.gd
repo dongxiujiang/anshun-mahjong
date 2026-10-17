@@ -372,12 +372,79 @@ func _discard(seat: int, tile: String, discard_index: int = -1) -> void:
 		return
 	# New clients submit the exact concealed-array index.  Keep the old tile-only
 	# path for older network peers and AI controllers.
-	var source_index := player.concealed.find(tile)
+	# The drawn tile is represented in the same concealed array as the hand.
+	# When an older client submits only a tile name, prefer the newest matching
+	# entity so a duplicate hand tile cannot steal the draw animation.
+	var drawn_tile := player.just_drew
+	var drawn_source_index := -1
+	if drawn_tile != "":
+		for index in range(player.concealed.size() - 1, -1, -1):
+			if str(player.concealed[index]) == drawn_tile:
+				drawn_source_index = index
+				break
+	var source_index := drawn_source_index if tile == drawn_tile and drawn_source_index >= 0 else player.concealed.find(tile)
 	if discard_index >= 0 and discard_index < player.concealed.size() and str(player.concealed[discard_index]) == tile:
 		source_index = discard_index
 	if source_index < 0:
 		return
+	var discard_from_draw := drawn_source_index >= 0 and source_index == drawn_source_index
+	var hand_before_cards: Array = []
+	var hand_before_indices: Array = []
+	for index in player.concealed.size():
+		if index == drawn_source_index: continue
+		hand_before_cards.append(str(player.concealed[index]))
+		hand_before_indices.append(index)
+	var discard_hand_index := -1
+	if not discard_from_draw:
+		var discard_occurrence := 0
+		for index in hand_before_indices.size():
+			if int(hand_before_indices[index]) == source_index: break
+			if str(hand_before_cards[index]) == tile: discard_occurrence += 1
+		discard_hand_index = _sorted_occurrence_index(Tiles.sort_hand(hand_before_cards), tile, discard_occurrence + 1)
+	# Once the discarded entity is removed, this is the index that the drawn
+	# entity will receive in the sorted hand row.  -1 means the drawn tile itself
+	# was discarded and therefore has no insertion target.
+	var drawn_index_after := -1
+	var drawn_hand_index := -1
+	var hand_slot_map: Dictionary = {}
+	if not discard_from_draw and drawn_source_index >= 0:
+		drawn_index_after = drawn_source_index - (1 if source_index < drawn_source_index else 0)
 	player.concealed.remove_at(source_index)
+	if drawn_index_after >= 0 and drawn_index_after < player.concealed.size():
+		# Build the sorted row that remains after the discard, keeping each old
+		# concealed index so the UI can animate the exact physical tile.
+		var remaining_entries: Array = []
+		for index in hand_before_indices.size():
+			if int(hand_before_indices[index]) == source_index: continue
+			remaining_entries.append({"tile": str(hand_before_cards[index]), "old_index": int(hand_before_indices[index])})
+		var sorted_remaining: Array = Tiles.sort_hand(remaining_entries.map(func(entry): return str(entry.tile)))
+		var sorted_entries: Array = []
+		var used_entries: Dictionary = {}
+		for value_variant in sorted_remaining:
+			var value := str(value_variant)
+			for entry_index in remaining_entries.size():
+				if used_entries.has(entry_index) or str(remaining_entries[entry_index].tile) != value: continue
+				used_entries[entry_index] = true
+				sorted_entries.append(remaining_entries[entry_index])
+				break
+		# Keep the old discard hole when the drawn value still fits between its
+		# neighboring values.  Otherwise move the row to the lower-bound slot;
+		# this is what makes a drawn 6 enter before an existing 6 after a 3 is
+		# discarded, while a drawn 1 can directly replace a discarded 2.
+		var valid_discard_slot := discard_hand_index >= 0 and discard_hand_index <= sorted_entries.size()
+		var fits_before := valid_discard_slot and (discard_hand_index <= 0 or Tiles.value_index(drawn_tile) >= Tiles.value_index(str(sorted_entries[discard_hand_index - 1].tile)))
+		var fits_after := valid_discard_slot and (discard_hand_index >= sorted_entries.size() or Tiles.value_index(drawn_tile) <= Tiles.value_index(str(sorted_entries[discard_hand_index].tile)))
+		if fits_before and fits_after:
+			drawn_hand_index = discard_hand_index
+		else:
+			drawn_hand_index = sorted_entries.size()
+			for slot in sorted_entries.size():
+				if Tiles.value_index(drawn_tile) <= Tiles.value_index(str(sorted_entries[slot].tile)):
+					drawn_hand_index = slot
+					break
+		sorted_entries.insert(drawn_hand_index, {"tile": drawn_tile, "old_index": drawn_source_index})
+		for slot in sorted_entries.size():
+			hand_slot_map[int(sorted_entries[slot].old_index)] = slot
 	player.discards.append(tile)
 	player.discard_history.append(tile)
 	player.discard_ids.append(player.discard_count)
@@ -397,7 +464,11 @@ func _discard(seat: int, tile: String, discard_index: int = -1) -> void:
 		round_meta.charge_chickens[tile] = {"owner": seat, "location": "discard", "discard_id": player.discard_count - 1}
 		_refresh_charge_flags()
 	_emit_visual_event("discard", {"seat": seat, "tile": tile, "discard_index": source_index,
-		"discard_id": player.discard_count - 1, "charge": Tiles.is_chicken(tile) and is_charge_discard(seat, player.discards.size() - 1)})
+		"discard_id": player.discard_count - 1, "charge": Tiles.is_chicken(tile) and is_charge_discard(seat, player.discards.size() - 1),
+		"discard_from_draw": discard_from_draw, "draw_tile": drawn_tile,
+		"drawn_source_index": drawn_source_index, "drawn_index_after": drawn_index_after,
+		"drawn_hand_index": drawn_hand_index, "discard_hand_index": discard_hand_index,
+		"hand_row_count": hand_before_cards.size(), "hand_slot_map": hand_slot_map})
 	for index in player.melds.size():
 		var meld: Dictionary = player.melds[index]
 		if meld.get("concealed", false) and player.discard_count == int(meld.get("after_discard", 0)) + 2:
@@ -405,6 +476,15 @@ func _discard(seat: int, tile: String, discard_index: int = -1) -> void:
 	_emit_audio_event("discard", seat, tile)
 	state_update.emit()
 	_after_discard()
+
+func _sorted_occurrence_index(sorted_cards: Array, tile: String, occurrence: int) -> int:
+	if occurrence <= 0: return -1
+	var seen := 0
+	for index in sorted_cards.size():
+		if str(sorted_cards[index]) != tile: continue
+		seen += 1
+		if seen == occurrence: return index
+	return -1
 
 func _after_discard() -> void:
 	_response_stage = ResponseStage.WIN

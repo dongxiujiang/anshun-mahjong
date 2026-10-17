@@ -20,7 +20,18 @@ func _play(label: String, data: Dictionary) -> void:
 	data["id"] = event_id
 	var baseline := var_to_bytes(table.round.serialize())
 	var started := Time.get_ticks_msec()
+	var draw_tile: TileView = null
+	if data.get("type", "") == "draw":
+		var draw_seat := int(data.get("seat", 0))
+		if draw_seat >= 0 and draw_seat < table.draw_box.size() and not table.draw_box[draw_seat].get_children().is_empty():
+			draw_tile = table.draw_box[draw_seat].get_child(0)
 	controller._on_visual_event(data)
+	if draw_tile != null:
+		# A real table shows the newly drawn tile in the draw slot immediately.
+		# The animation then moves that visible tile into the hand; it must not
+		# create a blank draw position before the movement starts.
+		controller.refresh_masks()
+		t.expect(is_equal_approx(draw_tile.modulate.a, 1.0), "Draw slot is visible before the draw animation starts: " + label)
 	await process_frame
 	await process_frame
 	for frame in 5:
@@ -29,6 +40,8 @@ func _play(label: String, data: Dictionary) -> void:
 	while controller._animation_busy:
 		await process_frame
 	timings.append({"effect": label, "duration_ms": Time.get_ticks_msec() - started})
+	if draw_tile != null:
+		t.expect(is_equal_approx(draw_tile.modulate.a, 1.0), "Drawn tile appears only after the draw animation finishes: " + label)
 	t.expect(table._animation_layer._temporary.is_empty(), "Temporary nodes are removed after " + label)
 	t.expect(var_to_bytes(table.round.serialize()) == baseline, "Presentation never advances gameplay: " + label)
 	for node in controller._masked: t.expect(not is_instance_valid(node) or node.modulate.a == 1.0, "Masks restored after " + label)
@@ -44,6 +57,7 @@ func _run() -> void:
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(table)
 	await process_frame
+	var controller = table._table_animation_controller
 	table.round.controllers = [null,null,null,null]
 	while table.round.phase == RoundState.Phase.DEALING or table._table_animation_controller.input_locked():
 		await process_frame
@@ -60,6 +74,36 @@ func _run() -> void:
 	for seat in 4:
 		await _play("02_draw_seat%d" % seat, {"type": "draw", "seat": seat, "tile": "tong5"})
 		await _play("03_discard_seat%d" % seat, {"type": "discard", "seat": seat, "tile": "tong7"})
+	# Exercise the authoritative hand-discard path.  It must publish the old
+	# draw origin and a sorted insertion slot before the next seat starts moving.
+	var motion_player: PlayerState = table.round.players[0]
+	motion_player.concealed = ["wan1", "wan2", "wan3", "tong2", "tong3", "tong4", "tong5"]
+	motion_player.just_drew = "tong5"
+	table.round.current_turn = 0
+	table.round.phase = RoundState.Phase.PLAYING
+	table.round.awaiting = true
+	table._refresh()
+	await process_frame
+	var old_discard_tile: TileView = null
+	for tile in table.hand_box[0].get_children():
+		if int(tile.get_meta("concealed_index", -1)) == 3:
+			old_discard_tile = tile
+	var old_draw_tile: TileView = table.draw_box[0].get_child(0) if not table.draw_box[0].get_children().is_empty() else null
+	table.round._discard(0, "tong2", 3)
+	t.expect(is_instance_valid(old_discard_tile) and old_discard_tile.get_parent() == table.hand_box[0] and is_instance_valid(old_draw_tile) and old_draw_tile.get_parent() == table.draw_box[0], "Hand discard keeps the pre-discard hand and draw slot in place before animation")
+	var saw_hand_discard := false
+	var hand_motion_data := false
+	var held_old_row := false
+	var discard_destination_ready := false
+	var hand_deadline := Time.get_ticks_msec() + 8000
+	while (controller._animation_busy or not controller._animation_queue.is_empty()) and Time.get_ticks_msec() < hand_deadline:
+		if controller._animation_busy and controller._event.get("type", "") == "discard" and controller._event.get("discard_from_hand", false):
+			saw_hand_discard = true
+			hand_motion_data = not controller._event.get("hand_moves", []).is_empty() and not controller._event.get("hand_insert", {}).is_empty()
+			held_old_row = controller.holds_seat_refresh(0)
+			discard_destination_ready = not controller._event.get("destinations", []).is_empty()
+		await process_frame
+	t.expect(saw_hand_discard and hand_motion_data and held_old_row and discard_destination_ready and not controller.holds_seat_refresh(0), "Hand discard starts at the clicked slot, holds the old row, and ends with a real discard target")
 	await _play("04_pong", {"type": "meld", "seat": 0, "source": 1, "tile": "tiao1", "kind": "pung", "index": 0})
 	await _play("05_kong", {"type": "meld", "seat": 0, "source": 1, "tile": "tong8", "kind": "kong", "index": 1})
 	await _play("06_concealed", {"type": "meld", "seat": 0, "tile": "", "kind": "concealed", "index": 1})

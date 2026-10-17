@@ -187,6 +187,12 @@ func _refresh() -> void:
 	for seat in 4: _player_tile_areas._refresh_identity(seat)
 	_prepare_exposed_layouts()
 	for seat in 4:
+		if _table_animation_controller.holds_seat_refresh(seat) or _table_animation_controller.sorting_active():
+			# The discard target must exist immediately, but the hand and draw
+			# boxes stay on their pre-discard snapshot until the animation ends.  A
+			# sorting pass also owns the physical hand nodes until it completes.
+			_player_tile_areas._refresh_discards(seat)
+			continue
 		_refresh_seat(seat)
 	_refresh_walls()
 	_refresh_center()

@@ -66,17 +66,11 @@ func _run() -> void:
 	_click(table, tile, true)
 	t.expect(submissions.is_empty(), "Dragging never discards")
 	var controller = table._table_animation_controller
-	t.expect(is_instance_valid(controller._skip_button) and not controller._skip_button.visible, "Opening animation keeps a hidden skip button ready")
-	controller._skip_button.show()
 	controller.cancel()
-	t.expect(not controller._skip_button.visible, "Cancelling opening hides the skip button")
 	controller._opening = true
 	_click(table, tile)
 	table._commit_turn({"discard": tile.tile})
 	t.expect(submissions.is_empty(), "Opening locks both tapping and direct action submission")
-	table.round.phase = RoundState.Phase.DEALING
-	controller._skip_opening()
-	t.expect(table.round.phase == RoundState.Phase.DEALING and submissions.is_empty(), "Skipping visuals never advances the authority or bypasses dealing")
 	table.round.phase = RoundState.Phase.PLAYING
 	controller._opening = false
 	controller._animation_busy = true

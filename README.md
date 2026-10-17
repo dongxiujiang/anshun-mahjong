@@ -192,7 +192,7 @@ godot --headless res://tests/client_scene.tscn
 
 ## 九、牌桌 UI 可调参数
 
-主要视觉参数集中在 [`scripts/ui/table/TableUiConfig.gd`](scripts/ui/table/TableUiConfig.gd)：`OWN_HAND_TILE_UNIT` 控制自己的手牌和摸牌（当前 2.40 倍），`OWN_PLAYER_TILE_UNIT` 控制自己的碰杠和鸡牌（1.60 倍），`PLAYER_TILE_UNIT` 控制其他三家的同类牌（1.35 倍），`TILE_UNIT` 保持弃牌牌面（1.10 倍）；牌墙数据仍参与骰子和摸牌逻辑，但牌桌不再绘制牌墙。`DISCARD_BUTTON_SIZE` 统一控制报听、碰、杠、胡等选择按钮（出牌改为点牌）；`SETTINGS_BUTTON_SIZE` 独立控制顶部设置入口（144×72），`SettingsButton.gd` 将触控范围向左、下扩大到 168×112，不增大可见按钮；碰杠牌区避开整个热区，`ACTION_HAND_GAP` 控制操作区与手牌上边的空隙。`RESULT_TILE_UNIT` 控制结算牌面和翻鸡牌；`DRAW_GAP` 是手牌与摸牌位之间的距离，`EXPOSED_HAND_GAP` 是碰杠/鸡牌与手牌的最小间隔。`TableLayout._hand_layout()` 让手牌和摸牌位整体居中，预留摸牌位避免摸打时整排晃动；`_seat_metrics()` 控制各家的手牌、弃牌区和碰杠换行区域。东西两家的弃牌区扩大容器但仍使用 `TILE_UNIT`，滚动条隐藏；`PlayerTileAreas._prepare_exposed_layouts()` 会在多组碰杠/鸡牌时向内换行并避开按钮、分数和中央区域。`GameTable` 中同名常量只保留兼容引用，调整数值请改配置文件。
+主要视觉参数集中在 [`scripts/ui/table/TableUiConfig.gd`](scripts/ui/table/TableUiConfig.gd)：`OWN_HAND_TILE_UNIT` 控制自己的手牌和摸牌（当前 2.40 倍），`OWN_PLAYER_TILE_UNIT` 控制自己的碰杠和鸡牌（1.60 倍），`PLAYER_TILE_UNIT` 控制其他三家的同类牌（1.35 倍），`TILE_UNIT` 保持弃牌牌面（1.10 倍）；牌墙数据仍参与骰子和摸牌逻辑，但牌桌不再绘制牌墙。`DISCARD_BUTTON_SIZE` 统一控制报听、碰、杠、胡等选择按钮（出牌改为点牌）；`SETTINGS_BUTTON_SIZE` 独立控制顶部设置入口（144×72），`SettingsButton.gd` 将触控范围向左、下扩大到 168×112，不增大可见按钮；碰杠牌区避开整个热区，`ACTION_HAND_GAP` 控制操作区与手牌上边的空隙。`RESULT_TILE_UNIT` 控制结算牌面和翻鸡牌；`DRAW_GAP` 是手牌与摸牌位之间的距离，`EXPOSED_HAND_GAP` 是碰杠/鸡牌与手牌的最小间隔。`TableLayout._hand_layout()` 让手牌和摸牌位整体居中，预留摸牌位避免摸打时整排晃动；`_seat_metrics()` 控制各家的手牌、弃牌区和碰杠换行区域。东西两家的弃牌区扩大容器但仍使用 `TILE_UNIT`，滚动条隐藏；`PlayerTileAreas._prepare_exposed_layouts()` 会在多组碰杠/鸡牌时向内换行并避开按钮、分数和中央区域。`GameTable` 中同名常量只保留兼容引用，调整数值请改配置文件。动画事件时序、真实桌面对照和当前 2D 限制见 [`docs/animation_review.md`](docs/animation_review.md)。
 
 Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280），Android 使用 `window/handheld/orientation=4`。窗口比例变化只缩放和留边，不切回竖屏；`_usable_rect()` 为安卓安全区域留边，切换尺寸会自动刷新牌面、弃牌区和操作按钮。布局测试覆盖 16:9、20:9、16:10、方屏和竖屏窗口的横屏画布边界；截图见 `docs/android_table_*.png` 和 `docs/android_result_*.png`。
 
@@ -320,14 +320,14 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 
 ### UI 截图检查与动效
 
-本次逐页检查记录见 [docs/ui_review.md](docs/ui_review.md)。主菜单、大厅、声音、规则、更新与退出弹窗共用 `UiStyle.gd` 的样式和安全区；`UiMotion.gd` 提供轻微按压、淡入与滑入，牌桌参数仍集中在 `table/TableUiConfig.gd`。牌桌支持骰子、顺时针两墩发牌、摸牌、打牌、碰、明杠、暗杠、加杠、暗杠亮牌、报听、胡牌及自摸动效；最终胡牌张有呼吸高亮。动画速度在设置中选择，开局可以跳过。
+本次逐页检查记录见 [docs/ui_review.md](docs/ui_review.md)。主菜单、大厅、声音、规则、更新与退出弹窗共用 `UiStyle.gd` 的样式和安全区；`UiMotion.gd` 提供轻微按压、淡入与滑入，牌桌参数仍集中在 `table/TableUiConfig.gd`。牌桌支持骰子、顺时针分组发牌、摸牌、打牌、碰、明杠、暗杠、加杠、暗杠亮牌、报听、胡牌及自摸动效；最终胡牌张有呼吸高亮。动画速度在设置中选择。
 
 动画只消费已完成的权威事件，其他人的摸牌始终显示牌背。普通快照不会打断动效，重连取消临时节点并跳过历史动作，客户端不依靠动画推进回合。`tests/ui_presentation.gd` 已加入快速 CI；`tests/capture_ui.gd` 和 `tests/capture_motion.gd` 在图形窗口中分别生成逐页截图与动效过程帧，输出在本地 `build/ui_review/`，不进入安装包。
 
 ### 开局动画与结算准备的调整入口
 
-- `GameConfig.OPENING_DICE_SECONDS = 1.2`、`OPENING_DICE_HOLD_SECONDS = 0.5` 和 `OPENING_DEAL_SECONDS = 0.16` 定义共享开局节奏。骰子与发牌不受每个客户端的动画速度影响，日常摸打仍可调快慢。
-- 权威端先立即完成 52 张起手牌数据，保持 `DEALING`；共同开局等待结束后才摸庄家的第 14 张并发出行动提示。UI 额外等待本地发牌和摸牌动画完成，动画回调不提交操作、不推进权威端。普通 headless 回归默认跳过等待，专用服务器保留真实等待。
+- `GameConfig.OPENING_DICE_SECONDS = 1.2`、`OPENING_DICE_HOLD_SECONDS = 0.5`、`OPENING_DEAL_SECONDS = 0.22`、`OPENING_DEAL_TILE_STAGGER = 0.035`、`OPENING_SORT_SECONDS = 0.34` 和 `OPENING_SORT_TILE_STAGGER = 0.012` 定义共享开局节奏。骰子、发牌和理牌不受每个客户端的动画速度影响，日常摸打仍可调快慢。
+- 权威端先立即完成 52 张起手牌数据，保持 `DEALING`；UI 从空手牌开始，按三轮四张和最后单张逐组播放，全部落桌后用抛物线完成理牌。共同开局等待结束后才摸庄家的第 14 张并发出行动提示。动画回调不提交操作、不推进权威端。普通 headless 回归默认跳过等待，专用服务器保留真实等待。
 - `TableActions._on_human_tile_gui()` 在短按松手时提交一次出牌，滑动超过阈值不出牌；所有提交入口都检查开局锁。原生触控和模拟鼠标不能重复提交。
 - `SettlementCard` 的 `ReadinessFooter` 独立显示四人的昵称与准备状态、等待提示、大号准备/取消按钮。每个真人各自准备，人机默认准备；全部准备后仍由权威端等待 1 秒开始下一局。
 - `tests/table_interaction.gd` 加入常规和 CI 快速检查；`tests/capture_table_controls.gd` 需真实窗口，保存本轮牌桌、结算、准备和骰子截图到 `build/ui_review/table_controls/`。

@@ -27,8 +27,10 @@ static func settle(round) -> Dictionary:
 		var called := is_called(round, seat)
 		called_seats.append(called)
 		var profile := chicken_profile(round, seat, flip)
-		points[seat] = float(profile.total) if called else 0.0
-		# 荒牌结算也要保留未叫者本人的出牌鸡值，按要求由未叫者对叫牌者补付两边之和。
+		# 未叫牌不把手中/碰杠中的鸡算作正分；其已打出的鸡记为
+		# 负分，和叫牌者逐家比较后由未叫者补付。
+		points[seat] = float(profile.total) if called else -float(profile.discarded)
+		# 荒牌结算保留未叫者本人的出牌鸡值；另由荒牌补付逻辑加入基础4分。
 		discard_points[seat] = float(profile.discarded)
 		for item in profile.raw_items:
 			var source := str(item.get("source", ""))
@@ -36,6 +38,9 @@ static func settle(round) -> Dictionary:
 				continue
 			if winner >= 0 and called or winner < 0 and source == "discard":
 				items[seat].append(item.duplicate(true))
+		if not called and profile.discarded > 0.0:
+			items[seat].append({"kind": "penalty", "label": "未叫牌出牌鸡", "tile": "", "tiles": [],
+				"amount": -float(profile.discarded), "own_amount": -float(profile.discarded), "note": "需补付给叫牌玩家"})
 		if profile.burned:
 			var burn_label := "杠后出牌烧鸡" if meta.get("burn_chicken_reason", "") == "after_kong_discard" else "抢杠烧鸡"
 			lines.append("%s %s：鸡分 0" % [_nm(seat, dealer), burn_label])
@@ -57,9 +62,22 @@ static func settle(round) -> Dictionary:
 			lines.append("四家叫牌流局，本局不计分；下局鸡分 ×2")
 			items = [[], [], [], []]
 		else:
-			PAY.pay_uncalled(deltas, transfers, called_seats, discard_points)
+			PAY.pay_uncalled(deltas, transfers, called_seats, discard_points, true)
+			for payer in 4:
+				if called_seats[payer]:
+					continue
+				var called_count := 0
+				for receiver in 4:
+					if called_seats[receiver]:
+						called_count += 1
+				if called_count > 0:
+					var huang_amount := CFG.SCORE_SELF_DRAW * called_count
+					items[payer].append({"kind": "penalty", "label": "荒牌基础补付", "tile": "", "tiles": [],
+						"amount": -huang_amount, "own_amount": -huang_amount, "note": "未叫牌补给叫牌玩家"})
 			KONG.pay(round, deltas, transfers, called_seats, items, "", true)
-			lines.append("荒牌：未叫者向每位叫牌者补付双方出牌鸡，并按规则补杠分")
+			_pay_uncalled_kong_income(round, called_seats, deltas, transfers)
+			_record_uncalled_kong_payments(transfers, called_seats, items)
+			lines.append("荒牌：未叫者向每位叫牌者补付双方出牌鸡、基础4分，并按规则补杠分")
 		for seat in 4:
 			status[seat] = _draw_status(seat, called_seats)
 		return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, all_called, next_multiplier, winners)
@@ -68,9 +86,57 @@ static func settle(round) -> Dictionary:
 	for target in winners:
 		WIN.settle_winner(round, int(target), points, winners, deltas, transfers, items, lines)
 	KONG.pay(round, deltas, transfers, called_seats, items, flip, false)
+	_pay_uncalled_kong_income(round, called_seats, deltas, transfers)
+	_record_uncalled_kong_payments(transfers, called_seats, items)
 	for seat in 4:
 		status[seat] = _win_status(seat, winners, self_draw, int(meta.get("discard_seat", -1)), called_seats, round)
 	return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, false, 1, winners)
+
+static func _pay_uncalled_kong_income(round, called: Array, deltas: Array, transfers: Array) -> void:
+	# 未叫牌杠牌者本应得到的杠基础分改记为负分，向其他叫牌者支付。
+	for owner in 4:
+		if called[owner]:
+			continue
+		for meld in round.players[owner].melds:
+			if meld.get("robbed", false) or meld.get("kind", "") not in ["kong", "add_kong"]:
+				continue
+			if _kong_income_cancelled(round, owner, meld):
+				continue
+			var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
+			var source := int(meld.get("from_seat", -1))
+			for payer in 4:
+				if payer == owner or not called[payer] or (not own_kong and payer != source):
+					continue
+				PAY.transfer(deltas, transfers, owner, payer, CFG.SCORE_DRAW_KONG, "未叫牌杠分")
+
+static func _kong_income_cancelled(round, owner: int, meld: Dictionary) -> bool:
+	if int(round.round_meta.get("burn_chicken_seat", -1)) != owner or str(round.round_meta.get("burn_chicken_reason", "")) != "after_kong_discard":
+		return false
+	var last: Dictionary = round.last_discard
+	if not bool(last.get("after_kong", false)) or int(last.get("seat", -1)) != owner:
+		return false
+	if meld.has("after_discard") and int(meld.get("after_discard", -1)) + 1 != int(round.players[owner].discard_count):
+		return false
+	var kind := int(last.get("kong_kind", RoundState.KongKind.NONE))
+	if kind == RoundState.KongKind.CONCEALED:
+		return meld.kind == "kong" and bool(meld.get("concealed", false))
+	if kind == RoundState.KongKind.ADD_KONG:
+		return meld.kind == "add_kong"
+	return false
+
+static func _record_uncalled_kong_payments(transfers: Array, called: Array, items: Array) -> void:
+	var totals := [0.0, 0.0, 0.0, 0.0]
+	for transfer in transfers:
+		var payer := int(transfer.get("from", -1))
+		var reason := str(transfer.get("reason", ""))
+		if payer not in range(4) or called[payer] or reason not in ["暗杠", "加杠", "明杠", "查叫暗杠", "查叫加杠", "查叫明杠", "杠中鸡", "未叫牌杠分"]:
+			continue
+		totals[payer] += float(transfer.get("amount", 0.0))
+	for payer in 4:
+		if totals[payer] <= 0.0:
+			continue
+		items[payer].append({"kind": "penalty", "label": "未叫牌杠分", "tile": "", "tiles": [],
+			"amount": -totals[payer], "own_amount": -totals[payer], "note": "需补付给叫牌玩家"})
 
 static func _winner_seats(meta: Dictionary) -> Array:
 	var winners: Array = meta.get("winners", []).duplicate()

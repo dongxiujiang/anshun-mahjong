@@ -20,8 +20,8 @@ const SCORE_BIG_NO_CHICKEN := 24.0 # 大干扣：四家均无鸡时，总计24�
 const BASE_ROB := 0.0
 const BASE_SELF_DRAW := 0.0
 const SCORE_SELF_DRAW := 4.0      # 只有自摸 +4；普通点炮/抢杠胡不加自摸4。
-const SCORE_RON_CALLED := 17.0    # 点炮者已叫牌时的普通点炮基础分。
-const SCORE_RON_UNCALLED := 21.0  # 点炮者未叫牌时的普通点炮基础分（17+4）。
+const SCORE_RON_CALLED := 17.0    # 暗杠/加杠后第一张弃牌被胡，弃牌者已叫牌时的放炮基础分。
+const SCORE_RON_UNCALLED := 21.0  # 同上，弃牌者未叫牌时的放炮基础分（17+4）。
 const SCORE_ROB_KONG := 12.0      # 抢加杠胡由被抢杠者单独支付的基础分。
 const SCORE_KONG_DRAW := 5.0      # 杠开（杠上开花）+5。
 const SCORE_DRAW_KONG := 4.0      # 无人胡牌查叫：暗/加杠由未叫者各付，明杠由未叫的放杠者付。
@@ -78,8 +78,17 @@ const ANIMATION_SPEEDS := {"fast": 0.5, "standard": 1.0, "slow": 2.0}
 # 开局采用共同节奏，权威端按时钟解锁；客户端动画不推进游戏逻辑。
 const OPENING_DICE_SECONDS := 1.2
 const OPENING_DICE_HOLD_SECONDS := 0.5
-const OPENING_DEAL_SECONDS := 0.16
-const OPENING_WAIT_SECONDS := OPENING_DICE_SECONDS + OPENING_DICE_HOLD_SECONDS + 16 * OPENING_DEAL_SECONDS + 0.25
+## A real table deals one four-tile packet at a time.  The packet itself is
+## quick, but leaves enough time for a visible lift, flight and settle.
+const OPENING_DEAL_SECONDS := 0.22
+const OPENING_DEAL_TILE_STAGGER := 0.035
+const OPENING_SORT_SECONDS := 0.34
+const OPENING_SORT_TILE_STAGGER := 0.012
+## Twelve four-tile packets plus four single dealer/turn packets.  Include the
+## stagger inside each packet so authority unlock and the last visible tile
+## settle at the same point in time.  The final hand-sorting pass also belongs
+## to the opening presentation, so the first turn cannot begin over it.
+const OPENING_WAIT_SECONDS := OPENING_DICE_SECONDS + OPENING_DICE_HOLD_SECONDS + 12 * (OPENING_DEAL_SECONDS + 3 * OPENING_DEAL_TILE_STAGGER) + 4 * OPENING_DEAL_SECONDS + OPENING_SORT_SECONDS + 13 * OPENING_SORT_TILE_STAGGER + 0.25
 var animation_speed := "standard"
 
 func set_ai_speed(value: String) -> void:

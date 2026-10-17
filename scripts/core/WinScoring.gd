@@ -3,6 +3,7 @@ extends RefCounted
 const CFG := preload("res://scripts/autoload/GameConfig.gd")
 const PAY := preload("res://scripts/core/PaymentLedger.gd")
 const CHICKEN := preload("res://scripts/core/ChickenScoring.gd")
+const ACTIONS := preload("res://scripts/core/LegalActions.gd")
 const SEAT_NAMES := ["庄家", "下家", "对家", "上家"]
 
 static func settle_winner(round, winner: int, chicken_points: Array, winner_seats: Array, deltas: Array, transfers: Array, items: Array, lines: Array) -> Dictionary:
@@ -52,41 +53,40 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 			PAY.transfer(deltas, transfers, payer, winner, primary_amount, primary_label)
 		lines.append("%s：每家付 %.0f" % [primary_label, primary_amount])
 	else:
-		# 普通点炮和抢杠胡都按非自摸胡结算：来源玩家单独支付基础费，
-		# 牌型分另行计入；这里不会加入自摸4分。
+		# 非自摸胡分成三类：抢杠胡、暗/加杠后的单次放炮，以及
+		# 报听/大牌胡。普通弃牌不再产生点炮基础分。
+		var kong_discard := not robbed_kong and ACTIONS.is_post_kong_discard(round.last_discard)
 		var source_called: bool = source >= 0 and source < round.players.size() and RuleEngine.is_tenpai(round.players[source].concealed, round.players[source].melds)
-		var base_amount: float = CFG.SCORE_ROB_KONG if robbed_kong else (CFG.SCORE_RON_CALLED if source_called else CFG.SCORE_RON_UNCALLED)
-		var base_label: String = "抢杠胡基础分" if robbed_kong else ("点炮基础分（叫牌）" if base_amount == CFG.SCORE_RON_CALLED else "点炮基础分（未叫牌）")
+		var base_amount: float = CFG.SCORE_ROB_KONG if robbed_kong else (CFG.SCORE_RON_CALLED if kong_discard and source_called else (CFG.SCORE_RON_UNCALLED if kong_discard else 0.0))
+		var base_label := "抢杠胡基础分" if robbed_kong else ("点炮基础分（叫牌）" if base_amount == CFG.SCORE_RON_CALLED else "点炮基础分（未叫牌）")
 		if source in range(4):
 			PAY.transfer(deltas, transfers, source, winner, base_amount, base_label)
-		items[winner].append(_item("win", base_label, base_amount, "由放炮/被抢杠者单独支付"))
-		lines.append("%s：%s付 %.0f" % [base_label, _nm(source, int(meta.get("dealer_seat", 0))), base_amount])
-		if pattern_amount <= 0.0 and player.ready:
-			pattern_amount = CFG.SCORE_READY
-			pattern_label = "报听胡牌"
-			ready_primary = true
-		if pattern_amount > 0.0:
-			PAY.transfer(deltas, transfers, source, winner, pattern_amount, pattern_label)
-			items[winner].append(_item("pattern", pattern_label, pattern_amount, "牌型分另计"))
-			lines.append("%s：%s另付 %.0f" % [pattern_label, _nm(source, int(meta.get("dealer_seat", 0))), pattern_amount])
+		if base_amount > 0.0:
+			items[winner].append(_item("win", base_label, base_amount, "由杠后放炮/被抢杠者单独支付"))
+			lines.append("%s：%s付 %.0f" % [base_label, _nm(source, int(meta.get("dealer_seat", 0))), base_amount])
 
-	var ready_extra_recorded := false
-	for payer in 4:
-		if payer == winner:
-			continue
-		var base_payer: bool = base_payers.has(payer)
-		var kills_ready: bool = bool(round.players[payer].ready and not winner_seats.has(payer) and base_payer)
-		var winner_ready_fee: bool = bool(player.ready and pattern_info.get("key", "") != "" and base_payer)
-		if kills_ready or (winner_ready_fee and not ready_primary):
-			PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_READY, "杀报" if kills_ready else "报听")
-			if kills_ready:
-				items[payer].append({"kind": "penalty", "label": "杀报", "tile": "", "tiles": [], "amount": -CFG.SCORE_READY, "note": "付给%s" % _nm(winner, int(meta.get("dealer_seat", 0)))})
-				lines.append("%s 杀报：付给%s %.0f" % [_nm(payer, int(meta.get("dealer_seat", 0))), _nm(winner, int(meta.get("dealer_seat", 0))), CFG.SCORE_READY])
-			else:
-				ready_extra_recorded = true
-	if ready_extra_recorded:
-		items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "牌型分外加"))
-		lines.append("报听胡牌：牌型分外加 %.0f" % CFG.SCORE_READY)
+		# 报听胡和大牌胡按玩家之间逐家结算：每位非赢家支付
+		# 赢家的报听/牌型分；鸡分差额由 ScoringEngine 统一比较。
+		var fee_payers: Array = []
+		for payer in 4:
+			if payer != winner and not winner_seats.has(payer):
+				fee_payers.append(payer)
+		if player.ready:
+			for payer in fee_payers:
+				PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_READY, "报听胡牌")
+			items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "每家支付"))
+			lines.append("报听胡牌：每家付 %.0f" % CFG.SCORE_READY)
+		if pattern_amount > 0.0:
+			for payer in fee_payers:
+				PAY.transfer(deltas, transfers, payer, winner, pattern_amount, pattern_label)
+			items[winner].append(_item("pattern", pattern_label, pattern_amount, "每家支付"))
+			lines.append("%s：每家付 %.0f" % [pattern_label, pattern_amount])
+		# 报听者打出被胡时，额外承担 24 分杀报；这笔费用与
+		# 赢家本人的报听/牌型费用分开记录。
+		if source in range(4) and source != winner and round.players[source].ready:
+			PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY, "杀报")
+			items[source].append({"kind": "penalty", "label": "杀报", "tile": "", "tiles": [], "amount": -CFG.SCORE_READY, "note": "付给%s" % _nm(winner, int(meta.get("dealer_seat", 0)))})
+			lines.append("%s 杀报：付给%s %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), _nm(winner, int(meta.get("dealer_seat", 0))), CFG.SCORE_READY])
 	if self_draw and int(meta.get("kong_draw_seat", -1)) == winner:
 		_apply_extra(round, winner, CFG.SCORE_KONG_DRAW, "杠开", chicken_points, winner_seats, deltas, transfers, items, lines)
 	if self_draw and int(meta.get("last_four_self_draw_seat", -1)) == winner:

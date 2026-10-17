@@ -143,6 +143,24 @@ const DISCARD_DURATION := 0.28
 const MELD_DURATION := 0.28
 const REVEAL_DURATION := 0.24
 const ANIMATION_TILE_UNIT := 1.15
+## Physical-feeling motion constants.  These are visual only; the authoritative
+## round never waits for or depends on a tween.
+const DEAL_TILE_STAGGER := preload("res://scripts/autoload/GameConfig.gd").OPENING_DEAL_TILE_STAGGER
+const DRAW_TILE_STAGGER := 0.018
+const DISCARD_TILE_STAGGER := 0.012
+const MELD_TILE_STAGGER := 0.026
+## After all opening packets land in deal order, players sort the row by hand
+## value.  This is a separate visual phase so the deal itself never jumps to a
+## sorted slot halfway through the opening.
+const SORT_DURATION := preload("res://scripts/autoload/GameConfig.gd").OPENING_SORT_SECONDS
+const SORT_TILE_STAGGER := preload("res://scripts/autoload/GameConfig.gd").OPENING_SORT_TILE_STAGGER
+const SORT_ARC_HEIGHT := 20.0
+const DEAL_ARC_HEIGHT := 34.0
+const DRAW_ARC_HEIGHT := 28.0
+const DISCARD_ARC_HEIGHT := 22.0
+const MELD_ARC_HEIGHT := 18.0
+const TILE_SETTLE_LIFT := 3.0
+const TILE_SETTLE_SCALE := 1.045
 const ANIMATION_TARGETS := [Vector2(1140, 1010), Vector2(1640, 650), Vector2(1140, 430), Vector2(640, 650)]
 const ANIMATION_DICE_POSITION := Vector2(1060, 590)
 const ANIMATION_DICE_SIZE := Vector2(160, 120)
