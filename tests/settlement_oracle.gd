@@ -144,9 +144,9 @@ static func expected(round: RoundState) -> Dictionary:
 				if source in range(4) and base > 0.0:
 					_credit(matrix, source, target_seat, base)
 				if player.ready:
-					for payer in 4:
-						if payer != target_seat and not winners.has(payer):
-							_credit(matrix, payer, target_seat, 24.0)
+					# 报听胡牌：点炮时只有点炮者支付
+					if source in range(4) and source != target_seat:
+						_credit(matrix, source, target_seat, 24.0)
 				if pattern_fee > 0.0:
 					for payer in 4:
 						if payer != target_seat and not winners.has(payer):

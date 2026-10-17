@@ -71,8 +71,8 @@ const SEAT_LEFT := 3    # 上家（左）
 var player_name := "玩家"
 var online_mode := false
 
-# AI 思考速度：快 1 秒 / 中 2 秒 / 慢 3 秒。
-const AI_SPEED_DELAYS := {"fast": 1.0, "medium": 2.0, "slow": 3.0}
+# AI 思考速度：快 0.8 秒 / 中 1.3 秒 / 慢 2 秒。
+const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
 var ai_speed := "fast"
 const ANIMATION_SPEEDS := {"instant": 0.05, "fast": 0.5, "standard": 1.0}
 # 开局采用共同节奏，权威端按时钟解锁；客户端动画不推进游戏逻辑。

@@ -65,17 +65,18 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 			items[winner].append(_item("win", base_label, base_amount, "由杠后放炮/被抢杠者单独支付"))
 			lines.append("%s：%s付 %.0f" % [base_label, _nm(source, int(meta.get("dealer_seat", 0))), base_amount])
 
-		# 报听胡和大牌胡按玩家之间逐家结算：每位非赢家支付
-		# 赢家的报听/牌型分；鸡分差额由 ScoringEngine 统一比较。
+		# 报听胡：点炮时只有点炮者支付；牌型分按逐家结算。
+		# 鸡分差额由 ScoringEngine 统一比较。
 		var fee_payers: Array = []
 		for payer in 4:
 			if payer != winner and not winner_seats.has(payer):
 				fee_payers.append(payer)
 		if player.ready:
-			for payer in fee_payers:
-				PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_READY, "报听胡牌")
-			items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "每家支付"))
-			lines.append("报听胡牌：每家付 %.0f" % CFG.SCORE_READY)
+			# 报听胡牌：点炮时只有点炮者支付
+			if source in range(4) and source != winner:
+				PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY, "报听胡牌")
+				items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "点炮者支付"))
+				lines.append("报听胡牌：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), CFG.SCORE_READY])
 		if pattern_amount > 0.0:
 			for payer in fee_payers:
 				PAY.transfer(deltas, transfers, payer, winner, pattern_amount, pattern_label)
