@@ -56,6 +56,25 @@ static func pay(round, deltas: Array, transfers: Array, called: Array, items: Ar
 				"chicken_amount": chicken_value, "flip_amount": flip_value, "own_amount": own_amount,
 				"kong_kind": RoundState.KongKind.ADD_KONG if meld.kind == "add_kong" else (RoundState.KongKind.CONCEALED if own_kong else RoundState.KongKind.EXPOSED),
 				"from_seat": source, "owner": receiver, "payers": payers, "chicken_payers": chicken_payers, "draw": is_draw, "note": ""})
+	# 未叫牌杠家手中的杠中鸡不计正分，但仍按每张普通鸡2分
+	# 向所有叫牌玩家逐家补付。明杠幺鸡因此为4×2=8分。
+	for owner in 4:
+		if called[owner]:
+			continue
+		for meld in round.players[owner].melds:
+			if meld.get("robbed", false) or meld.kind not in ["kong", "add_kong"]:
+				continue
+			if _cancelled_by_kong_discard(round, owner, meld):
+				continue
+			var tile := str(meld.get("tile", ""))
+			if not Tiles.is_chicken(tile):
+				continue
+			var chicken_value: float = CFG.SCORE_CALL_CHICKEN * 4.0 * multiplier
+			if not is_draw and tile in related:
+				chicken_value *= CFG.SCORE_FLIP_DOUBLE
+			for receiver in 4:
+				if called[receiver]:
+					PAY.transfer(deltas, transfers, owner, receiver, chicken_value, "未叫牌杠中鸡")
 
 static func _cancelled_by_kong_discard(round, receiver: int, meld: Dictionary) -> bool:
 	if int(round.round_meta.get("burn_chicken_seat", -1)) != receiver:

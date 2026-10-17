@@ -112,6 +112,20 @@ func _test_uncalled_discard_chicken() -> void:
 			t.expect(result.pairwise[1][0] == -expected and result.pairwise[1][2] == -expected and result.pairwise[1][3] == 0.0,
 				"未叫牌出牌鸡逐家补付且不向未叫牌者补付")
 
+func _test_uncalled_kong_chicken() -> void:
+	var r := RoundState.new()
+	r.build_players(0)
+	r.controllers = [null, null, null, null]
+	r.phase = RoundState.Phase.PLAYING
+	r.players[0].concealed = ["wan2"]
+	r.players[0].melds = [{"kind": "kong", "tile": "tiao1", "from_seat": 1, "concealed": false}]
+	r.players[1].concealed = WAIT.duplicate()
+	r.players[2].concealed = WAIT.duplicate()
+	var result := ScoringEngine.settle(r)
+	ORACLE.check(r, result, t, "未叫牌明杠幺鸡流局")
+	t.expect(result.pairwise[0][1] == -16.0 and result.pairwise[0][2] == -12.0,
+		"未叫牌明杠幺鸡按8分杠中鸡逐家补付")
+
 func _test_mutual_kongs() -> void:
 	# 同局两家有杠：既要抵消通用鸡分/暗加杠4，也要保留不同的明杠付款人。
 	for winner in 4:
@@ -164,6 +178,7 @@ func _run() -> void:
 	_test_screenshot()
 	_test_six_pairs()
 	_test_uncalled_discard_chicken()
+	_test_uncalled_kong_chicken()
 	_test_mutual_kongs()
 	await _test_result_ui()
 	print("[scoring_pairwise] %d mixed six-pair settlements + screenshot, sync and UI" % settlements)

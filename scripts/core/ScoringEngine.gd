@@ -125,18 +125,24 @@ static func _kong_income_cancelled(round, owner: int, meld: Dictionary) -> bool:
 	return false
 
 static func _record_uncalled_kong_payments(transfers: Array, called: Array, items: Array) -> void:
-	var totals := [0.0, 0.0, 0.0, 0.0]
+	var base_totals := [0.0, 0.0, 0.0, 0.0]
+	var chicken_totals := [0.0, 0.0, 0.0, 0.0]
 	for transfer in transfers:
 		var payer := int(transfer.get("from", -1))
 		var reason := str(transfer.get("reason", ""))
-		if payer not in range(4) or called[payer] or reason not in ["暗杠", "加杠", "明杠", "查叫暗杠", "查叫加杠", "查叫明杠", "杠中鸡", "未叫牌杠分"]:
+		if payer not in range(4) or called[payer]:
 			continue
-		totals[payer] += float(transfer.get("amount", 0.0))
+		if reason == "未叫牌杠中鸡":
+			chicken_totals[payer] += float(transfer.get("amount", 0.0))
+		elif reason in ["暗杠", "加杠", "明杠", "查叫暗杠", "查叫加杠", "查叫明杠", "杠中鸡", "未叫牌杠分"]:
+			base_totals[payer] += float(transfer.get("amount", 0.0))
 	for payer in 4:
-		if totals[payer] <= 0.0:
-			continue
-		items[payer].append({"kind": "penalty", "label": "未叫牌杠分", "tile": "", "tiles": [],
-			"amount": -totals[payer], "own_amount": -totals[payer], "note": "需补付给叫牌玩家"})
+		if base_totals[payer] > 0.0:
+			items[payer].append({"kind": "penalty", "label": "未叫牌杠分", "tile": "", "tiles": [],
+				"amount": -base_totals[payer], "own_amount": -base_totals[payer], "note": "需补付给叫牌玩家"})
+		if chicken_totals[payer] > 0.0:
+			items[payer].append({"kind": "penalty", "label": "未叫牌杠中鸡", "tile": "", "tiles": [],
+				"amount": -chicken_totals[payer], "own_amount": -chicken_totals[payer], "note": "杠中鸡需补付给叫牌玩家"})
 
 static func _winner_seats(meta: Dictionary) -> Array:
 	var winners: Array = meta.get("winners", []).duplicate()

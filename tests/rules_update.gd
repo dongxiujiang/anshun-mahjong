@@ -35,6 +35,7 @@ func _run() -> void:
 	_test_claims()
 	_test_claimed_charge_settlement()
 	_test_uncalled_discard_chicken_payments()
+	_test_uncalled_kong_chicken_payments()
 	_test_chicken_values()
 	_test_win_payments()
 	_test_draw_payments()
@@ -193,6 +194,39 @@ func _test_uncalled_discard_chicken_payments() -> void:
 				"付款流水明确记录给赢家的未叫牌出牌鸡")
 			check(result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌出牌鸡" and float(item.get("amount", 0.0)) == expected),
 				"付款流水明确记录给其他叫牌家的未叫牌出牌鸡")
+
+func _test_uncalled_kong_chicken_payments() -> void:
+	# 未叫牌明杠幺鸡：四张按普通鸡每张2分，杠中鸡8分逐家补给叫牌者。
+	# 明杠基础4分仍只在原放杠者已叫牌时反向产生。
+	var draw := fixture()
+	draw.players[0].concealed = ["wan2"]
+	draw.players[0].melds = [{"kind": "kong", "tile": "tiao1", "from_seat": 1, "concealed": false}]
+	draw.players[1].concealed = WAIT.duplicate()
+	draw.players[2].concealed = WAIT.duplicate()
+	var draw_result := settle(draw)
+	check(draw_result.pairwise[0][1] == -16.0 and draw_result.pairwise[0][2] == -12.0,
+		"未叫牌明杠幺鸡流局：原放杠者收16，其余叫牌者收12")
+	check(draw_result.transfers.any(func(item): return item.get("from", -1) == 0 and item.get("to", -1) == 1 and item.get("reason", "") == "未叫牌杠中鸡" and float(item.get("amount", 0.0)) == 8.0),
+		"未叫牌明杠幺鸡向原放杠叫牌者补8分")
+	check(draw_result.transfers.any(func(item): return item.get("from", -1) == 0 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌杠中鸡" and float(item.get("amount", 0.0)) == 8.0),
+		"未叫牌明杠幺鸡向其他叫牌者补8分")
+	var no_source_called := fixture()
+	no_source_called.players[0].concealed = ["wan2"]
+	no_source_called.players[0].melds = [{"kind": "kong", "tile": "tiao1", "from_seat": 1, "concealed": false}]
+	no_source_called.players[2].concealed = WAIT.duplicate()
+	var no_source_result := settle(no_source_called)
+	check(no_source_result.pairwise[0][2] == -12.0 and no_source_result.pairwise[0][1] == 0.0,
+		"原放杠者未叫牌时不产生明杠基础4分")
+	var win := fixture()
+	win.round_meta.winner = 2
+	win.round_meta.winners = [2]
+	win.round_meta.self_draw = true
+	win.players[0].concealed = ["wan2"]
+	win.players[0].melds = [{"kind": "kong", "tile": "tiao1", "from_seat": 1, "concealed": false}]
+	win.players[2].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong2", "tong3", "tong4", "wan9", "wan9"]
+	var win_result := settle(win)
+	check(win_result.transfers.any(func(item): return item.get("from", -1) == 0 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌杠中鸡" and float(item.get("amount", 0.0)) == 8.0),
+		"胡牌局未叫牌明杠幺鸡仍向叫牌赢家补8分")
 
 func _test_win_payments() -> void:
 	var r := fixture()

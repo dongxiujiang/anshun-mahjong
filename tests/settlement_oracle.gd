@@ -87,6 +87,25 @@ static func expected(round: RoundState) -> Dictionary:
 					_credit(matrix, receiver, payer, 4.0)
 		else:
 			continue
+	# 未叫牌杠家的杠中鸡不计正分，但要向每位叫牌玩家单独补付。
+	# 胡牌局只有翻牌关联幺鸡/八筒时才翻倍；流局不翻鸡。
+	for owner in 4:
+		if called[owner]:
+			continue
+		for meld in round.players[owner].melds:
+			if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
+				continue
+			if _cancelled_kong(round, owner, meld):
+				continue
+			var tile := str(meld.tile)
+			if tile not in ["tiao1", "tong8"]:
+				continue
+			var chicken_fee: float = 8.0 * multiplier
+			if has_winner and tile in related:
+				chicken_fee *= 2.0
+			for receiver in 4:
+				if called[receiver]:
+					_credit(matrix, owner, receiver, chicken_fee)
 
 	# For a winning round, an uncalled kong owner pays its directed kong fee to
 	# called players. This is separate from chicken comparison.

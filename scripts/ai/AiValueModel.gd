@@ -176,7 +176,9 @@ static func draw_value(round, seat: int, hand: Array, melds: Array, opponents: A
 	for opponent in opponents:
 		var probability := float(opponent.tenpai_probability)
 		called_value += (1.0 - probability) * (float(own.discarded) + float(opponent.draw_discarded) + CFG.SCORE_SELF_DRAW + float(own.kong_chickens) + kong_base(melds, int(opponent.seat)))
-		uncalled_value -= probability * (float(opponent.draw_discarded) + float(own.discarded) + CFG.SCORE_SELF_DRAW + float(opponent.draw_kong_chickens) + kong_base(opponent.melds, seat) + kong_base(melds, int(opponent.seat)))
+		# 未叫牌方也要为自己的杠中鸡向每位已叫牌对手逐家补付；
+		# 因此估值中同时扣除对手的杠中鸡和本人的杠中鸡。
+		uncalled_value -= probability * (float(opponent.draw_discarded) + float(own.discarded) + CFG.SCORE_SELF_DRAW + float(opponent.draw_kong_chickens) + float(own.kong_chickens) + kong_base(opponent.melds, seat) + kong_base(melds, int(opponent.seat)))
 	return {"called": called_value, "uncalled": uncalled_value}
 
 static func settlement_value(round, seat: int, hand: Array, melds: Array, flips: Dictionary, opponents: Array, discard: String = "") -> Dictionary:
