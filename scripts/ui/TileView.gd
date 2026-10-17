@@ -1,4 +1,4 @@
-class_name TileView
+﻿class_name TileView
 extends Control
 ## 一张麻将牌视图：优先使用 res/tiles 素材，缺图时回退程序化绘制。
 ## 素材编号：1-9=筒, 11-19=条, 21-29=万。无牌背素材 → 程序化牌背。
@@ -207,8 +207,8 @@ func reset() -> void:
 	set_interactive(false)
 	set_winning(false)
 	set_highlight(false)
-	card = ""
+	tile = ""
 	face_up = false
-	table_position = Vector2.ZERO
+	_table_position = Vector2.ZERO
 	modulate = Color.WHITE
 	visible = true

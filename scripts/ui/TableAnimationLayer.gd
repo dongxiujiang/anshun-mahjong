@@ -1,4 +1,4 @@
-extends Control
+﻿extends Control
 ## Presentation only; owns temporary nodes and interruptible cubic easing.
 signal finished(event_id: int)
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
@@ -72,7 +72,7 @@ func _tiles(event: Dictionary) -> void:
 	var arc_height := UI.DEAL_ARC_HEIGHT if type == "deal" else (UI.DRAW_ARC_HEIGHT if type == "draw" else (UI.DISCARD_ARC_HEIGHT if type == "discard" else UI.MELD_ARC_HEIGHT))
 	for index in destinations.size():
 		var data: Dictionary = destinations[index]
-		var tile := (tile_pool.acquire() if tile_pool else TileView.new())
+		var tile: TileView = (tile_pool.acquire() if tile_pool else TileView.new())
 		var card := str(data.get("tile", ""))
 		tile.set_card(card, card != "" and card != "hidden0")
 		tile.set_unit(float(data.get("unit", UI.ANIMATION_TILE_UNIT)))
@@ -89,7 +89,7 @@ func _tiles(event: Dictionary) -> void:
 			tile.pivot_offset = tile.size / 2.0
 			_active.parallel().tween_property(tile, "scale:x", 0.05, duration / 2.0)
 		else:
-			var start_scale := float(event.get("from_unit", tile.unit)) / tile.unit if type == "discard" and tile.unit > 0.0 else 0.78
+			var start_scale: float = float(event.get("from_unit", tile.unit)) / tile.unit if type == "discard" and tile.unit > 0.0 else 0.78
 			tile.scale = Vector2.ONE * start_scale
 			tile.rotation = start_rotation
 			var delay := stagger * float(index)
@@ -198,7 +198,7 @@ func _hand_motion(event: Dictionary, duration: float) -> void:
 		_active.parallel().tween_method(motion, 0.0, 1.0, total_duration)
 	if not event.get("hand_insert", {}).is_empty():
 		var data: Dictionary = event.get("hand_insert", {})
-		var tile := (tile_pool.acquire() if tile_pool else TileView.new())
+		var tile: TileView = (tile_pool.acquire() if tile_pool else TileView.new())
 		var card := str(data.get("tile", ""))
 		tile.set_card(card, card != "" and card != "hidden0")
 		tile.set_unit(float(data.get("unit", UI.ANIMATION_TILE_UNIT)))
@@ -209,7 +209,7 @@ func _hand_motion(event: Dictionary, duration: float) -> void:
 		# tree so TileView._ready() cannot overwrite it with (0, 0).
 		tile.set_table_position(Vector2(data.get("from", UI.LANDSCAPE_CENTER)))
 		tile.rotation = float(data.get("rotation", 0.0))
-		var insert_from := tile.position
+		var insert_from: Vector2 = tile.position
 		var insert_to := Vector2(data.get("to", tile.position))
 		# Keep the whole discard effect continuous while delaying the insert until
 		# the row has moved out of the way (when a new gap is required).

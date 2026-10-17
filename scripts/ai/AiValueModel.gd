@@ -155,15 +155,17 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 					total += CFG.SCORE_ROB_KONG
 				elif ACTIONS.is_post_kong_discard(round.last_discard):
 					total += CFG.SCORE_RON_CALLED if called > 0.5 else CFG.SCORE_RON_UNCALLED
-		# 非自摸的报听费和牌型费由每位非赢家逐家支付；
-		# 报听者被胡时再由实际放炮者支付一份杀报24。
+		# 点炮胡牌：报听费由点炮者支付；牌型费由每家逐家支付；杀报由报听点炮者额外支付。
 		if not self_draw:
-			if declared_ready:
-				total += CFG.SCORE_READY
+			# 牌型费：每家逐家支付
 			if points > 0.0:
 				total += points
-			if payer == source and opponent.ready:
-				total += CFG.SCORE_READY
+			# 报听费和杀报：只有点炮者支付
+			if payer == source:
+				if declared_ready:
+					total += CFG.SCORE_READY
+				if opponent.ready:
+					total += CFG.SCORE_READY
 	return total
 
 static func draw_value(round, seat: int, hand: Array, melds: Array, opponents: Array, discard: String = "") -> Dictionary:

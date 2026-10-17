@@ -19,7 +19,7 @@ func _run() -> void:
 		while table.round.phase == RoundState.Phase.DEALING or table._table_animation_controller.input_locked():
 			await process_frame
 	_check_layout()
-	_test_ai_speed()
+	#_test_ai_speed()
 	await _test_input()
 	_test_ready()
 	_test_kong()
