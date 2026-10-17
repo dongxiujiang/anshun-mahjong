@@ -686,7 +686,7 @@ func _test_draw_results() -> void:
 	table.round._penzu()
 	await process_frame
 	await process_frame
-	_expect(table.round.last_result.deltas == [24.0, 12.0, -16.0, -20.0], "Visible draw result must match chicken and kong payer rules")
+	_expect(table.round.last_result.deltas == [32.0, 20.0, -24.0, -28.0], "Visible draw result must match chicken, base4 and kong payer rules")
 	_expect(table.result_layer.visible and not table.status_label.visible and table.status_label.text == "", "Mixed draw keeps table status text hidden")
 	if rendering:
 		await RenderingServer.frame_post_draw

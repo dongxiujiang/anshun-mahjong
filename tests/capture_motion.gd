@@ -6,6 +6,31 @@ var table
 var event_id := 900
 var timings: Array = []
 var directory := "res://build/ui_review/motion"
+var hand_old_nodes: Array = []
+var hand_old_discard: TileView = null
+var hand_old_draw: TileView = null
+var hand_finish_reused_nodes := false
+var hand_finish_discard_removed := false
+var hand_finish_draw_transferred := false
+var hand_finish_count := 0
+
+func _log_hand_finish(_event_id: int) -> void:
+	if controller_is_hand_discard():
+		var source = table._table_animation_controller._event.get("draw_node")
+		hand_finish_draw_transferred = is_instance_valid(source) and source == hand_old_draw and source.get_parent() == table.hand_box[0] and table.draw_box[0].get_child_count() == 0
+		hand_finish_reused_nodes = true
+		for node in hand_old_nodes:
+			if node == hand_old_discard:
+				continue
+			hand_finish_reused_nodes = hand_finish_reused_nodes and is_instance_valid(node) and node.get_parent() == table.hand_box[0]
+		hand_finish_discard_removed = not is_instance_valid(hand_old_discard) or hand_old_discard.get_parent() == null or hand_old_discard.is_queued_for_deletion()
+		for node in table.hand_box[0].get_children():
+			if node is TileView:
+				hand_finish_count += 1
+
+func controller_is_hand_discard() -> bool:
+	var event: Dictionary = table._table_animation_controller._event
+	return event.get("type", "") == "discard" and event.get("discard_from_hand", false)
 
 func _initialize() -> void: call_deferred("_run")
 
@@ -84,17 +109,25 @@ func _run() -> void:
 	table.round.awaiting = true
 	table._refresh()
 	await process_frame
-	var old_discard_tile: TileView = null
+	hand_old_nodes.clear()
+	for node in table.hand_box[0].get_children():
+		if node is TileView:
+			hand_old_nodes.append(node)
+	hand_old_discard = null
 	for tile in table.hand_box[0].get_children():
 		if int(tile.get_meta("concealed_index", -1)) == 3:
-			old_discard_tile = tile
-	var old_draw_tile: TileView = table.draw_box[0].get_child(0) if not table.draw_box[0].get_children().is_empty() else null
+			hand_old_discard = tile
+	hand_old_draw = table.draw_box[0].get_child(0) if not table.draw_box[0].get_children().is_empty() else null
+	if not table._animation_layer.finished.is_connected(_log_hand_finish):
+		table._animation_layer.finished.connect(_log_hand_finish)
 	table.round._discard(0, "tong2", 3)
-	t.expect(is_instance_valid(old_discard_tile) and old_discard_tile.get_parent() == table.hand_box[0] and is_instance_valid(old_draw_tile) and old_draw_tile.get_parent() == table.draw_box[0], "Hand discard keeps the pre-discard hand and draw slot in place before animation")
+	t.expect(is_instance_valid(hand_old_discard) and hand_old_discard.get_parent() == table.hand_box[0] and is_instance_valid(hand_old_draw) and hand_old_draw.get_parent() == table.draw_box[0], "Hand discard keeps the pre-discard hand and draw slot in place before animation")
 	var saw_hand_discard := false
 	var hand_motion_data := false
 	var held_old_row := false
 	var discard_destination_ready := false
+	var saw_hidden_draw_source := false
+	var hand_timed_out := false
 	var hand_deadline := Time.get_ticks_msec() + 8000
 	while (controller._animation_busy or not controller._animation_queue.is_empty()) and Time.get_ticks_msec() < hand_deadline:
 		if controller._animation_busy and controller._event.get("type", "") == "discard" and controller._event.get("discard_from_hand", false):
@@ -102,8 +135,18 @@ func _run() -> void:
 			hand_motion_data = not controller._event.get("hand_moves", []).is_empty() and not controller._event.get("hand_insert", {}).is_empty()
 			held_old_row = controller.holds_seat_refresh(0)
 			discard_destination_ready = not controller._event.get("destinations", []).is_empty()
+			var insert: Dictionary = controller._event.get("hand_insert", {})
+			var draw_source = insert.get("source_node")
+			if not insert.is_empty() and is_instance_valid(draw_source) and draw_source is TileView and not draw_source.visible:
+				saw_hidden_draw_source = true
 		await process_frame
+	hand_timed_out = Time.get_ticks_msec() >= hand_deadline
 	t.expect(saw_hand_discard and hand_motion_data and held_old_row and discard_destination_ready and not controller.holds_seat_refresh(0), "Hand discard starts at the clicked slot, holds the old row, and ends with a real discard target")
+	t.expect(saw_hidden_draw_source, "Draw-slot tile is hidden while the drawn tile is inserted into the hand")
+	t.expect(not hand_timed_out and not controller._animation_busy and controller._animation_queue.is_empty(), "Hand discard animation completes before its deadline")
+	t.expect(hand_finish_reused_nodes and hand_finish_discard_removed, "Discard reuses the remaining hand nodes and removes only the played tile")
+	t.expect(hand_finish_draw_transferred, "Draw-slot tile transfers into the hand after insertion")
+	t.expect(hand_finish_count == motion_player.concealed.size(), "Hand contains exactly the authoritative post-discard tile count")
 	await _play("04_pong", {"type": "meld", "seat": 0, "source": 1, "tile": "tiao1", "kind": "pung", "index": 0})
 	await _play("05_kong", {"type": "meld", "seat": 0, "source": 1, "tile": "tong8", "kind": "kong", "index": 1})
 	await _play("06_concealed", {"type": "meld", "seat": 0, "tile": "", "kind": "concealed", "index": 1})

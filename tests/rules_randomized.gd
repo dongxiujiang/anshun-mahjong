@@ -119,7 +119,9 @@ func _test_random_patterns() -> void:
 				discard.round_meta.self_draw = false
 				discard.round_meta.discard_seat = 2
 				var discard_result := ScoringEngine.settle(discard)
-				_check(discard_result.pairwise[0][2] > 0 and discard_result.pairwise[0][1] == 0 and discard_result.pairwise[0][3] == 0, "胡牌付款", "普通点炮错误地向非放炮者收费", seed)
+				var non_source_win_fee: bool = discard_result.transfers.any(func(item):
+					return int(item.get("to", -1)) == 0 and int(item.get("from", -1)) != 2 and str(item.get("reason", "")) != "鸡分差额")
+				_check(not non_source_win_fee, "胡牌付款", "普通点炮基础费不得向非放炮者收费（鸡分差额除外）", seed)
 				_hit("胡牌付款", 2)
 
 func _test_random_chickens_and_payments() -> void:

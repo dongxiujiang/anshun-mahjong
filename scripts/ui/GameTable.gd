@@ -57,10 +57,17 @@ func _exit_tree() -> void:
 	AudioManager.end_table(self)
 
 func _net_mode() -> String:
+	# Some UI smoke tests construct the table before attaching it to the scene
+	# tree.  Absolute lookups are invalid in that state; treat it as offline
+	# until the node has a tree owner, matching the normal standalone mode.
+	if not is_inside_tree():
+		return ""
 	var network := get_node_or_null("/root/Network")
 	return network.mode if network != null else ""
 
 func _net_node():
+	if not is_inside_tree():
+		return null
 	var network := get_node_or_null("/root/Network")
 	return network.net_node if network != null else null
 

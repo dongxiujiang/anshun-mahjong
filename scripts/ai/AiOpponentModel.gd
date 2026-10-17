@@ -146,10 +146,9 @@ func risk(context: Dictionary, tile: String, source_ready: bool = false, after_s
 	return {"probability": probability, "loss": expected_loss}
 
 static func _discard_win_primary_fee(pattern_fee: float, declared_ready: bool, source_called: bool = false) -> float:
-	var base := VALUE.CFG.SCORE_RON_CALLED if source_called else VALUE.CFG.SCORE_RON_UNCALLED
-	if pattern_fee > 0.0:
-		return base + pattern_fee
-	return base + (VALUE.CFG.SCORE_READY if declared_ready else 0.0)
+	# 普通弃牌不收17/21基础费；报听和牌型胡按每位非赢家逐家
+	# 支付，杠后/抢杠基础费由调用方根据实际弃牌窗口另行加入。
+	return pattern_fee + (VALUE.CFG.SCORE_READY if declared_ready else 0.0)
 
 func _tile_weights(spec: Dictionary) -> Array[float]:
 	var weights: Array[float] = []

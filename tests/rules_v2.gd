@@ -57,7 +57,7 @@ func _test_payments() -> void:
 	var ordinary := score(PLAIN)
 	t.expect(ordinary.deltas == [72.0, -24.0, -24.0, -24.0], "四家结算鸡分均为0时大干扣24")
 	var gun := score(PLAIN, false, 2)
-	t.expect(gun.deltas == [21.0, 0.0, -21.0, 0.0], "普通点炮未叫牌由放炮者付21")
+	t.expect(gun.deltas == [0.0, 0.0, 0.0, 0.0], "普通点炮不收17/21基础费")
 	var big := ["wan1","wan1","wan1","wan2","wan2","wan2","tong3","tong3","tong3","tiao4","tiao4","tiao4","wan9","wan9"]
 	t.expect(score(big).deltas == [42.0, -14.0, -14.0, -14.0], "大队子自摸14")
 	var clean := ["tiao1","tiao1","tiao2","tiao2","tiao3","tiao3","tiao4","tiao4","tiao5","tiao5","tiao6","tiao6","tiao9","tiao9"]
@@ -67,12 +67,12 @@ func _test_payments() -> void:
 	multi.players[0].concealed = PLAIN.duplicate(); multi.players[1].concealed = PLAIN.duplicate()
 	multi.round_meta.winner = 0; multi.round_meta.winners = [0, 1]; multi.round_meta.self_draw = false; multi.round_meta.discard_seat = 2
 	var multi_result := ScoringEngine.settle(multi)
-	t.expect(multi_result.pairwise[0][2] == 21.0 and multi_result.pairwise[1][2] == 21.0 and multi_result.deltas[2] == -42.0, "一炮多响逐人收取21分")
+	t.expect(multi_result.pairwise[0][2] == 0.0 and multi_result.pairwise[1][2] == 0.0 and multi_result.deltas[2] == 0.0, "普通一炮多响不收基础费")
 	var ready := fixture(); ready.players[0].concealed = PLAIN.duplicate(); ready.players[0].ready = true; ready.round_meta.winner = 0; ready.round_meta.winners = [0]; ready.round_meta.self_draw = true
 	t.expect(ScoringEngine.settle(ready).deltas == [72.0, -24.0, -24.0, -24.0], "报听普通胡牌每家付24")
 	var killed := fixture(); killed.players[0].concealed = PLAIN.duplicate(); killed.players[1].concealed = PLAIN.duplicate(); killed.players[1].ready = true; killed.round_meta.winner = 0; killed.round_meta.winners = [0]; killed.round_meta.self_draw = true
 	var killed_result := ScoringEngine.settle(killed)
-	t.expect(killed_result.deltas[1] == -48.0 and killed_result.deltas[0] == 96.0, "大干扣24与杀报24按各自规则计付")
+	t.expect(killed_result.deltas == [72.0, -24.0, -24.0, -24.0], "自摸不把其他报听者重复计为杀报")
 	var dry := fixture(); dry.players[0].concealed = PLAIN.duplicate(); dry.players[1].concealed = WAIT.duplicate(); dry.players[1].discards = ["tiao1"]; dry.players[1].discard_ids = [0]
 	dry.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}
 	dry.round_meta.winner = 0; dry.round_meta.winners = [0]; dry.round_meta.self_draw = true
@@ -86,10 +86,10 @@ func _test_draw_and_kong() -> void:
 	r.players[0].discard_ids = [0]; r.players[1].discard_ids = [0]
 	r.round_meta.charge_chickens = {"tiao1": {"owner": 0, "location": "discard", "discard_id": 0}, "tong8": {"owner": 1, "location": "discard", "discard_id": 0}}
 	var draw := ScoringEngine.settle(r)
-	t.expect(draw.deltas == [8.0, 8.0, -8.0, -8.0], "荒牌双方出牌鸡相加后逐家补付")
+	t.expect(draw.deltas == [16.0, 16.0, -16.0, -16.0], "荒牌双方出牌鸡相加并补基础4分")
 	var k := fixture(); k.players[0].concealed = MELD_WAIT.duplicate(); k.players[0].melds = [{"kind": "kong", "tile": "wan7", "concealed": true}]; k.players[1].concealed = WAIT.duplicate(); k.round_meta.winner = -1
 	var kd := ScoringEngine.settle(k)
-	t.expect(kd.deltas == [8.0, 0.0, -4.0, -4.0], "叫牌暗杠由每家未叫者支付4")
+	t.expect(kd.deltas == [16.0, 8.0, -12.0, -12.0], "荒牌暗杠与基础补付分别向未叫者收取")
 
 func _test_response_locks() -> void:
 	var r := fixture(); r.players[1].concealed = ["wan1","wan1","wan1"]

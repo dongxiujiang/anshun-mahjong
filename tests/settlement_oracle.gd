@@ -26,11 +26,15 @@ static func expected(round: RoundState) -> Dictionary:
 		called.append(is_called)
 		var profile := _chicken_values(round, seat, related, multiplier)
 		discard_values[seat] = profile.discarded
-		chicken_values[seat] = profile.total if is_called else 0.0
+		# 胡牌局中，叫牌者用完整鸡分比较；未叫牌者以已打出鸡的负分
+		# 参与比较。这样核账器与 ScoringEngine 的付款范围完全一致。
+		chicken_values[seat] = profile.total if is_called else -profile.discarded
 
 	if has_winner:
 		for first in 4:
 			for second in range(first + 1, 4):
+				if not called[first] and not called[second]:
+					continue
 				var difference: float = float(chicken_values[first]) - float(chicken_values[second])
 				if difference > 0.0:
 					_credit(matrix, second, first, difference)
@@ -42,32 +46,65 @@ static func expected(round: RoundState) -> Dictionary:
 				continue
 			for receiver in 4:
 				if called[receiver]:
-					_credit(matrix, payer, receiver, float(discard_values[payer]) + float(discard_values[receiver]))
+					_credit(matrix, payer, receiver, float(discard_values[payer]) + float(discard_values[receiver]) + 4.0)
 
-	# Kong base is a directed fee; chicken inside a kong is included in the
-	# ordinary called-chicken comparison for wins and charged separately on draws.
+	# 杠基础分是定向费用；杠中鸡在胡牌局已经进入鸡分比较，流局时
+	# 才向未叫牌者单独收取。未叫牌杠牌者的杠收入则反向记为其付款。
 	for receiver in 4:
-		if not called[receiver]:
-			continue
-		for meld in round.players[receiver].melds:
-			if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
-				continue
-			if _cancelled_kong(round, receiver, meld):
-				continue
-			var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
-			var source := int(meld.get("from_seat", -1))
-			for payer in 4:
-				if payer == receiver or (not has_winner and called[payer]):
+		if called[receiver]:
+			for meld in round.players[receiver].melds:
+				if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
 					continue
-				if own_kong or payer == source:
-					_credit(matrix, payer, receiver, 4.0)
-			if not has_winner and receiver != int(meta.get("burn_chicken_seat", -1)):
-				var tile := str(meld.tile)
-				var chicken_fee := 8.0 * multiplier if tile in ["tiao1", "tong8"] else 0.0
-				var flip_fee := 4.0 * multiplier if tile in related and tile not in ["tiao1", "tong8"] else 0.0
+				if _cancelled_kong(round, receiver, meld):
+					continue
+				var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
+				var source := int(meld.get("from_seat", -1))
 				for payer in 4:
-					if payer != receiver and not called[payer]:
-						_credit(matrix, payer, receiver, chicken_fee + flip_fee)
+					if payer == receiver or (not has_winner and called[payer]):
+						continue
+					if own_kong or payer == source:
+						_credit(matrix, payer, receiver, 4.0)
+				if not has_winner and receiver != int(meta.get("burn_chicken_seat", -1)):
+					var tile := str(meld.tile)
+					var chicken_fee := 8.0 * multiplier if tile in ["tiao1", "tong8"] else 0.0
+					var flip_fee := 4.0 * multiplier if tile in related and tile not in ["tiao1", "tong8"] else 0.0
+					for payer in 4:
+						if payer != receiver and not called[payer]:
+							_credit(matrix, payer, receiver, chicken_fee + flip_fee)
+		elif not has_winner:
+			# 流局时未叫牌杠牌者不收杠分，反而向每位叫牌者支付4分；
+			# 明杠仍只涉及原放杠者，暗杠/加杠涉及所有叫牌者。
+			for meld in round.players[receiver].melds:
+				if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
+					continue
+				if _cancelled_kong(round, receiver, meld):
+					continue
+				var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
+				var source := int(meld.get("from_seat", -1))
+				for payer in 4:
+					if payer == receiver or not called[payer] or (not own_kong and payer != source):
+						continue
+					_credit(matrix, receiver, payer, 4.0)
+		else:
+			continue
+
+	# For a winning round, an uncalled kong owner pays its directed kong fee to
+	# called players. This is separate from chicken comparison.
+	if has_winner:
+		for owner in 4:
+			if called[owner]:
+				continue
+			for meld in round.players[owner].melds:
+				if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
+					continue
+				if _cancelled_kong(round, owner, meld):
+					continue
+				var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
+				var source := int(meld.get("from_seat", -1))
+				for payer in 4:
+					if payer == owner or not called[payer] or (not own_kong and payer != source):
+						continue
+					_credit(matrix, owner, payer, 4.0)
 
 	if has_winner:
 		for target in winners:
@@ -101,22 +138,24 @@ static func expected(round: RoundState) -> Dictionary:
 				for payer in base_payers:
 					_credit(matrix, payer, target_seat, primary)
 			else:
-				var base := 12.0 if robbed_kong else (17.0 if source >= 0 and source < 4 and RuleEngine.is_tenpai(round.players[source].concealed, round.players[source].melds) else 21.0)
-				if source in range(4):
+				var kong_discard := not robbed_kong and _is_post_kong_discard(round.last_discard)
+				var source_called := source >= 0 and source < 4 and RuleEngine.is_tenpai(round.players[source].concealed, round.players[source].melds)
+				var base := 12.0 if robbed_kong else (17.0 if kong_discard and source_called else (21.0 if kong_discard else 0.0))
+				if source in range(4) and base > 0.0:
 					_credit(matrix, source, target_seat, base)
-				if pattern_fee <= 0.0 and player.ready:
-					pattern_fee = 24.0
-					ready_primary = true
+				if player.ready:
+					for payer in 4:
+						if payer != target_seat and not winners.has(payer):
+							_credit(matrix, payer, target_seat, 24.0)
 				if pattern_fee > 0.0:
-					_credit(matrix, source, target_seat, pattern_fee)
+					for payer in 4:
+						if payer != target_seat and not winners.has(payer):
+							_credit(matrix, payer, target_seat, pattern_fee)
+				if source in range(4) and source != target_seat and round.players[source].ready:
+					_credit(matrix, source, target_seat, 24.0)
 			for payer in 4:
-				if payer == target_seat:
-					continue
-				var base_payer: bool = base_payers.has(payer)
-				if round.players[payer].ready and not winners.has(payer) and base_payer:
-					_credit(matrix, payer, target_seat, 24.0)
-				elif player.ready and pattern.get("win", false) and base_payer and not ready_primary:
-					_credit(matrix, payer, target_seat, 24.0)
+				# 付款已按当前 WinScoring 规则在上方逐家展开。
+				pass
 			if self_draw and int(meta.get("kong_draw_seat", -1)) == target_seat:
 				for payer in 4:
 					if payer != target_seat:
@@ -175,6 +214,11 @@ static func _held_chicken(tile: String, related: Array, multiplier: int) -> floa
 	if tile in ["tiao1", "tong8"]:
 		return 2.0 * (2.0 if tile in related else 1.0) * multiplier
 	return float(multiplier) if tile in related else 0.0
+
+static func _is_post_kong_discard(last_discard: Dictionary) -> bool:
+	if not bool(last_discard.get("after_kong", false)):
+		return false
+	return int(last_discard.get("kong_kind", RoundState.KongKind.NONE)) in [RoundState.KongKind.CONCEALED, RoundState.KongKind.ADD_KONG]
 
 static func _pattern_fee(pattern: Dictionary) -> float:
 	if pattern.get("clean_dragon_seven_pairs", false): return 64.0

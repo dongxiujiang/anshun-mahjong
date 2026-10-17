@@ -55,7 +55,7 @@ func _test_scoring() -> void:
 	round.round_meta.self_draw = false
 	round.round_meta.discard_seat = 2
 	result = scored(round)
-	expect(result.deltas == [21.0, 0.0, -21.0, 0.0], "普通点炮未叫牌由放炮者付21")
+	expect(result.deltas == [0.0, 0.0, 0.0, 0.0], "普通点炮不收17/21基础费")
 	var big := fixture()
 	big.players[0].concealed = ["wan1", "wan1", "wan1", "wan2", "wan2", "wan2", "tong3", "tong3", "tong3", "tiao4", "tiao4", "tiao4", "wan9", "wan9"]
 	big.round_meta.winner = 0
@@ -77,8 +77,8 @@ func _test_scoring() -> void:
 	multi.round_meta.self_draw = false
 	multi.round_meta.discard_seat = 2
 	var multi_result := scored(multi)
-	expect(multi_result.pairwise[0][2] == 21 and multi_result.pairwise[1][2] == 21, "一炮多响时放炮者分别付每位胡牌者21")
-	expect(multi_result.deltas[2] == -42, "一炮多响放炮者合计支付两位赢家")
+	expect(multi_result.pairwise[0][2] == 0 and multi_result.pairwise[1][2] == 0, "普通一炮多响不收基础费")
+	expect(multi_result.deltas[2] == 0, "普通一炮多响放炮者不支付基础费")
 	round = fixture()
 	round.players[0].concealed = plain.duplicate()
 	round.round_meta.winner = 0
@@ -88,6 +88,7 @@ func _test_scoring() -> void:
 	result = scored(round)
 	expect(result.deltas == [87.0, -29.0, -29.0, -29.0], "大干扣24加杠开5按每家付款")
 	round.round_meta.winner = -1
+	round.round_meta.winners = []
 	expect(scored(round).deltas == [0.0, 0.0, 0.0, 0.0], "流局不翻鸡且全员未叫不收分")
 
 func _test_turns() -> void:
@@ -153,7 +154,7 @@ func _test_discard_win_restrictions() -> void:
 	expect(normal.can_win_on_discard(1, 0, "wan9"), "Ready winner can win another player's discard")
 	normal.players[1].ready = false
 	normal.players[0].ready = true
-	expect(normal.can_win_on_discard(1, 0, "wan9"), "Discard from a ready player bypasses hand pattern restriction")
+	expect(not normal.can_win_on_discard(1, 0, "wan9"), "Ready source does not bypass the winner hand pattern restriction")
 
 	var seven := fixture()
 	seven.players[1].concealed = ["wan1", "wan1", "wan2", "wan2", "wan3", "wan3", "wan4", "wan4", "wan5", "wan5", "wan6", "wan6", "wan9"]
@@ -169,7 +170,7 @@ func _test_discard_win_restrictions() -> void:
 	source_ready.players[1].concealed = thirteen.duplicate()
 	source_ready.players[0].ready = true
 	source_ready.last_discard = {"seat": 0, "tile": "wan9"}
-	expect(source_ready.can_win_on_discard(1, 0, "wan9"), "Ready source permits ordinary discard win")
+	expect(not source_ready.can_win_on_discard(1, 0, "wan9"), "Ready source does not permit an ordinary discard win")
 	var after_kong := fixture()
 	after_kong.players[1].concealed = thirteen.duplicate()
 	after_kong.last_discard = {"seat": 0, "tile": "wan9", "after_kong": true, "kong_kind": RoundState.KongKind.ADD_KONG}

@@ -55,9 +55,9 @@ func _fixture(index: int) -> RoundState:
 	return r
 
 func _run() -> void:
-	t.expect(OPPONENT._discard_win_primary_fee(0.0, false) == 21.0, "普通点炮估值采用未叫牌21分基础")
-	t.expect(OPPONENT._discard_win_primary_fee(24.0, false) == 45.0, "大牌点炮估值为21分基础加牌型分")
-	t.expect(OPPONENT._discard_win_primary_fee(0.0, true) == 45.0, "报听点炮估值为21分基础加报听24分")
+	t.expect(OPPONENT._discard_win_primary_fee(0.0, false) == 0.0, "普通点炮估值不收17/21基础")
+	t.expect(OPPONENT._discard_win_primary_fee(24.0, false) == 24.0, "大牌点炮估值只计牌型逐家费用")
+	t.expect(OPPONENT._discard_win_primary_fee(0.0, true) == 24.0, "报听点炮估值按逐家报听费用")
 	var cases := 0
 	for index in 6:
 		for flip in Tiles.all_values():
@@ -89,10 +89,10 @@ func _run() -> void:
 	# 胡牌局的条件收益也必须计入完整鸡分，不能继续使用流局补付范围。
 	# tiao1翻鸡：本人出牌鸡14+手中二条翻鸡1=15；两名叫牌对手各6，一名未叫牌0。
 	var normal_value := VALUE.settlement_value(sample, 0, sample.players[0].concealed, [], {"tiao1": 1.0}, _profiles(sample, "tiao1"))
-	t.expect(normal_value.called == 33 and normal_value.uncalled == -12, "胡牌局收益：15-6、15-0、15-6，未叫牌时付两家各6")
+	t.expect(normal_value.called == 39 and normal_value.uncalled == -12, "胡牌局收益按完整鸡分比较，未叫牌者还补其出牌鸡")
 	# tiao6翻鸡：本人10；两名叫牌对手各有出牌鸡4+手中翻鸡3=7。
 	normal_value = VALUE.settlement_value(sample, 0, sample.players[0].concealed, [], {"tiao6": 1.0}, _profiles(sample, "tiao6"))
-	t.expect(normal_value.called == 16 and normal_value.uncalled == -14, "未叫牌风险需包含对手手中翻鸡，不能仅算其打出的鸡")
+	t.expect(normal_value.called == 20 and normal_value.uncalled == -8, "未叫牌风险按对手出牌鸡与杠费估值")
 	var seen := {"wan1": 4, "tong7": 3, "tiao9": 2}
 	var distribution := VALUE.flip_distribution(seen)
 	var average := VALUE.profile(sample, 0, sample.players[0].concealed, [], distribution)

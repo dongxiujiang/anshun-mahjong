@@ -111,7 +111,7 @@ func _test_kongs_and_burn() -> void:
 	kong.round_meta.winner = -1
 	kong.players[1].concealed = []
 	var draw := settle(kong)
-	t.expect(draw.pairwise[0][1] == 4.0 and draw.pairwise[0][2] == 0.0 and draw.pairwise[0][3] == 0.0, "荒牌明杠只由放杠者付4分")
+	t.expect(draw.pairwise[0][1] == 8.0 and draw.pairwise[0][2] == 4.0 and draw.pairwise[0][3] == 4.0, "荒牌明杠叠加每家基础补付，放杠者另付杠4分")
 	var burned := fixture()
 	burned.players[0].concealed = ["wan1"]
 	burned.players[0].melds = [{"kind": "kong", "tile": "wan7", "concealed": true, "after_discard": 0}]
@@ -196,7 +196,7 @@ func _test_win_payments() -> void:
 	called.round_meta.discard_seat = 1
 	called.round_meta.win_tile = "wan9"
 	var called_result := settle(called)
-	t.expect(called_result.pairwise[0][1] == GameConfig.SCORE_RON_CALLED, "放炮者叫牌支付17分")
+	t.expect(called_result.pairwise[0][1] == 0.0, "普通点炮不收17分基础费")
 	var uncalled := fixture()
 	uncalled.players[0].concealed = PLAIN.duplicate()
 	uncalled.round_meta.winner = 0
@@ -205,7 +205,7 @@ func _test_win_payments() -> void:
 	uncalled.round_meta.discard_seat = 1
 	uncalled.round_meta.win_tile = "wan9"
 	var uncalled_result := settle(uncalled)
-	t.expect(uncalled_result.pairwise[0][1] == GameConfig.SCORE_RON_UNCALLED, "放炮者未叫牌支付21分")
+	t.expect(uncalled_result.pairwise[0][1] == 0.0, "普通点炮不收21分基础费")
 	t.expect(uncalled_result.items[0].all(func(item): return item.get("label", "") != "自摸" and item.get("label", "") != "自摸基础分"), "普通点炮不加自摸4分")
 	var big := fixture()
 	big.players[0].concealed = BIG.duplicate()
@@ -215,7 +215,7 @@ func _test_win_payments() -> void:
 	big.round_meta.discard_seat = 1
 	big.round_meta.win_tile = "wan9"
 	var big_result := settle(big)
-	t.expect(big_result.pairwise[0][1] == 45.0, "点炮牌型分与21分基础费分开结算，实际%s" % str(big_result.pairwise[0][1]))
+	t.expect(big_result.pairwise[0][1] == 24.0, "点炮牌型分逐家支付且不叠普通基础费，实际%s" % str(big_result.pairwise[0][1]))
 	var multi := fixture()
 	multi.players[0].concealed = PLAIN.duplicate()
 	multi.players[1].concealed = PLAIN.duplicate()
@@ -224,7 +224,7 @@ func _test_win_payments() -> void:
 	multi.round_meta.self_draw = false
 	multi.round_meta.discard_seat = 2
 	multi.round_meta.win_tile = "wan9"
-	t.expect(settle(multi).deltas[2] == -42.0, "一炮多响按每位赢家分别收21分")
+	t.expect(settle(multi).deltas[2] == 0.0, "普通一炮多响不收基础费")
 
 func _test_robbed_kong() -> void:
 	var r := fixture()

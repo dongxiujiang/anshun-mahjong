@@ -106,7 +106,7 @@ func _test_groups() -> void:
 	r.wall.set_head(0)
 	r.wall._ring[0] = "tiao8"
 	r._finish()
-	t.expect(r.last_result.round_points[0] == 52, "小七对24已含自摸基础，另计手中鸡4和报听24，共52")
+	t.expect(r.last_result.round_points[0] == 28, "小七对牌型24与手中鸡4只各计一次，共28")
 	var client := RoundState.new()
 	client.apply_sync(r.serialize_for_seat(2))
 	t.expect(client.last_result.round_points == r.last_result.round_points and client.last_result.pairwise == r.last_result.pairwise, "联机必须同步本局分和实际三家收付")
@@ -135,10 +135,11 @@ func _test_chicken_kong_example() -> void:
 				if is_draw:
 					t.expect(kong_items.size() == 1 and kong_items[0].chicken_amount == chickens, "荒牌杠中鸡按四张每张2分")
 				else:
-					var ron_fee: float = GameConfig.SCORE_RON_CALLED if source_called else GameConfig.SCORE_RON_UNCALLED
-					var has_base: bool = result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 0 and is_equal_approx(float(item.get("amount", 0.0)), ron_fee))
-					t.expect(has_base, "点炮基础费按放炮者叫牌状态收取")
-					t.expect(kong_items.size() == 1 and kong_items[0].chicken_amount == chickens, "点炮局杠中鸡仍单独计入")
+					# 普通弃牌没有17/21基础费；只有暗杠/加杠后的第一张弃牌
+					# 才进入杠后放炮窗口。此构造没有该窗口，故不应出现基础费。
+					var has_base: bool = result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 0 and float(item.get("amount", 0.0)) >= 17.0)
+					t.expect(not has_base, "普通点炮不收17/21基础费")
+					t.expect(kong_items.size() == 1 and kong_items[0].chicken_amount == chickens, "胡牌局杠中鸡展示为鸡分比较来源，不重复单独收费")
 
 func _tile_rect(tile: TileView) -> Rect2:
 	return tile.get_global_transform() * Rect2(Vector2.ZERO, tile.size)
