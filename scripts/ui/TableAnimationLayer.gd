@@ -3,6 +3,9 @@ extends Control
 signal finished(event_id: int)
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
 const DICE := preload("res://scripts/ui/DiceView.gd")
+
+# 对象池实例（由 GameTable 注入）
+var tile_pool = null
 var _next_event_id := 0
 var _active: Tween
 var _temporary: Array[Node] = []
@@ -57,19 +60,19 @@ func _dice(event: Dictionary) -> void:
 		die.position = resting_position + Vector2(26 * sin(progress * PI) * (1.0-progress), -18 * sin(progress * PI))
 		die.value = (int(progress * 36) % 6 + 1) if progress < 1.0 else int(event.get("value", 1)), 0.0, 1.0, UI.DICE_DURATION)
 	_active.tween_callback(func(): die.value = int(event.get("value", 1)))
-	_active.tween_interval(GameConfig.OPENING_DICE_HOLD_SECONDS)
+	_active.tween_interval(_duration(GameConfig.OPENING_DICE_HOLD_SECONDS))
 
 func _tiles(event: Dictionary) -> void:
 	var type := str(event.get("type", ""))
 	var destinations: Array = event.get("destinations", [])
 	if destinations.is_empty():
 		destinations = [{"to": event.get("to", UI.LANDSCAPE_CENTER), "from": event.get("from", UI.LANDSCAPE_CENTER), "tile": event.get("tile", ""), "unit": UI.ANIMATION_TILE_UNIT, "rotation": 0.0}]
-	var duration := UI.DEAL_DURATION if type == "deal" else _duration(UI.REVEAL_DURATION if type == "meld_reveal" else (UI.DISCARD_DURATION if type == "discard" else (UI.MELD_DURATION if type == "meld" else UI.DRAW_DURATION)))
-	var stagger := UI.DEAL_TILE_STAGGER if type == "deal" else (UI.DRAW_TILE_STAGGER if type == "draw" else (UI.DISCARD_TILE_STAGGER if type == "discard" else UI.MELD_TILE_STAGGER))
+	var duration := _duration(UI.DEAL_DURATION) if type == "deal" else _duration(UI.REVEAL_DURATION if type == "meld_reveal" else (UI.DISCARD_DURATION if type == "discard" else (UI.MELD_DURATION if type == "meld" else UI.DRAW_DURATION)))
+	var stagger := _duration(UI.DEAL_TILE_STAGGER) if type == "deal" else (_duration(UI.DRAW_TILE_STAGGER) if type == "draw" else (_duration(UI.DISCARD_TILE_STAGGER) if type == "discard" else _duration(UI.MELD_TILE_STAGGER)))
 	var arc_height := UI.DEAL_ARC_HEIGHT if type == "deal" else (UI.DRAW_ARC_HEIGHT if type == "draw" else (UI.DISCARD_ARC_HEIGHT if type == "discard" else UI.MELD_ARC_HEIGHT))
 	for index in destinations.size():
 		var data: Dictionary = destinations[index]
-		var tile := TileView.new()
+		var tile := (tile_pool.acquire() if tile_pool else TileView.new())
 		var card := str(data.get("tile", ""))
 		tile.set_card(card, card != "" and card != "hidden0")
 		tile.set_unit(float(data.get("unit", UI.ANIMATION_TILE_UNIT)))
@@ -125,7 +128,7 @@ func _sort_hand(event: Dictionary) -> void:
 	# visible in deal order; moving these nodes gives the player a real
 	# interleaving/sort pass without a masked duplicate row underneath.
 	# Opening timing is shared across clients, just like dice and deal packets.
-	var duration := UI.SORT_DURATION
+	var duration := _duration(UI.SORT_DURATION)
 	var destinations: Array = event.get("destinations", [])
 	for index in destinations.size():
 		var data: Dictionary = destinations[index]
@@ -135,7 +138,7 @@ func _sort_hand(event: Dictionary) -> void:
 		var to := Vector2(data.get("to", from))
 		var start_rotation := float(tile.rotation)
 		var final_rotation := float(data.get("rotation", start_rotation))
-		var delay := float(data.get("delay", UI.SORT_TILE_STAGGER * float(index)))
+		var delay := _duration(float(data.get("delay", UI.SORT_TILE_STAGGER * float(index))))
 		var flight_duration := duration + delay
 		var apex := from.lerp(to, 0.5) + Vector2(0, -UI.SORT_ARC_HEIGHT)
 		var motion := func(progress: float):
@@ -166,7 +169,7 @@ func _hand_motion(event: Dictionary, duration: float) -> void:
 			tile = persistent_node
 			tile.set_interactive(false)
 		else:
-			tile = TileView.new()
+			tile = (tile_pool.acquire() if tile_pool else TileView.new())
 			var card := str(data.get("tile", ""))
 			tile.set_card(card, card != "" and card != "hidden0")
 			tile.set_unit(float(data.get("unit", UI.ANIMATION_TILE_UNIT)))
@@ -195,7 +198,7 @@ func _hand_motion(event: Dictionary, duration: float) -> void:
 		_active.parallel().tween_method(motion, 0.0, 1.0, total_duration)
 	if not event.get("hand_insert", {}).is_empty():
 		var data: Dictionary = event.get("hand_insert", {})
-		var tile := TileView.new()
+		var tile := (tile_pool.acquire() if tile_pool else TileView.new())
 		var card := str(data.get("tile", ""))
 		tile.set_card(card, card != "" and card != "hidden0")
 		tile.set_unit(float(data.get("unit", UI.ANIMATION_TILE_UNIT)))
@@ -273,7 +276,11 @@ func _clear_nodes() -> void:
 	for node in _temporary:
 		if is_instance_valid(node):
 			remove_child(node)
-			node.queue_free()
+			# 使用对象池回收 TileView
+			if tile_pool and node is TileView:
+				tile_pool.release(node)
+			else:
+				node.queue_free()
 	_temporary.clear()
 
 func _exit_tree() -> void:

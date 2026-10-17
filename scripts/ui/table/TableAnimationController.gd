@@ -448,7 +448,7 @@ func _sort_destinations() -> Array:
 				"node": tile,
 				"to": _opening_hand_slot_local(seat, slot),
 				"rotation": UI.ROTATIONS[table._relative_seat(seat)],
-				"delay": float(slot) * UI.SORT_TILE_STAGGER
+				"delay": float(slot) * GameConfig.animation_duration(UI.SORT_TILE_STAGGER)
 			})
 	return result
 

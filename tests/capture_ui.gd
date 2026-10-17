@@ -32,7 +32,7 @@ func _run() -> void:
 	root.content_scale_size = Vector2i.ZERO
 	root.size = Vector2i(1280, 720)
 	root.get_node("UpdateManager").auto_check = false
-	root.get_node("GameConfig").ai_speed = "slow"
+	root.get_node("GameConfig").ai_speed = "medium"
 	root.get_node("UpdateManager")._automatic_checked = true
 	var network = root.get_node("Network")
 	var menu = await _load_scene("res://scenes/MainMenu.tscn")

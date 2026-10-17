@@ -46,7 +46,7 @@ func _run() -> void:
 		net.set_ai_speed("fast")
 		t.expect(await _wait_until(func(): return net.lobby.get("ai_speed", "") == "fast"), "Owner can restore one-second online speed")
 	else:
-		net.set_ai_speed("slow")
+		net.set_ai_speed("medium")
 		await get_tree().create_timer(0.2).timeout
 		t.expect(net.lobby.get("ai_speed", "") == "fast", "Guest cannot change shared AI speed")
 	if room_owner:

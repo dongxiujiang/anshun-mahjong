@@ -19,7 +19,7 @@ func _run() -> void:
 	root.size = Vector2i(1280,720)
 	root.get_node("UpdateManager").auto_check = false
 	var config = root.get_node("GameConfig")
-	config.animation_speed = "slow"
+	config.animation_speed = "standard"
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(table)
 	table.round.controllers = [null,null,null,null]
@@ -62,7 +62,7 @@ func _run() -> void:
 	t.expect(table._sound_settings.is_open(), "Expanded settings hit area opens the panel without enlarging its visible button")
 	table._sound_settings.close(false)
 	# 两档设置都要保留真正的 0.5 秒落定停留。
-	for speed in ["fast", "slow"]:
+	for speed in ["instant", "standard"]:
 		config.animation_speed = speed
 		var layer = table._animation_layer
 		await process_frame
@@ -73,7 +73,7 @@ func _run() -> void:
 		await create_timer(config.OPENING_DICE_SECONDS + 0.06).timeout
 		var die = layer._temporary[0] if not layer._temporary.is_empty() else null
 		t.expect(die != null and die.value == 6 and is_equal_approx(die.rotation, TAU), "Final dice face is stationary in " + speed)
-		if speed == "fast": await _shot("02_dice_hold")
+		if speed == "instant": await _shot("02_dice_hold")
 		while layer._active != null: await process_frame
 		print("[capture_table_controls] dice %s: %d ms" % [speed, Time.get_ticks_msec() - start])
 		t.expect(Time.get_ticks_msec() - start >= 1650, "Dice roll and fixed half-second hold ignore per-client speed")

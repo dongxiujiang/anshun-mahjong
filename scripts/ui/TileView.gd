@@ -199,3 +199,16 @@ static func _font() -> Font:
 		_sysfont = SystemFont.new()
 		_sysfont.font_names = PackedStringArray(["Microsoft YaHei", "PingFang SC", "Heiti SC", "Noto Sans CJK SC", "sans-serif"])
 	return _sysfont
+
+
+func reset() -> void:
+	"""重置 TileView 为默认状态，用于对象池回收。"""
+	set_selected(false)
+	set_interactive(false)
+	set_winning(false)
+	set_highlight(false)
+	card = ""
+	face_up = false
+	table_position = Vector2.ZERO
+	modulate = Color.WHITE
+	visible = true

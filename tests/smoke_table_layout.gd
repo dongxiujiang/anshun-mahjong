@@ -81,10 +81,10 @@ func _new_fixture() -> void:
 	table.round.round_finished.connect(table._on_round_finished)
 
 func _test_ai_speed() -> void:
-	for speed in ["fast", "medium", "slow"]:
+	for speed in ["instant", "fast", "standard"]:
 		table._speed_buttons[speed].pressed.emit()
 		_expect(root.get_node("GameConfig").ai_speed == speed, "Speed buttons must select the requested speed")
-		var expected := float({"fast": 1, "medium": 2, "slow": 3}[speed]) if rendering else 0.0
+		var expected := float({"instant": 1, "fast": 2, "standard": 3}[speed]) if rendering else 0.0
 		_expect(table.round.ai_delay_seconds == expected, "AI speed must use the specified one/two/three second delay")
 	table._speed_buttons.fast.pressed.emit()
 

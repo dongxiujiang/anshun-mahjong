@@ -74,7 +74,7 @@ var online_mode := false
 # AI 思考速度：快 1 秒 / 中 2 秒 / 慢 3 秒。
 const AI_SPEED_DELAYS := {"fast": 1.0, "medium": 2.0, "slow": 3.0}
 var ai_speed := "fast"
-const ANIMATION_SPEEDS := {"fast": 0.5, "standard": 1.0, "slow": 2.0}
+const ANIMATION_SPEEDS := {"instant": 0.05, "fast": 0.5, "standard": 1.0}
 # 开局采用共同节奏，权威端按时钟解锁；客户端动画不推进游戏逻辑。
 const OPENING_DICE_SECONDS := 1.2
 const OPENING_DICE_HOLD_SECONDS := 0.5

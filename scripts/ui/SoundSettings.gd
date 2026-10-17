@@ -98,7 +98,7 @@ func _ready() -> void:
 			var speed_button := _button(item[0], Vector2(716, 104 + speed_buttons.size() * 82), Vector2(368, 72), func(): _set_speed(speed_key))
 			speed_buttons[speed_key] = speed_button
 		_label("动画速度", Vector2(716, 366), Vector2(368, 38), 24)
-		for item in [["快", "fast"], ["标准", "standard"], ["慢", "slow"]]:
+		for item in [["瞬间", "instant"], ["快", "fast"], ["正常", "standard"]]:
 			var animation_key: String = item[1]
 			var animation_button := _button(item[0], Vector2(716 + animation_speed_buttons.size() * 126, 418), Vector2(116, 72), func(): _set_animation_speed(animation_key))
 			animation_speed_buttons[animation_key] = animation_button

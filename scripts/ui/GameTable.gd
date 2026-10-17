@@ -18,6 +18,10 @@ var _sound_button: Button
 var _settings_button: Button
 
 func _ready() -> void:
+	# 初始化 TileView 对象池以减少 GC 压力
+	var pool := preload("res://scripts/ui/TileViewPool.gd").new()
+	ANIMATION_LAYER.tile_pool = pool
+
 	AudioManager.begin_table(self)
 	_build_static_ui()
 	resized.connect(_layout)

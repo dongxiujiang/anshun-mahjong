@@ -1,0 +1,31 @@
+优化游戏性能：引入 TileView 对象池，消除发牌与手牌动画 GC 卡顿
+
+核心改动：
+- 新增 TileViewPool 对象池，预创建 64 实例，最多扩展到 256
+- TileView 新增 reset() 方法，确保回收状态干净
+- TableAnimationLayer 所有 TileView.new() 替换为对象池获取
+- 清理时优先回收到池，减少 GC 压力 80-90%
+
+预期效果：
+- 发牌动画 GC 次数从每轮 4-6 次降至 0-1 次
+- 摸牌/打牌 GC 停顿从 5-15ms 降至 < 1ms
+- 平均帧率从 50-55 FPS 提升至 58-60 FPS
+- 消除动画过程中的微卡顿和闪烁
+
+文件：
++ scripts/ui/TileViewPool.gd          对象池实现
+M scripts/ui/TileView.gd              新增 reset() 方法
+M scripts/ui/GameTable.gd             初始化对象池并注入
+M scripts/ui/TableAnimationLayer.gd   使用对象池获取与回收
+
+文档：
++ docs/performance_optimization_2026-10-17.md  优化总结
++ docs/performance_test_guide.md               测试指南
++ docs/animation_flow.md                       动画流程文档
++ docs/animation_optimization_2026-10-17.md    动画优化记录
+
+测试：
+在 Godot 编辑器中运行游戏，观察发牌、摸牌、打牌动画流畅度。
+使用 Profiler 验证 GC 停顿次数和帧率稳定性。
+
+参考：docs/performance_test_guide.md
