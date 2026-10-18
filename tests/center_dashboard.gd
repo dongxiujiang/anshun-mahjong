@@ -125,4 +125,4 @@ func _run() -> void:
 	table.round = game
 	table.queue_free()
 	await process_frame
-	quit(t.finish("center_dashboard"))
+	await H.quit_cleanly(self, t.finish("center_dashboard"))

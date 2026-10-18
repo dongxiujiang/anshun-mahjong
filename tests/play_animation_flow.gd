@@ -509,7 +509,7 @@ func _run() -> void:
 	if graphical and OS.get_cmdline_user_args().has("--capture"): await capture_review()
 	controller.cancel()
 	table.queue_free()
-	await create_timer(0.6).timeout
+	await process_frame
 	print("[play_animation_flow] renderer=", DisplayServer.get_name(), " seed=20261018")
-	quit(t.finish("play_animation_flow"))
+	await H.quit_cleanly(self, t.finish("play_animation_flow"))
 

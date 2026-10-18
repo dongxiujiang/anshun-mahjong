@@ -89,4 +89,4 @@ func _run() -> void:
 		t.expect(ref.get_ref() == null, "Components are released when their table exits")
 	second.free()
 	await process_frame
-	quit(t.finish("table_components"))
+	await H.quit_cleanly(self, t.finish("table_components"))

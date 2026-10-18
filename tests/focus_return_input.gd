@@ -224,6 +224,4 @@ func _run() -> void:
 	await _test_viewport_routing()
 	table.queue_free()
 	await process_frame
-	# 最后一笔真实出牌刚触发音效；让音频线程释放播放对象后再关闭引擎。
-	await create_timer(0.1).timeout
-	quit(t.finish("focus_return_input"))
+	await H.quit_cleanly(self, t.finish("focus_return_input"))

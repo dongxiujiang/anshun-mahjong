@@ -277,4 +277,4 @@ func _run() -> void:
 	_test_charge_ui()
 	table.free()
 	await process_frame
-	quit(t.finish("settlement_card"))
+	await H.quit_cleanly(self, t.finish("settlement_card"))

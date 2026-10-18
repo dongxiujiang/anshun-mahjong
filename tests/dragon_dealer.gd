@@ -14,7 +14,7 @@ func _run() -> void:
 	_test_deal()
 	_test_network_round()
 	await _test_score_ui()
-	quit(t.finish("dragon_dealer"))
+	await H.quit_cleanly(self, t.finish("dragon_dealer"))
 
 func _fixture(dealer: int = 0) -> RoundState:
 	var game := RoundState.new()

@@ -1,4 +1,5 @@
 extends SceneTree
+const H := preload("res://tests/test_harness.gd")
 
 var table
 var rendering := false
@@ -57,7 +58,9 @@ func _run() -> void:
 	await _test_next_round()
 	if not failed:
 		print("[smoke_table_layout] selection, ready, kong, sync, layout, settlement passed")
-	quit(1 if failed else 0)
+	table.queue_free()
+	await process_frame
+	await H.quit_cleanly(self, 1 if failed else 0)
 
 func _new_fixture() -> void:
 	if table.round != null:

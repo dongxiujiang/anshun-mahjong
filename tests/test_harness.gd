@@ -9,11 +9,44 @@ extends RefCounted
 ##     func _initialize() -> void: call_deferred("_run")
 ##     func _run() -> void:
 ##         t.expect(cond, "失败信息")
-##         quit(t.finish("smoke_xxx"))
+##         await H.quit_cleanly(self, t.finish("smoke_xxx"))
 
 var checks := 0
 var failures := 0
 var _messages: Array[String] = []
+
+## AudioServer releases Playback on its own thread. Frame-only waits and stop()
+## during _exit_tree() can leave WAV resources alive at the engine's exit check.
+## Stop while the tree is still running, detach streams, then verify release.
+static func drain_audio(tree: SceneTree) -> bool:
+	var audio := tree.root.get_node_or_null("AudioManager")
+	if audio == null: return true
+	var playbacks: Array[WeakRef] = []
+	var players: Array = [audio.music_player, audio.voice_player, audio.effects_player, audio.settlement_player]
+	for player in players:
+		if player != null and player.has_stream_playback():
+			playbacks.append(weakref(player.get_stream_playback()))
+	audio.end_table()
+	if audio._duck_tween != null and audio._duck_tween.is_valid(): audio._duck_tween.kill()
+	for player in players:
+		if player != null:
+			player.stop()
+			player.stream = null
+	audio._streams.clear()
+	# Also drain retired playbacks from earlier stream changes. Use real time so
+	# a paused tree or a modified Engine.time_scale cannot shorten this interval.
+	await tree.create_timer(0.25, true, false, true).timeout
+	var deadline := Time.get_ticks_msec() + 2000
+	while playbacks.any(func(ref): return ref.get_ref() != null) and Time.get_ticks_msec() < deadline:
+		await tree.create_timer(0.05, true, false, true).timeout
+	if playbacks.any(func(ref): return ref.get_ref() != null):
+		push_error("Audio shutdown timed out: playback resources are still referenced")
+		return false
+	return true
+
+static func quit_cleanly(tree: SceneTree, code: int) -> void:
+	var released := await drain_audio(tree)
+	tree.quit(code if released else 1)
 
 func expect(condition: bool, message: String = "") -> bool:
 	checks += 1

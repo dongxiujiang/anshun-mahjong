@@ -239,4 +239,4 @@ func _run() -> void:
 	table.free()
 	await process_frame
 	AudioServer.set_bus_mute(master, muted)
-	quit(t.finish("settlement_score_inspection"))
+	await H.quit_cleanly(self, t.finish("settlement_score_inspection"))

@@ -192,4 +192,4 @@ func _run() -> void:
 	await _test_result_ui()
 	print("[scoring_pairwise] %d mixed six-pair settlements + screenshot, sync and UI" % settlements)
 	print("[scoring_pairwise] %d two-player kong settlements" % kong_settlements)
-	quit(t.finish("scoring_pairwise"))
+	await H.quit_cleanly(self, t.finish("scoring_pairwise"))

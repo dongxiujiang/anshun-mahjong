@@ -23,12 +23,8 @@ func _drive() -> void:
 		print("[smoke_ui] 超时结束失败")
 		t.expect(false, "UI 闭环超时（%d 帧未结算）" % _frames)
 		table.queue_free()
-		# 音频停止与 Playback 回收在音频线程上完成。
-		# AudioStream playback is stopped on the audio thread.  Give Godot enough
-		# frames to release playback/resources before the process exits; otherwise
-		# the runner may see a shutdown-time `ERROR: resources still in use`.
-		await create_timer(1.0).timeout
-		quit(t.finish("smoke_ui")); return
+		await process_frame
+		await H.quit_cleanly(self, t.finish("smoke_ui")); return
 	var r = table.round
 	if r.phase == RoundState.Phase.SETTLED:
 		print("[smoke_ui] 结算: winner=%d deltas=%s 牌守恒=%s" % [r.round_meta.winner, str(r.last_result.deltas), _conserved(r)])
@@ -38,11 +34,8 @@ func _drive() -> void:
 			t.expect(audio_seats[seat] > 0, "真人和每个AI都应该触发出牌语音")
 		t.expect(audio_wins == (1 if int(r.round_meta.winner) >= 0 else 0), "结算只触发一次正确的胡牌语音，流局不触发")
 		table.queue_free()
-		# AudioStream playback is stopped on the audio thread.  Give Godot enough
-		# frames to release playback/resources before the process exits; otherwise
-		# the runner may see a shutdown-time `ERROR: resources still in use`.
-		await create_timer(1.0).timeout
-		quit(t.finish("smoke_ui")); return
+		await process_frame
+		await H.quit_cleanly(self, t.finish("smoke_ui")); return
 	if r.awaiting:
 		if not r._awaiting_response.is_empty():
 			# 别家弃牌回应

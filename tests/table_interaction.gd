@@ -100,4 +100,4 @@ func _run() -> void:
 	t.expect(hot.size.y >= 108 and Rect2(Vector2.ZERO, table._design_size()).encloses(Rect2(settings.position + hot.position, hot.size)), "Invisible settings touch target is large and remains inside the canvas")
 	table.queue_free()
 	await process_frame
-	quit(t.finish("table_interaction"))
+	await H.quit_cleanly(self, t.finish("table_interaction"))

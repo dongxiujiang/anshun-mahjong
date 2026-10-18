@@ -82,4 +82,4 @@ func _run() -> void:
 		root.get_texture().get_image().save_png("res://build/new_exit_confirmation.png")
 	table.queue_free()
 	await process_frame
-	quit(t.finish("table_controls_perf"))
+	await H.quit_cleanly(self, t.finish("table_controls_perf"))

@@ -138,4 +138,4 @@ func _run() -> void:
 	t.expect(int(meld_event.get("source_discard_id", -1)) == 11, "Pong animation references the exact latest matching discard removed from the river")
 	table.queue_free()
 	await process_frame
-	quit(t.finish("discard_identity"))
+	await H.quit_cleanly(self, t.finish("discard_identity"))

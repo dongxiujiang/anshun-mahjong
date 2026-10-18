@@ -33,11 +33,8 @@ func _run() -> void:
 	for channel in audio.CHANNELS:
 		audio.set_volume(channel, float(saved_volumes[channel]), false)
 		audio.set_enabled(channel, bool(saved_enabled[channel]), false)
-	audio.end_table()
-	# stop() 由音频线程完成退场，给它时间释放 Playback 后再退出测试进程。
-	await create_timer(0.2).timeout
 	AudioServer.set_bus_mute(master, master_muted)
-	quit(t.finish("smoke_audio"))
+	await H.quit_cleanly(self, t.finish("smoke_audio"))
 
 func _test_assets() -> void:
 	for seat in 4:

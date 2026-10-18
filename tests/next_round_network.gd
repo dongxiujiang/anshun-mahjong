@@ -29,7 +29,7 @@ func _run() -> void:
 	t.expect(await _wait_until(func(): return net.lobby.seats.filter(func(seat): return int(seat.peer) > 0).size() == 4), "Wait for all joins before first readiness")
 	net.set_ready(true)
 	if not t.expect(await _wait_until(func(): return net.round_number == 1), "First round dealt after lobby readiness"):
-		quit(t.finish("next_round_network"))
+		await H.quit_cleanly(self, t.finish("next_round_network"))
 		return
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(table)
@@ -105,7 +105,7 @@ func _run() -> void:
 		await process_frame
 		network.reset()
 		await create_timer(1.3).timeout
-		quit(t.finish("next_round_network"))
+		await H.quit_cleanly(self, t.finish("next_round_network"))
 		return
 	t.expect(await _wait_until(func(): return net.lobby.seats.any(func(seat): return seat.disconnected)), "Lost connection reserves a seat for reconnect")
 	var disconnected_at := Time.get_ticks_msec()
@@ -120,4 +120,4 @@ func _run() -> void:
 	await process_frame
 	network.reset()
 	await create_timer(1.3).timeout
-	quit(t.finish("next_round_network"))
+	await H.quit_cleanly(self, t.finish("next_round_network"))

@@ -1014,4 +1014,4 @@ func _run() -> void:
 	await _capture_review()
 	await _test_exit()
 	AudioServer.set_bus_mute(master, was_muted)
-	quit(t.finish("settlement_animation_flow"))
+	await H.quit_cleanly(self, t.finish("settlement_animation_flow"))

@@ -1,4 +1,5 @@
 extends Node
+const H := preload("res://tests/test_harness.gd")
 
 var table
 var actor := AiPlayer.new("UI test")
@@ -90,18 +91,17 @@ func _run() -> void:
 			responses += 1
 			table._commit_response(response.action)
 	push_error("Network UI test timed out")
-	get_tree().quit(1)
+	await _finish_test(1)
 
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failed = true
 		push_error(message)
 
-func _finish_test() -> void:
-	table.queue_free()
-	# 给音频线程完成停止和释放播放实例的时间。
-	await get_tree().create_timer(0.2).timeout
-	get_tree().quit(1 if failed else 0)
+func _finish_test(code: int = 0) -> void:
+	if is_instance_valid(table): table.queue_free()
+	await get_tree().process_frame
+	await H.quit_cleanly(get_tree(), 1 if failed else code)
 
 func _on_audio_event(event: Dictionary) -> void:
 	var identity := "%s:%d" % [event.session, event.id]

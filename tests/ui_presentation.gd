@@ -120,4 +120,4 @@ func _run() -> void:
 	t.expect(Rect2(Vector2.ZERO, root.get_visible_rect().size).encloses(guide.panel.get_global_rect()), "Small-screen rule panel stays inside the viewport")
 	guide.queue_free()
 	await process_frame
-	quit(t.finish("ui_presentation"))
+	await H.quit_cleanly(self, t.finish("ui_presentation"))
