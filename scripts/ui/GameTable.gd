@@ -262,11 +262,12 @@ func _refresh_center() -> void:
 	_update_speed_buttons()
 
 func _set_ai_speed(speed_key: String) -> void:
+	var persist := _sound_settings == null or _sound_settings.persist_changes
 	if _net_mode() == "":
-		GameConfig.set_ai_speed(speed_key)
+		GameConfig.set_ai_speed(speed_key, persist)
 		if round != null: round.ai_delay_seconds = GameConfig.ai_delay_seconds()
 	elif _net_node().is_room_owner():
-		GameConfig.set_ai_speed(speed_key)
+		GameConfig.set_ai_speed(speed_key, persist)
 		_net_node().set_ai_speed(speed_key)
 	_update_speed_buttons()
 

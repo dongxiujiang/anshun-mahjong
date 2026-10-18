@@ -323,13 +323,14 @@ func _test_persistence() -> void:
 	legacy.set_value("voice", "volume", 0.9)
 	legacy.save(TEMP)
 	audio._load_settings(TEMP)
-	t.expect(is_equal_approx(float(audio.volumes.music), 0.12) and is_equal_approx(float(audio.volumes.voice), 0.8), "旧默认音量升级为轻背景、柔和语音")
+	t.expect(is_equal_approx(float(audio.volumes.music), 0.28) and is_equal_approx(float(audio.volumes.voice), 0.9), "更新保留旧版已保存音量，不用新版默认值覆盖")
 	legacy.set_value("music", "volume", 0.06)
 	legacy.set_value("voice", "volume", 0.7)
 	legacy.save(TEMP)
 	audio._load_settings(TEMP)
 	t.expect(is_equal_approx(float(audio.volumes.music), 0.06) and is_equal_approx(float(audio.volumes.voice), 0.7), "音量升级保留用户已经调整过的值")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEMP))
+	if FileAccess.file_exists(TEMP + ".bak"): DirAccess.remove_absolute(ProjectSettings.globalize_path(TEMP + ".bak"))
 
 func _test_ui() -> void:
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED

@@ -97,27 +97,66 @@ const OPENING_SORT_TILE_STAGGER := 0.012
 const OPENING_WAIT_SECONDS := OPENING_DICE_SECONDS + OPENING_DICE_HOLD_SECONDS + 12 * (OPENING_DEAL_SECONDS + 3 * OPENING_DEAL_TILE_STAGGER) + 4 * OPENING_DEAL_SECONDS + OPENING_SORT_SECONDS + 13 * OPENING_SORT_TILE_STAGGER + 0.25
 var animation_speed := "standard"
 
-func set_ai_speed(value: String) -> void:
+const SETTINGS_STORE := preload("res://scripts/core/UserSettingsStore.gd")
+const SETTINGS_PATH := "user://game_settings.cfg"
+const PREFERENCE_CHOICES := {
+	"ai_speed": AI_SPEED_DELAYS,
+	"animation_speed": ANIMATION_SPEEDS,
+	"draw_animation_speed": TILE_ANIMATION_SPEEDS,
+	"discard_animation_speed": TILE_ANIMATION_SPEEDS,
+	"settlement_speed": SETTLEMENT_SPEEDS,
+}
+var settings_path := SETTINGS_PATH
+# Dedicated servers and headless tests must not read/write a player's settings.
+# Persistence tests opt in with an isolated path before _ready().
+var persist_settings := DisplayServer.get_name() != "headless"
+
+func _ready() -> void:
+	if persist_settings: load_settings()
+
+func load_settings(path: String = "") -> void:
+	var config := SETTINGS_STORE.read_config(settings_path if path == "" else path)
+	for key in PREFERENCE_CHOICES:
+		var value = config.get_value("game", key, get(key))
+		if value is String and PREFERENCE_CHOICES[key].has(value): set(key, value)
+
+func save_settings(path: String = "") -> Error:
+	if path == "" and not persist_settings: return OK
+	var target := settings_path if path == "" else path
+	var config := SETTINGS_STORE.read_config(target)
+	for key in PREFERENCE_CHOICES: config.set_value("game", key, get(key))
+	return SETTINGS_STORE.write_config(config, target)
+
+func _save_preference(persist: bool) -> void:
+	if persist and save_settings() != OK: push_warning("无法保存游戏设置，请检查存储空间")
+
+func set_ai_speed(value: String, persist: bool = true) -> void:
 	if AI_SPEED_DELAYS.has(value):
 		ai_speed = value
+		_save_preference(persist)
 
 func ai_delay_seconds() -> float:
 	if DisplayServer.get_name() == "headless":
 		return 0.0
 	return float(AI_SPEED_DELAYS.get(ai_speed, 1.0))
 
-func set_animation_speed(value: String) -> void:
+func set_animation_speed(value: String, persist: bool = true) -> void:
 	if ANIMATION_SPEEDS.has(value):
 		animation_speed = value
+		_save_preference(persist)
 
 func animation_duration(base_seconds: float) -> float:
 	return base_seconds * float(ANIMATION_SPEEDS.get(animation_speed, 1.0))
 
-func set_draw_animation_speed(value: String) -> void:
-	if TILE_ANIMATION_SPEEDS.has(value): draw_animation_speed = value
+func set_draw_animation_speed(value: String, persist: bool = true) -> void:
+	if TILE_ANIMATION_SPEEDS.has(value):
+		draw_animation_speed = value
+		_save_preference(persist)
 
-func set_discard_animation_speed(value: String) -> void:
-	if TILE_ANIMATION_SPEEDS.has(value): discard_animation_speed = value
+func set_discard_animation_speed(value: String, persist: bool = true) -> void:
+	if TILE_ANIMATION_SPEEDS.has(value):
+		discard_animation_speed = value
+		_save_preference(persist)
 
 func animation_scale_for(action: String) -> float:
 	match action:
@@ -125,10 +164,12 @@ func animation_scale_for(action: String) -> float:
 		"discard": return float(TILE_ANIMATION_SPEEDS.get(discard_animation_speed, 1.0))
 	return float(ANIMATION_SPEEDS.get(animation_speed, 1.0))
 
-func set_settlement_speed(value: String) -> void:
-	if SETTLEMENT_SPEEDS.has(value) and settlement_speed != value:
-		settlement_speed = value
-		settlement_speed_changed.emit()
+func set_settlement_speed(value: String, persist: bool = true) -> void:
+	if not SETTLEMENT_SPEEDS.has(value): return
+	var changed := settlement_speed != value
+	settlement_speed = value
+	_save_preference(persist)
+	if changed: settlement_speed_changed.emit()
 
 func settlement_duration(base_seconds: float) -> float:
 	return base_seconds * float(SETTLEMENT_SPEEDS.get(settlement_speed, 2.0))

@@ -58,7 +58,7 @@ func _ready() -> void:
 	panel.theme = ui_theme
 	overlay.add_child(panel)
 	_label("设置" if table_mode else "声音设置", Vector2(36, 24), Vector2(608, 42), 32)
-	_label("声音大小和开关会自动保存", Vector2(36, 78), Vector2(608, 30), 20)
+	_label("设置自动保存，重启和更新后保留", Vector2(36, 78), Vector2(608, 30), 20)
 	for index in AudioManager.CHANNELS.size():
 		var channel: String = AudioManager.CHANNELS[index]
 		var y := 126.0 + index * 88.0
@@ -92,6 +92,7 @@ func _ready() -> void:
 	voice_selector.size = Vector2(172, 62)
 	for title in ["柔和女声", "轻朗男声", "清柔女声", "沉稳男声"]:
 		voice_selector.add_item(title)
+	voice_selector.item_selected.connect(func(seat: int): AudioManager.set_preview_voice_seat(seat, persist_changes))
 	panel.add_child(voice_selector)
 	preview_button = _button("试听语音", Vector2(220, 422), Vector2(172, 62), _preview_voice)
 	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 514) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
@@ -182,6 +183,7 @@ func _layout() -> void:
 	panel.position = available.position + (available.size - dimensions * panel.scale) / 2.0
 
 func _sync() -> void:
+	voice_selector.select(AudioManager.preview_voice_seat)
 	for channel in AudioManager.CHANNELS:
 		sliders[channel].set_value_no_signal(roundf(float(AudioManager.volumes[channel]) * 100.0))
 		switches[channel].set_pressed_no_signal(AudioManager.enabled[channel])
@@ -198,16 +200,16 @@ func _preview_voice() -> void:
 	AudioManager.preview_voice(voice_selector.selected)
 
 func _set_speed(speed_key: String) -> void:
-	if not table_mode: GameConfig.set_ai_speed(speed_key)
+	if not table_mode: GameConfig.set_ai_speed(speed_key, persist_changes)
 	ai_speed_selected.emit(speed_key)
 
 func _set_tile_speed(action: String, speed_key: String) -> void:
-	if action == "draw": GameConfig.set_draw_animation_speed(speed_key)
-	else: GameConfig.set_discard_animation_speed(speed_key)
+	if action == "draw": GameConfig.set_draw_animation_speed(speed_key, persist_changes)
+	else: GameConfig.set_discard_animation_speed(speed_key, persist_changes)
 	_update_speed_buttons()
 
 func _set_settlement_speed(speed_key: String) -> void:
-	GameConfig.set_settlement_speed(speed_key)
+	GameConfig.set_settlement_speed(speed_key, persist_changes)
 	_update_speed_buttons()
 
 func _update_speed_buttons() -> void:

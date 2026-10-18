@@ -8,6 +8,7 @@ signal settlement_cue_played(cue: String)
 
 const AUDIO_ROOT := "res://res/audio/"
 const SETTINGS_PATH := "user://audio_settings.cfg"
+const SETTINGS_STORE := preload("res://scripts/core/UserSettingsStore.gd")
 const CHANNELS := ["music", "voice", "effects"]
 const BUSES := {"music": "Music", "voice": "Voice", "effects": "Effects"}
 const DEFAULT_VOLUMES := {"music": 0.12, "voice": 0.8, "effects": 0.65}
@@ -18,6 +19,9 @@ const SETTLEMENT_CUES := ["flip", "chicken", "kong", "win", "other", "coins"]
 
 var volumes: Dictionary = DEFAULT_VOLUMES.duplicate()
 var enabled := {"music": true, "voice": true, "effects": true}
+var preview_voice_seat := 0
+var settings_path := SETTINGS_PATH
+var persist_settings := DisplayServer.get_name() != "headless"
 var music_player: AudioStreamPlayer
 var voice_player: AudioStreamPlayer
 var effects_player: AudioStreamPlayer
@@ -47,7 +51,7 @@ func _ready() -> void:
 	effects_player = _player("TileEffects", "Effects")
 	settlement_player = _player("SettlementEffects", "Effects")
 	voice_player.finished.connect(_on_voice_finished)
-	_load_settings()
+	if persist_settings: _load_settings()
 	_apply_settings()
 	# 提前加载，首次喊牌不在出牌时读取磁盘。
 	_stream("music/table")
@@ -275,7 +279,7 @@ func _settings_updated(channel: String, persist: bool) -> void:
 		effects_player.stop()
 		settlement_player.stop()
 	if persist:
-		save_settings()
+		if save_settings() != OK: push_warning("无法保存声音设置，请检查存储空间")
 	settings_changed.emit()
 
 func _apply_settings() -> void:
@@ -285,28 +289,34 @@ func _apply_settings() -> void:
 		AudioServer.set_bus_mute(index, not enabled[channel] or volume <= 0.0)
 		AudioServer.set_bus_volume_db(index, linear_to_db(maxf(0.0001, volume)))
 
-func save_settings(path: String = SETTINGS_PATH) -> Error:
-	var config := ConfigFile.new()
+func save_settings(path: String = "") -> Error:
+	if path == "" and not persist_settings: return OK
+	var target := settings_path if path == "" else path
+	var config := SETTINGS_STORE.read_config(target)
 	config.set_value("settings", "version", SETTINGS_VERSION)
+	config.set_value("voice", "preview_seat", preview_voice_seat)
 	for channel in CHANNELS:
 		config.set_value(channel, "volume", volumes[channel])
 		config.set_value(channel, "enabled", enabled[channel])
-	return config.save(path)
+	return SETTINGS_STORE.write_config(config, target)
 
-func _load_settings(path: String = SETTINGS_PATH) -> void:
-	var config := ConfigFile.new()
-	if config.load(path) != OK:
-		return
+func _load_settings(path: String = "") -> void:
+	var config := SETTINGS_STORE.read_config(settings_path if path == "" else path)
 	for channel in CHANNELS:
-		volumes[channel] = clampf(float(config.get_value(channel, "volume", DEFAULT_VOLUMES[channel])), 0.0, 1.0)
-		enabled[channel] = bool(config.get_value(channel, "enabled", true))
-	if int(config.get_value("settings", "version", 1)) < SETTINGS_VERSION:
-		# 老版本保存了较响的默认值，升级时一并调低，保留已手动调整的值。
-		if is_equal_approx(float(volumes.music), 0.28):
-			volumes.music = DEFAULT_VOLUMES.music
-		if is_equal_approx(float(volumes.voice), 0.9):
-			volumes.voice = DEFAULT_VOLUMES.voice
-		save_settings(path)
+		var volume = config.get_value(channel, "volume", DEFAULT_VOLUMES[channel])
+		volumes[channel] = clampf(float(volume), 0.0, 1.0) if (volume is float or volume is int) and is_finite(float(volume)) else DEFAULT_VOLUMES[channel]
+		var on = config.get_value(channel, "enabled", true)
+		enabled[channel] = on if on is bool else true
+	var seat = config.get_value("voice", "preview_seat", 0)
+	preview_voice_seat = seat if seat is int and seat >= 0 and seat < 4 else 0
+	# Loading is read-only: an older version's saved values always win over new
+	# defaults, including values that happen to equal an old default.
+
+func set_preview_voice_seat(seat: int, persist: bool = true) -> void:
+	if seat < 0 or seat >= 4: return
+	preview_voice_seat = seat
+	if persist and save_settings() != OK: push_warning("无法保存声音设置，请检查存储空间")
+	settings_changed.emit()
 
 func preview_voice(seat: int = 0) -> void:
 	if not _application_paused:
