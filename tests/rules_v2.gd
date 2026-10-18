@@ -39,7 +39,7 @@ func _test_config_and_patterns() -> void:
 	t.expect(GameConfig.SCORE_KONG_DRAW == 5.0 and GameConfig.SCORE_LAST_FOUR == 5.0, "杠开与海底均为5分")
 	var big := ["wan1","wan1","wan1","wan2","wan2","wan2","tong3","tong3","tong3","tiao4","tiao4","tiao4","wan9","wan9"]
 	var p := RuleEngine.analyze(big, [], "wan9")
-	t.expect(p.all_triplets and not p.big_triplet_single_wait, "闭手大队子并非手牌只剩一张的单吊")
+	t.expect(p.all_triplets and not p.big_triplet_single_wait, "闭手大对子并非手牌只剩一张的单吊")
 	var seven := ["tiao1","tiao1","tiao2","tiao2","tiao3","tiao3","tiao4","tiao4","tiao5","tiao5","tiao6","tiao6","tiao9","tiao9"]
 	p = RuleEngine.analyze(seven, [])
 	t.expect(p.clean_seven_pairs and RuleEngine.special_pattern_key(p) == "clean_seven_pairs", "清七对优先于小七对和清一色")
@@ -48,7 +48,7 @@ func _test_config_and_patterns() -> void:
 	t.expect(p.clean_dragon_seven_pairs and RuleEngine.special_pattern_key(p) == "clean_dragon_seven_pairs", "清龙对判定")
 	var single := ["tiao1","tiao2","tiao3","tiao4","tiao5","tiao6","tiao2","tiao3","tiao4","tiao5","tiao6","tiao7","tiao9","tiao9"]
 	t.expect(not RuleEngine.analyze(single, [], "tiao9").clean_single_wait, "有顺子不是清单吊")
-	for item in [["小七对", 24.0], ["龙七对", 44.0], ["大队子", 14.0], ["大队子单吊", 24.0], ["清一色", 24.0], ["清大对", 34.0], ["清七对", 44.0], ["清单吊", 54.0], ["清龙对", 64.0]]:
+	for item in [["小七对", 24.0], ["龙七对", 44.0], ["大对子", 14.0], ["大对子单吊", 24.0], ["清一色", 24.0], ["清大对", 34.0], ["清七对", 44.0], ["清单吊", 54.0], ["清龙对", 64.0]]:
 		var found := false
 		for raw in GameConfig.PATTERNS:
 			if raw.label == item[0] and float(raw.score) == item[1]: found = true
@@ -60,7 +60,7 @@ func _test_payments() -> void:
 	var gun := score(PLAIN, false, 2)
 	t.expect(gun.deltas == [0.0, 0.0, 0.0, 0.0], "普通点炮不收17/21基础费")
 	var big := ["wan1","wan1","wan1","wan2","wan2","wan2","tong3","tong3","tong3","tiao4","tiao4","tiao4","wan9","wan9"]
-	t.expect(score(big).deltas == [42.0, -14.0, -14.0, -14.0], "大队子自摸14")
+	t.expect(score(big).deltas == [42.0, -14.0, -14.0, -14.0], "大对子自摸14")
 	var clean := ["tiao1","tiao1","tiao2","tiao2","tiao3","tiao3","tiao4","tiao4","tiao5","tiao5","tiao6","tiao6","tiao9","tiao9"]
 	var clean_result := score(clean)
 	t.expect(clean_result.items[0].any(func(v): return v.label == "清七对" and v.amount == 44.0), "清七对44且不重复叠加")

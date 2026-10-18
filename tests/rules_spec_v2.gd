@@ -494,7 +494,7 @@ func _test_patterns() -> void:
 		begin(s[0],r,"手牌胡前13张，无固定面子，胡wan9")
 		eq(s[3],"不是仅剩一张单吊",RuleEngine.analyze(s[1],[],"wan9").get(s[2]),false,"scripts/core/RuleEngine.gd:101")
 		if s[0]=="closed_big":
-			eq([220,239],"闭手大队子仍14",WIN._pattern_info(RuleEngine.analyze(s[1],[],"wan9")).get("score"),14.0,"scripts/core/RuleEngine.gd:116")
+			eq([220,239],"闭手大对子仍14",WIN._pattern_info(RuleEngine.analyze(s[1],[],"wan9")).get("score"),14.0,"scripts/core/RuleEngine.gd:116")
 		if s[0]=="closed_clean_big":
 			eq([225,238],"闭手清大对仍34",WIN._pattern_info(RuleEngine.analyze(s[1],[],"wan9")).get("score"),34.0,"scripts/core/RuleEngine.gd:116")
 	var r := fixture()
@@ -503,8 +503,8 @@ func _test_patterns() -> void:
 	eq([238,241],"有顺子清一色应24",WIN._pattern_info(RuleEngine.analyze(FLUSH,[],"wan9")).get("score"),24.0,"scripts/core/RuleEngine.gd:116")
 	begin("removed_pattern")
 	context["unit_input"] = "CFG.PATTERNS；直接调用WinScoring._pattern_info({clean_big_single_wait:true})，这是遗留分支单测，不宣称正常牌局可达"
-	eq([240],"配置不含清大队单吊44",CFG.PATTERNS.any(func(x): return x.key=="clean_big_single_wait"),false,"scripts/autoload/GameConfig.gd:42")
-	eq([240],"分支不返回清大队单吊44",WIN._pattern_info({"clean_big_single_wait":true}).get("score",0),0,"scripts/core/RuleEngine.gd:190")
+	eq([240],"配置不含清大对单吊44",CFG.PATTERNS.any(func(x): return x.key=="clean_big_single_wait"),false,"scripts/autoload/GameConfig.gd:42")
+	eq([240],"分支不返回清大对单吊44",WIN._pattern_info({"clean_big_single_wait":true}).get("score",0),0,"scripts/core/RuleEngine.gd:190")
 	var wrong_suit := four_clean.duplicate(true)
 	wrong_suit[0].tile = "tong1"
 	eq([234],"固定面子跨花色不清",RuleEngine.analyze(["wan9","wan9"],wrong_suit,"wan9").flush,false,"scripts/core/RuleEngine.gd:88")
@@ -516,7 +516,7 @@ func _test_ready_and_win_fees() -> void:
 		r.players[0].concealed = BIG.duplicate() if special else PLAIN.duplicate()
 		r.players[0].ready = true
 		win_meta(r,0,-1,"wan2" if special else "wan9")
-		begin("ready_self_big" if special else "ready_self_plain",r,"0报听自摸; 牌型=大队子14或普通4; 其他三家各另付24")
+		begin("ready_self_big" if special else "ready_self_plain",r,"0报听自摸; 牌型=大对子14或普通4; 其他三家各另付24")
 		var result := settle(r)
 		for payer in [1,2,3]:
 			eq([158,242,287],"座%d另付报听24" % payer,fee(result,payer,0,"报听胡牌"),24.0,"scripts/core/WinScoring.gd:9")
@@ -561,7 +561,7 @@ func _test_ready_and_win_fees() -> void:
 		if called: r.players[1].concealed = waiting()
 		win_meta(r,0,1,"wan2")
 		r.last_discard = {"seat":1,"tile":"wan2","after_kong":true,"kong_kind":RoundState.KongKind.CONCEALED}
-		begin("kong_ron_called_"+str(called),r,"1暗杠后首打wan2 → 0大队子胡; 1叫牌="+str(called))
+		begin("kong_ron_called_"+str(called),r,"1暗杠后首打wan2 → 0大对子胡; 1叫牌="+str(called))
 		var result := settle(r)
 		eq([249,277],"杠放炮基础17或21",fee(result,1,0,"点炮基础分（叫牌）")+fee(result,1,0,"点炮基础分（未叫牌）"),17.0 if called else 21.0,"scripts/core/WinScoring.gd:9")
 		eq([277],"杠放炮加牌型14",result.pairwise[0][1],31.0 if called else 35.0,"scripts/core/WinScoring.gd:9")
@@ -572,7 +572,7 @@ func _test_ready_and_win_fees() -> void:
 	ron.players[1].concealed = waiting()
 	ron.players[1].discards = ["tong8"]
 	win_meta(ron,0,1,"wan2")
-	begin("ordinary_ron",ron,"1打wan2 → 0大队子胡; 两人普通鸡各2; 无翻鸡")
+	begin("ordinary_ron",ron,"1打wan2 → 0大对子胡; 两人普通鸡各2; 无翻鸡")
 	var result := settle(ron)
 	eq([275,276],"普通放炮差额14加2减2",result.pairwise[0][1],14.0,"scripts/core/WinScoring.gd:9; scripts/core/PaymentLedger.gd:60")
 	var ready_diff := fixture()
@@ -681,9 +681,12 @@ func _test_ledger_and_draws() -> void:
 	multi.players[1].concealed = ["wan1","wan1","wan2","wan2","wan4","wan4","wan5","wan5","wan7","wan7","wan8","wan8","wan9","wan9"]
 	win_meta(multi,0,2)
 	multi.round_meta.winners = [0,1]
-	begin("winner_pair_difference",multi,"2打wan9; 0小七对24、1清七对44同时胡；无鸡杠报听，1与0应差20")
+	begin("winner_pair_difference",multi,"2打wan9; 0小七对24、1清七对44同时胡；放炮者分别付牌型分，赢家之间不互付")
 	result = settle(multi)
-	eq([258,266,267,268],"赢家之间也按总分差额20",result.pairwise[1][0],20.0,"scripts/core/WinScoring.gd:9")
+	eq([258,266,267,268,280],"赢家之间不再互付牌型差额",result.pairwise[1][0],0.0,"scripts/core/WinScoring.gd:9")
+	eq([275,280],"放炮者付0小七对24",fee(result,2,0,"小七对"),24.0,"scripts/core/WinScoring.gd:81")
+	eq([275,280],"放炮者付1清七对44",fee(result,2,1,"清七对"),44.0,"scripts/core/WinScoring.gd:81")
+	eq([275,280],"放炮者多赢家合计68",result.deltas[2],-68.0,"scripts/core/WinScoring.gd:81")
 	for all_called in [true,false]:
 		var draw := fixture()
 		for seat in (range(4) if all_called else [0,1]): draw.players[seat].concealed = waiting()
@@ -879,7 +882,7 @@ func _test_additional_boundaries() -> void:
 	rob.players[0].discards = ["tiao1"]
 	win_meta(rob,0,1,"wan2")
 	rob.round_meta.robbed_kong = true
-	begin("rob_pattern_chicken",rob,"被抢者1；0大队子14且普通tiao1鸡2；1→0应12+14+2=28")
+	begin("rob_pattern_chicken",rob,"被抢者1；0大对子14且普通tiao1鸡2；1→0应12+14+2=28")
 	var result := settle(rob)
 	eq([134,278],"抢杠另加牌型鸡分28",result.pairwise[0][1],28.0,"scripts/core/WinScoring.gd:9")
 	for target in [2,3]: eq([269,278],"无关座%d不付抢杠12" % target,fee(result,target,0,"抢杠胡基础分"),0.0,"scripts/core/WinScoring.gd:9")

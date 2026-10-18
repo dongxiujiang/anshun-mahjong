@@ -54,7 +54,7 @@ static func _is_seven_pairs(concealed: Array) -> bool:
 		if counts[tile] % 2 != 0: return false
 	return true
 
-## 大队子(对对胡)：固定面子全为刻/杠，且 concealed 仅含刻+1将（无顺）
+## 大对子(对对胡)：固定面子全为刻/杠，且 concealed 仅含刻+1将（无顺）
 static func _all_triplets_ok(arr: Array, melds_left: int, idx: int) -> bool:
 	if melds_left == 0:
 		for v in arr:

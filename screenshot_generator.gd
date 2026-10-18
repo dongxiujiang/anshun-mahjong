@@ -127,24 +127,24 @@ func _generate_all_test_cases() -> void:
 		"description": "龙七对点炮（四张筒2），放炮者支付44分"
 	})
 	
-	# 3. 大队子（对对胡）
+	# 3. 大对子（对对胡）
 	test_cases.append({
-		"name": "05_大队子_自摸",
+		"name": "05_大对子_自摸",
 		"concealed": ["wan1", "wan1", "wan2", "wan2", "wan2", "wan3", "wan3", "wan3", "wan4", "wan4", "wan4", "wan5", "wan5", "wan5"],
 		"melds": [],
 		"win_tile": "wan1",
 		"self_draw": true,
-		"description": "大队子自摸，赢家每家收14分"
+		"description": "大对子自摸，赢家每家收14分"
 	})
 	
 	test_cases.append({
-		"name": "06_大队子_点炮",
+		"name": "06_大对子_点炮",
 		"concealed": ["tiao2", "tiao2", "tiao3", "tiao3", "tiao3", "tiao4", "tiao4", "tiao4", "tiao5", "tiao5", "tiao5", "tiao6", "tiao6", "tiao6"],
 		"melds": [],
 		"win_tile": "tiao2",
 		"self_draw": false,
 		"discard_seat": 3,
-		"description": "大队子点炮，放炮者支付14分"
+		"description": "大对子点炮，放炮者支付14分"
 	})
 	
 	# 继续添加剩余的31个测试用例...

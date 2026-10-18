@@ -160,8 +160,8 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 					total += CFG.SCORE_RON_CALLED if called > 0.5 else CFG.SCORE_RON_UNCALLED
 		# §十二：报听费只由点炮者支付，点炮者是否报听不产生额外费用。
 		if not self_draw:
-			# 牌型费：每家逐家支付
-			if points > 0.0:
+			# 牌型费：只由放炮者支付；其他两家不付牌型分。
+			if payer == source and points > 0.0:
 				total += points
 			# 报听费：只有点炮者支付
 			if payer == source:

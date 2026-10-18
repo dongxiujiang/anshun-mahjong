@@ -156,15 +156,10 @@ static func expected(round: RoundState) -> Dictionary:
 					# 报听胡牌：点炮时只有点炮者支付
 					if source in range(4) and source != target_seat:
 						_credit(matrix, source, target_seat, 24.0, burned)
-				if pattern_fee > 0.0:
-					for payer in 4:
-						if payer != target_seat and not winners.has(payer):
-							_credit(matrix, payer, target_seat, pattern_fee, burned)
-				for other in winners:
-					if int(other) == target_seat: continue
-					var other_player: PlayerState = round.players[int(other)]
-					var other_fee := 0.0 if int(other) == burned else _pattern_fee(RuleEngine.hand_pattern(other_player.concealed, other_player.melds, str(meta.get("win_tile", ""))))
-					_credit(matrix, int(other), target_seat, pattern_fee - other_fee, burned)
+				# 放炮牌型分只由放炮者支付；一炮多响时每位赢家
+				# 分别向放炮者收取自己的牌型分，赢家之间不互付差额。
+				if pattern_fee > 0.0 and source in range(4) and source != target_seat:
+					_credit(matrix, source, target_seat, pattern_fee, burned)
 			if self_draw and int(meta.get("kong_draw_seat", -1)) == target_seat:
 				for payer in 4:
 					if payer != target_seat:

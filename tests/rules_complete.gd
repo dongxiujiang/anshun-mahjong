@@ -62,7 +62,7 @@ func _test_scoring() -> void:
 	big.round_meta.winner = 0
 	big.round_meta.winners = [0]
 	big.round_meta.self_draw = true
-	var big_result := scored(big); expect(big_result.deltas == [42.0, -14.0, -14.0, -14.0], "大队子自摸每家付14")
+	var big_result := scored(big); expect(big_result.deltas == [42.0, -14.0, -14.0, -14.0], "大对子自摸每家付14")
 	var clean := fixture()
 	clean.players[0].concealed = ["tiao1", "tiao1", "tiao2", "tiao2", "tiao3", "tiao3", "tiao4", "tiao4", "tiao5", "tiao5", "tiao6", "tiao6", "tiao9", "tiao9"]
 	clean.round_meta.winner = 0

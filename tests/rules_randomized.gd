@@ -534,7 +534,7 @@ func _pattern_matches(kind: String, pattern: Dictionary) -> bool:
 	return false
 
 func _expected_label(kind: String) -> String:
-	return {"big": "大队子", "big_single": "大队子单吊", "seven": "小七对", "dragon": "龙七对", "flush": "清一色", "clean_big": "清大对", "clean_single_kong": "清单吊", "clean_seven": "清七对", "clean_dragon": "清龙对", "clean_single": "清单吊"}.get(kind, "")
+	return {"big": "大对子", "big_single": "大对子单吊", "seven": "小七对", "dragon": "龙七对", "flush": "清一色", "clean_big": "清大对", "clean_single_kong": "清单吊", "clean_seven": "清七对", "clean_dragon": "清龙对", "clean_single": "清单吊"}.get(kind, "")
 
 func _expected_score(kind: String) -> int:
 	return {"big": 14, "big_single": 24, "seven": 24, "dragon": 44, "flush": 24, "clean_big": 34, "clean_single_kong": 54, "clean_seven": 44, "clean_dragon": 64, "clean_single": 54}.get(kind, 0)

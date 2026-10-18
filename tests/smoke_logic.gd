@@ -27,12 +27,12 @@ func _run() -> void:
 	t.expect(p2.seven_pairs, "小七对番型未识别")
 	print("[ok] 小七对识别")
 
-	# 3) 大队子（全刻）
+	# 3) 大对子（全刻）
 	var dt := ["wan1","wan1","wan1","wan2","wan2","wan2","wan3","wan3","wan3","wan4","wan4","wan4","wan5","wan5"]
-	t.expect(_win(dt, melds), "大队子应胡")
+	t.expect(_win(dt, melds), "大对子应胡")
 	var p3 := RuleEngine.analyze(dt, melds)
-	t.expect(p3.all_triplets, "大队子番型未识别")
-	print("[ok] 大队子识别")
+	t.expect(p3.all_triplets, "大对子番型未识别")
+	print("[ok] 大对子识别")
 
 	# 4) 清一色（平胡单门）
 	var flush := ["wan1","wan2","wan3","wan1","wan2","wan3","wan4","wan5","wan6","wan7","wan8","wan9","wan5","wan5"]

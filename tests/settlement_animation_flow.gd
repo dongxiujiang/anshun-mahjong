@@ -721,7 +721,7 @@ func _test_settlement_identities(render: bool = true) -> void:
 		["ready_self", "胡牌 · 报听自摸 +24", "自摸基础分 +4", 1],
 		["ready_ron", "胡牌 · 报听胡对家 +24", "", 1], ["ron", "胡牌 · 下家放炮", "", 1],
 		["rob_kong", "胡牌 · 抢杠下家 +12", "", 1], ["dry", "胡牌 · 自摸", "干扣 +14", 1],
-		["big_dry", "胡牌 · 自摸", "大干扣 +24", 1], ["triplets", "胡牌 · 自摸", "大队子 +14", 1],
+		["big_dry", "胡牌 · 自摸", "大干扣 +24", 1], ["triplets", "胡牌 · 自摸", "大对子 +14", 1],
 		["flush", "胡牌 · 自摸", "清一色 +24", 1],
 		["ready_flush", "胡牌 · 报听自摸 +24", "清一色 +24", 1],
 		["ready_rob_kong", "胡牌 · 抢杠下家 +12", "报听 +24", 1],
@@ -731,7 +731,7 @@ func _test_settlement_identities(render: bool = true) -> void:
 		["ready_rob_kong", "胡牌 · 抢杠下家 +24", "报听 +48", 2],
 		["ready_flush", "胡牌 · 报听自摸 +48", "清一色 +48", 2],
 		["dry", "胡牌 · 自摸", "干扣 +28", 2], ["big_dry", "胡牌 · 自摸", "大干扣 +48", 2],
-		["triplets", "胡牌 · 自摸", "大队子 +28", 2]]:
+		["triplets", "胡牌 · 自摸", "大对子 +28", 2]]:
 		var r := _fixture(sample[0], sample[3])
 		var before := _snapshot(r)
 		var identities: Array = PLAN.build(r.last_result, r.round_meta, r.players).identities
@@ -808,7 +808,7 @@ func _expect_identity_items(entries: Array, meta: Dictionary, title: String, det
 func _test_identity_item_amounts() -> void:
 	# Cover every label with both missing and nonstandard ledger amounts. The
 	# display must never fetch its price from the rule table or apply meta's multiplier.
-	for pattern in ["大队子", "大队子单吊", "小七对", "龙七对", "清一色", "清大对", "清七对", "清单吊", "清龙对", "干扣", "大干扣"]:
+	for pattern in ["大对子", "大对子单吊", "小七对", "龙七对", "清一色", "清大对", "清七对", "清单吊", "清龙对", "干扣", "大干扣"]:
 		for amount in [null, 37.5]:
 			var entries := [{"kind": "bonus" if pattern in ["干扣", "大干扣"] else "pattern", "label": pattern},
 				{"kind": "bonus", "label": "杠开"}, {"kind": "bonus", "label": "海底捞"}]

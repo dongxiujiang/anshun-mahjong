@@ -70,7 +70,7 @@ func _run() -> void:
 		for x in w.melds: wm.append("[%s]" % x.tile)
 		print("胡牌手：", wm)
 		var chk: Dictionary = RuleEngine.analyze(w.concealed, w.melds)
-		print("自校验：合法胡牌=%s  普通=%s 七对=%s 大队子=%s 清一色=%s" % [chk.win, chk.normal, chk.seven_pairs, chk.all_triplets, chk.flush])
+		print("自校验：合法胡牌=%s  普通=%s 七对=%s 大对子=%s 清一色=%s" % [chk.win, chk.normal, chk.seven_pairs, chk.all_triplets, chk.flush])
 		print("翻牌：", m.get("flip_tile", ""), " 冲锋鸡归属：", m.get("charge_chickens", {}))
 	for line in r.last_result.get("lines", []):
 		print("  · ", line)

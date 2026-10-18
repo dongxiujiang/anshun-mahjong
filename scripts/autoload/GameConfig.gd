@@ -26,14 +26,14 @@ const SCORE_ROB_KONG := 12.0      # 抢加杠胡由被抢杠者单独支付的�
 const SCORE_KONG_DRAW := 5.0      # 杠开（杠上开花）+5。
 const SCORE_DRAW_KONG := 4.0      # 无人胡牌查叫：暗/加杠由未叫者各付，明杠由未叫的放杠者付。
 const SCORE_LAST_FOUR := 5.0      # 最后四张任意牌自摸（海底）+5。
-const SCORE_BIG_SET := 14.0       # 大队子（对对胡）自摸每家14
-const SCORE_BIG_SET_DISCARD := 14.0 # 大队子放炮者支付14。
+const SCORE_BIG_SET := 14.0       # 大对子（对对胡）自摸每家14
+const SCORE_BIG_SET_DISCARD := 14.0 # 大对子放炮者支付14。
 const SCORE_SEVEN_PAIRS := 24.0   # 小七对 自摸+24 / 胡别人者给24
 const SCORE_DRAGON_SEVEN_PAIRS := 44.0 # 七对中含四张同牌，替代小七对分。
 const SCORE_FLUSH := 24.0         # 清一色 自摸+24 / 胡别人者给24
 const SCORE_CLEAN_BIG_TRIPLETS := 34.0 # 清大对（清一色大对子）
 const SCORE_CLEAN_SINGLE_WAIT := 54.0 # 清单吊
-const SCORE_BIG_SET_SINGLE_WAIT := 24.0 # 大队子单吊。
+const SCORE_BIG_SET_SINGLE_WAIT := 24.0 # 大对子单吊。
 const SCORE_CLEAN_SEVEN_PAIRS := 44.0 # 清七对。
 const SCORE_CLEAN_DRAGON_SEVEN_PAIRS := 64.0 # 清龙对。
 const SCORE_READY := 24.0         # 报听单独加24：自摸三家付，非自摸只由被胡者付。
@@ -43,8 +43,8 @@ const SCORE_READY := 24.0         # 报听单独加24：自摸三家付，非自
 const PATTERNS := [
 	{"key": "seven_pairs", "label": "小七对", "score": SCORE_SEVEN_PAIRS},
 	{"key": "dragon_seven_pairs", "label": "龙七对", "score": SCORE_DRAGON_SEVEN_PAIRS},
-	{"key": "all_triplets", "label": "大队子", "score": SCORE_BIG_SET},
-	{"key": "big_triplet_single_wait", "label": "大队子单吊", "score": SCORE_BIG_SET_SINGLE_WAIT},
+	{"key": "all_triplets", "label": "大对子", "score": SCORE_BIG_SET},
+	{"key": "big_triplet_single_wait", "label": "大对子单吊", "score": SCORE_BIG_SET_SINGLE_WAIT},
 	{"key": "flush", "label": "清一色", "score": SCORE_FLUSH},
 	{"key": "clean_big_triplets", "label": "清大对", "score": SCORE_CLEAN_BIG_TRIPLETS},
 	{"key": "clean_seven_pairs", "label": "清七对", "score": SCORE_CLEAN_SEVEN_PAIRS},

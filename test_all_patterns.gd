@@ -68,31 +68,31 @@ func _generate_all_test_cases() -> void:
 	})
 	
 	test_cases.append({
-		"name": "05_大队子_自摸",
+		"name": "05_大对子_自摸",
 		"concealed": ["wan1", "wan1", "wan2", "wan2", "wan2", "wan3", "wan3", "wan3", "wan4", "wan4", "wan4", "wan5", "wan5", "wan5"],
 		"melds": [],
 		"win_tile": "wan1",
 		"self_draw": true,
-		"description": "大队子自摸，赢家每家收14分"
+		"description": "大对子自摸，赢家每家收14分"
 	})
 	
 	test_cases.append({
-		"name": "06_大队子_点炮",
+		"name": "06_大对子_点炮",
 		"concealed": ["tiao2", "tiao2", "tiao3", "tiao3", "tiao3", "tiao4", "tiao4", "tiao4", "tiao5", "tiao5", "tiao5", "tiao6", "tiao6", "tiao6"],
 		"melds": [],
 		"win_tile": "tiao2",
 		"self_draw": false,
 		"discard_seat": 3,
-		"description": "大队子点炮，放炮者支付14分"
+		"description": "大对子点炮，放炮者支付14分"
 	})
 	
 	test_cases.append({
-		"name": "07_大队子单吊_自摸",
+		"name": "07_大对子单吊_自摸",
 		"concealed": ["wan1", "wan1", "wan2", "wan2", "wan2", "wan3", "wan3", "wan3", "wan4", "wan4", "wan4", "wan5", "wan5", "wan5"],
 		"melds": [],
 		"win_tile": "wan1",
 		"self_draw": true,
-		"description": "大队子单吊自摸，赢家每家收24分"
+		"description": "大对子单吊自摸，赢家每家收24分"
 	})
 	
 	test_cases.append({
@@ -134,12 +134,12 @@ func _generate_all_test_cases() -> void:
 	})
 	
 	test_cases.append({
-		"name": "12_清大队单吊_自摸",
+		"name": "12_清大对单吊_自摸",
 		"concealed": ["tiao1", "tiao1", "tiao2", "tiao2", "tiao2", "tiao3", "tiao3", "tiao3", "tiao4", "tiao4", "tiao4", "tiao5", "tiao5", "tiao5"],
 		"melds": [],
 		"win_tile": "tiao1",
 		"self_draw": true,
-		"description": "清大队单吊（条）自摸，赢家每家收44分"
+		"description": "清大对单吊（条）自摸，赢家每家收44分"
 	})
 	
 	test_cases.append({
@@ -339,13 +339,13 @@ func _generate_all_test_cases() -> void:
 	})
 	
 	test_cases.append({
-		"name": "32_清大队单吊_杠开",
+		"name": "32_清大对单吊_杠开",
 		"concealed": ["wan1", "wan1", "wan2", "wan2", "wan2", "wan3", "wan3", "wan3", "wan4", "wan4", "wan4", "wan5", "wan5", "wan5"],
 		"melds": [],
 		"win_tile": "wan1",
 		"self_draw": true,
 		"kong_draw": true,
-		"description": "清大队单吊+杠开，每家收44+5=49分"
+		"description": "清大对单吊+杠开，每家收44+5=49分"
 	})
 	
 	test_cases.append({

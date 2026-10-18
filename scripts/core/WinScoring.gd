@@ -66,12 +66,8 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 			items[winner].append(_item("win", base_label, base_amount, "由杠后放炮/被抢杠者单独支付"))
 			lines.append("%s：%s付 %.0f" % [base_label, _nm(source, int(meta.get("dealer_seat", 0))), base_amount])
 
-		# 报听胡：点炮时只有点炮者支付；牌型分按逐家结算。
-		# 鸡分差额由 ScoringEngine 统一比较。
-		var fee_payers: Array = []
-		for payer in 4:
-			if payer != winner and not winner_seats.has(payer):
-				fee_payers.append(payer)
+		# 报听胡：点炮时只有点炮者支付；牌型分也只由放炮者支付。
+		# 其他两家只按幺鸡八筒、杠分、翻鸡分参与两两比较。
 		if player.ready:
 			# 报听胡牌：点炮时只有点炮者支付
 			if source in range(4) and source != winner:
@@ -79,20 +75,16 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 				items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "点炮者支付"))
 				lines.append("报听胡牌：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), CFG.SCORE_READY])
 		if pattern_amount > 0.0:
-			for payer in fee_payers:
-				PAY.transfer(deltas, transfers, payer, winner, pattern_amount, pattern_label)
-			# §十八：多赢家之间也比较牌型分；只由低分赢家付正差额一次。
-			for other in winner_seats:
-				if int(other) == winner:
-					continue
-				var other_player: PlayerState = round.players[int(other)]
-				var other_info := _pattern_info(RuleEngine.hand_pattern(other_player.concealed, other_player.melds, str(meta.get("win_tile", ""))))
-				var other_amount := float(other_info.get("score", 0.0))
-				if int(other) == int(meta.get("burn_chicken_seat", -1)):
-					other_amount = 0.0
-				PAY.transfer(deltas, transfers, int(other), winner, pattern_amount - other_amount, "牌型差额")
-			items[winner].append(_item("pattern", pattern_label, pattern_amount, "按两两差额结算"))
-			lines.append("%s：牌型分 %.0f，按两两差额结算" % [pattern_label, pattern_amount])
+			# 放炮牌型分只由放炮者支付；一炮多响时，放炮者向每位赢家
+			# 分别支付各自的牌型分。其他两家不付牌型分。
+			if source in range(4) and source != winner:
+				PAY.transfer(deltas, transfers, source, winner, pattern_amount, pattern_label)
+				items[winner].append(_item("pattern", pattern_label, pattern_amount, "放炮者支付"))
+				lines.append("%s：%s付 %.0f" % [
+					pattern_label,
+					_nm(source, int(meta.get("dealer_seat", 0))),
+					pattern_amount
+				])
 	if self_draw and int(meta.get("kong_draw_seat", -1)) == winner:
 		_apply_extra(round, winner, CFG.SCORE_KONG_DRAW, "杠开", chicken_points, winner_seats, deltas, transfers, items, lines)
 	if self_draw and int(meta.get("last_four_self_draw_seat", -1)) == winner:
