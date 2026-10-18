@@ -159,7 +159,7 @@ func _run() -> void:
 	await _play("08_win", {"type": "win", "seat": 0, "tile": "tong5", "self_draw": true})
 	# Fast/slow settings really change Tween duration, independent of AI clocks.
 	for speed in ["instant", "standard"]:
-		root.get_node("GameConfig").animation_speed = speed
+		root.get_node("GameConfig").draw_animation_speed = speed
 		var layer = table._animation_layer
 		# Capturing a GPU frame can stall the window; measure fresh frames after it.
 		await process_frame

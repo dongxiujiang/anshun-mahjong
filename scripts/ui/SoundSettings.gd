@@ -5,7 +5,6 @@ const MOTION := preload("res://scripts/ui/UiMotion.gd")
 signal exit_requested
 signal exit_confirmed
 signal ai_speed_selected(speed_key: String)
-signal animation_speed_selected(speed_key: String)
 signal replay_export_requested
 ## 主菜单和牌桌共用的声音面板，独立于旋转、缩放的牌桌。
 
@@ -21,7 +20,8 @@ var preview_button: Button
 var voice_selector: OptionButton
 var persist_changes := true
 var speed_buttons := {}
-var animation_speed_buttons := {}
+var draw_speed_buttons := {}
+var discard_speed_buttons := {}
 var settlement_speed_buttons := {}
 var table_mode := false
 var exit_confirmation: Panel
@@ -97,22 +97,23 @@ func _ready() -> void:
 	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 514) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
 	continue_button.name = "ContinueGameButton"
 	if table_mode:
-		_label("人机速度", Vector2(716, 24), Vector2(288, 48), 28)
+		_label("人机出牌等待", Vector2(716, 24), Vector2(368, 38), 24)
 		for item in [["快", "fast"], ["中", "medium"], ["慢", "slow"]]:
 			var speed_key: String = item[1]
-			var speed_button := _button(item[0], Vector2(716 + speed_buttons.size() * 126, 82), Vector2(116, 72), func(): _set_speed(speed_key))
+			var speed_button := _button(item[0], Vector2(716 + speed_buttons.size() * 126, 70), Vector2(116, 64), func(): _set_speed(speed_key))
 			speed_buttons[speed_key] = speed_button
-		_label("出牌 / 摸牌动画", Vector2(716, 182), Vector2(368, 38), 24)
-		for item in [["瞬间", "instant"], ["快", "fast"], ["正常", "standard"]]:
-			var animation_key: String = item[1]
-			var animation_button := _button(item[0], Vector2(716 + animation_speed_buttons.size() * 126, 234), Vector2(116, 72), func(): _set_animation_speed(animation_key))
-			animation_speed_buttons[animation_key] = animation_button
-		_label("结算速度", Vector2(716, 334), Vector2(368, 38), 24)
+		_label("摸牌动画", Vector2(716, 142), Vector2(368, 38), 24)
+		_label("出牌动画", Vector2(716, 254), Vector2(368, 38), 24)
+		for item in [["瞬间", "instant"], ["快", "fast"], ["正常", "standard"], ["慢", "slow"]]:
+			var key: String = item[1]
+			draw_speed_buttons[key] = _button(item[0], Vector2(716 + draw_speed_buttons.size() * 94, 184), Vector2(86, 64), func(): _set_tile_speed("draw", key))
+			discard_speed_buttons[key] = _button(item[0], Vector2(716 + discard_speed_buttons.size() * 94, 296), Vector2(86, 64), func(): _set_tile_speed("discard", key))
+		_label("结算速度", Vector2(716, 366), Vector2(368, 38), 24)
 		for item in [["即时", "instant"], ["正常", "standard"], ["慢速", "slow"], ["细看", "detail"]]:
 			var settlement_key: String = item[1]
-			var speed_button := _button(item[0], Vector2(716 + settlement_speed_buttons.size() * 94, 386), Vector2(86, 72), func(): _set_settlement_speed(settlement_key))
+			var speed_button := _button(item[0], Vector2(716 + settlement_speed_buttons.size() * 94, 408), Vector2(86, 64), func(): _set_settlement_speed(settlement_key))
 			settlement_speed_buttons[settlement_key] = speed_button
-		_label("仅调整结算，播放中也可更改", Vector2(716, 470), Vector2(368, 30), 20)
+		_label("四项速度独立调整", Vector2(716, 478), Vector2(368, 30), 20)
 		exit_room_button = _button("退出房间", Vector2(716, 514), Vector2(368, 80), func(): exit_requested.emit())
 		exit_room_button.name = "ExitRoomButton"
 		replay_export_button = _button("保存本局记录", Vector2(36, 514), Vector2(296, 80), func(): replay_export_requested.emit())
@@ -200,9 +201,9 @@ func _set_speed(speed_key: String) -> void:
 	if not table_mode: GameConfig.set_ai_speed(speed_key)
 	ai_speed_selected.emit(speed_key)
 
-func _set_animation_speed(speed_key: String) -> void:
-	GameConfig.set_animation_speed(speed_key)
-	animation_speed_selected.emit(speed_key)
+func _set_tile_speed(action: String, speed_key: String) -> void:
+	if action == "draw": GameConfig.set_draw_animation_speed(speed_key)
+	else: GameConfig.set_discard_animation_speed(speed_key)
 	_update_speed_buttons()
 
 func _set_settlement_speed(speed_key: String) -> void:
@@ -216,8 +217,10 @@ func _update_speed_buttons() -> void:
 		selected = str(network.net_node.lobby.get("ai_speed", "fast"))
 	for speed_key in speed_buttons:
 		speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == selected else Color.WHITE
-	for speed_key in animation_speed_buttons:
-		animation_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.animation_speed else Color.WHITE
+	for speed_key in draw_speed_buttons:
+		draw_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.draw_animation_speed else Color.WHITE
+	for speed_key in discard_speed_buttons:
+		discard_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.discard_animation_speed else Color.WHITE
 	for speed_key in settlement_speed_buttons:
 		settlement_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.settlement_speed else Color.WHITE
 

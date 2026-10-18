@@ -130,6 +130,7 @@ func new_game() -> void:
 		controllers.append(null if seat == human_seat else AiPlayer.new("AI%d" % seat))
 	round.controllers = controllers
 	round.ai_delay_seconds = GameConfig.ai_delay_seconds()
+	round.ai_response_delay_seconds = GameConfig.AI_RESPONSE_SECONDS if DisplayServer.get_name() != "headless" else 0.0
 	round.opening_delay_seconds = GameConfig.animation_duration(GameConfig.OPENING_WAIT_SECONDS) if DisplayServer.get_name() != "headless" else 0.0
 	round.randomize_seed()
 	# 先带入累计分数，再让新庄家开始行动（AI 庄家也可能马上结算）。

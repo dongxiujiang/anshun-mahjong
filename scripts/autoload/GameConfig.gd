@@ -71,8 +71,12 @@ var online_mode := false
 
 # AI 思考速度：快 0.8 秒 / 中 1.3 秒 / 慢 2 秒。
 const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
+const AI_RESPONSE_SECONDS := 0.18 # Fixed claim beat, independent of AI turn speed.
 var ai_speed := "fast"
 const ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0}
+const TILE_ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0, "slow": 1.8}
+var draw_animation_speed := "standard"
+var discard_animation_speed := "standard"
 # 结算阅读节奏独立于摸牌、出牌等动画；慢速默认留足查看计分的时间。
 signal settlement_speed_changed
 const SETTLEMENT_SPEEDS := {"instant": 0.0, "standard": 1.0, "slow": 2.0, "detail": 3.5}
@@ -108,6 +112,18 @@ func set_animation_speed(value: String) -> void:
 
 func animation_duration(base_seconds: float) -> float:
 	return base_seconds * float(ANIMATION_SPEEDS.get(animation_speed, 1.0))
+
+func set_draw_animation_speed(value: String) -> void:
+	if TILE_ANIMATION_SPEEDS.has(value): draw_animation_speed = value
+
+func set_discard_animation_speed(value: String) -> void:
+	if TILE_ANIMATION_SPEEDS.has(value): discard_animation_speed = value
+
+func animation_scale_for(action: String) -> float:
+	match action:
+		"draw": return float(TILE_ANIMATION_SPEEDS.get(draw_animation_speed, 1.0))
+		"discard": return float(TILE_ANIMATION_SPEEDS.get(discard_animation_speed, 1.0))
+	return float(ANIMATION_SPEEDS.get(animation_speed, 1.0))
 
 func set_settlement_speed(value: String) -> void:
 	if SETTLEMENT_SPEEDS.has(value) and settlement_speed != value:

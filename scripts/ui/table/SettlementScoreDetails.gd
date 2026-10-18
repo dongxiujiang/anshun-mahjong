@@ -170,7 +170,8 @@ static func _assign_item(item: Dictionary, pool: Array, groups: Dictionary, gold
 		for source in matches:
 			source.used = true
 			if source.key == "": continue
-			_part(groups[source.key], _stage(tile, gold), label, unit, 1, unit)
+			var caption := "翻鸡" if kind == "flip" else ("冲锋" if kind == "charge" else "") + _tile_name(tile)
+			_part(groups[source.key], _stage(tile, gold), caption, unit, 1, unit)
 
 static func _kong_label(meld: Dictionary) -> String:
 	if str(meld.get("kind", "")) == "add_kong": return "加杠"
@@ -222,8 +223,8 @@ static func _kongs(items: Array, transfers: Array, snapshot, groups: Dictionary,
 		var label := _kong_label(meld)
 		var base_rows := _kong_rows(item, items, transfers, seat, ("查叫" if is_draw else "") + label, "base_amount", "payers", is_draw, called)
 		for row in base_rows:
-			_part(group, str(group._base_stage), label, float(row.amount), 1, float(row.amount))
-			_note(group, _flow(row, seat) + ("（杠分）" if float(item.get("chicken_amount", 0.0)) > 0.0 or float(item.get("flip_amount", 0.0)) > 0.0 else ""))
+			var caption := label + (_direction(int(row.from), seat) if label == "明杠" else "")
+			_part(group, str(group._base_stage), caption, float(row.amount), 1, float(row.amount))
 		if base_rows.size() != item.get("payers", []).size():
 			_combined(group, _rows(transfers, seat, ("查叫" if is_draw else "") + label, true))
 			if base_rows.is_empty(): _note(group, "本组暂无独立杠分明细。")
@@ -236,7 +237,7 @@ static func _kongs(items: Array, transfers: Array, snapshot, groups: Dictionary,
 				_note(group, _flow(row, seat) + "（杠中鸡）")
 		else:
 			if chicken > 0.0 and is_finite(chicken):
-				_part(group, _stage(tile, gold), "金鸡" if tile in gold else "普通鸡", chicken, group.tiles.size(), chicken / group.tiles.size())
+				_part(group, _stage(tile, gold), _tile_name(tile), chicken, group.tiles.size(), chicken / group.tiles.size())
 			if flip > 0.0 and is_finite(flip):
 				_part(group, "flip", "翻鸡", flip, group.tiles.size(), flip / group.tiles.size())
 
@@ -294,13 +295,6 @@ static func _note(group: Dictionary, message: String) -> void:
 
 static func _finish_group(group: Dictionary) -> void:
 	var lines: Array[String] = []
-	var heading := str(group._title)
-	if heading == "": heading = str({"hand": "手牌", "draw": "摸牌／胡牌张", "chicken": "出牌鸡", "meld": "碰杠"}[group.area])
-	var counts: Dictionary = {}
-	for tile in group.tiles: counts[tile] = int(counts.get(tile, 0)) + 1
-	var tile_text: Array[String] = []
-	for tile in counts: tile_text.append("%s%d张" % [_tile_name(str(tile)), int(counts[tile])])
-	lines.append(heading + " · " + "、".join(tile_text))
 	for stage in ["flip", "chicken", "kong", "other"]:
 		var parts: Array = group._parts.get(stage, [])
 		if parts.is_empty(): continue
@@ -308,24 +302,15 @@ static func _finish_group(group: Dictionary) -> void:
 		var terms: Array[String] = []
 		for part in parts:
 			total += float(part.amount)
-			terms.append(_number(float(part.amount)))
-		var title := str(parts[0].label)
-		if parts.size() > 1:
-			title = "金鸡" if parts.all(func(part): return str(part.label).contains("金鸡")) else ("翻鸡" if stage == "flip" else ("杠分" if stage == "kong" else "鸡分"))
-		var expression := ("+" if total > 0.0 else "") + _number(total)
-		if parts.size() > 1: expression = "＋".join(terms) + "＝" + _number(total)
-		elif stage in ["kong", "other"] and int(parts[0].count) > 1:
-			expression = ("+" if total > 0.0 else "") + _number(float(parts[0].unit)) + "×%d＝%s" % [int(parts[0].count), _number(total)]
-		group.stages[stage] = {"amount": total, "text": title + " " + expression}
-		# Actual base payers are already listed below. A plain kong needs only
-		# its compact tile heading and those payment lines, not a second 4x1.
-		var only_base := parts.all(func(part): return str(part.label) in ["明杠", "暗杠", "加杠", "未叫牌杠分"])
-		if not only_base:
-			lines.append(str(group.stages[stage].text) + "分")
-			for part in parts:
-				if parts.size() > 1 or int(part.count) > 1:
-					lines.append("%s：%s×%d＝%s分" % [part.label, _number(float(part.unit)), int(part.count), _number(float(part.amount))])
-		if stage in ["flip", "chicken"] and total > 0.0: lines.append("牌面分 · 按差额收付")
+			var label := str(part.label)
+			# Kong captions show the recorded per-payer rate; amount remains the
+			# actual sum of transfers. Tile groups show their full contribution.
+			var base := label.begins_with("明杠") or label in ["暗杠", "加杠"]
+			var value := float(part.unit) if base else float(part.amount)
+			terms.append(label + _number(value) + "分")
+		var caption := " ".join(terms)
+		group.stages[stage] = {"amount": total, "text": caption}
+		lines.append(caption)
 	for note in group._notes: lines.append(str(note))
 	if group.stages.is_empty() and not lines.any(func(line): return str(line).contains("不计分") or str(line).contains("暂无") or str(line).contains("收入0")):
 		lines.append("本组不计分。")
@@ -335,8 +320,11 @@ static func _finish_group(group: Dictionary) -> void:
 static func _flow(row: Dictionary, seat: int) -> String:
 	var incoming := int(row.to) == seat
 	var other := int(row.from) if incoming else int(row.to)
-	var direction: String = ["本家", "下家", "对家", "上家"][posmod(other - seat, 4)]
+	var direction := _direction(other, seat)
 	return "向%s%s%s分" % [direction, "收" if incoming else "付", _number(float(row.amount))]
+
+static func _direction(other: int, seat: int) -> String:
+	return ["本家", "下家", "对家", "上家"][posmod(other - seat, 4)]
 
 static func _number(value: float) -> String:
 	return "%.0f" % value if is_equal_approx(value, roundf(value)) else str(value)

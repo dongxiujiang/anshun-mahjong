@@ -34,7 +34,7 @@ func has_pending() -> bool:
 	return _animation_busy or not _animation_queue.is_empty() or not _discard_tasks.is_empty() or not _parallel_effects.is_empty()
 
 func defers_discard_sound() -> bool:
-	return DisplayServer.get_name() != "headless" and GameConfig.animation_speed != "instant" and not _animation_layer._skip
+	return DisplayServer.get_name() != "headless" and GameConfig.animation_scale_for("discard") > 0.0 and not _animation_layer._skip
 
 func dispose_pool() -> void:
 	_tile_pool.clear()

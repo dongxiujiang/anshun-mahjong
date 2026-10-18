@@ -98,6 +98,7 @@ var _draw_remaining_before := 108
 var _kong_draw_turn := false
 var _kong_draw_kind: KongKind = KongKind.NONE
 var ai_delay_seconds := 0.0
+var ai_response_delay_seconds := 0.0
 var opening_delay_seconds := 0.0
 var _opening_generation := 0
 var next_chicken_multiplier := 1
@@ -282,28 +283,30 @@ func _ask_turn_actor() -> void:
 	prompt_id += 1
 	var actor: Object = controllers[current_turn] if controllers.size() > current_turn else null
 	if actor != null and actor.has_method("decide_turn"):
-		if ai_delay_seconds > 0.0:
-			_queue_ai_turn(current_turn, actor)
+		var decision: Dictionary = actor.decide_turn(self, current_turn)
+		var discarding: bool = not decision.get("self_win", false) and decision.get("kong_declares", []).is_empty() and decision.get("add_kong", []).is_empty()
+		if discarding and ai_delay_seconds > 0.0 and players[current_turn].just_drew != "":
+			_queue_ai_turn(current_turn, actor, decision)
 		else:
-			_apply_turn_action(current_turn, actor.decide_turn(self, current_turn))
+			_apply_turn_action(current_turn, decision)
 	else:
 		awaiting = true
 		require_turn.emit(current_turn)
 		state_update.emit()
 
-func _queue_ai_turn(seat: int, actor: Object) -> void:
+func _queue_ai_turn(seat: int, actor: Object, decision: Dictionary) -> void:
 	var session := audio_session
 	var prompt := prompt_id
 	awaiting = false
 	state_update.emit()
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:
-		_apply_turn_action(seat, actor.decide_turn(self, seat))
+		_apply_turn_action(seat, decision)
 		return
 	await tree.create_timer(ai_delay_seconds).timeout
 	if audio_session != session or phase != Phase.PLAYING or current_turn != seat or not _awaiting_response.is_empty() or prompt_id != prompt or controllers[seat] != actor:
 		return
-	_apply_turn_action(seat, actor.decide_turn(self, seat))
+	_apply_turn_action(seat, decision)
 
 func restore_human_control(seat: int) -> void:
 	controllers[seat] = null
@@ -558,10 +561,7 @@ func _ask_next_responder(source: int, tile: String) -> void:
 		return
 	var actor: Object = controllers[seat] if controllers.size() > seat else null
 	if actor != null and actor.has_method("decide_response"):
-		if ai_delay_seconds > 0.0:
-			_queue_ai_response(seat, source, tile, options, actor)
-		else:
-			_process_response(seat, source, tile, actor.decide_response(self, seat, source, tile, options))
+		_queue_ai_response(seat, source, tile, options, actor)
 	else:
 		prompt_id += 1
 		awaiting = true
@@ -570,9 +570,9 @@ func _ask_next_responder(source: int, tile: String) -> void:
 		state_update.emit()
 
 func _queue_ai_response(seat: int, source: int, tile: String, options: Dictionary, actor: Object) -> void:
-	# 人机选择“过”不串行等待1/2/3秒，只为实际碰杠胡保留动作延迟。
+	# A brief fixed claim beat; never waits for AI turn speed or tile animation.
 	var decision: Dictionary = actor.decide_response(self, seat, source, tile, options)
-	if decision.get("action", "pass") == "pass":
+	if decision.get("action", "pass") == "pass" or ai_response_delay_seconds <= 0.0:
 		_process_response(seat, source, tile, decision)
 		return
 	var session := audio_session
@@ -584,7 +584,7 @@ func _queue_ai_response(seat: int, source: int, tile: String, options: Dictionar
 	if tree == null:
 		_process_response(seat, source, tile, decision)
 		return
-	await tree.create_timer(ai_delay_seconds).timeout
+	await tree.create_timer(ai_response_delay_seconds).timeout
 	if audio_session != session or phase != Phase.PLAYING or _pending_responders.is_empty() or _pending_responders[0] != seat or _response_stage != stage or prompt_id != prompt or controllers[seat] != actor:
 		return
 	_process_response(seat, source, tile, decision)

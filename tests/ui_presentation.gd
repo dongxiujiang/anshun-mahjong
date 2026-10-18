@@ -109,7 +109,7 @@ func _run() -> void:
 	root.add_child(settings)
 	await process_frame
 	for speed in settings.speed_buttons.values():
-		for animation in settings.animation_speed_buttons.values():
+		for animation in (settings.draw_speed_buttons.values() + settings.discard_speed_buttons.values()):
 			t.expect(not speed.get_rect().intersects(animation.get_rect()), "AI and animation speed buttons cannot overlap")
 	settings.queue_free()
 	var guide = load("res://scripts/ui/RuleGuide.gd").new()

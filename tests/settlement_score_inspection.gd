@@ -87,7 +87,7 @@ func _test_stage_labels() -> void:
 				var expected := 24.0 if kind == "mixed_double" else (6.0 if kind == "ordinary" else 12.0)
 				t.expect(not group.is_empty() and group.stages[key].amount == expected, "charge and ordinary chicken group uses ledger rates, including doubled round")
 				if not group.is_empty():
-					t.expect(a.labels[group.id].text.contains("＋") or a.labels[group.id].text.contains("+"), "mixed chicken exposes addition instead of a flat total")
+					t.expect(a.labels[group.id].text == ("冲锋幺鸡16分 幺鸡8分" if kind == "mixed_double" else ("冲锋幺鸡4分 幺鸡2分" if kind == "ordinary" else "冲锋幺鸡8分 幺鸡4分")), "mixed chicken names charge and ordinary amounts separately")
 				if kind == "mixed": await _capture_score("02_gold_mixed_stage")
 			if kind == "melds" and key == "kong":
 				var dark := _group("meld", 0, 1)

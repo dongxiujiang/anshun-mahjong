@@ -17,11 +17,13 @@ func _initialize() -> void: call_deferred("_run")
 
 func _fixture() -> RoundState:
 	var r := RoundState.new()
+	r.set_rng_seed(20261018)
 	r.build_players(0)
 	r.phase = RoundState.Phase.PLAYING
 	r.wall = WallRing.new(TileSetFactory.create_deck())
 	r.controllers = [null, null, null, null]
 	r.ai_delay_seconds = 0.08
+	r.ai_response_delay_seconds = 0.08
 	return r
 
 func _run() -> void:

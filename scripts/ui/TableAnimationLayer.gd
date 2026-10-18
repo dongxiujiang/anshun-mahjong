@@ -29,9 +29,12 @@ func play(event: Dictionary, target: Callable = Callable()) -> int:
 	_next_event_id += 1
 	var event_id := _next_event_id
 	_completion = target
-	_speed_scale = float(event.get("speed_scale", GameConfig.ANIMATION_SPEEDS.get(GameConfig.animation_speed, 1.0)))
+	var type := str(event.get("type", ""))
+	_speed_scale = float(event.get("speed_scale", GameConfig.animation_scale_for(type)))
 	_discard_arrived = false
-	if _speed_scale <= 0.0 or DisplayServer.get_name() == "headless" or _skip:
+	# Instant discards can still leave an independently timed hand insertion.
+	var hand_motion := type == "discard" and bool(event.get("discard_from_hand", false)) and _hand_duration(event) > 0.0
+	if (_speed_scale <= 0.0 and not hand_motion) or DisplayServer.get_name() == "headless" or _skip:
 		_finish(target, event_id)
 		return event_id
 	_active = create_tween().set_trans(Tween.TRANS_LINEAR)
@@ -48,6 +51,9 @@ func play(event: Dictionary, target: Callable = Callable()) -> int:
 
 func _duration(seconds: float) -> float:
 	return seconds * _speed_scale
+
+func _hand_duration(event: Dictionary) -> float:
+	return UI.DISCARD_DURATION * float(event.get("hand_speed_scale", GameConfig.animation_scale_for("sort_hand")))
 
 func _add(node: Control) -> void:
 	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -79,6 +85,10 @@ func _tiles(event: Dictionary) -> void:
 	var duration := _duration(UI.DEAL_DURATION) if type == "deal" else _duration(UI.REVEAL_DURATION if type == "meld_reveal" else (UI.DISCARD_DURATION if type == "discard" else (UI.MELD_DURATION if type == "meld" else UI.DRAW_DURATION)))
 	var stagger := _duration(UI.DEAL_TILE_STAGGER) if type == "deal" else (_duration(UI.DRAW_TILE_STAGGER) if type == "draw" else (_duration(UI.DISCARD_TILE_STAGGER) if type == "discard" else _duration(UI.MELD_TILE_STAGGER)))
 	var arc_height := UI.DEAL_ARC_HEIGHT if type == "deal" else (UI.DRAW_ARC_HEIGHT if type == "draw" else (UI.DISCARD_ARC_HEIGHT if type == "discard" else UI.MELD_ARC_HEIGHT))
+	if type == "discard" and duration <= 0.0:
+		_discard_arrived = true
+		discard_landed.emit()
+		destinations = []
 	for index in destinations.size():
 		var data: Dictionary = destinations[index]
 		var tile: TileView = (tile_pool.acquire() if tile_pool else TileView.new())
@@ -179,14 +189,15 @@ func _sort_hand(event: Dictionary) -> void:
 			tile.rotation = lerp_angle(start_rotation, final_rotation, eased)
 		_active.parallel().tween_method(motion, 0.0, 1.0, flight_duration)
 
-func _hand_motion(event: Dictionary, duration: float) -> void:
+func _hand_motion(event: Dictionary, flight_duration: float) -> void:
 	# During a hand discard the authoritative refresh is held. The discarded
 	# slot stays visibly empty while the remaining row shifts horizontally; only
 	# after that gap is ready does the drawn tile slide in from the draw slot.
 	var move_required := bool(event.get("hand_move_required", false))
-	var total_duration := duration * (3.0 if move_required and not event.get("hand_insert", {}).is_empty() else 2.0)
-	var move_start := duration
-	var insert_start := duration * (2.0 if move_required else 1.0)
+	var duration := _hand_duration(event)
+	var move_start := flight_duration
+	var insert_start := flight_duration + (duration if move_required else 0.0)
+	var total_duration := maxf(flight_duration + duration, insert_start + duration if not event.get("hand_insert", {}).is_empty() else 0.0)
 	for data in event.get("hand_moves", []):
 		var persistent_node = data.get("node")
 		var persistent := is_instance_valid(persistent_node) and persistent_node is TileView
@@ -211,7 +222,7 @@ func _hand_motion(event: Dictionary, duration: float) -> void:
 			tile.global_position = from_global
 		var motion := func(progress: float):
 			var elapsed := progress * total_duration
-			var local := clampf((elapsed - move_start) / duration, 0.0, 1.0) if move_required else 0.0
+			var local := (clampf((elapsed - move_start) / duration, 0.0, 1.0) if duration > 0.0 else float(elapsed >= move_start)) if move_required else 0.0
 			var eased := _smoothstep(local)
 			# This is a table-plane translation. For side seats the parent rotation
 			# turns it vertical on screen, while each player's own row still moves
@@ -244,7 +255,7 @@ func _hand_motion(event: Dictionary, duration: float) -> void:
 			tile.modulate.a = 0.0
 		var motion := func(progress: float):
 			var elapsed := progress * total_duration
-			var local := clampf((elapsed - insert_start) / duration, 0.0, 1.0)
+			var local := clampf((elapsed - insert_start) / duration, 0.0, 1.0) if duration > 0.0 else float(elapsed >= insert_start)
 			var eased := _smoothstep(local)
 			if has_source and is_instance_valid(source_node) and elapsed >= insert_start:
 				source_node.visible = false

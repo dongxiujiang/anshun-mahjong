@@ -101,9 +101,7 @@ func refresh() -> void:
 		if c.plan.is_draw and group.area == "meld" and tiles.all(func(tile): return not tile.face_up):
 			# Settlement knows the amount, but a draw does not turn this meld up.
 			# Keep the identity private in the explanation as well as on the tiles.
-			var lines := text.split("\n")
-			lines[0] = "暗杠（未翻开）" if completed else lines[0]
-			text = "\n".join(lines)
+			if completed: text += "\n未翻开"
 		wanted[id] = true
 		var label := _label(id, text, UI.SCORE_LOSS if amount < 0 else UI.GOLD)
 		_place(label, _bounds(tiles), int(group.seat), occupied)
@@ -120,7 +118,7 @@ func refresh() -> void:
 			wanted["@flip"] = true
 			var names: Array[String] = []
 			for tile in c.plan.flip_tiles: names.append("%d%s" % [Tiles.rank(str(tile)), {"wan": "万", "tiao": "条", "tong": "筒"}.get(Tiles.suit(str(tile)), "")])
-			var label := _label("@flip", "翻鸡：" + "、".join(names) + "\n牌面分按两两差额收付", UI.GOLD)
+			var label := _label("@flip", "翻鸡：" + "、".join(names), UI.GOLD)
 			_place(label, rect, table.human_seat, occupied)
 	for id in labels.keys():
 		if not wanted.has(id): _remove(labels, id)

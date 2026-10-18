@@ -661,6 +661,7 @@ func _test_all_called_timeline() -> void:
 func _test_settlement_speed() -> void:
 	var config := root.get_node("GameConfig")
 	var old_animation: String = config.animation_speed
+	var old_draw: String = config.draw_animation_speed
 	var old_settlement: String = config.settlement_speed
 	var r := _fixture("gold_tiao")
 	var snapshot := _snapshot(r)
@@ -696,7 +697,7 @@ func _test_settlement_speed() -> void:
 	tween.custom_step(0.175)
 	t.expect(is_equal_approx(c._river_alpha, 0.25), "live detailed setting applies without restarting fade")
 	t.expect(config.animation_speed == "instant", "settlement selection preserves instant play animation")
-	settings.animation_speed_buttons.fast.pressed.emit()
+	settings.draw_speed_buttons.fast.pressed.emit()
 	t.expect(config.settlement_speed == "detail", "general animation selection preserves detailed settlement")
 	settings.settlement_speed_buttons.instant.pressed.emit()
 	t.expect(not tween.is_valid() and c._tween == null, "instant selection immediately cancels active timeline")
@@ -704,7 +705,7 @@ func _test_settlement_speed() -> void:
 	config.set_settlement_speed("invalid")
 	t.expect(config.settlement_speed == "instant", "invalid settlement speed is ignored")
 	t.expect(_snapshot(r) == snapshot, "all speed changes leave authoritative settlement immutable")
-	var groups: Array = [settings.speed_buttons, settings.animation_speed_buttons, settings.settlement_speed_buttons]
+	var groups: Array = [settings.speed_buttons, settings.draw_speed_buttons, settings.discard_speed_buttons, settings.settlement_speed_buttons]
 	var rectangles: Array[Rect2] = []
 	for group in groups:
 		for button in group.values():
@@ -712,6 +713,7 @@ func _test_settlement_speed() -> void:
 			for previous in rectangles: t.expect(not button.get_rect().intersects(previous), "independent speed controls never overlap")
 			rectangles.append(button.get_rect())
 	config.set_animation_speed(old_animation)
+	config.set_draw_animation_speed(old_draw)
 	config.set_settlement_speed(old_settlement)
 
 func _test_settlement_identities(render: bool = true) -> void:

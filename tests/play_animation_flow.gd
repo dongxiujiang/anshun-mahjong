@@ -328,6 +328,8 @@ func test_network_and_pool() -> void:
 func test_speed_and_cancel() -> void:
 	for speed in ["standard", "fast", "instant"]:
 		cfg.animation_speed = speed
+		cfg.draw_animation_speed = speed
+		cfg.discard_animation_speed = speed
 		fixture(BASE + ["tong7"], "tong7")
 		table.round._discard(0,"wan3",2)
 		var baseline := var_to_bytes(table.round.serialize())
@@ -348,6 +350,36 @@ func test_speed_and_cancel() -> void:
 		t.expect(table._animation_layer._temporary.is_empty(), "cancel releases temporary tiles: " + speed)
 		t.expect(var_to_bytes(table.round.serialize()) == baseline, "cancel is presentation-only: " + speed)
 	cfg.animation_speed = "standard"
+	cfg.draw_animation_speed = "standard"
+	cfg.discard_animation_speed = "standard"
+
+func test_independent_tile_speeds() -> void:
+	for draw_speed in cfg.TILE_ANIMATION_SPEEDS:
+		for discard_speed in cfg.TILE_ANIMATION_SPEEDS:
+			cfg.draw_animation_speed = draw_speed
+			cfg.discard_animation_speed = discard_speed
+			fixture(BASE + ["tong7"], "tong7")
+			table.round._discard(0, "wan3", 2)
+			controller._pump_visual_animation()
+			if graphical:
+				var task := task_for(0)
+				t.expect(not task.is_empty(), "hand insertion still runs with instant outgoing discard")
+				if not task.is_empty():
+					var flight := UI.DISCARD_DURATION * float(cfg.TILE_ANIMATION_SPEEDS[discard_speed])
+					t.expect(is_equal_approx(task.layer._hand_duration(task.event), UI.DISCARD_DURATION), "insertion/row-shift duration ignores both tile speed preferences")
+					if flight > 0:
+						step(task.layer, flight - 0.001)
+						t.expect(not task.landed, "independently selected discard has not landed early")
+						step(task.layer, 0.002)
+					t.expect(task.landed, "independently selected discard reaches its deadline")
+					t.expect(is_equal_approx(task.layer._speed_scale, cfg.TILE_ANIMATION_SPEEDS[discard_speed]), "discard lane uses only discard scale")
+				if draw_speed == "instant":
+					t.expect(not controller._animation_busy and table._animation_layer._active == null, "instant draw finishes while discard/insert lane continues")
+				else:
+					t.expect(is_equal_approx(table._animation_layer._speed_scale, cfg.TILE_ANIMATION_SPEEDS[draw_speed]), "next draw uses only draw scale")
+				drain()
+	cfg.draw_animation_speed = "standard"
+	cfg.discard_animation_speed = "standard"
 
 func test_opening_speed() -> void:
 	for speed in ["instant", "fast", "standard"]:
@@ -373,6 +405,8 @@ func test_opening_speed() -> void:
 		controller.cancel()
 		root.get_node("Network").mode = ""
 	cfg.animation_speed = "standard"
+	cfg.draw_animation_speed = "standard"
+	cfg.discard_animation_speed = "standard"
 
 func capture_frame(label: String) -> void:
 	if table._animation_layer._active != null: table._animation_layer._active.pause()
@@ -446,6 +480,8 @@ func _run() -> void:
 	root.get_node("UpdateManager").auto_check = false
 	cfg = root.get_node("GameConfig")
 	cfg.animation_speed = "standard"
+	cfg.draw_animation_speed = "standard"
+	cfg.discard_animation_speed = "standard"
 	# Hundreds of fixtures in one frame must not queue real voice/music streams.
 	root.get_node("AudioManager").enabled = {"music":false,"voice":false,"effects":false}
 	var network = root.get_node("Network")
@@ -467,6 +503,7 @@ func _run() -> void:
 	test_reveal_and_sort()
 	test_network_and_pool()
 	test_speed_and_cancel()
+	test_independent_tile_speeds()
 	test_opening_speed()
 	test_impact_timing()
 	if graphical and OS.get_cmdline_user_args().has("--capture"): await capture_review()
