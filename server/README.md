@@ -2,6 +2,8 @@
 
 在线模式使用真实的专用游戏服务器：Python 提供房间列表和创建接口，每个房间启动一个无界面 Godot 进程。四名玩家均作为客户端连接，服务器复用项目中的游戏规则、私有手牌同步、选座、换座、准备与发牌流程。无需房主开放家中路由器端口。
 
+> Docker 一键部署（推荐生产使用）：见 [docker.md](docker.md)。
+
 ## 启动
 
 准备 Python 3.10+、Godot 4.7.2 和完整工程（含牌面、音频和 `.godot` 导入缓存；首次部署先运行一次 `godot --headless --editor --path /srv/mahjong --quit`）。Linux 云主机使用对应版本的 Linux Godot 可执行文件。

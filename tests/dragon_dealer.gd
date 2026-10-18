@@ -54,7 +54,7 @@ func _test_dragon() -> void:
 	game.round_meta.self_draw = false
 	game.round_meta.discard_seat = 2
 	scored = ScoringEngine.settle(game)
-	t.expect(scored.deltas == [156.0, -52.0, -52.0, -52.0], "普通点炮无基础费，龙七对44和鸡分逐家支付")
+	t.expect(scored.deltas == [68.0, -8.0, -52.0, -8.0], "普通点炮无基础费；龙七对44只由放炮者付，三家各付手中鸡8")
 	game.players[0].concealed = DRAGON.slice(0, 13)
 	t.expect(game.can_win_on_discard(0, 2, "tiao9"), "龙七对可直接胡别人")
 	t.expect(RuleEngine.waiting_tiles(game.players[0].concealed, []).has("tiao9"), "龙七对听牌等待正确")
@@ -64,7 +64,7 @@ func _test_dragon() -> void:
 	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "清龙对" and scored.round_points[0] == 64, "清龙对只计64，不叠普通点炮基础")
 	game.players[0].concealed = two_quads
 	scored = ScoringEngine.settle(game)
-	t.expect(scored.deltas == [156.0, -52.0, -52.0, -52.0], "两组四张龙七对仍按44分并逐家支付")
+	t.expect(scored.deltas == [68.0, -8.0, -52.0, -8.0], "两组四张龙七对仍按44分；放炮者付牌型分，三家各付鸡8")
 
 func _test_next_dealer() -> void:
 	for dealer in 4:

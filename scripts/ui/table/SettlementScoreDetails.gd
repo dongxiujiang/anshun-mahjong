@@ -79,11 +79,15 @@ static func _group(groups: Dictionary, seat: int, key: String, area: String, mel
 	if not groups.has(key):
 		var tiles: Array[String] = []
 		groups[key] = {"id": "%d:%s" % [seat, key], "seat": seat, "area": area,
-			"meld_index": meld_index, "tiles": tiles, "stages": {}, "detail": "", "_notes": [], "_parts": {}, "_robbed": false, "_kong": false, "_base_stage": "kong", "_title": ""}
+			"meld_index": meld_index, "tiles": tiles, "stages": {}, "detail": "", "_notes": [], "_parts": {},
+			"_robbed": false, "_kong": false, "_base_stage": "kong", "_title": "", "charge": false}
 	return groups[key]
 
 static func _source(pool: Array, groups: Dictionary, seat: int, key: String, area: String, tile: String, charge: int = 0, meld_index: int = -1) -> void:
-	if key != "": _group(groups, seat, key, area, meld_index).tiles.append(tile)
+	if key != "":
+		var group := _group(groups, seat, key, area, meld_index)
+		group.tiles.append(tile)
+		if charge > 0: group["charge"] = true
 	pool.append({"key": key, "tile": tile, "charge": charge, "area": area, "used": false})
 
 static func _stage(tile: String, gold: Array) -> String:
@@ -262,11 +266,21 @@ static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, 
 	var hidden := category == "discard" and pool.any(func(source): return source.key == "")
 	for group in candidates:
 		var exact := candidates.size() == 1 and not hidden
-		for row in rows:
-			if exact:
-				var stage := str(group._base_stage) if category == "kong" else _stage(str(group.tiles[0]), gold)
-				_part(group, stage, reason, -float(row.amount), 1, -float(row.amount))
-				_note(group, _flow(row, seat) + "（%s）" % reason)
+		if exact:
+			var stage := str(group._base_stage) if category == "kong" else _stage(str(group.tiles[0]), gold)
+			if category == "discard" and group.tiles.size() == 1:
+				# A single discarded chicken is shown as its own tile value, not
+				# as the sum paid to every called player: "冲锋八筒-4分", not
+				# "-12分" followed by three payer rows. The stage total below
+				# still keeps the real ledger amount for the player's net score.
+				var label := ("冲锋" if bool(group.get("charge", false)) else "") + _tile_name(str(group.tiles[0]))
+				group["_simple"] = true
+				for row in rows:
+					_part(group, stage, label, -float(row.amount), 1, -float(row.amount), true)
+			else:
+				for row in rows:
+					_part(group, stage, reason, -float(row.amount), 1, -float(row.amount))
+					_note(group, _flow(row, seat) + "（%s）" % reason)
 		if not exact:
 			_combined(group, rows, "（%s%s）" % [reason, "，含已被胡走的出牌鸡" if hidden else ""])
 
@@ -280,7 +294,7 @@ static func _combined(group: Dictionary, rows: Array, suffix: String = "") -> vo
 	for row in combined.values(): descriptions.append(_flow(row, int(group.seat)))
 	if not descriptions.is_empty(): _note(group, "本组暂无独立收付明细；该家合计" + "、".join(descriptions) + suffix + "。")
 
-static func _part(group: Dictionary, stage: String, label: String, amount: float, count: int, unit: float) -> void:
+static func _part(group: Dictionary, stage: String, label: String, amount: float, count: int, unit: float, per_unit: bool = false) -> void:
 	if not is_finite(amount) or is_zero_approx(amount): return
 	if not group._parts.has(stage): group._parts[stage] = []
 	for part in group._parts[stage]:
@@ -288,7 +302,7 @@ static func _part(group: Dictionary, stage: String, label: String, amount: float
 			part.amount += amount
 			part.count += count
 			return
-	group._parts[stage].append({"label": label, "amount": amount, "count": count, "unit": unit})
+	group._parts[stage].append({"label": label, "amount": amount, "count": count, "unit": unit, "per_unit": per_unit})
 
 static func _note(group: Dictionary, message: String) -> void:
 	if message not in group._notes: group._notes.append(message)
@@ -306,16 +320,17 @@ static func _finish_group(group: Dictionary) -> void:
 			# Kong captions show the recorded per-payer rate; amount remains the
 			# actual sum of transfers. Tile groups show their full contribution.
 			var base := label.begins_with("明杠") or label in ["暗杠", "加杠"]
-			var value := float(part.unit) if base else float(part.amount)
+			var value := float(part.unit) if base or bool(part.get("per_unit", false)) else float(part.amount)
 			terms.append(label + _number(value) + "分")
 		var caption := " ".join(terms)
 		group.stages[stage] = {"amount": total, "text": caption}
 		lines.append(caption)
-	for note in group._notes: lines.append(str(note))
+	if not bool(group.get("_simple", false)):
+		for note in group._notes: lines.append(str(note))
 	if group.stages.is_empty() and not lines.any(func(line): return str(line).contains("不计分") or str(line).contains("暂无") or str(line).contains("收入0")):
 		lines.append("本组不计分。")
 	group.detail = "\n".join(lines)
-	for key in ["_notes", "_parts", "_robbed", "_kong", "_base_stage", "_title"]: group.erase(key)
+	for key in ["_notes", "_parts", "_robbed", "_kong", "_base_stage", "_title", "_simple", "charge"]: group.erase(key)
 
 static func _flow(row: Dictionary, seat: int) -> String:
 	var incoming := int(row.to) == seat

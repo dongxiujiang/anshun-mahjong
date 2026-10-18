@@ -179,6 +179,20 @@ func _test_uncalled_debts() -> void:
 		t.expect(group.stages.is_empty(), "ambiguous debt not divided by tile count " + id)
 		t.expect(group.detail.contains("该家合计向上家付"), "ambiguous group retains real family payment " + id)
 
+func _test_uncalled_charge_short_label() -> void:
+	var f := _fixture()
+	f.result.called = [true, false, true, true]
+	f.players[1].discards = ["tong8"]
+	f.players[1].discard_ids = [0]
+	f.meta.charge_chickens = {"tong8": {"owner": 1, "location": "discard", "discard_id": 0}}
+	for receiver in [0, 2, 3]:
+		_pay(f, 1, receiver, 4, "未叫牌出牌鸡")
+	var group := _find(_build(f), "1:chicken_tong8")
+	t.expect(group.stages.has("chicken"), "uncalled charge chicken has a visible stage")
+	t.expect(group.stages.chicken.text == "冲锋八筒-4分", "uncalled charge chicken shows one short tile line")
+	t.expect(group.detail == "冲锋八筒-4分", "click uses the same short tile line")
+	t.expect(is_equal_approx(float(group.stages.chicken.amount), -12.0), "short label keeps the real 12-point ledger total")
+
 func _test_burn_robbed_and_normal_pung() -> void:
 	var f := _fixture()
 	f.meta.burn_chicken_seat = 1
@@ -301,6 +315,7 @@ func _run() -> void:
 	_test_multiple_same_kongs()
 	_test_draw()
 	_test_uncalled_debts()
+	_test_uncalled_charge_short_label()
 	_test_burn_robbed_and_normal_pung()
 	_test_resolved_and_multiwinner_snapshot()
 	_test_missing_data()

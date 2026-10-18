@@ -1,0 +1,52 @@
+name: mahjong-online
+
+# Mode 2: the server pulls a prebuilt image and never needs the project source.
+# The image is built by .github/workflows/docker-image.yml.
+services:
+  app:
+    image: ${APP_IMAGE:?set APP_IMAGE in .env}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST in .env}
+      MAX_ROOMS: ${MAX_ROOMS:-16}
+      FIRST_PORT: ${FIRST_PORT:-7600}
+    ports:
+      # Keep this range in sync with MAX_ROOMS and the cloud firewall.
+      - "7600-7631:7600-7631/udp"
+    volumes:
+      - room_logs:/app/build/room-server
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    stop_grace_period: 20s
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  room_logs:
+  caddy_data:
+  caddy_config:

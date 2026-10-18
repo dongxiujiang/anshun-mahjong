@@ -1,0 +1,13 @@
+.git
+.gitignore
+.godot
+build
+docs
+tests
+.env
+**/__pycache__
+**/*.pyc
+*.exe
+*.apk
+*.pck
+*.zip

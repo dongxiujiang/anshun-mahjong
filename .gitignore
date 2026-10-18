@@ -15,6 +15,8 @@ export_credentials.cfg
 build/
 
 # ── 本地环境 / 编辑器 ────────────────────────────────────
+# Docker 部署配置（域名等），每台服务器单独填写，不入库。
+.env
 .mcp.json
 .vscode/
 .idea/

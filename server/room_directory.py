@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 NUMBER = re.compile(r"[0-9]{4,8}\Z")
+VERSION = "1"
 
 class RoomDirectory:
     def __init__(self, godot, project, public_host, first_port=7600, max_rooms=32):
@@ -104,7 +105,17 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if urlsplit(self.path).path != "/rooms":
+        self.connection.settimeout(10)
+        path = urlsplit(self.path).path
+        if path == "/healthz":
+            rooms = self.server.directory.list()
+            return self._reply(200, {
+                "ok": True,
+                "rooms": len(rooms),
+                "max_rooms": self.server.directory.max_rooms,
+                "version": VERSION,
+            })
+        if path != "/rooms":
             return self._reply(404, {"error": "接口不存在"})
         self._reply(200, {"rooms": self.server.directory.list()})
 
