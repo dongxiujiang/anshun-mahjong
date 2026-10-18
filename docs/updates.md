@@ -1,6 +1,6 @@
 # 两级更新：自建源与 GitHub Releases
 
-新完整 APK 默认使用自建 HTTPS 更新源，GitHub Releases 只作为旧版/备用发布渠道，不再作为手机端首选检查地址。
+新完整 APK 默认使用自建 HTTPS 更新源，GitHub Releases 只作为旧版/备用发布渠道，不再作为手机端首选检查地址。完整的服务端从零部署、完整包与热补丁发布流程见 [deploy_release_update.md](deploy_release_update.md)；本次实操命令见 [self_hosted_update_operation.md](self_hosted_update_operation.md)。
 
 ## 自建 HTTPS 更新源（新完整 APK）
 

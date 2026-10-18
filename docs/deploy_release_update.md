@@ -1,5 +1,7 @@
 # 服务端部署、客户端打包与两级热更新
 
+本次已经实际走通的完整操作记录见 [self_hosted_update_operation.md](self_hosted_update_operation.md)。
+
 本文覆盖：
 
 - 服务端从零部署（Docker + 宿主机 Nginx 模式，不使用 Caddy）
