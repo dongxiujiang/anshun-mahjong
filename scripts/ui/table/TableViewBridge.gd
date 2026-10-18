@@ -19,6 +19,9 @@ var _table_animation_controller = ANIMATIONS.new(self)
 var _settlement_animation_controller = SETTLEMENT_ANIMATIONS.new(self)
 var _table_widgets = WIDGETS.new()
 
+func _on_settlement_speed_changed() -> void:
+	_settlement_animation_controller.update_speed()
+
 ## The table is deliberately designed in landscape.  Both the desktop build and
 ## Android use this same canvas so a device rotation never switches to the old
 ## portrait table.
@@ -27,7 +30,6 @@ const DESIGN_SIZE := UI.DESIGN_SIZE
 const TABLE_CENTER := UI.TABLE_CENTER
 const LANDSCAPE_SIZE := UI.LANDSCAPE_SIZE
 const LANDSCAPE_CENTER := UI.LANDSCAPE_CENTER
-const LANDSCAPE_RESULT_SIZE := UI.LANDSCAPE_RESULT_SIZE
 const TILE_UNIT := UI.TILE_UNIT
 const RIVER_TILE_UNIT := UI.RIVER_TILE_UNIT
 const PLAYER_TILE_UNIT := UI.PLAYER_TILE_UNIT
@@ -36,11 +38,6 @@ const OWN_HAND_TILE_UNIT := UI.OWN_HAND_TILE_UNIT
 const ACTION_BUTTON_SIZE := UI.ACTION_BUTTON_SIZE
 const DISCARD_BUTTON_SIZE := UI.DISCARD_BUTTON_SIZE
 const ACTION_HAND_GAP := UI.ACTION_HAND_GAP
-## 结算卡片里的牌图单独放大，便于看清是哪张牌。
-const RESULT_TILE_UNIT := UI.RESULT_TILE_UNIT
-const RESULT_CARD_SIZE := UI.RESULT_CARD_SIZE
-const RESULT_TOGGLE_SIZE := UI.RESULT_TOGGLE_SIZE
-const RESULT_TOGGLE_LOCAL_POSITION := UI.RESULT_TOGGLE_LOCAL_POSITION
 const NEXT_ROUND_BUTTON_SIZE := UI.NEXT_ROUND_BUTTON_SIZE
 const TILE_GAP := UI.TILE_GAP
 const EXPOSED_HAND_GAP := UI.EXPOSED_HAND_GAP
@@ -92,6 +89,9 @@ var wind_labels: Dictionary:
 var avatars: Dictionary:
 	get: return _player_tile_areas.avatars
 	set(value): _player_tile_areas.avatars = value
+var dealer_badges: Dictionary:
+	get: return _player_tile_areas.dealer_badges
+	set(value): _player_tile_areas.dealer_badges = value
 var status_label: Label:
 	get: return _table_layout.status_label
 	set(value): _table_layout.status_label = value
@@ -107,9 +107,6 @@ var round_label: Label:
 var surface: Control:
 	get: return _table_layout.surface
 	set(value): _table_layout.surface = value
-var result_layer: Control:
-	get: return _settlement_card.result_layer
-	set(value): _settlement_card.result_layer = value
 var _selecting: bool:
 	get: return _table_actions._selecting
 	set(value): _table_actions._selecting = value
@@ -125,21 +122,9 @@ var _declaring_ready: bool:
 var _ready_discards: Array:
 	get: return _table_actions._ready_discards
 	set(value): _table_actions._ready_discards = value
-var _result_shown: bool:
-	get: return _settlement_card._result_shown
-	set(value): _settlement_card._result_shown = value
 var _felt: NoiseTexture2D:
 	get: return _table_layout._felt
 	set(value): _table_layout._felt = value
-var _result_panel: Control:
-	get: return _settlement_card._result_panel
-	set(value): _settlement_card._result_panel = value
-var _result_shade: ColorRect:
-	get: return _settlement_card._result_shade
-	set(value): _settlement_card._result_shade = value
-var _result_restore: Button:
-	get: return _settlement_card._result_restore
-	set(value): _settlement_card._result_restore = value
 var _next_round_button: Button:
 	get: return _settlement_card._next_round_button
 	set(value): _settlement_card._next_round_button = value
@@ -149,15 +134,9 @@ var _next_round_status: Label:
 var _next_round_hint: Label:
 	get: return _settlement_card._next_round_hint
 	set(value): _settlement_card._next_round_hint = value
-var _post_controls: Panel:
+var _post_controls: Control:
 	get: return _settlement_card._post_controls
 	set(value): _settlement_card._post_controls = value
-var _post_view_button: Button:
-	get: return _settlement_card._post_view_button
-	set(value): _settlement_card._post_view_button = value
-var _post_next_button: Button:
-	get: return _settlement_card._post_next_button
-	set(value): _settlement_card._post_next_button = value
 var _status_labels: Dictionary:
 	get: return _player_tile_areas._status_labels
 	set(value): _player_tile_areas._status_labels = value
@@ -201,8 +180,8 @@ func _pump_visual_animation() -> void:
 func _on_visual_animation_finished() -> void:
 	_table_animation_controller._on_visual_animation_finished()
 
-func _start_settlement_animation() -> void:
-	_settlement_animation_controller.start()
+func _start_settlement_animation(immediate: bool = false) -> void:
+	_settlement_animation_controller.start(immediate)
 
 func _on_settlement_animation_finished() -> void:
 	_settlement_card.show_post_settlement_controls()
@@ -258,12 +237,6 @@ func _hand_layout(seat: int) -> Dictionary:
 
 func _layout_actions() -> void:
 	_table_actions._layout_actions()
-
-func _result_card_size() -> Vector2:
-	return _settlement_card._result_card_size()
-
-func _result_toggle_position() -> Vector2:
-	return _settlement_card._result_toggle_position()
 
 func _draw() -> void:
 	_table_layout._draw()
@@ -345,33 +318,6 @@ func _on_require_response(seat: int, discarded_seat: int, tile: String, options:
 
 func _commit_response(action: String) -> void:
 	_table_actions._commit_response(action)
-
-func _draw_result_title() -> String:
-	return _settlement_card._draw_result_title()
-
-func _show_result() -> void:
-	_settlement_card._show_result()
-
-func _draw_result_details(row: Control, seat: int, status: String, list: Array, winner: int) -> void:
-	_settlement_card._draw_result_details(row, seat, status, list, winner)
-
-func _result_sideways_index(item: Dictionary, seat: int) -> int:
-	return _settlement_card._result_sideways_index(item, seat)
-
-func _result_group_note(item: Dictionary, seat: int) -> String:
-	return _settlement_card._result_group_note(item, seat)
-
-func _draw_result_group(flow: HFlowContainer, item: Dictionary, seat: int, max_width: float) -> void:
-	_settlement_card._draw_result_group(flow, item, seat, max_width)
-
-func _ensure_restore_button() -> void:
-	_settlement_card._ensure_restore_button()
-
-func panel_position_for_result_toggle() -> Vector2:
-	return _settlement_card.panel_position_for_result_toggle()
-
-func _toggle_result_panel(show_card: bool) -> void:
-	_settlement_card._toggle_result_panel(show_card)
 
 func _next_round() -> void:
 	_settlement_card._next_round()

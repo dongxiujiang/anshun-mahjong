@@ -1,4 +1,5 @@
 extends SceneTree
+## Legacy scoring coverage retained; presentation assertions now target tabletop boards/melds.
 
 const H := preload("res://tests/test_harness.gd")
 const WIN := ["tiao1", "tiao2", "tiao3", "wan4", "wan5", "wan6", "tong7", "tong8", "tong9", "wan3", "wan4", "wan5", "wan9", "wan9"]
@@ -144,84 +145,7 @@ func _test_chicken_kong_example() -> void:
 					t.expect(not has_base, "普通点炮不收17/21基础费")
 					t.expect(kong_items.size() == 1 and kong_items[0].chicken_amount == chickens, "胡牌局杠中鸡展示为鸡分比较来源，不重复单独收费")
 
-func _tile_rect(tile: TileView) -> Rect2:
-	return tile.get_global_transform() * Rect2(Vector2.ZERO, tile.size)
-
-func _check_group_geometry(group: Control, scroll: ScrollContainer) -> void:
-	var occupied: Array[Rect2] = []
-	for child in group.get_children():
-		if not child is TileView:
-			continue
-		var rect := _tile_rect(child)
-		t.expect(group.get_global_rect().encloses(rect), "杠牌的完整牌面必须在自己的组内")
-		t.expect(scroll.get_global_rect().encloses(rect), "四张杠牌默认完整可见，无需滚动半张牌")
-		for previous in occupied:
-			t.expect(not rect.grow(-0.5).intersects(previous.grow(-0.5)), "对家横牌在三张竖牌上方，四张牌面不得重叠")
-		occupied.append(rect)
-
-func _test_kong_ui() -> void:
-	table.human_seat = 0
-	table.round.last_result.items = [[], [], [], []]
-	for owner in 4:
-		for offset in [1, 2, 3]:
-			var item := _reference_item("kong", "明杠", ["tong2", "tong2", "tong2", "tong2"], 4)
-			item.merge({"kong_kind": RoundState.KongKind.EXPOSED, "from_seat": posmod(owner + offset, 4), "base_amount": 4})
-			table.round.last_result.items[owner].append(item)
-	for dimensions in [Vector2i(1440, 1520), Vector2i(1280, 720), Vector2i(1080, 1920), Vector2i(960, 540)]:
-		root.size = dimensions
-		table._show_result()
-		await process_frame
-		await process_frame
-		for owner in 4:
-			var scroll: ScrollContainer = table._result_panel.get_node("ResultSeat%d/Details/ScoreGroups" % owner)
-			var groups: HFlowContainer = scroll.get_node("Groups")
-			for offset in [1, 2, 3]:
-				var group: Control = groups.get_child(offset - 1)
-				# 三组杠会换行；滚动至该组，逐组检查四张牌完整可见。
-				scroll.scroll_vertical = int(group.position.y)
-				await process_frame
-				_check_group_geometry(group, scroll)
-				var tiles: Array = group.get_children().filter(func(child): return child is TileView)
-				var horizontal: Rect2 = _tile_rect(tiles[{1: 3, 2: 3, 3: 0}[offset]])
-				var upright: Rect2 = _tile_rect(tiles[1])
-				if offset == 1:
-					t.expect(horizontal.position.x > upright.position.x, "下家明杠最后一张在右侧横放")
-				elif offset == 3:
-					t.expect(horizontal.end.x < upright.position.x, "上家明杠第一张在左侧横放")
-				else:
-					t.expect(horizontal.end.y < upright.position.y, "对家明杠横牌位于三张竖牌上方")
-					t.expect(is_equal_approx(horizontal.get_center().x, upright.get_center().x), "对家横牌对齐中间竖牌")
-	# 留一张实际渲染图：前三行三种来源，最后一行暗杠/加杠四竖。
-	root.size = Vector2i(1440, 1520)
-	for entry in [[0, 1], [3, 3], [2, 2]]:
-		var owner: int = entry[0]
-		table.round.last_result.items[owner] = [table.round.last_result.items[owner][entry[1] - 1]]
-	table.round.last_result.items[1] = []
-	for kind in ["concealed", "add_kong"]:
-		var item := _reference_item("kong", "暗杠" if kind == "concealed" else "加杠", ["tiao9", "tiao9", "tiao9", "tiao9"], 4)
-		item.merge({"kong_kind": RoundState._kong_kind_from_name(kind), "base_amount": 4, "from_seat": 2})
-		table.round.last_result.items[1].append(item)
-	table.round.last_result.round_points = [0.0, 8.0, 0.0, 0.0]
-	table.round.last_result.status = ["叫牌", "叫牌", "叫牌", "叫牌"]
-	var transfers: Array = [{"from": 1, "to": 0, "amount": 4}, {"from": 2, "to": 3, "amount": 4}, {"from": 0, "to": 2, "amount": 4}]
-	for payer in [0, 2, 3]:
-		transfers.append({"from": payer, "to": 1, "amount": 8})
-	table.round.last_result.pairwise = ScoringEngine.pairwise_payments(transfers)
-	table._show_result()
-	await process_frame
-	await process_frame
-	var scroll: ScrollContainer = table._result_panel.get_node("ResultSeat1/Details/ScoreGroups")
-	for group in scroll.get_node("Groups").get_children():
-		_check_group_geometry(group, scroll)
-		for tile in group.get_children():
-			if tile is TileView:
-				t.expect(is_zero_approx(tile.rotation), "自己的暗杠、加杠在结算卡片上四张全部竖放")
-	if DisplayServer.get_name() != "headless":
-		await RenderingServer.frame_post_draw
-		t.expect(root.get_texture().get_image().save_png("res://docs/kong_arrangements.png") == OK, "保存三种明杠与暗杠加杠排列截图")
-
 func _reference_transfers() -> Array:
-	# 图中你/上家/对家/下家的六对关系，真实付款范围另用规则测试验证。
 	return [{"from": 3, "to": 0, "amount": 2}, {"from": 2, "to": 0, "amount": 13},
 		{"from": 1, "to": 0, "amount": 17}, {"from": 2, "to": 3, "amount": 11},
 		{"from": 1, "to": 3, "amount": 15}, {"from": 1, "to": 2, "amount": 8}]
@@ -230,129 +154,118 @@ func _test_reference() -> void:
 	var pairs := ScoringEngine.pairwise_payments(_reference_transfers())
 	for seat in 4:
 		var expected: Array = [[2.0, 13.0, 17.0], [-17.0, -15.0, -8.0], [8.0, -13.0, -11.0], [11.0, 15.0, -2.0]][seat]
-		t.expect(ScoringEngine.relative_payments(pairs, seat) == expected, "各玩家自己的上/对/下家顺序应与参考图一致")
+		t.expect(ScoringEngine.relative_payments(pairs, seat) == expected, "Reference 上/对/下 payments remain unchanged")
 
-func _reference_item(kind: String, label: String, tiles: Array, amount: float) -> Dictionary:
-	return {"kind": kind, "label": label, "tiles": tiles, "amount": amount, "note": ""}
+func _bind(r: RoundState, human: int) -> void:
+	if table.round != null: table.round.cancel_opening()
+	table.round = r
+	table.human_seat = human
+	table._connect_audio_round()
+	table._refresh()
+	table._settlement_animation_controller.skip()
 
-func _show_reference() -> void:
-	table.round.phase = RoundState.Phase.SETTLED
-	table.round.round_meta.winner = 3
-	table.round.round_meta.self_draw = true
-	table.round.round_meta.flip_tile = "tiao1"
-	var dark := _reference_item("kong", "暗杠", ["tiao9", "tiao9", "tiao9", "tiao9"], 4)
-	dark.merge({"kong_kind": RoundState.KongKind.CONCEALED, "base_amount": 4, "owner": 2})
-	var exposed := _reference_item("kong", "明杠", ["tong2", "tong2", "tong2", "tong2"], 4)
-	exposed.merge({"kong_kind": RoundState.KongKind.EXPOSED, "from_seat": 3, "base_amount": 4, "owner": 2})
-	table.round.last_result = {"round_points": [17.0, 0.0, 4.0, 15.0],
-		"pairwise": ScoringEngine.pairwise_payments(_reference_transfers()),
-		"status": ["叫牌", "未叫牌", "叫牌", "自摸"], "items": [
-			[_reference_item("charge", "冲锋鸡", ["tong8"], 4), _reference_item("chicken", "普通鸡", ["tong8"], 2),
-			_reference_item("charge", "冲锋金鸡", ["tiao1"], 8), _reference_item("flip", "翻鸡", ["tiao2", "tiao3", "tiao3"], 3)],
-			[], [dark, exposed], [_reference_item("bonus", "自摸", [], 4),
-			_reference_item("chicken", "普通鸡", ["tong8", "tong8"], 4), _reference_item("chicken", "金鸡", ["tiao1"], 4),
-			_reference_item("flip", "翻鸡", ["tiao2", "tiao3", "tiao3"], 3)]]}
-	table._show_result()
+func _finish(r: RoundState) -> void:
+	r.wall = WallRing.new(TileSetFactory.create_deck())
+	r.wall.set_head(0)
+	r.wall._ring[0] = "wan8"
+	r._finish()
+
+func _check_tabletop(r: RoundState) -> void:
+	var c = table._settlement_animation_controller
+	t.expect(c.is_completed() and c.boards.size() == 4, "Settlement remains directly on the table")
+	for seat in 4:
+		t.expect(c.boards[seat].get_child_count() == 3, "Exactly three counterpart rows replace the old details card")
+		var expected := ScoringEngine.relative_payments(r.last_result.pairwise, seat)
+		for index in 3:
+			var label: Label = c.payment_labels[seat][index]
+			var signed := "%+.0f" % expected[index] if expected[index] != 0 else "0"
+			t.expect(label.text == signed, "Tabletop preserves actual signed payments in player-relative order")
+		t.expect(not table.discard_scroll[seat].get_node("Tiles").visible, "Payments replace river contents")
 
 func _test_ui() -> void:
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	root.content_scale_size = Vector2i.ZERO
-	root.size = Vector2i(1440, 1520)
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(table)
 	await process_frame
-	table.round.phase = RoundState.Phase.IDLE
-	_show_reference()
-	await process_frame
-	await process_frame
-	var rows: Array = []
-	for seat in [0, 3, 2, 1]:
-		var row: Control = table._result_panel.get_node("ResultSeat%d" % seat)
-		rows.append(row)
-		t.expect(row.get_node("RoundPoints").text == "本局%.0f分" % table.round.last_result.round_points[seat], "本局分文字正确")
-		var expected := ScoringEngine.relative_payments(table.round.last_result.pairwise, seat)
-		for index in 3:
-			t.expect(row.get_node("Payment%d" % index).text == "%+.0f" % expected[index], "三家收付按当前玩家视角展示")
-		var groups: HFlowContainer = row.get_node("Details/ScoreGroups/Groups")
-		for group in groups.get_children():
-			var item: Dictionary = group.get_meta("score_item")
-			var count := 0
-			for child in group.get_children():
-				if child is TileView:
-					count += 1
-					t.expect(child.unit == table.RESULT_TILE_UNIT, "结算牌面统一放大")
-			t.expect(count == item.tiles.size(), "每组必须显示全部牌面")
-	if DisplayServer.get_name() != "headless":
-		await RenderingServer.frame_post_draw
-		t.expect(root.get_texture().get_image().save_png("res://docs/settlement_reference.png") == OK, "保存参考结算界面")
-	table._toggle_result_panel(false)
-	t.expect(table._result_restore.visible and not table._result_panel.visible, "看牌桌可收起结算")
-	t.expect(table._result_restore.get_global_rect().position.is_equal_approx(table._result_panel.get_global_rect().position + table._result_toggle_position() * table.surface.scale), "查看结算与看牌桌在同一位置")
-	table._toggle_result_panel(true)
-	# 最大同分组需要换行/滚动，不能缩小牌面或越过明细区。
-	var many: Array = []
-	for index in 14:
-		many.append("tong8")
-	table.round.last_result.items[0].append(_reference_item("chicken", "普通鸡", many, 28))
-	table._show_result()
-	for dimensions in [Vector2i(1440, 1520), Vector2i(1280, 720), Vector2i(1080, 1920), Vector2i(960, 540)]:
-		root.size = dimensions
-		await process_frame
-		await process_frame
-		var panel_rect: Rect2 = table._result_panel.get_global_rect()
-		t.expect(Rect2(Vector2.ZERO, Vector2(dimensions)).encloses(panel_rect), "结算卡片在各窗口尺寸内完整显示")
-		for seat in 4:
-			var row: Control = table._result_panel.get_node("ResultSeat%d" % seat)
-			var scroll: ScrollContainer = row.get_node("Details/ScoreGroups")
-			t.expect(row.get_global_rect().encloses(scroll.get_global_rect()), "明细区不越过本玩家的行")
-		var scroll: ScrollContainer = table._result_panel.get_node("ResultSeat0/Details/ScoreGroups")
-		t.expect(scroll.get_v_scroll_bar().max_value > scroll.size.y, "长牌组可滚动，牌面不用缩小")
-		for group in scroll.get_node("Groups").get_children():
-			t.expect(group.size.x <= 1000, "牌组宽度不溢出")
-	root.size = Vector2i(1440, 1520)
-	for human in [1, 2, 3]:
-		table.human_seat = human
-		table._show_result()
-		var own: Control = table._result_panel.get_node("ResultSeat%d" % human)
-		t.expect(own.position.y == 112 and own.get_node("SeatName").text == "你", "联机换座位后自己的行始终第一行")
-	# 来源牌位置覆盖上/对/下家；暗杠和加杠全部竖放。
-	for source_offset in [1, 2, 3]:
-		for owner in 4:
-			var item := {"kind": "kong", "kong_kind": RoundState.KongKind.EXPOSED, "from_seat": posmod(owner + source_offset, 4)}
-			t.expect(table._result_sideways_index(item, owner) == {1: 3, 2: 3, 3: 0}[source_offset], "明杠横牌按该玩家自己的方向显示")
-	t.expect(table._result_sideways_index({"kind": "kong", "kong_kind": RoundState.KongKind.ADD_KONG}, 0) == -1, "加杠四张竖放")
-	t.expect(table._result_sideways_index({"kind": "kong", "kong_kind": RoundState.KongKind.CONCEALED}, 0) == -1, "暗杠没有来源横牌")
-	table.human_seat = 0
-	table.round.last_result.items[0] = [_reference_item("charge", "冲锋鸡", ["tiao1", "tong8"], 8)]
-	table._show_result()
-	await process_frame
-	await process_frame
-	var charge_group: Control = table._result_panel.get_node("ResultSeat0/Details/ScoreGroups/Groups").get_child(0)
-	var sideways := 0
-	for tile in charge_group.get_children():
-		if tile is TileView and not is_zero_approx(tile.rotation):
-			sideways += 1
-	t.expect(sideways == 2, "两种同分冲锋鸡合并后均横放")
-	# 被碰/杠转入的冲锋鸡在结算里显示成普通鸡并竖向按碰摆放，不再横放或标冲锋字样。
-	var claimed := fixture()
-	claimed.players[1].melds = [{"kind": "pung", "tile": "tiao1", "from_seat": 0}]
-	claimed.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "meld", "meld_index": 0}}
-	var claimed_profile := ScoringEngine.chicken_profile(claimed, 1, "wan5")
-	t.expect(claimed_profile.items.size() == 1 and claimed_profile.items[0].kind == "chicken" and claimed_profile.items[0].label == "普通鸡" and claimed_profile.items[0].count == 3, "被碰冲锋鸡识别为普通鸡")
-	table.round.last_result.items = [[], claimed_profile.items, [], []]
-	table._show_result()
-	await process_frame
-	await process_frame
-	var claimed_groups: HFlowContainer = table._result_panel.get_node("ResultSeat1/Details/ScoreGroups/Groups")
-	var saw_claimed_chicken := false
-	for group in claimed_groups.get_children():
-		var item: Dictionary = group.get_meta("score_item")
-		if str(item.get("kind", "")) == "chicken" and str(item.get("label", "")) == "普通鸡":
-			saw_claimed_chicken = true
-			for tile in group.get_children():
-				if tile is TileView:
-					t.expect(is_zero_approx(tile.rotation), "被碰冲锋鸡在结算中竖向摆放")
-	t.expect(saw_claimed_chicken, "被碰冲锋鸡应归入普通鸡组")
+	var r := fixture()
+	_finish(r)
+	var before := var_to_bytes([r.serialize(), r.last_result])
+	for human in 4:
+		_bind(r, human)
+		for dimensions in [Vector2i(1440, 1520), Vector2i(1280, 720), Vector2i(1080, 1920), Vector2i(960, 540)]:
+			root.size = dimensions
+			await process_frame
+			await process_frame
+			_check_tabletop(r)
+			var viewport := Rect2(Vector2.ZERO, Vector2(dimensions))
+			var occupied: Array[Rect2] = []
+			for board in table._settlement_animation_controller.boards.values():
+				var rect: Rect2 = board.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, board.size)
+				t.expect(viewport.grow(1).encloses(rect), "All four payment boards fit after resizing")
+				for previous in occupied: t.expect(not rect.grow(-1).intersects(previous.grow(-1)), "Payment boards do not overlap")
+				occupied.append(rect)
+	t.expect(var_to_bytes([r.serialize(), r.last_result]) == before, "Rendering and rotation never write the settlement")
+
+func _test_kong_ui() -> void:
+	# Preserve the old source-direction/complete-face assertions on actual table melds.
+	for human in 4:
+		for offset in [1, 2, 3]:
+			for kind in ["exposed", "concealed", "add_kong"]:
+				var r := fixture()
+				for owner in 4:
+					r.players[owner].concealed = MELD_WAIT.duplicate()
+					r.players[owner].melds = [{"kind": "add_kong" if kind == "add_kong" else "kong",
+						"tile": "tong5", "from_seat": posmod(owner + offset, 4), "concealed": kind == "concealed"}]
+				r.players[0].concealed.append("wan9")
+				_finish(r)
+				var before := var_to_bytes([r.serialize(), r.last_result])
+				_bind(r, human)
+				_check_tabletop(r)
+				for owner in 4:
+					var tiles: Array = table.meld_box[owner].get_children().filter(func(node): return node is TileView)
+					t.expect(tiles.size() == 4, "All four kong faces remain visible on the tabletop")
+					var sideways := 0
+					var occupied: Array[Rect2] = []
+					for tile in tiles:
+						t.expect(tile.face_up and tile.tile == "tong5", "Settlement reveals every kong tile")
+						var bounds: Rect2 = tile.get_transform() * Rect2(Vector2.ZERO, tile.size)
+						for previous in occupied:
+							t.expect(not bounds.grow(-0.5).intersects(previous.grow(-0.5)), "All four kong faces fit without overlap on the table")
+						occupied.append(bounds)
+						if not is_zero_approx(tile.rotation): sideways += 1
+						if kind != "exposed": t.expect(is_zero_approx(tile.rotation), "Concealed/added kong keeps all four upright")
+					t.expect(sideways == (1 if kind == "exposed" else 0), "Only exposed kong has a source tile sideways")
+					if kind == "exposed":
+						var expected_index: int = {1: 3, 2: 3, 3: 0}[offset]
+						t.expect(not is_zero_approx(tiles[expected_index].rotation), "Exposed kong sideways index follows its owner's source direction")
+				t.expect(var_to_bytes([r.serialize(), r.last_result]) == before, "Tabletop kong rendering does not alter payment metadata")
+
+func _test_charge_ui() -> void:
+	var r := fixture()
+	r.players[0].discards = ["tiao1", "tong8"]
+	r.players[0].discard_ids = [0, 1]
+	r.players[0].discard_count = 2
+	r.round_meta.charge_chickens = {"tiao1": {"owner": 0, "location": "discard", "discard_id": 0},
+		"tong8": {"owner": 0, "location": "discard", "discard_id": 1}}
+	_finish(r)
+	_bind(r, 0)
+	var chickens: Array = table.chicken_box[0].get_children().filter(func(node): return node is TileView)
+	t.expect(chickens.size() == 2, "Both charge chickens remain displayed on table")
+	for tile in chickens:
+		t.expect(not is_zero_approx(tile.rotation), "Retained charge chickens stay sideways")
+	# Claimed charge becomes an ordinary pung, preserving all three physical faces.
+	r = fixture()
+	r.players[1].melds = [{"kind": "pung", "tile": "tiao1", "from_seat": 0}]
+	r.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "meld", "meld_index": 0}}
+	var profile := ScoringEngine.chicken_profile(r, 1, "wan5")
+	t.expect(profile.items.size() == 1 and profile.items[0].kind == "chicken" and profile.items[0].label == "普通鸡" and profile.items[0].count == 3, "Claimed charge chicken is scored as three ordinary chickens")
+	_finish(r)
+	_bind(r, 0)
+	var tiles: Array = table.meld_box[1].get_children().filter(func(node): return node is TileView)
+	t.expect(tiles.size() == 3 and table.chicken_box[1].get_child_count() == 0, "Claimed chicken is represented once as a pung, never duplicated")
+	for tile in tiles:
+		t.expect(tile.face_up and tile.tile == "tiao1" and not tile.get_meta("charge_chicken", false), "Claimed chicken loses charge marking on tabletop")
 
 func _run() -> void:
 	_test_kongs()
@@ -360,5 +273,8 @@ func _run() -> void:
 	_test_groups()
 	_test_reference()
 	await _test_ui()
-	await _test_kong_ui()
+	_test_kong_ui()
+	_test_charge_ui()
+	table.free()
+	await process_frame
 	quit(t.finish("settlement_card"))

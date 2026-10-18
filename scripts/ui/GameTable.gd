@@ -16,6 +16,12 @@ var _sound_settings: SoundSettings
 var _audio_round: RoundState
 var _sound_button: Button
 var _settings_button: Button
+var _settlement_round_id := 0
+var _settlement_session := ""
+var _settlement_round_number := -1
+var _settlement_phase := -1
+var _settlement_immediate := false
+var _awaiting_rejoin_snapshot := false
 
 func _ready() -> void:
 	# 初始化 TileView 对象池以减少 GC 压力
@@ -25,6 +31,8 @@ func _ready() -> void:
 
 	AudioManager.begin_table(self)
 	_build_static_ui()
+	get_window().focus_exited.connect(_on_input_focus_changed)
+	get_window().focus_entered.connect(_on_input_focus_changed)
 	resized.connect(_layout)
 	_layout()
 	var mode := _net_mode()
@@ -44,6 +52,9 @@ func _connect_audio_round() -> void:
 	AudioManager.reset_round(round.audio_session, round.audio_event_id)
 	_table_animation_controller.reset()
 	_settlement_animation_controller.reset()
+	_settlement_card.hide_post_settlement_controls()
+	_settlement_round_id = 0
+	_settlement_phase = -1
 	_last_tile_input_ms = -1000
 	round.audio_event.connect(_on_audio_event)
 	if not round.visual_event.is_connected(_on_visual_event):
@@ -103,15 +114,11 @@ func new_game() -> void:
 			scores.append(player.score)
 		round.cancel_opening()
 	_clear_actions()
-	_result_shown = false
 	_settlement_animation_controller.reset()
 	_settlement_card.hide_post_settlement_controls()
+	_settlement_immediate = false
 	_declaring_ready = false
 	_selected_tile = null
-	if result_layer != null:
-		result_layer.hide()
-	if _result_restore != null and is_instance_valid(_result_restore):
-		_result_restore.hide()
 	_round_number += 1
 	round = RoundState.new()
 	round._recorder.auto_save = true
@@ -157,7 +164,8 @@ func _setup_client_view() -> void:
 	var network = _net_node()
 	round = network.game
 	_connect_audio_round()
-	_round_number = 1
+	_round_number = network.round_number
+	_awaiting_rejoin_snapshot = round.phase == RoundState.Phase.IDLE
 	network.room_ready.connect(func(seat):
 		human_seat = seat
 		_refresh())
@@ -165,7 +173,10 @@ func _setup_client_view() -> void:
 	network.prompted.connect(_on_net_prompt)
 	network.connection_error.connect(_on_connection_error)
 	network.reconnecting.connect(func(attempt, maximum):
+		_awaiting_rejoin_snapshot = true
 		_table_animation_controller.cancel()
+		_settlement_animation_controller.reset()
+		_settlement_card.hide_post_settlement_controls()
 		round._presentation.sync_initialized = false
 		_selecting = false
 		_clear_actions()
@@ -188,18 +199,17 @@ func _prime_opening_visuals() -> void:
 	for event in round.visual_events: _on_visual_event(event)
 
 func _refresh() -> void:
-	if round == null:
+	if round == null or _awaiting_rejoin_snapshot:
 		return
+	_sync_settlement_round()
 	if not _landscape:
 		_layout()
 	if round.phase != RoundState.Phase.SETTLED:
-		_result_shown = false
-		result_layer.hide()
 		_settlement_card.hide_post_settlement_controls()
-		if _result_restore != null and is_instance_valid(_result_restore):
-			_result_restore.hide()
-		# 新一局开始前把结算层的状态复位，避免遮罩残留挡住牌桌。
-		result_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	elif _settlement_immediate:
+		# A restored settlement is a final snapshot, including any queued play
+		# visuals received before this table connected to the network.
+		_table_animation_controller.cancel()
 	_layout_actions()
 	for seat in 4: _player_tile_areas._refresh_identity(seat)
 	_prepare_exposed_layouts()
@@ -217,10 +227,34 @@ func _refresh() -> void:
 	_update_interactivity()
 	_table_animation_controller.refresh_masks()
 	queue_redraw()
-	if round.phase == RoundState.Phase.SETTLED and not _result_shown \
+	if round.phase == RoundState.Phase.SETTLED and round.players.size() == 4 \
 		and not _settlement_animation_controller.has_started() \
 		and not _animation_busy and _animation_queue.is_empty():
-		_start_settlement_animation()
+		var immediate := _settlement_immediate
+		_settlement_immediate = false
+		_start_settlement_animation(immediate)
+	_settlement_animation_controller.apply_displays()
+	_refresh_next_round_controls()
+
+func _sync_settlement_round() -> void:
+	# Clients and hosts reuse RoundState between rounds. Object identity alone
+	# would leave the previous completed animation (and invisible rivers) alive.
+	var number: int = _round_number if _net_mode() == "" else _net_node().round_number
+	var changed := _settlement_round_id != round.get_instance_id() \
+		or _settlement_session != round.audio_session \
+		or _settlement_round_number != number \
+		or (_settlement_phase == RoundState.Phase.SETTLED and round.phase != RoundState.Phase.SETTLED)
+	if changed:
+		_settlement_animation_controller.reset()
+		_settlement_card.hide_post_settlement_controls()
+		_seat_visual_keys.clear()
+		_settlement_immediate = round.phase == RoundState.Phase.SETTLED
+	elif _settlement_phase == RoundState.Phase.IDLE and round.phase == RoundState.Phase.SETTLED:
+		_settlement_immediate = true
+	_settlement_round_id = round.get_instance_id()
+	_settlement_session = round.audio_session
+	_settlement_round_number = number
+	_settlement_phase = round.phase
 
 func _refresh_center() -> void:
 	center_info.text = str(_sum_wall()) if not round.players.is_empty() else "--"
@@ -271,6 +305,9 @@ func _refresh_status() -> void:
 
 func _on_client_state_updated() -> void:
 	# 普通快照保留正在播放的视觉队列；重连回调单独清理并跳过历史。
+	if _awaiting_rejoin_snapshot:
+		_settlement_immediate = round.phase == RoundState.Phase.SETTLED
+		_awaiting_rejoin_snapshot = false
 	_selecting = false
 	_response_disc = ""
 	_clear_actions()
@@ -309,7 +346,19 @@ func _on_connection_error(message: String) -> void:
 	add_child(_connection_dialog)
 	_connection_dialog.popup_centered()
 
+func _on_input_focus_changed() -> void:
+	# Windows may omit the release when Alt-Tab interrupts a click. With
+	# emulate_touch_from_mouse enabled, that also leaves a held touch index
+	# which suppresses the next mouse AND touch press. Drop only the gesture;
+	# preserve prompts, ready selection, and authoritative animation locks.
+	_table_actions._reset_press()
+	_last_tile_input_ms = -1000
+	if is_node_ready(): _update_interactivity()
+
 func _notification(what: int) -> void:
+	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_FOCUS_IN,
+		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_RESUMED]:
+		_on_input_focus_changed()
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if _sound_settings != null and _sound_settings.is_open():
 			_sound_settings.close()
@@ -330,8 +379,7 @@ func _on_quit() -> void:
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 
 func _export_current_replay() -> void:
-	var path := round.export_replay() if round != null else ""
-	_sound_settings.replay_status.text = "已保存到本机对局记录目录" if path != "" else "完整记录保存在房主或服务器上"
+	_sound_settings.export_replay(round, human_seat)
 
 func _confirm_quit() -> void:
 	_sound_settings.confirm_exit()

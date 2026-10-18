@@ -65,8 +65,9 @@ func _new_fixture() -> void:
 	table._clear_actions()
 	table._response_disc = ""
 	table._declaring_ready = false
-	table._result_shown = false
-	table.result_layer.hide()
+	table._table_animation_controller.reset()
+	table._settlement_animation_controller.reset()
+	table._settlement_card.hide_post_settlement_controls()
 	table.round = RoundState.new()
 	table.round.build_players(table.human_seat)
 	table.round.controllers = [null, null, null, null]
@@ -79,6 +80,14 @@ func _new_fixture() -> void:
 	table.round.require_response.connect(table._on_require_response)
 	table.round.state_update.connect(table._refresh)
 	table.round.round_finished.connect(table._on_round_finished)
+
+func _settle_fixture() -> void:
+	# Use the real ledger and score application so phase, result and totals agree.
+	table.round._finish()
+	table._table_animation_controller.reset()
+	table._settlement_animation_controller.reset()
+	table._refresh()
+	table._settlement_animation_controller.skip()
 
 func _test_ai_speed() -> void:
 	for speed in ["instant", "fast", "standard"]:
@@ -590,10 +599,7 @@ func _test_meld_markers() -> void:
 	table.round.players[1].melds = [{"kind": "kong", "tile": "tiao9", "concealed": true}, {"kind": "add_kong", "tile": "wan7", "from_seat": 2}]
 	table.round.players[1].concealed = ["wan1", "wan2", "wan3", "tong1", "tong2", "tong3", "wan9", "wan9"]
 	table.round.players[1].just_drew = "wan9"
-	table.round.phase = RoundState.Phase.SETTLED
-	table._result_shown = true
-	table._refresh()
-	table.result_layer.hide()
+	_settle_fixture()
 	root.size = Vector2i(1440, 1520)
 	await process_frame
 	await process_frame
@@ -643,12 +649,12 @@ func _test_concealed_kong_reveal() -> void:
 				await RenderingServer.frame_post_draw
 				var suffix := "revealed" if revealed else "hidden"
 				_expect(root.get_texture().get_image().save_png("res://docs/table_concealed_kong_%s.png" % suffix) == OK)
-	host.phase = RoundState.Phase.SETTLED
-	table._result_shown = true
 	for player in host.players:
 		player.discard_count = 4
+	host.players[0].concealed.append("wan9")
+	host.round_meta.merge({"winner": 0, "winners": [0], "self_draw": true}, true)
 	table.round = host
-	table._refresh()
+	_settle_fixture()
 	for owner in 4:
 		for tile in table.meld_box[owner].get_children():
 			_expect(tile.face_up and tile.tile == kong_tiles[owner], "Early settlement shows the complete concealed kong on the table")
@@ -656,17 +662,19 @@ func _test_concealed_kong_reveal() -> void:
 	_build_midgame()
 
 func _test_result() -> void:
-	table._result_shown = true
-	table.round.phase = RoundState.Phase.SETTLED
-	table.round.round_meta.winner = 0
-	table.round.round_meta.self_draw = true
-	table.round.round_meta.flip_tile = "tong8"
-	table.round.last_result = {"deltas": [24.0, -8.0, -8.0, -8.0], "lines": ["自摸 +4", "清一色 +24", "翻牌鸡：八筒"]}
-	table._refresh()
-	table._show_result()
-	_expect(table.result_layer.visible)
-	var flip_tile: TileView = table._result_panel.get_node("FlippedChickenTile")
-	_expect(flip_tile.size.is_equal_approx(Vector2(TileView.BASE_W, TileView.BASE_H) * table.RESULT_TILE_UNIT), "Settlement chicken tile must match result card tiles")
+	table.round.players[0].concealed = ["wan2", "wan3", "wan4", "tiao4", "tiao5", "tiao6", "tong2", "tong3", "tong4", "tong9", "tong9"]
+	table.round.players[0].just_drew = "tong9"
+	table.round.round_meta.merge({"winner": 0, "winners": [0], "self_draw": true}, true)
+	table.round.wall._ring[table.round.wall._head] = "tong8"
+	_settle_fixture()
+	var settlement = table._settlement_animation_controller
+	_expect(settlement.is_completed() and settlement.boards.size() == 4, "Settlement displays four final tabletop payment boards")
+	_expect(settlement.current_pairs == table.round.last_result.pairwise, "Tabletop payment boards display the authoritative ledger")
+	_expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Settlement keeps an unshaded, non-blocking table and plain bottom controls")
+	var flip_tile: TileView = settlement._flip_view
+	_expect(is_instance_valid(flip_tile) and flip_tile.visible and flip_tile.face_up and flip_tile.tile == "tong8", "Settlement exposes the actual flipped chicken on the table")
+	if is_instance_valid(flip_tile):
+		_expect(_control_rect(table.surface).encloses(_control_rect(flip_tile)), "The flipped chicken stays inside the tabletop")
 
 func _test_draw_results() -> void:
 	_new_fixture()
@@ -687,19 +695,16 @@ func _test_draw_results() -> void:
 	await process_frame
 	await process_frame
 	_expect(table.round.last_result.deltas == [32.0, 20.0, -24.0, -28.0], "Visible draw result must match chicken, base4 and kong payer rules")
-	_expect(table._settlement_animation_controller.has_started() and not table.result_layer.visible, "Mixed draw starts settlement preview without opening the result card")
-	for _frame in 20:
-		if table._settlement_animation_controller.is_completed(): break
-		await process_frame
+	_expect(table._settlement_animation_controller.has_started(), "Mixed draw starts tabletop settlement automatically")
+	table._settlement_animation_controller.skip()
 	_expect(table._settlement_animation_controller.is_completed() and table._settlement_card._post_controls.visible, "Settlement controls appear only after the preview finishes")
 	_expect(not table.status_label.visible and table.status_label.text == "", "Mixed draw keeps table status text hidden")
-	table._show_result()
+	_expect(table._settlement_animation_controller.boards.size() == 4 and table._settlement_animation_controller.current_pairs == table.round.last_result.pairwise, "Mixed draw shows the real chicken and kong payments on the table")
+	_expect(not is_instance_valid(table._settlement_animation_controller._flip_view), "A draw never creates a flipped chicken")
 	await process_frame
-	_expect(table.result_layer.visible, "Result card opens only after an explicit view action")
 	if rendering:
 		await RenderingServer.frame_post_draw
 		_expect(root.get_texture().get_image().save_png("res://docs/rules_draw_result.png") == OK)
-	table.result_layer.hide()
 	_check_layout()
 	if rendering:
 		await RenderingServer.frame_post_draw
@@ -710,9 +715,16 @@ func _test_draw_results() -> void:
 	for index in 108:
 		table.round.wall.draw_head()
 	table.round._penzu()
+	var all_called_round: RoundState = table.round
+	var scores: Array = table.round.players.map(func(player): return player.score)
 	await process_frame
 	await process_frame
 	_expect(table.round.next_chicken_multiplier == 2 and not table.status_label.visible and table.status_label.text == "", "All-called draw keeps table status text hidden")
+	await create_timer(2.0).timeout
+	_expect(table.round == all_called_round and table.round.phase == RoundState.Phase.SETTLED, "All-called draw waits for the next-round button instead of advancing automatically")
+	_expect(table._settlement_animation_controller.is_completed() and table._settlement_animation_controller.boards.is_empty(), "All-called draw completes without payment boards")
+	_expect(not is_instance_valid(table._settlement_animation_controller._flip_view) and table._settlement_card._post_controls.visible and not table._next_round_button.disabled, "All-called draw retains only the next-round control without a chicken flip")
+	_expect(all_called_round.last_result.deltas == [0.0, 0.0, 0.0, 0.0] and all_called_round.players.map(func(player): return player.score) == scores, "All-called draw never changes cumulative scores")
 	if rendering:
 		await RenderingServer.frame_post_draw
 		_expect(root.get_texture().get_image().save_png("res://docs/rules_all_called.png") == OK)
@@ -723,7 +735,7 @@ func _test_next_round() -> void:
 	table.round.next_chicken_multiplier = 2
 	table.round.next_dealer_seat = 3
 	table.human_seat = 3
-	table.new_game()
+	table._next_round_button.pressed.emit()
 	if rendering:
 		while table.round.phase == RoundState.Phase.DEALING or table._table_animation_controller.input_locked():
 			await process_frame
@@ -734,7 +746,7 @@ func _test_next_round() -> void:
 	_expect(table.center_labels[3].text.contains("-24分"), "Table immediately displays preserved negative score")
 	_expect(table.round.round_meta.chicken_multiplier == 2, "Next game carries the chicken multiplier")
 	_expect(not table.round_label.text.contains("鸡分 ×2"), "The active multiplier stays inside settlement details")
-	_expect(not table.result_layer.visible)
+	_expect(not table._settlement_animation_controller.has_started() and table._settlement_animation_controller.boards.is_empty() and not table._settlement_card._post_controls.visible, "New game removes all settlement boards and bottom controls")
 	_expect(table.round.phase == RoundState.Phase.PLAYING)
 
 func _physical_rect(control: Control) -> Rect2:
@@ -764,52 +776,46 @@ func _test_landscape_stretch() -> void:
 			await RenderingServer.frame_post_draw
 			_expect(root.get_texture().get_image().save_png("res://docs/android_table_%dx%d.png" % [dimensions.x, dimensions.y]) == OK)
 	_test_result()
-	table.round.last_result = ScoringEngine.settle(table.round)
-	table._show_result()
+	var settlement = table._settlement_animation_controller
 	for dimensions in [Vector2i(1280, 720), Vector2i(960, 540), Vector2i(1080, 1920), Vector2i(2400, 1080), Vector2i(1280, 800)]:
 		root.size = dimensions
 		await process_frame
 		await process_frame
 		var screen_rect := Rect2(Vector2.ZERO, Vector2(dimensions))
-		_expect(screen_rect.encloses(_physical_rect(table._result_panel)), "The settlement must fit the physical screen after rotation")
+		_expect(settlement.is_completed() and settlement.boards.size() == 4, "Rotation preserves the completed tabletop settlement")
 		var rows: Array[Rect2] = []
 		for seat in 4:
-			var row: Control = table._result_panel.get_node("ResultSeat%d" % seat)
+			var row: Control = settlement.boards[seat]
 			var rect := _control_rect(row)
-			_expect(_control_rect(table._result_panel).encloses(rect), "Each settlement row must fit the card")
-			var scroll: ScrollContainer = row.get_node("Details/ScoreGroups")
-			for group in scroll.get_node("Groups").get_children():
-				_expect(group.size.x <= scroll.size.x, "Score groups must fit each landscape settlement column")
+			_expect(row.is_visible_in_tree() and screen_rect.grow(0.01).encloses(_physical_rect(row)), "Each tabletop board must fit the physical screen")
+			for index in 3:
+				var amount: Label = settlement.payment_labels[seat][index]
+				var direction: Label = amount.get_parent().get_node("Direction")
+				_expect(direction.text == ["上", "对", "下"][index], "Resizing preserves each seat's relative payment directions")
+				for label in [direction, amount]:
+					_expect(rect.grow(0.01).encloses(_control_rect(label)), "Payment directions and amounts fit their tabletop board")
+					_expect(TileView._font().get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x <= label.size.x, "Tabletop payment text fits without clipping")
 			for other in rows:
-				_expect(not rect.intersects(other), "Settlement rows must not overlap after rotation")
+				_expect(not rect.intersects(other), "Tabletop boards must not overlap after rotation")
 			rows.append(rect)
-		var toggle: Button
-		var next: Button
-		for child in table._result_panel.get_children():
-			if child is Button and child.text == "看牌桌":
-				toggle = child
-			elif child is Button and child.text == "下一局":
-				next = child
-		_expect(toggle != null and next != null, "The settlement must preserve both navigation controls")
-		if toggle != null:
-			_expect(_physical_rect(toggle).is_equal_approx(_physical_rect(table._result_restore)), "View table and view settlement must share the same physical button position")
-		if next != null:
-			_expect(screen_rect.encloses(_physical_rect(next)), "The next round button must remain fully visible")
+		var next: Button = table._next_round_button
+		_expect(next.is_visible_in_tree() and screen_rect.encloses(_physical_rect(next)), "The bottom next-round button must remain fully visible")
+		for rect in rows:
+			_expect(not rect.intersects(_control_rect(next)), "Bottom next-round control never covers tabletop payments")
+		_expect(screen_rect.encloses(_physical_rect(settlement._flip_view)), "The tabletop flipped chicken remains inside the physical screen")
 		if rendering:
 			await RenderingServer.frame_post_draw
 			_expect(root.get_texture().get_image().save_png("res://docs/android_result_%dx%d.png" % [dimensions.x, dimensions.y]) == OK)
-	table._toggle_result_panel(false)
 	root.size = Vector2i(1080, 1920)
 	await process_frame
 	await process_frame
-	_expect(table._result_restore.visible and not table._result_panel.visible, "A hidden settlement must stay hidden after rotation")
-	table._toggle_result_panel(true)
+	_expect(settlement.current_pairs == table.round.last_result.pairwise and table._settlement_card._post_controls.visible, "Rotation retains final payments and bottom controls")
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	root.content_scale_size = Vector2i.ZERO
 	root.size = Vector2i(1440, 1520)
 	await process_frame
 	await process_frame
-	print("[layout] Android canvas scaling, landscape controls, settlement rotation and toggle passed")
+	print("[layout] Android canvas scaling, landscape controls and tabletop settlement rotation passed")
 
 func _test_current_scores() -> void:
 	_new_fixture()

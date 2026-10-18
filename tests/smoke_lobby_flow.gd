@@ -62,14 +62,15 @@ func _run() -> void:
 			table._commit_response(decision.action)
 	t.expect(table.round.phase == RoundState.Phase.SETTLED, "Lobby-to-table full game finishes")
 	t.expect(await _wait_until(func(): return table._settlement_animation_controller.is_completed()), "Lobby-launched settlement preview finishes")
-	t.expect(not table.result_layer.visible and table._settlement_card._post_controls.visible, "Lobby-launched game waits for settlement view")
-	table._settlement_card._post_view_button.pressed.emit()
-	await process_frame
-	t.expect(table.result_layer.visible, "Lobby-launched game opens settlement after a click")
+	var settlement = table._settlement_animation_controller
+	var board_count: int = 0 if settlement.plan.all_called_draw else 4
+	t.expect(settlement.boards.size() == board_count and table._settlement_card._post_controls.visible, "Lobby-launched game displays the final tabletop settlement and bottom controls")
+	t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Lobby-launched settlement uses non-blocking tabletop content and plain bottom controls")
+	t.expect(table._next_round_button.get_parent() == table._settlement_card._post_controls and not table._next_round_button.disabled, "Lobby player can ready from the bottom control")
 	var scores: Array = table.round.players.map(func(player): return player.score)
 	var next_dealer: int = table.round.next_dealer_seat
-	table._next_round()
-	t.expect(network.net_node.round_number == 1 and table.result_layer.visible, "Readying keeps settlement until countdown completes")
+	table._next_round_button.pressed.emit()
+	t.expect(network.net_node.round_number == 1 and settlement.is_completed() and table._settlement_card._post_controls.visible, "Readying keeps tabletop settlement until countdown completes")
 	t.expect(table._next_round_button.text.contains("1 秒"), "Settlement shows one-second countdown")
 	# 固定等待在整组回归的高负载下会偶发抖动，改为轮询直到牌局真正推进并完成结算。
 	var advance_deadline := Time.get_ticks_msec() + 8000
@@ -77,6 +78,7 @@ func _run() -> void:
 		await process_frame
 	await process_frame
 	t.expect(network.net_node.round_number == 2, "Next-round table button advances network round")
+	t.expect(not settlement.has_started() and settlement.boards.is_empty() and not table._settlement_card._post_controls.visible, "New round clears tabletop settlement and readiness controls")
 	t.expect(table.round.dealer_seat == next_dealer, "Next-round button uses result dealer")
 	t.expect(table.round.players.map(func(player): return player.score) == scores, "Next-round button keeps scores")
 	# Returning to menu closes discovery responder and network peer.

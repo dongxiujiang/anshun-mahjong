@@ -49,16 +49,27 @@ func _run() -> void:
 	var button: Button = first._button("测试", func(): pass, UI.DISCARD_BUTTON_SIZE, true)
 	t.expect(button.custom_minimum_size == UI.DISCARD_BUTTON_SIZE and button.get_theme_stylebox("hover").bg_color == UI.BUTTON_PRIMARY_HOVER, "Size and palette come from the common configuration")
 	button.free()
-	first.round.phase = RoundState.Phase.SETTLED
-	first.round.last_result = ScoringEngine.settle(first.round)
+	first.round.controllers = [null, null, null, null]
+	first.round._finish()
+	first._table_animation_controller.reset()
 	var settled := var_to_bytes(first.round.serialize())
-	first._show_result()
-	var old_panel: Control = first._result_panel
-	first._show_result()
-	t.expect(first._result_panel != old_panel and first.result_layer.get_child_count() == 2, "Rebuilding settlement leaves one shade and one card")
-	first._toggle_result_panel(false)
-	t.expect(first._result_restore.visible and first._result_restore.position == first.panel_position_for_result_toggle(), "Table/card switching retains the same clickable position")
-	first._toggle_result_panel(true)
+	var settlement = first._settlement_animation_controller
+	settlement.reset()
+	first._refresh()
+	settlement.skip()
+	var old_boards: Dictionary = settlement.boards.duplicate()
+	settlement.start(true)
+	first._refresh()
+	t.expect(settlement.boards == old_boards and settlement.boards.size() == 4, "Repeated settlement start and refresh reuse all four tabletop boards")
+	t.expect(not second._settlement_animation_controller.has_started() and second._settlement_animation_controller.boards.is_empty(), "Settlement state belongs only to its own table")
+	settlement.reset()
+	first._refresh()
+	settlement.skip()
+	await process_frame
+	t.expect(settlement.is_completed() and settlement.boards.size() == 4 and settlement.payment_labels.size() == 4, "Reset rebuilds exactly four tabletop payment boards")
+	for seat in 4:
+		t.expect(not is_instance_valid(old_boards[seat]) and settlement.boards[seat].get_child_count() == 3, "Rebuilding removes old boards and leaves three relative payments per seat")
+	t.expect(first._settlement_card._post_controls.visible and settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Finished settlement exposes bottom controls without blocking the table")
 	t.expect(var_to_bytes(first.round.serialize()) == settled, "Settlement rendering cannot change scores or pairwise payments")
 	# Retain one helper externally to ensure it cannot retain a freed table.
 	var controller = first._table_animation_controller
@@ -72,6 +83,7 @@ func _run() -> void:
 	first.free()
 	await process_frame
 	t.expect(controller.table == null and controller._animation_queue.is_empty(), "Freed tables cancel visuals and are not held alive by their helpers")
+	t.expect(settlement.table == null and settlement.boards.is_empty(), "Freed tables also clear settlement visuals and release the table reference")
 	t.expect(not retained_round.visual_event.is_connected(visual_callback) and not retained_round.audio_event.is_connected(audio_callback), "Leaving disconnects both presentation event streams")
 	for ref in component_refs:
 		t.expect(ref.get_ref() == null, "Components are released when their table exits")

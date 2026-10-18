@@ -90,13 +90,20 @@ func _run() -> void:
 	Input.parse_input_event(down)
 	await process_frame
 	t.expect(submissions.size() == 1, "Native touchscreen input reaches the rendered tile and submits exactly once")
-	table.round.phase = RoundState.Phase.SETTLED
 	table.round.round_meta.winner = 0
+	table.round.round_meta.winners = [0]
 	table.round.round_meta.self_draw = true
-	table.round.round_meta.flip_tile = "tong3"
-	table.round.last_result = {"round_points": [24,0,4,8], "pairwise": [[0,24,20,16],[-24,0,-4,-8],[-20,4,0,-4],[-16,8,4,0]], "status": ["自摸", "未叫牌", "叫牌", "叫牌"], "items": [[{"kind":"bonus", "label":"清一色", "amount":24}], [], [{"kind":"chicken", "label":"普通鸡", "tiles":["tiao1","tong8"], "amount":4}], [{"kind":"charge", "label":"冲锋鸡", "tiles":["tong8"], "amount":4}]]}
-	table._show_result()
+	table.round.players[0].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "wan7", "wan8", "wan9", "wan2", "wan3", "wan4", "wan9", "wan9"]
+	table.round.players[0].just_drew = "wan9"
+	table.round.wall._ring[table.round.wall._head] = "tong3"
+	table.round._finish()
+	table._table_animation_controller.reset()
+	var settlement = table._settlement_animation_controller
+	settlement.reset()
+	table._refresh()
+	settlement.skip()
 	await create_timer(0.3).timeout
+	t.expect(settlement.is_completed() and settlement.boards.size() == 4 and table._settlement_card._post_controls.visible, "Single-player settlement shows tabletop payments and bottom next-round controls")
 	await _shot("03_settlement_single")
 	# 固定房间样例仅用于渲染，真实准备/取消另由多进程网络测试覆盖。
 	var network = root.get_node("Network")
@@ -106,32 +113,34 @@ func _run() -> void:
 	net.my_seat = 0
 	net.round_number = 1
 	net.lobby = {"ready_round":1, "countdown":-1, "owner":1, "ai_speed":"fast", "seats":[{"name":"你", "ai":false, "ready":false}, {"name":"下家", "ai":true, "ready":true}, {"name":"对家昵称很长也不能遮挡准备按钮", "ai":false, "ready":false}, {"name":"上家", "ai":true, "ready":true}]}
-	table._show_result()
+	table._settlement_card.show_post_settlement_controls()
 	await create_timer(0.3).timeout
 	await _shot("04_settlement_ready")
-	var footer: Control = table._result_panel.get_node("ReadinessFooter")
 	var button: Button = table._next_round_button
-	for chip in table._settlement_card._ready_chips:
-		t.expect(not Rect2(footer.position + chip.position, chip.size).intersects(button.get_rect()), "Member readiness never overlaps the touch button")
+	t.expect(table._next_round_status.text.contains("2 / 4") and not button.disabled, "Bottom readiness summary counts prepared AI seats")
+	for control in [table._next_round_status, table._next_round_hint] + settlement.boards.values():
+		t.expect(not control.get_global_rect().intersects(button.get_global_rect()), "Readiness text and tabletop payments never overlap the touch button")
 	for member in net.lobby.seats: member.ready = true
 	net.lobby.countdown = 1
 	table._refresh_next_round_controls()
+	t.expect(table._next_round_status.text.contains("4 / 4") and table._next_round_hint.text.contains("1 秒"), "Bottom controls render the all-ready countdown")
 	await _shot("05_ready_countdown")
 	net.lobby.countdown = -1
 	net.lobby.seats[2].ready = false
 	net.lobby.seats[2]["disconnected"] = true
 	table._refresh_next_round_controls()
+	t.expect(table._next_round_status.text.contains("3 / 4") and not button.text.contains("1 秒"), "Disconnect cancels the displayed countdown and updates readiness")
 	await _shot("06_ready_disconnected")
-	table._toggle_result_panel(false)
 	for dimensions in [Vector2i(960,540), Vector2i(2400,1080)]:
 		root.size = dimensions
 		await process_frame
 		await process_frame
-		t.expect(table.surface.get_rect().end.x >= 0, "Landscape surface remains usable")
-		await _shot("07_table_%dx%d" % [dimensions.x,dimensions.y])
-		table._toggle_result_panel(true)
-		await _shot("08_ready_%dx%d" % [dimensions.x,dimensions.y])
-		table._toggle_result_panel(false)
+		var screen_rect := Rect2(Vector2.ZERO, Vector2(dimensions))
+		t.expect(screen_rect.encloses(button.get_global_rect()) and table._settlement_card._post_controls.visible, "Landscape bottom readiness control remains visible")
+		for board in settlement.boards.values():
+			t.expect(screen_rect.encloses(board.get_global_rect()) and not board.get_global_rect().intersects(button.get_global_rect()), "Resized tabletop payments stay visible and clear of the ready button")
+		t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Settlement does not add a blocking overlay after resize")
+		await _shot("07_tabletop_ready_%dx%d" % [dimensions.x,dimensions.y])
 	network.mode = ""
 	table.queue_free()
 	await process_frame

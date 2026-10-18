@@ -44,8 +44,10 @@ func _run() -> void:
 				if opponent != seat:
 					_expect(round.players[opponent].concealed.all(func(tile): return tile == "hidden0"), "Opponent hand values must stay private")
 		if round.phase == RoundState.Phase.SETTLED:
-			while not table._settlement_animation_controller.is_completed() and Time.get_ticks_msec() - start < 10000:
+			var settlement_deadline := Time.get_ticks_msec() + 10000
+			while not table._settlement_animation_controller.is_completed() and Time.get_ticks_msec() < settlement_deadline:
 				await get_tree().process_frame
+			_expect(table._settlement_animation_controller.is_completed(), "Network settlement reaches its final tabletop state")
 			_expect(audio_events > 0, "Host and client table must both receive audio events")
 			_expect(AudioManager._last_event_id == round.audio_event_id, "Table audio must reach the latest synced event")
 			if host_mode:
@@ -59,11 +61,15 @@ func _run() -> void:
 					return
 			else:
 				await get_tree().process_frame
-				_expect(not table.result_layer.visible and table._settlement_card._post_controls.visible, "Client waits for an explicit settlement view action")
-				table._settlement_card._post_view_button.pressed.emit()
-				await get_tree().process_frame
-				_expect(table.result_layer.visible, "Client opens settlement only after the view button is pressed")
+				var settlement = table._settlement_animation_controller
+				var board_count: int = 0 if settlement.plan.all_called_draw else 4
+				_expect(settlement.boards.size() == board_count and table._settlement_card._post_controls.visible, "Client sees the final tabletop settlement and bottom readiness controls automatically")
+				_expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Client settlement uses non-blocking tabletop content and plain bottom controls")
+				_expect(table._next_round_button.get_parent() == table._settlement_card._post_controls and not table._next_round_button.disabled, "Client can ready from the bottom button")
 				_expect(round.last_result.has("deltas"), "Settlement scores must synchronize")
+				_expect(settlement.current_pairs == round.last_result.pairwise, "Client tabletop payments match the authoritative settlement")
+				for owner in settlement.boards:
+					_expect(settlement.boards[owner].is_visible_in_tree() and settlement.payment_labels[owner].size() == 3, "All clients retain three payments per seat")
 				_expect(turns > 0 and responses > 0, "Client must complete turn and response workflows")
 				Network.net_node.rpc_id(1, "ack", "turns=%d responses=%d UI=%s" % [turns, responses, "fail" if failed else "ok"])
 				await get_tree().create_timer(0.3).timeout

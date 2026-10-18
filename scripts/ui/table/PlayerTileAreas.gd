@@ -95,18 +95,30 @@ func _refresh_identity(seat: int) -> void:
 	var label: Label = center_labels[seat]
 	label.size = UI.CENTER_SCORE_SIZE
 	label.position = table._table_center() + UI.CENTER_SCORE_OFFSETS[relative] - label.size / 2.0
+	if table.round.phase == RoundState.Phase.SETTLED:
+		# 说明留在总分下方，向外让开桌心翻鸡牌与其他座位的昵称。
+		label.position += UI.SETTLEMENT_SCORE_SHIFTS[relative]
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", UI.CENTER_SCORE_FONT_SIZE)
 	var player: PlayerState = table.round.players[seat]
-	var caption := "%.0f分" % player.score
-	label.text = caption
+	var settlement_display: bool = table.round.phase == RoundState.Phase.SETTLED and table._settlement_animation_controller.has_started()
+	# The settlement controller owns the running total and color until the next
+	# round. Identity/snapshot refreshes must not flash the final score early.
+	var shown_score := float(player.score)
+	if table.round.phase == RoundState.Phase.SETTLED and not settlement_display:
+		# A win/meld visual may still be draining before settlement starts.
+		var deltas: Array = table.round.last_result.get("deltas", [])
+		if seat < deltas.size(): shown_score -= float(deltas[seat])
+	var caption: String = label.text if settlement_display else "%.0f分" % shown_score
+	if not settlement_display: label.text = caption
 	label.clip_text = true
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	var font_size := UI.CENTER_SCORE_FONT_SIZE
 	while font_size > 12 and TileView._font().get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > label.size.x: font_size -= 1
 	label.add_theme_font_size_override("font_size", font_size)
-	label.add_theme_color_override("font_color", UI.GOLD if player.ready else UI.INK)
+	if not settlement_display:
+		label.add_theme_color_override("font_color", UI.GOLD if player.ready else UI.INK)
 	var net_label: Label = net_labels[seat]
 	net_label.position = label.position + Vector2(label.size.x + 8.0, 0)
 	net_label.size = Vector2(150, label.size.y)
@@ -122,14 +134,28 @@ func _refresh_identity(seat: int) -> void:
 	var badge: Label = dealer_badges[seat]
 	var score_width := TileView._font().get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	badge.position = label.position + Vector2((label.size.x + score_width) / 2.0 + 8.0, (label.size.y - badge.size.y) / 2.0)
-	badge.visible = player.is_dealer
+	# Reserve the space after the score for the settlement delta.
+	badge.visible = player.is_dealer and table.round.phase != RoundState.Phase.SETTLED
+
+func _settlement_reveals_hands() -> bool:
+	if table.round.phase != RoundState.Phase.SETTLED: return false
+	var winners: Array = table.round.last_result.get("winners", table.round.round_meta.get("winners", []))
+	return not winners.is_empty() or int(table.round.round_meta.get("winner", -1)) >= 0
+
+func _meld_revealed(seat: int, index: int) -> bool:
+	if table.round.phase != RoundState.Phase.SETTLED or _settlement_reveals_hands():
+		return table.round.is_meld_revealed(seat, index)
+	# Core settlement reveals melds for scoring. A draw keeps the same physical
+	# concealment as play, including a kong still awaiting its second discard.
+	var player: PlayerState = table.round.players[seat]
+	var meld: Dictionary = player.melds[index]
+	return not bool(meld.get("concealed", false)) or player.discard_count >= int(meld.get("after_discard", 0)) + 2
 
 func _refresh_seat(seat: int) -> void:
 	var relative = table._relative_seat(seat)
 	seat_roots[seat].rotation = UI.ROTATIONS[relative]
 	var avatar_positions = UI.AVATAR_POSITIONS
-	# Reserved positions for the hidden per-seat status labels. Settlement details
-	# are shown only in the result card so the active table stays uncluttered.
+	# Reserved positions for the hidden per-seat status labels.
 	var status_positions = UI.HIDDEN_STATUS_POSITIONS
 	avatars[seat].position = avatar_positions[relative] + table._table_center() - UI.TABLE_CENTER
 	_refresh_identity(seat)
@@ -147,7 +173,7 @@ func _refresh_seat(seat: int) -> void:
 	var draw_hidden: bool = table._table_animation_controller.holds_draw_slot(seat)
 	var plans: Array = _exposed_layouts.get(seat, [])
 	var key = var_to_bytes([table.human_seat, table._design_size(), table.round.audio_session, player.concealed, player.just_drew, player.melds,
-		player.discards, player.discard_ids, player.discard_count, table.round.phase == RoundState.Phase.SETTLED, table.round.last_discard, plans,
+		player.discards, player.discard_ids, player.discard_count, _settlement_reveals_hands(), table.round.last_discard, plans,
 		table.round.round_meta.get("charge_chickens", {}), table._hand_layout(seat), opening, opening_dealt, draw_hidden])
 	if _seat_visual_keys.get(seat) == key: return
 	_seat_visual_keys[seat] = key
@@ -202,7 +228,7 @@ func _refresh_seat(seat: int) -> void:
 		var count = 3 if meld.kind == "pung" else 4
 		var layout: Dictionary = group.layout
 		var charge_index := -1
-		var up: bool = table.round.is_meld_revealed(seat, group.meld_index)
+		var up: bool = _meld_revealed(seat, group.meld_index)
 		for index in count:
 			var tile: TileView = table._make_tile(meld.tile if up else "", up, player_unit)
 			tile.set_meta("meld_index", int(group.meld_index))
@@ -224,7 +250,7 @@ func _refresh_seat(seat: int) -> void:
 	width = TileView.BASE_W * hand_unit
 	var x = hand_x
 	var y: float = metrics.hand_y
-	var reveal = own or table.round.phase == RoundState.Phase.SETTLED
+	var reveal: bool = own or _settlement_reveals_hands()
 	for card in cards:
 		var tile: TileView = table._make_tile(card if reveal else "", reveal, hand_unit)
 		# Keep the logical source index on every rendered tile, including hidden
@@ -251,7 +277,7 @@ func _refresh_seat(seat: int) -> void:
 		# until the temporary draw animation has reached this slot.
 		drawn.visible = not draw_hidden
 		drawn.set_meta("drawn", true)
-		drawn.set_winning(table.round.phase == RoundState.Phase.SETTLED and int(table.round.round_meta.get("winner", -1)) == seat)
+		drawn.set_winning(_settlement_reveals_hands() and (int(table.round.round_meta.get("winner", -1)) == seat or table.round.last_result.get("winners", table.round.round_meta.get("winners", [])).has(seat)))
 		if own:
 			drawn.gui_input.connect(table._on_human_tile_gui.bind(drawn))
 		if drawn_index >= 0:
@@ -406,6 +432,8 @@ func _exposed_groups(seat: int) -> Array:
 	return groups
 
 func _refresh_discards(seat: int) -> void:
+	# Only replace tiles inside the persistent rows. The settlement controller
+	# owns the parent Tiles.modulate alpha until reset at the next round.
 	var player: PlayerState = table.round.players[seat]
 	var metrics: Dictionary = table._seat_metrics(seat)
 	var columns: int = metrics.river_columns
@@ -437,8 +465,15 @@ func _refresh_discards(seat: int) -> void:
 func _scroll_to_latest(river: ScrollContainer) -> void:
 	if not is_instance_valid(table) or not table.is_inside_tree():
 		return
-	await table.get_tree().process_frame
-	if is_instance_valid(table) and table.is_inside_tree() and is_instance_valid(river):
+	# A queued scroll must outlive neither the component nor its table. Use a
+	# static coroutine with an instance ID instead of suspending `self`. Each
+	# river gets its own wait (static signal callables ignore bound arguments).
+	_scroll_river_after_layout(table.get_tree(), river.get_instance_id())
+
+static func _scroll_river_after_layout(tree: SceneTree, river_id: int) -> void:
+	await tree.process_frame
+	var river := instance_from_id(river_id) as ScrollContainer
+	if is_instance_valid(river) and river.is_inside_tree():
 		river.scroll_vertical = int(river.get_v_scroll_bar().max_value)
 
 func _wall_stacks(seat: int) -> Array:

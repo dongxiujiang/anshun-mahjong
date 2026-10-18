@@ -1,5 +1,5 @@
 extends SceneTree
-## 截图28/20回归、所有座位六对补差、客户端重复同步及实际结算卡。
+## 截图28/20回归、所有座位六对补差、客户端重复同步及桌面结算。
 const H := preload("res://tests/test_harness.gd")
 const ORACLE := preload("res://tests/settlement_oracle.gd")
 const SCREENSHOT_WIN := ["tong1", "tong1", "wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "wan6", "wan7", "wan8"]
@@ -155,6 +155,7 @@ func _test_result_ui() -> void:
 	root.add_child(table)
 	await process_frame
 	table.round.phase = RoundState.Phase.IDLE
+	table._table_animation_controller.reset()
 	for human in 4:
 		var r := _fixture(3)
 		r.wall = WallRing.new(TileSetFactory.create_deck())
@@ -163,15 +164,22 @@ func _test_result_ui() -> void:
 		r._finish()
 		table.round = r
 		table.human_seat = human
-		table._show_result()
+		var settlement = table._settlement_animation_controller
+		settlement.reset()
+		table._refresh()
+		settlement.skip()
 		await process_frame
+		t.expect(settlement.is_completed() and settlement.boards.size() == 4, "四个视角均在桌面完成结算")
+		t.expect(settlement.current_pairs == r.last_result.pairwise, "桌面收付矩阵等于真实结算账本")
+		t.expect(table._settlement_card._post_controls.visible and settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "桌面结算直接显示下一局，不遮挡牌桌输入")
 		for seat in 4:
-			var row: Control = table._result_panel.get_node("ResultSeat%d" % seat)
-			t.expect(row.get_node("RoundPoints").text == ("本局28分" if seat == 3 else "本局0分"), "结算卡显示自己的得分点")
+			t.expect(settlement.boards[seat].is_visible_in_tree(), "每家桌面结算板可见")
+			t.expect(table.center_labels[seat].text.contains("%.0f分" % r.players[seat].score), "桌面累计分显示真实入账后的分数")
 			for index in 3:
 				var other := posmod(seat + [3, 2, 1][index], 4)
 				var text: String = "+28" if seat == 3 else ("-28" if other == 3 else "0")
-				t.expect(row.get_node("Payment%d" % index).text == text, "四个视角卡片按本人的上/对/下家显示真实28分补差")
+				t.expect(settlement.payment_labels[seat][index].text == text, "四个视角桌面按本人的上/对/下家显示真实28分补差")
+				t.expect(settlement.payment_labels[seat][index].get_parent().get_node("Direction").text == ["上", "对", "下"][index], "收付金额与该玩家自己的方向标签对应")
 	table.queue_free()
 	await process_frame
 

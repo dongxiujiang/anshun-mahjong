@@ -113,28 +113,35 @@ func _run() -> void:
 	for title in ["碰", "杠", "胡", "过"]: table._add_action(title, func(): pass)
 	await _capture("11_meld_actions")
 	table.round.round_meta.winner = 1
-	table.round.round_meta.flip_tile = "tong3"
-	table.round.last_result = {"round_points": [4, 28, 0, 8], "pairwise": [[0,-24,4,-4],[24,0,28,20],[-4,-28,0,-8],[4,-20,8,0]], "status": ["叫牌", "自摸", "未叫牌", "叫牌"], "items": []}
-	table.round.last_result.items = [
-		[{"kind": "chicken", "label": "普通鸡", "tiles": ["tiao1", "tong8"], "amount": 4, "unit_score": 2}],
-		[{"kind": "bonus", "label": "清一色", "tiles": [], "amount": 24}, {"kind": "bonus", "label": "自摸", "tiles": [], "amount": 4}],
-		[],
-		[{"kind": "chicken", "label": "普通鸡", "tiles": ["tong8", "tong8"], "amount": 4}, {"kind": "charge", "label": "冲锋鸡", "tiles": ["tiao1"], "amount": 4}]]
-	for seat in 4: table.round.players[seat].score = 200 + table.round.last_result.pairwise[seat].reduce(func(total, value): return total + value, 0)
-	table._show_result()
+	table.round.round_meta.winners = [1]
+	table.round.round_meta.self_draw = true
+	table.round.players[1].concealed = ["wan1", "wan2", "wan3", "tong2", "tong3", "tong4", "tong5", "tong5"]
+	table.round.players[1].just_drew = "tong5"
+	table.round.wall._ring[table.round.wall._head] = "tong3"
+	table.round._finish()
+	table._table_animation_controller.reset()
+	table._settlement_animation_controller.reset()
+	table._refresh()
+	table._settlement_animation_controller.skip()
 	await _capture("12_settlement")
-	table._toggle_result_panel(false)
+	# A separate all-called draw uses a fresh ledger and retains the settled UI.
+	table.round.phase = RoundState.Phase.PLAYING
+	table.round.last_result.clear()
 	table.round.round_meta.winner = -1
+	table.round.round_meta.winners = []
+	table.round.round_meta.self_draw = false
 	table.round.round_meta.flip_tile = ""
-	table.round.round_meta.all_called_draw = true
-	table.round.next_chicken_multiplier = 2
-	table.round.last_result.round_points = [0,0,0,0]
-	table.round.last_result.pairwise = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
-	table.round.last_result.status = ["叫牌", "叫牌", "叫牌", "叫牌"]
-	table.round.last_result.items = [[],[],[],[]]
-	table._show_result()
+	for player in table.round.players:
+		player.concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
+		player.just_drew = ""
+		player.melds.clear()
+		player.discards.clear()
+	while table.round.wall.remaining > 0: table.round.wall.draw_head()
+	table._settlement_animation_controller.reset()
+	table.round._penzu()
+	table._refresh()
+	table._settlement_animation_controller.skip()
 	await _capture("12_draw_settlement")
-	table._toggle_result_panel(false)
 	table._sound_settings.open()
 	await _capture("13_table_settings")
 	table._sound_settings.confirm_exit()

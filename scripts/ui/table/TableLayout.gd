@@ -50,6 +50,7 @@ func _build_static_ui() -> void:
 	table.add_child(table._sound_settings)
 	table._speed_buttons = table._sound_settings.speed_buttons
 	table._sound_settings.ai_speed_selected.connect(table._set_ai_speed)
+	GameConfig.settlement_speed_changed.connect(table._on_settlement_speed_changed)
 	table._update_speed_buttons()
 	var sound_button: Button = table._button("设置", table._sound_settings.open, UI.SETTINGS_BUTTON_SIZE)
 	sound_button.set_script(preload("res://scripts/ui/table/SettingsButton.gd"))
@@ -96,7 +97,6 @@ func _layout() -> void:
 	table._animation_layer.position = surface.position
 	table._animation_layer.size = design
 	table._animation_layer.scale = Vector2.ONE * factor
-	table.result_layer.size = design
 	for seat in 4:
 		table.seat_roots[seat].position = table._table_center()
 		table.seat_roots[seat].show()
@@ -119,20 +119,15 @@ func _layout() -> void:
 	# Actions sit immediately above the local player's draw slot.
 	table._layout_actions()
 	status_label.position = Vector2(60, design.y - 54)
+	table._settlement_card.refresh_layout()
+	table._settlement_animation_controller.refresh_layout()
 	if table.round != null and changed:
 		# Rebuild after the resize notification, even if nobody is taking a turn.
 		table._refresh_layout_contents.call_deferred()
 	table.queue_redraw()
 
 func _refresh_layout_contents() -> void:
-	var had_result = table._result_panel != null and is_instance_valid(table._result_panel) and table._result_shown
-	var showing_result = had_result and table._result_panel.visible
 	table._refresh()
-	if had_result and table.round.phase == RoundState.Phase.SETTLED:
-		table._show_result()
-		table._toggle_result_panel(showing_result)
-	if table._result_restore != null and is_instance_valid(table._result_restore):
-		table._result_restore.position = table.panel_position_for_result_toggle()
 
 func _usable_rect() -> Rect2:
 	var bounds = Rect2(Vector2.ZERO, table.size)

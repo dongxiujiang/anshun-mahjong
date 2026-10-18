@@ -40,17 +40,18 @@ func _run() -> void:
 	t.expect(await _wait_until(func(): return net.game.phase == RoundState.Phase.SETTLED and net.lobby.get("ready_round", -1) == 1), "Settlement ready state reaches every human")
 	t.expect(await _wait_until(func(): return table._settlement_animation_controller.is_completed()), "Settlement preview finishes before controls unlock")
 	await process_frame
-	t.expect(not table.result_layer.visible and table._settlement_card._post_controls.visible, "Settlement card waits for an explicit view action")
-	table._settlement_card._post_view_button.pressed.emit()
-	await process_frame
-	t.expect(table.result_layer.visible and not table._next_round_button.disabled, "Every player has an enabled settlement ready button")
+	var settlement = table._settlement_animation_controller
+	var board_count: int = 0 if settlement.plan.all_called_draw else 4
+	t.expect(settlement.boards.size() == board_count and table._settlement_card._post_controls.visible, "Every player sees the final tabletop settlement and bottom readiness controls")
+	t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Settlement uses non-blocking tabletop content and plain bottom controls")
+	t.expect(table._next_round_button.get_parent() == table._settlement_card._post_controls and not table._next_round_button.disabled, "Every player has an enabled bottom ready button")
 	t.expect(table._next_round_button.text == "准备下一局", "Guests get ready button instead of return to lobby")
-	t.expect(table._next_round_button.size.y >= table.DISCARD_BUTTON_SIZE.y, "All humans have large next-round touch buttons")
+	t.expect(table._next_round_button.size.y >= 80, "All humans have a usable next-round touch button")
 	t.expect(not net.lobby.seats[net.my_seat].ready, "Own readiness resets at settlement")
-	t.expect(table._settlement_card._ready_chips.size() == 4, "Every viewer sees four readiness cards")
-	var footer: Control = table._result_panel.get_node("ReadinessFooter")
-	for chip in table._settlement_card._ready_chips:
-		t.expect(not Rect2(footer.position + chip.position, chip.size).intersects(table._next_round_button.get_rect()), "Readiness card never covers the prepare button")
+	for seat in settlement.boards:
+		var board: Control = settlement.boards[seat]
+		t.expect(board.is_visible_in_tree() and settlement.payment_labels[seat].size() == 3, "Every seat retains its three tabletop payments")
+		t.expect(not board.get_global_rect().intersects(table._next_round_button.get_global_rect()), "Tabletop payments never cover the prepare button")
 	var scores: Array = net.game.players.map(func(player): return player.score)
 	var dealer: int = net.game.next_dealer_seat
 	if role != 3:
@@ -62,16 +63,16 @@ func _run() -> void:
 		t.expect(net.round_number == 1 and int(net.lobby.countdown) < 0, "Three ready cannot start without the fourth")
 		table._next_round_button.pressed.emit()
 	t.expect(await _wait_until(func(): return int(net.lobby.countdown) == 1), "All four ready synchronizes countdown")
-	t.expect(table.result_layer.visible and table._next_round_hint.text.contains("1 秒"), "Settlement stays visible while waiting")
+	t.expect(table._settlement_card._post_controls.visible and table._next_round_hint.text.contains("1 秒"), "Bottom controls show the synchronized countdown")
 	t.expect(table._next_round_status.text.contains("4 / 4"), "All four acknowledgements update the readiness summary")
 	if role == 3:
 		await create_timer(0.2).timeout
 		table._next_round_button.pressed.emit()
 	t.expect(await _wait_until(func(): return int(net.lobby.countdown) < 0), "Cancel readiness cancels countdown for everyone")
-	table._toggle_result_panel(false)
 	await create_timer(1.15).timeout
 	t.expect(net.round_number == 1, "Cancelled countdown never starts a round")
-	t.expect(not table._result_panel.visible, "Ready sync does not reopen a hidden settlement card")
+	t.expect(settlement.is_completed() and settlement.boards.size() == board_count and table._settlement_card._post_controls.visible, "Cancelling readiness preserves tabletop settlement and controls")
+	t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Readiness updates keep the tabletop input layer non-blocking")
 	if role == 3:
 		await create_timer(0.15).timeout
 		net.next_round()
@@ -84,7 +85,7 @@ func _run() -> void:
 	t.expect(await _wait_until(func(): return net.round_number == 2), "Four humans enter the second round together")
 	t.expect(Time.get_ticks_msec() - ready_at >= 850, "Authority waits one second after all ready")
 	t.expect(net.game.dealer_seat == dealer and net.game.players.map(func(player): return player.score) == scores, "Dealer and scores survive ready transition")
-	t.expect(not table.result_layer.visible, "Second-round tiles replace settlement on all clients")
+	t.expect(not settlement.has_started() and settlement.boards.is_empty() and not table._settlement_card._post_controls.visible, "Second-round tiles replace settlement on all clients")
 	if role == 0:
 		await create_timer(0.4).timeout
 		net.game._finish()

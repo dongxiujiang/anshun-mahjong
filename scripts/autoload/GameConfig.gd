@@ -73,6 +73,10 @@ var online_mode := false
 const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
 var ai_speed := "fast"
 const ANIMATION_SPEEDS := {"instant": 0.05, "fast": 0.5, "standard": 1.0}
+# 结算阅读节奏独立于摸牌、出牌等动画；慢速默认留足查看计分的时间。
+signal settlement_speed_changed
+const SETTLEMENT_SPEEDS := {"instant": 0.0, "standard": 1.0, "slow": 2.0, "detail": 3.5}
+var settlement_speed := "slow"
 # 开局采用共同节奏，权威端按时钟解锁；客户端动画不推进游戏逻辑。
 const OPENING_DICE_SECONDS := 1.2
 const OPENING_DICE_HOLD_SECONDS := 0.5
@@ -104,3 +108,11 @@ func set_animation_speed(value: String) -> void:
 
 func animation_duration(base_seconds: float) -> float:
 	return base_seconds * float(ANIMATION_SPEEDS.get(animation_speed, 1.0))
+
+func set_settlement_speed(value: String) -> void:
+	if SETTLEMENT_SPEEDS.has(value) and settlement_speed != value:
+		settlement_speed = value
+		settlement_speed_changed.emit()
+
+func settlement_duration(base_seconds: float) -> float:
+	return base_seconds * float(SETTLEMENT_SPEEDS.get(settlement_speed, 2.0))

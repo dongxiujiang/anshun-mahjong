@@ -14,7 +14,7 @@ func _run() -> void:
 	table._settings_button.pressed.emit()
 	var settings = table._sound_settings
 	t.expect(settings.is_open() and settings.speed_buttons.size() == 3, "One settings panel contains sound and three AI speeds")
-	t.expect(settings.panel.get_node("ExitRoomButton").size.y >= table.DISCARD_BUTTON_SIZE.y, "Exit entry is large enough to tap")
+	t.expect(settings.panel.get_node("ExitRoomButton").size.y >= 80, "Exit entry keeps an 80px touch target aligned with the save/continue row")
 	table.quit_to_menu.connect(func(): exited = true)
 	settings.panel.get_node("ExitRoomButton").pressed.emit()
 	t.expect(not exited and settings.exit_confirmation.visible, "Exit asks for confirmation before leaving")
@@ -45,20 +45,33 @@ func _run() -> void:
 		for chicken in ["tiao1", "tong8"]:
 			var layout: Dictionary = table._meld_tile_layout({"kind": "pung", "tile": chicken, "charge_marker": true, "from_seat": (seat + 3) % 4}, seat, 1.35, 4.0)
 			t.expect(layout.sideways == -1 and layout.positions.size() == 3, "Chicken pung stays upright for every seat")
-	# 大号下一局底部区域要与玩家结算明细分开。
-	table.round.phase = RoundState.Phase.SETTLED
-	table.round.last_result = ScoringEngine.settle(table.round)
-	table._show_result()
-	t.expect(table._next_round_button.size == table.NEXT_ROUND_BUTTON_SIZE and table._next_round_button.size.y == table.DISCARD_BUTTON_SIZE.y, "Next round matches discard touch height")
-	var next_bounds: Rect2 = table._next_round_button.get_rect()
+	# 底部下一局按钮不得遮挡桌面上的三方收付。
+	table.round.controllers = [null, null, null, null]
+	table.round._finish()
+	table._table_animation_controller.reset()
+	var settlement = table._settlement_animation_controller
+	settlement.reset()
+	table._refresh()
+	settlement.skip()
+	t.expect(table._settlement_card._post_controls.visible and table._next_round_button.get_parent() == table._settlement_card._post_controls, "Next round stays in the bottom tabletop controls")
+	t.expect(table._next_round_button.size.y >= 80 and not table._next_round_button.disabled, "Next round retains a usable enabled touch target")
+	t.expect(settlement.is_completed() and settlement.boards.size() == 4 and settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Settlement completes on the table without a blocking input layer")
+	var next_bounds: Rect2 = table._next_round_button.get_global_rect()
 	for seat in 4:
-		t.expect(not next_bounds.intersects(table._result_panel.get_node("ResultSeat%d" % seat).get_rect()), "Next round never covers score details")
+		t.expect(not next_bounds.intersects(settlement.boards[seat].get_global_rect()), "Next round never covers tabletop payments")
+	var board_ids: Array = settlement.boards.values().map(func(board): return board.get_instance_id())
+	var payment_ids: Array = []
+	for seat in 4:
+		payment_ids.append(settlement.payment_labels[seat].map(func(label): return label.get_instance_id()))
+	for index in 30: table._refresh()
+	t.expect(settlement.boards.values().map(func(board): return board.get_instance_id()) == board_ids, "Unchanged settlement refreshes reuse all scoreboard nodes")
+	for seat in 4:
+		t.expect(settlement.payment_labels[seat].map(func(label): return label.get_instance_id()) == payment_ids[seat], "Unchanged settlement refreshes reuse payment labels")
 	if DisplayServer.get_name() != "headless":
 		root.size = Vector2i(1280, 720)
 		await process_frame
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("res://build/new_settlement_controls.png")
-		table._toggle_result_panel(false)
 		settings.open()
 		await process_frame
 		await RenderingServer.frame_post_draw

@@ -16,7 +16,7 @@ var _dragged := false
 var _touch_index := -1
 
 func input_locked() -> bool:
-	return table.round == null or table.round.phase == RoundState.Phase.DEALING \
+	return table.round == null or table.round.phase != RoundState.Phase.PLAYING \
 		or table._table_animation_controller.input_locked() \
 		or table._settlement_animation_controller.is_active()
 
@@ -58,6 +58,11 @@ func _layout_actions() -> void:
 	action_bar.position = Vector2(left, row_top)
 
 func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
+	# Cancellation is not a completed tap, even when the pointer is still over
+	# the original tile. Process it before locks so no interrupted finger sticks.
+	if event is InputEventScreenTouch and event.canceled:
+		if event.index == _touch_index: _reset_press()
+		return
 	if not _selecting or not tile.interactive or input_locked():
 		return
 	var released := false

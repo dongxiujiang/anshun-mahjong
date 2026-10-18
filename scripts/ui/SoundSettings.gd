@@ -11,7 +11,7 @@ signal replay_export_requested
 
 const PANEL_SIZE := Vector2(680, 560)
 const TABLE_PANEL_SIZE := Vector2(1120, 680)
-const TITLES := {"music": "背景音乐", "voice": "出牌 / 动作语音", "effects": "落桌音效"}
+const TITLES := {"music": "背景音乐", "voice": "出牌 / 动作语音", "effects": "落桌 / 结算音效"}
 var overlay: Control
 var panel: Panel
 var sliders := {}
@@ -22,12 +22,16 @@ var voice_selector: OptionButton
 var persist_changes := true
 var speed_buttons := {}
 var animation_speed_buttons := {}
+var settlement_speed_buttons := {}
 var table_mode := false
 var exit_confirmation: Panel
 var confirm_exit_button: Button
 var cancel_exit_button: Button
 var replay_export_button: Button
 var replay_status: Label
+var continue_button: Button
+var exit_room_button: Button
+var replay_exporter: Node
 
 func _ready() -> void:
 	layer = 20
@@ -90,22 +94,36 @@ func _ready() -> void:
 		voice_selector.add_item(title)
 	panel.add_child(voice_selector)
 	preview_button = _button("试听语音", Vector2(220, 422), Vector2(172, 62), _preview_voice)
-	_button("继续游戏" if table_mode else "关闭", Vector2(404, 514 if table_mode else 422), Vector2(240, 126 if table_mode else 72), close)
+	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 514) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
+	continue_button.name = "ContinueGameButton"
 	if table_mode:
 		_label("人机速度", Vector2(716, 24), Vector2(288, 48), 28)
-		for item in [["快 1 秒", "fast"], ["中 2 秒", "medium"], ["慢 3 秒", "slow"]]:
+		for item in [["快", "fast"], ["中", "medium"], ["慢", "slow"]]:
 			var speed_key: String = item[1]
-			var speed_button := _button(item[0], Vector2(716, 104 + speed_buttons.size() * 82), Vector2(368, 72), func(): _set_speed(speed_key))
+			var speed_button := _button(item[0], Vector2(716 + speed_buttons.size() * 126, 82), Vector2(116, 72), func(): _set_speed(speed_key))
 			speed_buttons[speed_key] = speed_button
-		_label("动画速度", Vector2(716, 366), Vector2(368, 38), 24)
+		_label("出牌 / 摸牌动画", Vector2(716, 182), Vector2(368, 38), 24)
 		for item in [["瞬间", "instant"], ["快", "fast"], ["正常", "standard"]]:
 			var animation_key: String = item[1]
-			var animation_button := _button(item[0], Vector2(716 + animation_speed_buttons.size() * 126, 418), Vector2(116, 72), func(): _set_animation_speed(animation_key))
+			var animation_button := _button(item[0], Vector2(716 + animation_speed_buttons.size() * 126, 234), Vector2(116, 72), func(): _set_animation_speed(animation_key))
 			animation_speed_buttons[animation_key] = animation_button
-		var exit_button := _button("退出房间", Vector2(716, 514), Vector2(368, 126), func(): exit_requested.emit())
-		exit_button.name = "ExitRoomButton"
-		replay_export_button = _button("保存本局记录", Vector2(36, 514), Vector2(356, 80), func(): replay_export_requested.emit())
-		replay_status = _label("", Vector2(36, 610), Vector2(610, 40), 18)
+		_label("结算速度", Vector2(716, 334), Vector2(368, 38), 24)
+		for item in [["即时", "instant"], ["正常", "standard"], ["慢速", "slow"], ["细看", "detail"]]:
+			var settlement_key: String = item[1]
+			var speed_button := _button(item[0], Vector2(716 + settlement_speed_buttons.size() * 94, 386), Vector2(86, 72), func(): _set_settlement_speed(settlement_key))
+			settlement_speed_buttons[settlement_key] = speed_button
+		_label("仅调整结算，播放中也可更改", Vector2(716, 470), Vector2(368, 30), 20)
+		exit_room_button = _button("退出房间", Vector2(716, 514), Vector2(368, 80), func(): exit_requested.emit())
+		exit_room_button.name = "ExitRoomButton"
+		replay_export_button = _button("保存本局记录", Vector2(36, 514), Vector2(296, 80), func(): replay_export_requested.emit())
+		replay_export_button.name = "SaveRoundButton"
+		replay_status = _label("选择保存位置，建议放在“下载”文件夹，方便查找和发送。", Vector2(36, 604), Vector2(1048, 60), 18)
+		replay_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		replay_status.max_lines_visible = 2
+		replay_status.clip_text = true
+		replay_exporter = preload("res://scripts/ui/ReplayExport.gd").new()
+		add_child(replay_exporter)
+		replay_exporter.status_changed.connect(_on_export_status)
 		exit_confirmation = Panel.new()
 		exit_confirmation.name = "ExitConfirmation"
 		exit_confirmation.size = TABLE_PANEL_SIZE
@@ -187,6 +205,10 @@ func _set_animation_speed(speed_key: String) -> void:
 	animation_speed_selected.emit(speed_key)
 	_update_speed_buttons()
 
+func _set_settlement_speed(speed_key: String) -> void:
+	GameConfig.set_settlement_speed(speed_key)
+	_update_speed_buttons()
+
 func _update_speed_buttons() -> void:
 	var selected: String = GameConfig.ai_speed
 	var network := get_node_or_null("/root/Network")
@@ -196,6 +218,8 @@ func _update_speed_buttons() -> void:
 		speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == selected else Color.WHITE
 	for speed_key in animation_speed_buttons:
 		animation_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.animation_speed else Color.WHITE
+	for speed_key in settlement_speed_buttons:
+		settlement_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.settlement_speed else Color.WHITE
 
 func open() -> void:
 	_sync()
@@ -209,7 +233,19 @@ func confirm_exit() -> void:
 	open()
 	if exit_confirmation != null: exit_confirmation.show()
 
+func export_replay(round_state: RoundState, local_seat: int) -> void:
+	if replay_exporter != null: replay_exporter.export_round(round_state, local_seat)
+
+func _on_export_status(busy: bool, message: String) -> void:
+	replay_export_button.disabled = busy
+	replay_export_button.text = "选择保存位置…" if busy else "保存本局记录"
+	continue_button.disabled = busy
+	exit_room_button.disabled = busy
+	replay_status.text = message
+	replay_status.tooltip_text = message
+
 func close(persist: bool = true) -> void:
+	if replay_exporter != null and replay_exporter.busy: return
 	if persist and persist_changes:
 		AudioManager.save_settings()
 	MOTION.stop(overlay)

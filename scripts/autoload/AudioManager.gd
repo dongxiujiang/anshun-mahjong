@@ -3,6 +3,7 @@ extends Node
 
 signal settings_changed
 signal event_played(event: Dictionary)
+signal settlement_cue_played(cue: String)
 
 const AUDIO_ROOT := "res://res/audio/"
 const SETTINGS_PATH := "user://audio_settings.cfg"
@@ -12,12 +13,14 @@ const DEFAULT_VOLUMES := {"music": 0.12, "voice": 0.8, "effects": 0.65}
 const SETTINGS_VERSION := 2
 const ACTION_VOICES := ["pong", "kong", "ready", "hu", "zimo"]
 const VOICE_QUEUE_LIMIT := 3
+const SETTLEMENT_CUES := ["flip", "chicken", "kong", "win", "other", "coins"]
 
 var volumes: Dictionary = DEFAULT_VOLUMES.duplicate()
 var enabled := {"music": true, "voice": true, "effects": true}
 var music_player: AudioStreamPlayer
 var voice_player: AudioStreamPlayer
 var effects_player: AudioStreamPlayer
+var settlement_player: AudioStreamPlayer
 var table_active := false
 var _table_owner := 0
 var _streams := {}
@@ -41,12 +44,14 @@ func _ready() -> void:
 	music_player = _player("BackgroundMusic", "Music")
 	voice_player = _player("TileVoice", "Voice")
 	effects_player = _player("TileEffects", "Effects")
+	settlement_player = _player("SettlementEffects", "Effects")
 	voice_player.finished.connect(_on_voice_finished)
 	_load_settings()
 	_apply_settings()
 	# 提前加载，首次喊牌不在出牌时读取磁盘。
 	_stream("music/table")
 	_stream("effects/discard")
+	for cue in SETTLEMENT_CUES: _stream("effects/settlement_" + cue)
 	for suit in ["wan", "tiao", "tong"]:
 		for rank in range(1, 10):
 			_stream("voice/%s%d" % [suit, rank])
@@ -70,7 +75,7 @@ func _player(node_name: String, bus_name: String) -> AudioStreamPlayer:
 func _exit_tree() -> void:
 	if _duck_tween != null and _duck_tween.is_valid():
 		_duck_tween.kill()
-	for player in [music_player, voice_player, effects_player]:
+	for player in [music_player, voice_player, effects_player, settlement_player]:
 		if player != null:
 			player.stop()
 			player.stream = null
@@ -129,7 +134,27 @@ func reset_round(session: String = "", event_id: int = 0) -> void:
 	_win_priority = false
 	voice_player.stop()
 	effects_player.stop()
+	settlement_player.stop()
 	_duck_music(false)
+
+## 本地展示音效，不发送网络事件，不占用出牌语音；重连最终态不调用。
+func play_settlement_cue(cue: String, owner: Node = null) -> bool:
+	if cue not in SETTLEMENT_CUES or not table_active or _application_paused:
+		return false
+	if owner != null and owner.get_instance_id() != _table_owner:
+		return false
+	if not enabled.effects or float(volumes.effects) <= 0.0:
+		return false
+	var stream := _stream("effects/settlement_" + cue)
+	if stream == null: return false
+	settlement_player.stream = stream
+	settlement_player.play()
+	settlement_cue_played.emit(cue)
+	return true
+
+func stop_settlement_cue(owner: Node = null) -> void:
+	if owner != null and owner.get_instance_id() != _table_owner: return
+	if settlement_player != null: settlement_player.stop()
 
 func play_event(event: Dictionary) -> void:
 	if not table_active:
@@ -241,6 +266,7 @@ func _settings_updated(channel: String, persist: bool) -> void:
 		_duck_music(false)
 	if channel == "effects" and (not enabled.effects or float(volumes.effects) <= 0.0):
 		effects_player.stop()
+		settlement_player.stop()
 	if persist:
 		save_settings()
 	settings_changed.emit()

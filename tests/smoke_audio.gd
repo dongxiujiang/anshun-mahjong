@@ -60,6 +60,12 @@ func _test_assets() -> void:
 	var effect: AudioStream = audio._stream("effects/discard")
 	t.expect(music != null and music.get_length() > 20.0, "循环音乐可加载")
 	t.expect(effect != null and effect.get_length() > 0.1, "落桌音效可加载")
+	for cue in audio.SETTLEMENT_CUES:
+		var stream: AudioStreamWAV = audio._stream("effects/settlement_" + cue)
+		t.expect(stream != null, "结算离线音效可加载：" + cue)
+		if stream == null: continue
+		t.expect(stream.get_length() >= 0.2 and stream.get_length() <= 0.45, "结算短音效不拖尾：" + cue)
+		t.expect(stream.loop_mode == AudioStreamWAV.LOOP_DISABLED, "结算音效不循环：" + cue)
 
 func _voice_key(seat: int, word: String) -> String:
 	return ("voice/" if seat == 0 else "voice/seat%d/" % seat) + word
@@ -285,9 +291,16 @@ func _test_playback() -> void:
 	var newer := Node.new()
 	audio.begin_table(older)
 	audio.begin_table(newer)
+	audio.set_enabled("effects", true, false)
+	audio.set_volume("effects", 0.65, false)
+	t.expect(audio.play_settlement_cue("coins", newer) and audio.settlement_player.playing, "当前牌桌可以播放金币到账音效")
+	t.expect(not audio.play_settlement_cue("win", older), "旧牌桌不能抢播新牌桌结算音效")
+	audio.stop_settlement_cue(older)
+	t.expect(audio.settlement_player.playing, "旧牌桌清理不能停止当前牌桌音效")
 	audio.end_table(older)
 	t.expect(audio.table_active and audio.music_player.playing, "旧牌桌释放不停止新牌桌音乐")
 	audio.end_table(newer)
+	t.expect(not audio.settlement_player.playing and not audio.play_settlement_cue("coins", newer), "离桌停止结算音效且不能再次播放")
 	t.expect(not audio.music_player.playing and not audio.voice_player.playing and not audio.effects_player.playing, "离桌停止所有音轨")
 	count = played.size()
 	audio.play_event(event)
@@ -395,11 +408,19 @@ func _test_ui() -> void:
 	table._refresh()
 	t.expect(played.size() == 4, "UI刷新不能重复出牌声音")
 	var position: float = audio.music_player.get_playback_position()
+	table.round.players[0].concealed.append("tiao5")
+	table.round.players[0].just_drew = "tiao5"
 	table.round._do_self_win(0)
-	table._show_result()
-	table._toggle_result_panel(false)
-	table._toggle_result_panel(true)
-	t.expect(audio.music_player.playing and audio.music_player.get_playback_position() >= position, "结算与牌桌切换持续播放音乐")
+	table._table_animation_controller.reset()
+	table._settlement_animation_controller.reset()
+	table._refresh()
+	table._settlement_animation_controller.skip()
+	var settled_events := played.size()
+	table._refresh()
+	table._refresh_next_round_controls()
+	t.expect(table._settlement_animation_controller.is_completed() and table._settlement_card._post_controls.visible, "胡牌后直接显示桌面结算和下一局按钮")
+	t.expect(played.size() == settled_events, "结算刷新与下一局准备控件不重复播放声音")
+	t.expect(audio.music_player.playing and audio.music_player.get_playback_position() >= position, "桌面结算及刷新期间音乐持续播放")
 	table.queue_free()
 	await process_frame
 	t.expect(not audio.table_active and not audio.music_player.playing, "删除牌桌时停止音乐")
