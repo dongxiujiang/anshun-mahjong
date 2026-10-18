@@ -27,11 +27,13 @@ var online_button: Button
 var server_button: Button
 var server_dialog: ConfirmationDialog
 var server_input: LineEdit
+var resume_button: Button
 var online := false
 var _in_room := false
 var _connecting := false
 var _creating := false
 var _transitioning := false
+var _leaving := false
 var _refresh := 0.0
 var _connection_attempt := 0
 var _creation_attempt := 0
@@ -57,6 +59,9 @@ func _ready() -> void:
 	lan_button = _button(content, "局域网", Vector2(36, 100), Vector2(200, 80), func(): _set_mode(false))
 	online_button = _button(content, "在线", Vector2(250, 100), Vector2(200, 80), func(): _set_mode(true))
 	server_button = _button(content, "服务器设置", Vector2(1200, 100), Vector2(244, 80), _open_server)
+	resume_button = _button(content, "返回上次房间", Vector2(480, 100), Vector2(660, 80), _resume_saved_room)
+	resume_button.name = "ResumeRoomButton"
+	resume_button.visible = Network.has_saved_session()
 	browser = Control.new()
 	browser.position = Vector2(36, 194)
 	browser.size = Vector2(1408, 530)
@@ -65,10 +70,14 @@ func _ready() -> void:
 	_label(browser, "创建房间", Vector2(24, 16), Vector2(370, 48), 32)
 	_label(browser, "昵称", Vector2(24, 80), Vector2(370, 34), 24)
 	player_input = _field(browser, Vector2(24, 118), Vector2(374, 56), "你的昵称", GameConfig.player_name, 16)
+	player_input.text_changed.connect(func(value): GameConfig.set_player_name(value))
 	_label(browser, "房间号 · 4～8 位数字", Vector2(24, 188), Vector2(374, 34), 24)
-	room_input = _field(browser, Vector2(24, 228), Vector2(374, 56), "输入房间号", str(randi_range(100000, 999999)), 8)
+	var previous_number := str(Network.lobby_preferences.number)
+	room_input = _field(browser, Vector2(24, 228), Vector2(374, 56), "输入房间号", previous_number if NetGameNode.valid_room_number(previous_number) else str(randi_range(100000, 999999)), 8)
+	room_input.text_changed.connect(func(_value): _save_lobby_preferences())
 	_label(browser, "房间名称", Vector2(24, 300), Vector2(374, 34), 24)
-	room_name_input = _field(browser, Vector2(24, 340), Vector2(374, 56), "朋友麻将局", "朋友麻将局", 24)
+	room_name_input = _field(browser, Vector2(24, 340), Vector2(374, 56), "朋友麻将局", str(Network.lobby_preferences.name), 24)
+	room_name_input.text_changed.connect(func(_value): _save_lobby_preferences())
 	create_button = _button(browser, "创建房间", Vector2(24, 438), Vector2(374, 80), _create)
 	_panel(browser, Vector2(446, 0), Vector2(962, 530))
 	filter_input = _field(browser, Vector2(470, 20), Vector2(530, 60), "搜索房间号或名称", "", 32)
@@ -130,7 +139,31 @@ func _ready() -> void:
 	Network.directory.room_created.connect(_online_created)
 	resized.connect(_layout)
 	_layout()
-	_set_mode(false)
+	_set_mode(bool(Network.lobby_preferences.online))
+	if Network.resume_on_lobby:
+		Network.resume_on_lobby = false
+		_resume_saved_room.call_deferred()
+
+func _save_lobby_preferences() -> void:
+	if room_input != null and room_name_input != null:
+		Network.save_lobby_preferences(online, room_input.text, room_name_input.text)
+
+func _resume_saved_room() -> void:
+	if _connecting or _creating or _in_room or not Network.has_saved_session(): return
+	online = bool(Network.saved_session.get("online", false))
+	Network.lobby_preferences.online = online
+	Network.discovery.stop_search()
+	Network.directory.cancel()
+	Network.reset()
+	_bind_net()
+	_connecting = true
+	create_button.disabled = true
+	search_button.disabled = true
+	lan_button.disabled = true
+	online_button.disabled = true
+	resume_button.disabled = true
+	_message("正在返回房间 %s…" % Network.saved_session.number)
+	if not Network.resume_saved_session(): _connection_failed("上次房间信息无效，请重新加入")
 
 func _layout() -> void:
 	var available := STYLE.usable_rect(self)
@@ -187,6 +220,7 @@ func _button(parent: Control, text_value: String, pos: Vector2, dimensions: Vect
 func _set_mode(value: bool) -> void:
 	if _in_room or _connecting or _creating: return
 	online = value
+	_save_lobby_preferences()
 	lan_button.disabled = not online
 	online_button.disabled = online
 	server_button.visible = online
@@ -255,8 +289,8 @@ func _create() -> void:
 	if not NetGameNode.valid_room_number(number):
 		_message("房间号请输入 4～8 位数字")
 		return
-	GameConfig.player_name = player_input.text.strip_edges().left(16)
-	if GameConfig.player_name == "": GameConfig.player_name = "玩家"
+	GameConfig.set_player_name(player_input.text)
+	_save_lobby_preferences()
 	_creating = true
 	_creation_attempt += 1
 	var creation := _creation_attempt
@@ -293,8 +327,8 @@ func _join(room: Dictionary) -> void:
 	if _connecting or _creating: return
 	# 已选定端点后停止网段扫描，把热点和主线程留给连接握手。
 	Network.discovery.stop_search()
-	GameConfig.player_name = player_input.text.strip_edges().left(16)
-	if GameConfig.player_name == "": GameConfig.player_name = "玩家"
+	GameConfig.set_player_name(player_input.text)
+	_save_lobby_preferences()
 	Network.reset()
 	_bind_net()
 	_connecting = true
@@ -331,6 +365,7 @@ func _show_waiting() -> void:
 	lan_button.disabled = true
 	online_button.disabled = true
 	server_button.hide()
+	resume_button.hide()
 	Network.discovery.stop_search()
 	_message("点击人机位置直接选座，点击真人位置申请交换；准备好后开局")
 	_render_waiting()
@@ -388,6 +423,8 @@ func _connection_failed(message: String) -> void:
 	browser.show()
 	create_button.disabled = false
 	search_button.disabled = false
+	resume_button.disabled = false
+	resume_button.visible = Network.has_saved_session()
 	_set_mode(online)
 	_message(message)
 
@@ -452,9 +489,12 @@ func _refresh_server_buttons() -> void:
 	server_dialog.get_ok_button().add_theme_color_override("font_color", Color("#283a2e"))
 
 func _back() -> void:
-	if _transitioning: return
+	if _transitioning or _leaving: return
 	if _in_room or _connecting or _creating:
+		_leaving = true
+		await Network.leave_room()
 		_connection_failed("已离开房间")
+		_leaving = false
 	else:
 		Network.discovery.stop_search()
 		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")

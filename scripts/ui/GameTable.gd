@@ -22,6 +22,7 @@ var _settlement_round_number := -1
 var _settlement_phase := -1
 var _settlement_immediate := false
 var _awaiting_rejoin_snapshot := false
+var _quitting := false
 
 func _ready() -> void:
 	AudioManager.begin_table(self)
@@ -341,7 +342,7 @@ func _on_connection_error(message: String) -> void:
 	_connection_dialog = AcceptDialog.new()
 	_connection_dialog.dialog_text = message
 	_connection_dialog.title = "联机"
-	_connection_dialog.confirmed.connect(_on_quit)
+	_connection_dialog.confirmed.connect(func(): _on_quit(false))
 	add_child(_connection_dialog)
 	_connection_dialog.popup_centered()
 
@@ -370,11 +371,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		else: _confirm_quit()
 		get_viewport().set_input_as_handled()
 
-func _on_quit() -> void:
+func _on_quit(forget_connection: bool = true) -> void:
+	if _quitting: return
+	_quitting = true
 	if round != null: round.export_replay()
 	quit_to_menu.emit()
 	if _net_mode() != "":
-		Network.reset()
+		if forget_connection: await Network.leave_room()
+		else: Network.reset()
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 
 func _export_current_replay() -> void:

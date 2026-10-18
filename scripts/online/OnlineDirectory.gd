@@ -8,10 +8,15 @@ var base_url := ""
 var busy := false
 var _http: HTTPRequest
 var _operation := ""
+const STORE := preload("res://scripts/core/UserSettingsStore.gd")
+var settings_path := "user://network.cfg"
+var persist_settings := DisplayServer.get_name() != "headless"
 
 func _ready() -> void:
-	var config := ConfigFile.new()
-	if config.load("user://network.cfg") == OK: base_url = str(config.get_value("online", "url", ""))
+	if persist_settings:
+		var config := STORE.read_config(settings_path)
+		var saved_url = config.get_value("online", "url", "")
+		if saved_url is String: base_url = saved_url
 	_http = HTTPRequest.new()
 	_http.timeout = 12.0
 	_http.body_size_limit = 256 * 1024
@@ -27,9 +32,11 @@ func configure(url: String) -> bool:
 	busy = false
 	base_url = value
 	rooms.clear()
-	var config := ConfigFile.new()
-	config.set_value("online", "url", base_url)
-	config.save("user://network.cfg")
+	if persist_settings:
+		var config := STORE.read_config(settings_path)
+		config.set_value("online", "url", base_url)
+		if STORE.write_config(config, settings_path) != OK:
+			directory_error.emit("服务器地址未能保存，请检查存储空间")
 	return true
 
 func search() -> void:

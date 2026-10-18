@@ -116,6 +116,8 @@ func _ready() -> void:
 
 func load_settings(path: String = "") -> void:
 	var config := SETTINGS_STORE.read_config(settings_path if path == "" else path)
+	var saved_name = config.get_value("player", "name", player_name)
+	if saved_name is String: set_player_name(saved_name, false)
 	for key in PREFERENCE_CHOICES:
 		var value = config.get_value("game", key, get(key))
 		if value is String and PREFERENCE_CHOICES[key].has(value): set(key, value)
@@ -124,8 +126,14 @@ func save_settings(path: String = "") -> Error:
 	if path == "" and not persist_settings: return OK
 	var target := settings_path if path == "" else path
 	var config := SETTINGS_STORE.read_config(target)
+	config.set_value("player", "name", player_name)
 	for key in PREFERENCE_CHOICES: config.set_value("game", key, get(key))
 	return SETTINGS_STORE.write_config(config, target)
+
+func set_player_name(value: String, persist: bool = true) -> void:
+	player_name = value.strip_edges().left(16)
+	if player_name == "": player_name = "玩家"
+	_save_preference(persist)
 
 func _save_preference(persist: bool) -> void:
 	if persist and save_settings() != OK: push_warning("无法保存游戏设置，请检查存储空间")

@@ -33,6 +33,8 @@ func _run() -> void:
 	state.revision = 2
 	state.round_number = 1
 	client._on_client_sync(state)
+	t.expect(client.game.phase == RoundState.Phase.IDLE, "Snapshot arriving before seat assignment cannot unlock an unknown seat")
+	client.seat_assign(1)
 	t.expect(client.game.current_turn == next_seat and client.game.awaiting and client.game.prompt_id == r.prompt_id, "Snapshot supplies a valid action prompt in one application")
 	var old := state.duplicate(true)
 	old.revision = 1

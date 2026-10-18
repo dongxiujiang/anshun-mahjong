@@ -10,10 +10,14 @@ signal host_game_started
 signal game_started
 signal connection_error(message)
 signal reconnecting(attempt, maximum)
+signal session_invalidated
 
 const AUTO := "auto"
 const START_DELAY := 3.0
 const NEXT_ROUND_DELAY := 1.0
+# Keep restart recovery separate from how long other players wait to start a round.
+const RESUME_GRACE_MS := 300000
+const READY_GRACE_MS := 30000
 var host_mode := false
 var dedicated := false
 var my_seat := -1
@@ -46,6 +50,8 @@ var _reconnect_attempt := 0
 var _reconnect_wait := -1.0
 var _reconnecting := false
 var _resume_sync_pending := false
+var _resume_requested := false
+var _pending_snapshot: Dictionary = {}
 var _client_joined := false
 var _orphaned: Dictionary = {}
 var _state_queued := false
@@ -117,6 +123,10 @@ func _process(delta: float) -> void:
 			_orphaned.erase(seat)
 			_check_start()
 			_publish_lobby()
+		elif int(_orphaned[seat].get("ready_until", 0)) > 0 and Time.get_ticks_msec() >= int(_orphaned[seat].ready_until):
+			_orphaned[seat].ready_until = 0
+			_check_start()
+			_publish_lobby()
 	for peer in _pending_peers.keys():
 		if Time.get_ticks_msec() - int(_pending_peers[peer]) > 10000:
 			_pending_peers.erase(peer)
@@ -138,24 +148,43 @@ func _on_peer_connected(peer: int) -> void:
 	_pending_peers[peer] = Time.get_ticks_msec()
 
 @rpc("any_peer", "call_remote", "reliable")
-func request_join(number: String, player_name: String, token: String = "", resume_token: String = "") -> void:
+func request_join(number: String, player_name: String, token: String = "", resume_token: String = "", resume_only: bool = false) -> void:
 	if not host_mode: return
 	var peer := multiplayer.get_remote_sender_id()
 	if not _pending_peers.has(peer): return
 	if number != "" and number != room_number:
 		_reject(peer, "房间号不匹配，请重新搜索")
 		return
+	var seat := -1
+	var resumed := false
+	var saved: Dictionary = {}
+	for orphan_seat in _orphaned:
+		var orphan: Dictionary = _orphaned[orphan_seat]
+		if Time.get_ticks_msec() < int(orphan.get("until", 0)) and resume_token != "" and resume_token == str(orphan.get("token", "")):
+			seat = int(orphan_seat)
+			resumed = true
+			saved = orphan.get("member", {}).duplicate(true)
+			break
+	# A restarted process can arrive before ENet detects the old process's death.
+	# Rebind that authenticated seat without running an intermediate AI action.
+	if not resumed and resume_only and resume_token != "":
+		for previous in _members.keys():
+			if previous == peer or resume_token != str(_members[previous].get("resume_token", "")): continue
+			seat = int(_peer_seat[previous])
+			saved = _members[previous].duplicate(true)
+			_peer_seat.erase(previous)
+			_members.erase(previous)
+			_sent_audio.erase(previous)
+			if _owner_peer == previous: _owner_peer = peer
+			multiplayer.multiplayer_peer.disconnect_peer(previous)
+			resumed = true
+			break
+	if resume_only and not resumed:
+		_reject(peer, "原房间已关闭或重连座位已过期，请重新加入房间")
+		return
 	if dedicated and _owner_peer == 0 and _owner_token != "" and token != _owner_token:
 		_reject(peer, "房主尚未进入，请稍后加入")
 		return
-	var seat := -1
-	var resumed := false
-	for orphan_seat in _orphaned:
-		var orphan: Dictionary = _orphaned[orphan_seat]
-		if resume_token != "" and resume_token == str(orphan.get("token", "")):
-			seat = int(orphan_seat)
-			resumed = true
-			break
 	if _started and not resumed:
 		_reject(peer, "该房间已开局，或重连座位已过期")
 		return
@@ -168,7 +197,6 @@ func request_join(number: String, player_name: String, token: String = "", resum
 		_reject(peer, "房间已满")
 		return
 	_pending_peers.erase(peer)
-	var saved: Dictionary = _orphaned.get(seat, {}).get("member", {}).duplicate(true)
 	_orphaned.erase(seat)
 	_seat_peer[seat] = peer
 	_peer_seat[peer] = seat
@@ -180,7 +208,11 @@ func request_join(number: String, player_name: String, token: String = "", resum
 		_owner_peer = peer
 		_owner_token = ""
 	if not resumed: _invalidate_ready()
-	if _started: game.restore_human_control(seat)
+	if _started:
+		# Do not inherit readiness from an older round played by the substitute.
+		if resumed and int(saved.get("round_number", round_number)) != round_number: _members[peer].ready = false
+		_apply_member_names()
+		game.restore_human_control(seat)
 	rpc_id(peer, "seat_assign", seat)
 	_check_start()
 	_publish_lobby()
@@ -198,8 +230,10 @@ func _on_peer_disconnected(peer: int) -> void:
 	if not host_mode or not _peer_seat.has(peer): return
 	var seat: int = _peer_seat[peer]
 	var member: Dictionary = _members.get(peer, {}).duplicate(true)
+	member["round_number"] = round_number
 	if str(member.get("resume_token", "")) != "":
-		_orphaned[seat] = {"token": member.resume_token, "until": Time.get_ticks_msec() + 30000, "member": member}
+		_orphaned[seat] = {"token": member.resume_token, "until": Time.get_ticks_msec() + RESUME_GRACE_MS,
+			"ready_until": Time.get_ticks_msec() + READY_GRACE_MS, "member": member}
 	_peer_seat.erase(peer)
 	_sent_audio.erase(peer)
 	_members.erase(peer)
@@ -224,6 +258,23 @@ func _on_peer_disconnected(peer: int) -> void:
 	_publish_lobby()
 	_host_broadcast()
 
+@rpc("any_peer", "call_remote", "reliable")
+func request_leave() -> void:
+	if not host_mode: return
+	var peer := multiplayer.get_remote_sender_id()
+	if not _members.has(peer): return
+	_members[peer]["resume_token"] = ""
+	_on_peer_disconnected(peer)
+	multiplayer.multiplayer_peer.disconnect_peer(peer)
+
+func has_reconnect_reservations() -> bool:
+	for orphan in _orphaned.values():
+		if Time.get_ticks_msec() < int(orphan.get("until", 0)): return true
+	return false
+
+func _waiting_for_reconnect(seat: int) -> bool:
+	return _orphaned.has(seat) and Time.get_ticks_msec() < int(_orphaned[seat].get("ready_until", 0))
+
 func _invalidate_ready() -> void:
 	_countdown = -1.0
 	_swap.clear()
@@ -231,8 +282,9 @@ func _invalidate_ready() -> void:
 		_members[peer].ready = _ctrl_hint.get(_peer_seat[peer]) == AUTO
 
 func all_ready() -> bool:
-	if _members.is_empty() or not _swap.is_empty() or not _orphaned.is_empty(): return false
+	if _members.is_empty() or not _swap.is_empty(): return false
 	for seat in 4:
+		if _waiting_for_reconnect(seat): return false
 		var peer := int(_seat_peer.get(seat, -1))
 		if peer < 1:
 			if not _host_ai_fill and not _started: return false
@@ -255,7 +307,7 @@ func _publish_lobby() -> void:
 		var ai := peer < 1 and (_host_ai_fill or _started)
 		var disconnected := _orphaned.has(seat)
 		if disconnected: member = _orphaned[seat].member
-		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": false if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
+		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": (not _waiting_for_reconnect(seat) and ai) if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
 	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate()}
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer): rpc_id(peer, "lobby_sync", lobby)
@@ -484,19 +536,27 @@ func _apply_member_names() -> void:
 			game.players[seat].name_label = str(_members.get(peer, {}).get("name", "玩家"))
 			game.players[seat].is_human = _ctrl_hint.get(seat, AUTO) != AUTO
 		else:
-			game.players[seat].name_label = "人机%d" % (seat + 1)
+			game.players[seat].name_label = str(_orphaned.get(seat, {}).get("member", {}).get("name", "人机%d" % (seat + 1)))
 			game.players[seat].is_human = false
 	game._recorder.update_players(game)
 
-func client(ip: String, port: int = 0, number: String = "", player_name: String = "", owner_token: String = "") -> bool:
+func client(ip: String, port: int = 0, number: String = "", player_name: String = "", owner_token: String = "", resume_token: String = "", resume_only: bool = false) -> bool:
 	_server_ip = ip
 	_server_port = port if port > 0 else 7500
+	if resume_token != "": _resume_token = resume_token
 	if _resume_token == "": _resume_token = Crypto.new().generate_random_bytes(32).hex_encode()
+	_resume_requested = resume_only
+	_resume_sync_pending = resume_only
 	host_mode = false
 	_join_number = number
 	_join_name = player_name if player_name != "" else get_node("/root/GameConfig").player_name
 	_join_token = owner_token
 	game = game if game != null else RoundState.new()
+	if resume_only:
+		_reconnecting = true
+		_reconnect_attempt = 0
+		_reconnect_wait = 0.0
+		return true
 	return _open_client_peer()
 
 func _open_client_peer() -> bool:
@@ -509,7 +569,7 @@ func _open_client_peer() -> bool:
 	return true
 
 func _on_client_connected() -> void:
-	rpc_id(1, "request_join", _join_number, _join_name, _join_token, _resume_token)
+	rpc_id(1, "request_join", _join_number, _join_name, _join_token, _resume_token, _resume_requested)
 
 func _on_client_failed() -> void:
 	_begin_reconnect("连接失败")
@@ -519,10 +579,13 @@ func _on_server_disconnected() -> void:
 
 func _begin_reconnect(_reason: String) -> void:
 	if host_mode or _server_ip == "" or _reconnecting: return
-	if not _client_joined:
+	if not _client_joined and not _resume_requested:
 		connection_error.emit("连接失败，房间可能已关闭或网络不可达")
 		return
 	_reconnecting = true
+	_resume_requested = true
+	_client_joined = false
+	_pending_snapshot.clear()
 	_resume_sync_pending = game != null and game.phase != RoundState.Phase.IDLE
 	_reconnect_attempt = 0
 	_reconnect_wait = 0.2
@@ -533,7 +596,7 @@ func _reconnect_step() -> void:
 	if _reconnect_attempt >= 5:
 		_reconnecting = false
 		multiplayer.multiplayer_peer = null
-		connection_error.emit("重连失败，请返回房间列表重新加入")
+		connection_error.emit("暂时无法恢复连接，请在联机房间点击“返回上次房间”重试")
 		return
 	_reconnect_attempt += 1
 	reconnecting.emit(_reconnect_attempt, 5)
@@ -542,6 +605,10 @@ func _reconnect_step() -> void:
 	_open_client_peer()
 
 func _on_client_sync(state: Dictionary) -> void:
+	if not _client_joined:
+		if int(state.get("revision", 0)) > int(_pending_snapshot.get("revision", -1)):
+			_pending_snapshot = state
+		return
 	var revision := int(state.get("revision", _received_revision + 1))
 	if revision <= _received_revision: return
 	_received_revision = revision
@@ -560,18 +627,25 @@ func seat_assign(seat: int) -> void:
 	_reconnect_attempt = 0
 	my_seat = seat
 	room_ready.emit(seat)
+	if not _pending_snapshot.is_empty():
+		var state := _pending_snapshot
+		_pending_snapshot = {}
+		_on_client_sync(state)
 
 @rpc("authority", "call_remote", "reliable")
 func lobby_sync(state: Dictionary) -> void:
 	lobby = state
 	room_number = str(state.number)
 	room_name = str(state.name)
+	if not bool(state.get("started", false)) and _client_joined: _resume_sync_pending = false
 	lobby_updated.emit()
 
 @rpc("authority", "call_remote", "reliable")
 func join_rejected(message: String) -> void:
 	_reconnecting = false
 	_server_ip = ""
+	_client_joined = false
+	if _resume_requested: session_invalidated.emit()
 	connection_error.emit(message)
 
 @rpc("authority", "call_remote", "reliable")

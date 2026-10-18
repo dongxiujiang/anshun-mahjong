@@ -27,7 +27,7 @@ func _process(delta: float) -> bool:
 	if _net == null or not _net.host_mode: return false
 	_tick += delta
 	_empty_seconds = _empty_seconds + delta if _net._members.is_empty() else 0.0
-	if _empty_seconds > 60.0:
+	if _empty_seconds > 60.0 and not _net.has_reconnect_reservations():
 		quit()
 		return false
 	if _tick >= 1.0:

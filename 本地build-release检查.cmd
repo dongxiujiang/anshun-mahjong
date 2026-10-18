@@ -17,7 +17,7 @@ echo   2. 导出配置验证
 echo   3. 核心回归测试（含规则、桌面结算、简洁牌组分数提示与点击明细、音效、切回窗口点击恢复、对局记录导出及独立摸牌/出牌速度、人机等待及摸打碰杠并行动画，差异会阻止通过）
 echo   4. 网络联机测试
 echo   5. 在线房间测试
-echo   6. 断线重连测试
+echo   6. 断线及重启重连测试（含昵称/联机设置保存、游戏中与结算后恢复、过期房间）
 echo.
 echo 进度会实时显示，完整日志保存在：
 echo   build\local-build-release\[时间戳]
@@ -45,7 +45,7 @@ echo   - core_tests.log       （核心回归）
 echo   - build\rules_audit\report.md   （当前规则审计表与最小复现，项目目录下）
 echo   - build\rules_audit\results.json（逐条断言原始结果，项目目录下）
 echo   - network_tests.log    （网络测试）
-echo   - reconnect_tests.log  （断线重连）
+echo   - reconnect_tests.log  （断线与重启重连）
 echo   - import.log           （Godot导入）
 echo ============================================
 goto done

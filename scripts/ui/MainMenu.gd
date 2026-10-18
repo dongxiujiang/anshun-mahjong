@@ -10,6 +10,7 @@ var update_panel: UpdatePanel
 var update_button: Button
 var update_status_label: Label
 var rule_guide: Control
+var resume_dialog: ConfirmationDialog
 
 func _ready() -> void:
 	var theme_resource := Theme.new()
@@ -56,7 +57,10 @@ func _ready() -> void:
 	solo.name = "SoloButton"
 	solo.position = Vector2(984, 272)
 	content.add_child(solo)
-	var multiplayer_button := _button("联机房间    ›", func(): get_tree().change_scene_to_file("res://scenes/Lobby.tscn"), true)
+	var multiplayer_text := "返回房间 %s    ›" % Network.saved_session.number if Network.has_saved_session() else "联机房间    ›"
+	var multiplayer_button := _button(multiplayer_text, func():
+		Network.resume_on_lobby = Network.has_saved_session()
+		get_tree().change_scene_to_file("res://scenes/Lobby.tscn"), true)
 	multiplayer_button.name = "MultiplayerButton"
 	multiplayer_button.position = Vector2(984, 484)
 	content.add_child(multiplayer_button)
@@ -90,6 +94,18 @@ func _ready() -> void:
 	_layout()
 	UpdateManager.maybe_check()
 	PatchBoot.confirm_boot()
+	if Network.has_saved_session() and not Network.resume_prompt_shown:
+		Network.resume_prompt_shown = true
+		resume_dialog = ConfirmationDialog.new()
+		resume_dialog.title = "返回上次房间"
+		resume_dialog.dialog_text = "发现上次联机房间 %s。\n是否尝试恢复原来的座位和对局？" % Network.saved_session.number
+		resume_dialog.ok_button_text = "返回房间"
+		resume_dialog.cancel_button_text = "稍后"
+		add_child(resume_dialog)
+		resume_dialog.confirmed.connect(func():
+			Network.resume_on_lobby = true
+			get_tree().change_scene_to_file("res://scenes/Lobby.tscn"))
+		resume_dialog.call_deferred("popup_centered", Vector2i(660, 240))
 
 func _update_badge() -> void:
 	match UpdateManager.state:
