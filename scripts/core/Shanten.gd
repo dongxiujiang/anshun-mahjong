@@ -1,13 +1,26 @@
 class_name Shanten
 ## Exact normal-hand distance, with cached suit decompositions and seven pairs.
-static var _cache := {}
-static var _suit_cache := {}
+## Caches are per calling thread: the authority may run AI in a worker while
+## the main thread still evaluates legal human actions.
+static var _thread_caches := {}
+static var _thread_cache_mutex := Mutex.new()
+
+static func _thread_cache() -> Dictionary:
+	var id := OS.get_thread_caller_id()
+	_thread_cache_mutex.lock()
+	if not _thread_caches.has(id):
+		_thread_caches[id] = {"cache": {}, "suit": {}}
+	var local: Dictionary = _thread_caches[id]
+	_thread_cache_mutex.unlock()
+	return local
 
 static func shanten(concealed: Array, melds: Array) -> int:
+	var local := _thread_cache()
+	var cache: Dictionary = local.cache
 	var counts := Tiles.hand_to_counts_array(concealed)
 	var key := str(counts) + ":" + str(melds.size())
-	if _cache.has(key):
-		return _cache[key]
+	if cache.has(key):
+		return cache[key]
 	if melds.size() > 4: return 8
 	# Only the largest partial count per (complete meld count, head-pair count)
 	# matters. Reuse suit decompositions across hypothetical draws/discards.
@@ -36,9 +49,9 @@ static func shanten(concealed: Array, melds: Array) -> int:
 		for count in counts:
 			pairs += int(count) / 2
 		result = mini(result, 6 - mini(7, pairs))
-	if _cache.size() > 24000:
-		_cache.clear()
-	_cache[key] = result
+	if cache.size() > 24000:
+		cache.clear()
+	cache[key] = result
 	return result
 
 static func _empty_states() -> Array[int]:
@@ -48,12 +61,14 @@ static func _empty_states() -> Array[int]:
 	return states
 
 static func _suit_states(counts: Array) -> Array[int]:
+	var local := _thread_cache()
+	var cache: Dictionary = local.suit
 	var key := str(counts)
-	if _suit_cache.has(key): return _suit_cache[key]
+	if cache.has(key): return cache[key]
 	var states := _empty_states()
 	_search(counts, 0, 0, 0, 0, states)
-	if _suit_cache.size() >= 6000: _suit_cache.clear()
-	_suit_cache[key] = states
+	if cache.size() >= 6000: cache.clear()
+	cache[key] = states
 	return states
 
 static func _search(counts: Array, start: int, melds: int, partials: int, pair: int, states: Array[int]) -> void:

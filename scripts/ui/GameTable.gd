@@ -23,6 +23,7 @@ var _settlement_phase := -1
 var _settlement_immediate := false
 var _awaiting_rejoin_snapshot := false
 var _quitting := false
+var _ai_service = null
 
 func _ready() -> void:
 	AudioManager.begin_table(self)
@@ -59,7 +60,18 @@ func _connect_audio_round() -> void:
 func _on_audio_event(event: Dictionary) -> void:
 	AudioManager.play_event(event, _table_animation_controller.defers_discard_sound())
 
+func _process(_delta: float) -> void:
+	if round != null:
+		round.poll_ai()
+
 func _exit_tree() -> void:
+	if _ai_service != null:
+		var tree := get_tree()
+		if tree != null:
+			_ai_service.stop_async(tree)
+		else:
+			_ai_service.stop()
+		_ai_service = null
 	if round != null and _net_mode() == "": round.cancel_opening()
 	if _audio_round != null and _audio_round.audio_event.is_connected(_on_audio_event):
 		_audio_round.audio_event.disconnect(_on_audio_event)
@@ -118,6 +130,10 @@ func new_game() -> void:
 	_selected_tile = null
 	_round_number += 1
 	round = RoundState.new()
+	if _net_mode() == "" and DisplayServer.get_name() != "headless":
+		if _ai_service == null:
+			_ai_service = load("res://scripts/ai/AiDecisionService.gd").new()
+		round.ai_service = _ai_service
 	round._recorder.auto_save = true
 	_connect_audio_round()
 	round.next_chicken_multiplier = chicken_multiplier

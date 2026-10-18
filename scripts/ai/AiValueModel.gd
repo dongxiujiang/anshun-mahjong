@@ -3,7 +3,8 @@ extends RefCounted
 ## never the actual wall order. Probability estimates are heuristic, not learned.
 const CFG := preload("res://scripts/autoload/GameConfig.gd")
 const ACTIONS := preload("res://scripts/core/LegalActions.gd")
-static var _unit_cache := {}
+static var _unit_caches := {}
+static var _unit_cache_mutex := Mutex.new()
 
 static func flip_distribution(seen: Dictionary, fixed_flip: String = "") -> Dictionary:
 	if fixed_flip != "": return {fixed_flip: 1.0}
@@ -26,12 +27,17 @@ static func tile_value(tile: String, flips: Dictionary, multiplier: int, charge:
 	return CFG.SCORE_FLIP_CHICKEN * hit * multiplier
 
 static func _unit_values(flips: Dictionary, multiplier: int) -> Dictionary:
+	var thread_id := OS.get_thread_caller_id()
+	_unit_cache_mutex.lock()
+	if not _unit_caches.has(thread_id): _unit_caches[thread_id] = {}
+	var cache: Dictionary = _unit_caches[thread_id]
+	_unit_cache_mutex.unlock()
 	var key := str([flips, multiplier])
-	if _unit_cache.has(key): return _unit_cache[key]
+	if cache.has(key): return cache[key]
 	var values := {}
 	for tile in Tiles.all_values(): values[tile] = tile_value(tile, flips, multiplier)
-	if _unit_cache.size() >= 128: _unit_cache.clear()
-	_unit_cache[key] = values
+	if cache.size() >= 128: cache.clear()
+	cache[key] = values
 	return values
 
 static func profile(round, seat: int, hand: Array, melds: Array, flips: Dictionary, discard: String = "") -> Dictionary:

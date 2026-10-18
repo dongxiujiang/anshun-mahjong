@@ -12,6 +12,8 @@ signal audio_event(event: Dictionary)
 
 const SEATS := [0, 1, 2, 3]
 const CFG := preload("res://scripts/autoload/GameConfig.gd")
+const AI_CONTEXT := preload("res://scripts/ai/AiTurnContext.gd")
+const AI_TIMEOUT_MS := 3000
 
 ## 回合阶段状态枚举，替代魔法字符串；网络协议仍用字符串，在序列化边界转换。
 enum Phase { IDLE, DEALING, PLAYING, SETTLED }
@@ -99,6 +101,16 @@ var _kong_draw_turn := false
 var _kong_draw_kind: KongKind = KongKind.NONE
 var ai_delay_seconds := 0.0
 var ai_response_delay_seconds := 0.0
+var ai_service = null
+var ai_timeouts := 0
+var ai_fallbacks := 0
+var ai_cancelled := 0
+var ai_tasks := 0
+var ai_results := 0
+var ai_snapshot_max_ms := 0.0
+var ai_compute_max_ms := 0.0
+var ai_apply_max_ms := 0.0
+var _ai_pending: Dictionary = {}
 var opening_delay_seconds := 0.0
 var _opening_generation := 0
 var next_chicken_multiplier := 1
@@ -170,6 +182,7 @@ func build_players(human_seat: int) -> void:
 		players.append(player)
 
 func start_round(human_seat: int, die_override: int = -1) -> void:
+	cancel_ai()
 	_opening_generation += 1
 	if _recorder.auto_save and not _recorder.record.is_empty(): _recorder.save()
 	var scores: Array = []
@@ -226,6 +239,7 @@ func _finish_opening() -> void:
 	_begin_turn()
 
 func cancel_opening() -> void:
+	cancel_ai()
 	_opening_generation += 1
 	if phase == Phase.DEALING:
 		phase = Phase.IDLE
@@ -277,12 +291,69 @@ func _begin_turn() -> void:
 	_emit_visual_event("draw", {"seat": current_turn, "tile": tile, "kind": "head"})
 	_ask_turn_actor()
 
+func _request_async_ai_turn(actor: Object) -> bool:
+	if ai_service == null or not ai_service.has_method("submit_turn"):
+		return false
+	var snapshot_started := Time.get_ticks_usec()
+	var context = AI_CONTEXT.build(self, current_turn)
+	ai_snapshot_max_ms = maxf(ai_snapshot_max_ms, float(Time.get_ticks_usec() - snapshot_started) / 1000.0)
+	if context == null:
+		return false
+	var token: int = int(ai_service.submit_turn(context, current_turn))
+	if token <= 0:
+		return false
+	context.task_id = token
+	context.session = audio_session
+	context.prompt_id = prompt_id
+	ai_tasks += 1
+	var now := Time.get_ticks_msec()
+	_ai_pending = {
+		"kind": "turn", "token": token, "seat": current_turn, "actor": actor,
+		"session": audio_session, "prompt": prompt_id, "stage": _response_stage,
+		"source": -1, "tile": "", "result": {},
+		"requested_ms": now, "due_ms": now + int(round(ai_delay_seconds * 1000.0)),
+	}
+	awaiting = false
+	state_update.emit()
+	return true
+
+func _request_async_ai_response(seat: int, source: int, tile: String, options: Dictionary, actor: Object) -> bool:
+	if ai_service == null or not ai_service.has_method("submit_response"):
+		return false
+	var snapshot_started := Time.get_ticks_usec()
+	var context = AI_CONTEXT.build(self, seat)
+	ai_snapshot_max_ms = maxf(ai_snapshot_max_ms, float(Time.get_ticks_usec() - snapshot_started) / 1000.0)
+	if context == null:
+		return false
+	var token: int = int(ai_service.submit_response(context, seat, source, tile, options))
+	if token <= 0:
+		return false
+	context.task_id = token
+	context.session = audio_session
+	context.prompt_id = prompt_id
+	ai_tasks += 1
+	var now := Time.get_ticks_msec()
+	_ai_pending = {
+		"kind": "response", "token": token, "seat": seat, "actor": actor,
+		"session": audio_session, "prompt": prompt_id, "stage": _response_stage,
+		"source": source, "tile": tile, "result": {},
+		"requested_ms": now, "due_ms": now + int(round(ai_response_delay_seconds * 1000.0)),
+	}
+	awaiting = false
+	state_update.emit()
+	return true
+
 func _ask_turn_actor() -> void:
 	_awaiting_response = {}
 	_response_stage = ResponseStage.NONE
+	# A pong/kong claim takes precedence over the rest of the discard response
+	# window. Clear any remaining responders before starting the claimer's turn.
+	_pending_responders.clear()
 	prompt_id += 1
 	var actor: Object = controllers[current_turn] if controllers.size() > current_turn else null
 	if actor != null and actor.has_method("decide_turn"):
+		if _request_async_ai_turn(actor):
+			return
 		var decision: Dictionary = actor.decide_turn(self, current_turn)
 		var discarding: bool = not decision.get("self_win", false) and decision.get("kong_declares", []).is_empty() and decision.get("add_kong", []).is_empty()
 		# Delay every AI discard, including the post-pong/kong discard that has
@@ -311,7 +382,100 @@ func _queue_ai_turn(seat: int, actor: Object, decision: Dictionary) -> void:
 		return
 	_apply_turn_action(seat, decision)
 
+func set_ai_service(service) -> void:
+	cancel_ai()
+	ai_service = service
+
+func cancel_ai() -> void:
+	if _ai_pending.is_empty():
+		return
+	var token := int(_ai_pending.get("token", 0))
+	if ai_service != null and ai_service.has_method("cancel"):
+		ai_service.cancel(token)
+	ai_cancelled += 1
+	_ai_pending = {}
+
+func poll_ai() -> void:
+	if _ai_pending.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	var pending: Dictionary = _ai_pending
+	if pending.get("result", {}).is_empty() and ai_service != null:
+		var result: Dictionary = ai_service.take_result(int(pending.get("token", 0)))
+		if not result.is_empty():
+			pending["result"] = result
+			var decision: Dictionary = result.get("decision", {})
+			if str(pending.get("kind", "")) == "turn":
+				var discarding: bool = not decision.get("self_win", false) \
+					and decision.get("kong_declares", []).is_empty() \
+					and decision.get("add_kong", []).is_empty()
+				if not discarding:
+					pending["due_ms"] = now
+			elif str(decision.get("action", "pass")) == "pass":
+				pending["due_ms"] = now
+			_ai_pending = pending
+	var result_now: Dictionary = pending.get("result", {})
+	if result_now.is_empty():
+		if now - int(pending.get("requested_ms", now)) >= AI_TIMEOUT_MS:
+			_ai_timeout(pending)
+		return
+	if now < int(pending.get("due_ms", now)):
+		return
+	if not _ai_pending_valid(pending):
+		cancel_ai()
+		return
+	_ai_pending = {}
+	ai_results += 1
+	ai_compute_max_ms = maxf(ai_compute_max_ms, float(result_now.get("duration_ms", 0.0)))
+	var apply_started := Time.get_ticks_usec()
+	var decision: Dictionary = result_now.get("decision", {})
+	if str(pending.get("kind", "")) == "turn":
+		_apply_turn_action(int(pending.get("seat", current_turn)), decision)
+	else:
+		_process_response(int(pending.get("seat", 0)), int(pending.get("source", -1)),
+			str(pending.get("tile", "")), decision)
+	ai_apply_max_ms = maxf(ai_apply_max_ms, float(Time.get_ticks_usec() - apply_started) / 1000.0)
+
+func _ai_pending_valid(pending: Dictionary) -> bool:
+	if phase != Phase.PLAYING or audio_session != str(pending.get("session", "")):
+		return false
+	if prompt_id != int(pending.get("prompt", -1)):
+		return false
+	var seat := int(pending.get("seat", -1))
+	if seat < 0 or seat >= controllers.size() or controllers[seat] != pending.get("actor"):
+		return false
+	if str(pending.get("kind", "")) == "turn":
+		return current_turn == seat and not awaiting and _awaiting_response.is_empty() and _pending_responders.is_empty()
+	return _response_stage == int(pending.get("stage", ResponseStage.NONE)) \
+		and not _pending_responders.is_empty() and int(_pending_responders[0]) == seat
+
+func _ai_timeout(pending: Dictionary) -> void:
+	ai_timeouts += 1
+	if ai_service != null and ai_service.has_method("cancel"):
+		ai_service.cancel(int(pending.get("token", 0)))
+	_ai_pending = {}
+	if not _ai_pending_valid(pending):
+		return
+	var seat := int(pending.get("seat", -1))
+	if str(pending.get("kind", "")) == "turn":
+		var options := legal_turn_options(seat)
+		var fallback: Dictionary = {}
+		if options.self_win:
+			fallback = {"self_win": true}
+		elif players[seat].ready and players[seat].just_drew != "":
+			fallback = {"discard": players[seat].just_drew}
+		elif not options.discards.is_empty():
+			fallback = {"discard": options.discards[0]}
+		if fallback.is_empty():
+			return
+		ai_fallbacks += 1
+		_apply_turn_action(seat, fallback)
+	else:
+		ai_fallbacks += 1
+		_process_response(seat, int(pending.get("source", -1)), str(pending.get("tile", "")), {"action": "pass"})
+
 func restore_human_control(seat: int) -> void:
+	cancel_ai()
 	controllers[seat] = null
 	if phase != Phase.PLAYING or awaiting:
 		return
@@ -564,6 +728,8 @@ func _ask_next_responder(source: int, tile: String) -> void:
 		return
 	var actor: Object = controllers[seat] if controllers.size() > seat else null
 	if actor != null and actor.has_method("decide_response"):
+		if _request_async_ai_response(seat, source, tile, options, actor):
+			return
 		_queue_ai_response(seat, source, tile, options, actor)
 	else:
 		prompt_id += 1
@@ -875,6 +1041,7 @@ func _penzu() -> void:
 	_finish()
 
 func _finish() -> void:
+	cancel_ai()
 	# 已完成的结算只能入账一次；重复结束通知不能再次加减四家的分数。
 	if phase == Phase.SETTLED and not last_result.is_empty():
 		return
@@ -978,6 +1145,7 @@ func serialize() -> Dictionary:
 	return SERIALIZER.serialize(self)
 
 func apply_sync(state: Dictionary) -> void:
+	cancel_ai()
 	SERIALIZER.apply_sync(self, state)
 
 func serialize_for_seat(seat: int) -> Dictionary:

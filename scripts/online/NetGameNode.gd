@@ -58,6 +58,7 @@ var _state_queued := false
 var _state_revision := 0
 var _received_revision := -1
 var ai_speed := "fast"
+var _ai_service = null
 var _sent_audio := {}
 var state_metrics := {"sent": 0, "coalesced": 0, "bytes": 0, "full_bytes": 0}
 var measure_state_traffic := false
@@ -99,6 +100,9 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	_owner_token = owner_token
 	_owner_peer = 0 if dedicated else 1
 	game = RoundState.new()
+	if dedicated or DisplayServer.get_name() != "headless":
+		_ai_service = load("res://scripts/ai/AiDecisionService.gd").new()
+		game.ai_service = _ai_service
 	game._recorder.auto_save = true
 	for seat in 4:
 		_seat_peer[seat] = -1
@@ -116,6 +120,8 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	return true
 
 func _process(delta: float) -> void:
+	if game != null:
+		game.poll_ai()
 	if not host_mode:
 		if _reconnecting:
 			_reconnect_wait -= delta
@@ -327,6 +333,13 @@ func _local_peer() -> int:
 	return 1 if host_mode else multiplayer.get_unique_id()
 
 func _exit_tree() -> void:
+	if _ai_service != null:
+		var tree := get_tree()
+		if tree != null:
+			_ai_service.stop_async(tree)
+		else:
+			_ai_service.stop()
+		_ai_service = null
 	if game != null: game.cancel_opening()
 	# Cancel delayed AI decisions belonging to a room that has been closed.
 	if host_mode and game != null:
