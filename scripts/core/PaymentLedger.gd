@@ -27,7 +27,7 @@ static func pay_win(deltas: Array, transfers: Array, winner: int, meta: Dictiona
 	else:
 		transfer(deltas, transfers, int(meta.get("discard_seat", -1)), winner, amount, reason)
 
-static func pay_uncalled(deltas: Array, transfers: Array, called: Array, discard_points: Array, add_huang_fee: bool = false) -> void:
+static func pay_uncalled(deltas: Array, transfers: Array, called: Array, discard_points: Array, add_huang_fee: bool = false, pong_points: Array = []) -> void:
 	# 荒牌时每个未叫者还要向每个叫牌者补 4 分基础分。
 	for payer in 4:
 		if called[payer]:
@@ -35,6 +35,8 @@ static func pay_uncalled(deltas: Array, transfers: Array, called: Array, discard
 		for receiver in 4:
 			if called[receiver]:
 				var amount := float(discard_points[payer]) + float(discard_points[receiver])
+				if not pong_points.is_empty():
+					amount += float(pong_points[payer])
 				if add_huang_fee:
 					amount += CFG.SCORE_SELF_DRAW
 				transfer(deltas, transfers, payer, receiver, amount, "荒牌包鸡")
@@ -57,7 +59,7 @@ static func relative_payments(matrix: Array, seat: int) -> Array:
 		out.append(matrix[seat][posmod(seat + offset, 4)])
 	return out
 
-static func compare_chickens(deltas: Array, transfers: Array, called: Array, points: Array, discard_points: Array = []) -> void:
+static func compare_chickens(deltas: Array, transfers: Array, called: Array, points: Array, discard_points: Array = [], pong_points: Array = []) -> void:
 	# 胡牌局：叫牌者按完整鸡分，未叫牌者以出牌鸡负分参与。
 	# 包括手中、碰杠、保留出牌鸡和翻鸡；杠基础分及胡牌费用另按付款人收取。
 	for first in 4:
@@ -81,6 +83,17 @@ static func compare_chickens(deltas: Array, transfers: Array, called: Array, poi
 					var second_discard := float(discard_points[second])
 					if second_discard > 0.0:
 						transfer(deltas, transfers, second, first, second_discard, "未叫牌出牌鸡")
+					second_points = 0.0
+			if not pong_points.is_empty():
+				if not called[first] and called[second]:
+					var first_pong := float(pong_points[first])
+					if first_pong > 0.0:
+						transfer(deltas, transfers, first, second, first_pong, "未叫牌碰鸡")
+					first_points = 0.0
+				elif called[first] and not called[second]:
+					var second_pong := float(pong_points[second])
+					if second_pong > 0.0:
+						transfer(deltas, transfers, second, first, second_pong, "未叫牌碰鸡")
 					second_points = 0.0
 			var difference: float = first_points - second_points
 			if difference > 0: transfer(deltas, transfers, second, first, difference, "鸡分差额")

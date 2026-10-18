@@ -131,7 +131,7 @@ func new_game() -> void:
 		controllers.append(null if seat == human_seat else AiPlayer.new("AI%d" % seat))
 	round.controllers = controllers
 	round.ai_delay_seconds = GameConfig.ai_delay_seconds()
-	round.ai_response_delay_seconds = GameConfig.AI_RESPONSE_SECONDS if DisplayServer.get_name() != "headless" else 0.0
+	round.ai_response_delay_seconds = GameConfig.ai_response_delay_seconds()
 	round.opening_delay_seconds = GameConfig.animation_duration(GameConfig.OPENING_WAIT_SECONDS) if DisplayServer.get_name() != "headless" else 0.0
 	round.randomize_seed()
 	# 先带入累计分数，再让新庄家开始行动（AI 庄家也可能马上结算）。
@@ -266,7 +266,9 @@ func _set_ai_speed(speed_key: String) -> void:
 	var persist := _sound_settings == null or _sound_settings.persist_changes
 	if _net_mode() == "":
 		GameConfig.set_ai_speed(speed_key, persist)
-		if round != null: round.ai_delay_seconds = GameConfig.ai_delay_seconds()
+		if round != null:
+			round.ai_delay_seconds = GameConfig.ai_delay_seconds()
+			round.ai_response_delay_seconds = GameConfig.ai_response_delay_seconds()
 	elif _net_node().is_room_owner():
 		GameConfig.set_ai_speed(speed_key, persist)
 		_net_node().set_ai_speed(speed_key)

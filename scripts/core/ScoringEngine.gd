@@ -15,6 +15,7 @@ static func settle(round) -> Dictionary:
 	var deltas := [0.0, 0.0, 0.0, 0.0]
 	var points := [0.0, 0.0, 0.0, 0.0]
 	var discard_points := [0.0, 0.0, 0.0, 0.0]
+	var pong_points := [0.0, 0.0, 0.0, 0.0]
 	var called_seats: Array = []
 	var multiplier := clampi(int(meta.get("chicken_multiplier", 1)), 1, CFG.MAX_CHICKEN_MULTIPLIER)
 	var lines: Array = []
@@ -30,9 +31,11 @@ static func settle(round) -> Dictionary:
 		# 未叫牌不把手中/碰杠中的鸡算作正分；其已打出的鸡记为
 		# 负分，和叫牌者逐家比较后由未叫者补付。
 		var discard_debt := float(profile.get("discard_debt", profile.discarded))
-		points[seat] = float(profile.total) if called else -discard_debt
+		var pong_debt := float(profile.get("pung_debt", 0.0))
+		points[seat] = float(profile.total) if called else -(discard_debt + pong_debt)
 		# 荒牌结算保留未叫者本人的出牌鸡值；另由荒牌补付逻辑加入基础4分。
 		discard_points[seat] = float(profile.discarded) if called else discard_debt
+		pong_points[seat] = pong_debt if not called else 0.0
 		for item in profile.raw_items:
 			var source := str(item.get("source", ""))
 			if source == "kong":
@@ -42,6 +45,9 @@ static func settle(round) -> Dictionary:
 		if not called and discard_debt > 0.0:
 			items[seat].append({"kind": "penalty", "label": "未叫牌出牌鸡", "tile": "", "tiles": [],
 				"amount": -discard_debt, "own_amount": -discard_debt, "note": "需补付给叫牌玩家"})
+		if not called and pong_debt > 0.0:
+			items[seat].append({"kind": "penalty", "label": "未叫牌碰鸡", "tile": "", "tiles": [],
+				"amount": -pong_debt, "own_amount": -pong_debt, "note": "需补付给叫牌玩家"})
 		if profile.burned:
 			var burn_label := "杠后出牌烧鸡" if meta.get("burn_chicken_reason", "") == "after_kong_discard" else "抢杠烧鸡"
 			lines.append("%s %s：鸡分 0" % [_nm(seat, dealer), burn_label])
@@ -63,7 +69,7 @@ static func settle(round) -> Dictionary:
 			lines.append("四家叫牌流局，本局不计分；下局鸡分 ×2")
 			items = [[], [], [], []]
 		else:
-			PAY.pay_uncalled(deltas, transfers, called_seats, discard_points, true)
+			PAY.pay_uncalled(deltas, transfers, called_seats, discard_points, true, pong_points)
 			for payer in 4:
 				if called_seats[payer]:
 					continue
@@ -83,7 +89,7 @@ static func settle(round) -> Dictionary:
 			status[seat] = _draw_status(seat, called_seats)
 		return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, all_called, next_multiplier, winners, multiplier)
 	# 鸡分是全场逐对比较；胡牌费用则逐个赢家分别结算。
-	PAY.compare_chickens(deltas, transfers, called_seats, points, discard_points)
+	PAY.compare_chickens(deltas, transfers, called_seats, points, discard_points, pong_points)
 	for target in winners:
 		WIN.settle_winner(round, int(target), points, winners, deltas, transfers, items, lines)
 	KONG.pay(round, deltas, transfers, called_seats, items, flip, false)

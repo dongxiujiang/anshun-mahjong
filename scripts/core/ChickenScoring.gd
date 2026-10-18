@@ -12,6 +12,7 @@ static func chicken_profile(round, seat: int, flip: String) -> Dictionary:
 	var discarded := 0.0
 	var held := 0.0
 	var flipped := 0.0
+	var pung_debt := 0.0
 	var list: Array = []
 	var burned: bool = seat == round.round_meta.get("burn_chicken_seat", -1)
 	for index in player.discards.size():
@@ -43,8 +44,15 @@ static func chicken_profile(round, seat: int, flip: String) -> Dictionary:
 		_append_hand_chicken(list, tile, related, gold_chickens, "手中")
 	for meld_index in player.melds.size():
 		var meld: Dictionary = player.melds[meld_index]
-		for _index in (3 if meld.get("kind", "") == "pung" else 4):
-			_append_hand_chicken(list, str(meld.get("tile", "")), related, gold_chickens, "碰中" if meld.get("kind", "") == "pung" else "杠中", "meld" if meld.get("kind", "") == "pung" else "kong", false)
+		var meld_tile := str(meld.get("tile", ""))
+		var is_pung: bool = meld.get("kind", "") == "pung"
+		# A ponged chicken is a debt for an uncalled player, just like a
+		# discarded or konged chicken. KONG handles kong chickens separately.
+		if is_pung and Tiles.is_chicken(meld_tile):
+			var unit := CFG.SCORE_CALL_CHICKEN * (CFG.SCORE_FLIP_DOUBLE if meld_tile in related else 1.0)
+			pung_debt += unit * 3.0
+		for _index in (3 if is_pung else 4):
+			_append_hand_chicken(list, meld_tile, related, gold_chickens, "碰中" if is_pung else "杠中", "meld" if is_pung else "kong", false)
 	for item in list:
 		if item.get("source", "") != "discard":
 			if item.get("kind", "") == "flip":
@@ -58,7 +66,7 @@ static func chicken_profile(round, seat: int, flip: String) -> Dictionary:
 		held = 0.0
 		flipped = 0.0
 		list = []
-	return {"discard_debt": discard_debt, "discarded": discarded, "held": held, "flipped": flipped, "total": (discarded + held + flipped), "burned": burned, "items": group_chicken_items(list), "raw_items": list}
+	return {"discard_debt": discard_debt, "pung_debt": pung_debt, "discarded": discarded, "held": held, "flipped": flipped, "total": (discarded + held + flipped), "burned": burned, "items": group_chicken_items(list), "raw_items": list}
 
 static func _append_hand_chicken(list: Array, tile: String, related: Array, gold_chickens: Array, where: String, source: String = "hand", charge: bool = false) -> void:
 	if Tiles.is_chicken(tile):

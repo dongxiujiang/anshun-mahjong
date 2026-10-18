@@ -98,10 +98,11 @@ func _ready() -> void:
 	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 514) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
 	continue_button.name = "ContinueGameButton"
 	if table_mode:
-		_label("人机出牌等待", Vector2(716, 24), Vector2(368, 38), 24)
+		_label("人机出牌 / 碰杠响应", Vector2(716, 24), Vector2(368, 38), 24)
 		for item in [["快", "fast"], ["中", "medium"], ["慢", "slow"]]:
 			var speed_key: String = item[1]
 			var speed_button := _button(item[0], Vector2(716 + speed_buttons.size() * 126, 70), Vector2(116, 64), func(): _set_speed(speed_key))
+			speed_button.tooltip_text = "同时调整 AI 出牌等待和碰杠响应"
 			speed_buttons[speed_key] = speed_button
 		_label("摸牌动画", Vector2(716, 142), Vector2(368, 38), 24)
 		_label("出牌动画", Vector2(716, 254), Vector2(368, 38), 24)

@@ -179,6 +179,19 @@ func _test_uncalled_debts() -> void:
 		t.expect(group.stages.is_empty(), "ambiguous debt not divided by tile count " + id)
 		t.expect(group.detail.contains("该家合计向上家付"), "ambiguous group retains real family payment " + id)
 
+func _test_short_chicken_labels() -> void:
+	var f := _fixture()
+	f.players[0].discards = ["tong8"]
+	f.players[0].discard_ids = [0]
+	f.meta.charge_chickens = {"tong8": {"owner": 0, "location": "discard", "discard_id": 0}}
+	f.result.items[0] = [_item("charge", "冲锋鸡", ["tong8"], 4)]
+	t.expect(_find(_build(f), "0:chicken_tong8").detail == "冲锋八筒4分", "called charge chicken shows 冲锋八筒4分")
+	var ordinary := _fixture()
+	ordinary.players[0].discards = ["tong8"]
+	ordinary.players[0].discard_ids = [0]
+	ordinary.result.items[0] = [_item("chicken", "普通鸡", ["tong8"], 2)]
+	t.expect(_find(_build(ordinary), "0:chicken_tong8").detail == "八筒2分", "called ordinary chicken shows 八筒2分")
+
 func _test_uncalled_charge_short_label() -> void:
 	var f := _fixture()
 	f.result.called = [true, false, true, true]
@@ -192,6 +205,18 @@ func _test_uncalled_charge_short_label() -> void:
 	t.expect(group.stages.chicken.text == "冲锋八筒-4分", "uncalled charge chicken shows one short tile line")
 	t.expect(group.detail == "冲锋八筒-4分", "click uses the same short tile line")
 	t.expect(is_equal_approx(float(group.stages.chicken.amount), -12.0), "short label keeps the real 12-point ledger total")
+
+func _test_uncalled_pong_chicken() -> void:
+	var f := _fixture()
+	f.result.called = [true, false, true, false]
+	f.players[1].melds = [{"kind": "pung", "tile": "tiao1", "from_seat": 0}]
+	f.result.items[1] = [{"kind": "penalty", "label": "未叫牌碰鸡", "tile": "", "tiles": [], "amount": -6.0}]
+	_pay(f, 1, 0, 6.0, "未叫牌碰鸡")
+	_pay(f, 1, 2, 6.0, "未叫牌碰鸡")
+	var group := _find(_build(f), "1:meld_0")
+	_amount(group, "chicken", -12.0, "uncalled pong chicken keeps the real two-payer total")
+	t.expect(group.stages.chicken.text == "碰幺鸡-6分" and group.detail == group.stages.chicken.text,
+		"uncalled pong chicken shows one per-called-player debt line")
 
 func _test_uncalled_kong_captions() -> void:
 	var f := _fixture()
@@ -223,7 +248,7 @@ func _test_burn_robbed_and_normal_pung() -> void:
 	for payer in [0, 2, 3]: _pay(f, payer, 1, 4, "暗杠")
 	t.expect(_find(_build(f), "1:meld_0").stages.is_empty(), "robbed kong never displays base even with stale item")
 	f.players[0].melds = [{"kind": "pung", "tile": "wan9", "from_seat": 2}]
-	t.expect(_find(_build(f), "0:meld_0").detail.contains("碰牌不计分"), "ordinary nonchicken pung is explicitly non-scoring")
+	t.expect(_find(_build(f), "0:meld_0").detail == "", "ordinary nonchicken pung has no detail text")
 	# A burned uncalled player still pays recorded discarded-chicken debt.
 	f.meta.burn_chicken_seat = 1
 	f.result.called[1] = false
@@ -331,7 +356,9 @@ func _run() -> void:
 	_test_multiple_same_kongs()
 	_test_draw()
 	_test_uncalled_debts()
+	_test_short_chicken_labels()
 	_test_uncalled_charge_short_label()
+	_test_uncalled_pong_chicken()
 	_test_uncalled_kong_captions()
 	_test_burn_robbed_and_normal_pung()
 	_test_resolved_and_multiwinner_snapshot()

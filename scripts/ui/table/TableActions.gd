@@ -4,6 +4,8 @@ extends "res://scripts/ui/table/TableComponent.gd"
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
 
 var action_bar: HBoxContainer
+var auto_ready_enabled := DisplayServer.get_name() != "headless"
+var _ready_auto_serial := 0
 var _selecting := false
 var _response_disc := ""
 var _selected_tile: TileView
@@ -108,10 +110,59 @@ func _reset_press() -> void:
 func _on_require_turn(seat: int) -> void:
 	if seat != table.human_seat:
 		return
+	_ready_auto_serial += 1
+	var serial := _ready_auto_serial
 	_selecting = true
 	_declaring_ready = false
 	_response_disc = ""
 	table._build_turn_options(table.round.players[seat])
+	if table.round.players[seat].ready:
+		_auto_ready_discard(seat, serial)
+
+func _ready_auto_delay() -> float:
+	# Use the same fast/medium/slow wait as AI turns. In an online room the
+	# shared lobby value is authoritative; offline uses the local setting.
+	if table._net_mode() != "":
+		var net = table._net_node()
+		if net != null:
+			var key := str(net.lobby.get("ai_speed", "fast"))
+			return float(GameConfig.AI_SPEED_DELAYS.get(key, GameConfig.AI_SPEED_DELAYS["fast"]))
+	return GameConfig.ai_delay_seconds()
+
+func _auto_ready_discard(seat: int, serial: int) -> void:
+	if not auto_ready_enabled:
+		return
+	var tree: SceneTree = table.get_tree()
+	if tree == null:
+		return
+	# Let the draw/last-action animation land first. The player still sees the
+	# drawn tile; only the discard action is automatic.
+	await tree.create_timer(_ready_auto_delay()).timeout
+	var deadline := Time.get_ticks_msec() + 1800
+	while is_instance_valid(table) and table.is_inside_tree() and input_locked():
+		if serial != _ready_auto_serial or Time.get_ticks_msec() > deadline:
+			return
+		await tree.process_frame
+	if not is_instance_valid(table) or serial != _ready_auto_serial or not _selecting:
+		return
+	if table.round == null or table.round.phase != RoundState.Phase.PLAYING:
+		return
+	if table.human_seat != seat or seat >= table.round.players.size():
+		return
+	var player: PlayerState = table.round.players[seat]
+	if not player.ready or player.just_drew == "":
+		return
+	var options: Dictionary = table.round.legal_turn_options(seat)
+	# A winning draw is a stop condition: keep the 自摸 button and let the user
+	# choose it instead of silently discarding the winning tile.
+	if options.self_win:
+		return
+	if not options.discards.has(player.just_drew):
+		return
+	# The user may have tapped the tile or another action while waiting.
+	if not _selecting:
+		return
+	table._submit_discard(player.just_drew, -1)
 
 func _build_turn_options(player: PlayerState) -> void:
 	table._clear_actions()
@@ -205,6 +256,7 @@ func _submit_discard(tile: String, discard_index: int = -1) -> void:
 func _on_require_response(seat: int, discarded_seat: int, tile: String, options: Dictionary) -> void:
 	if seat != table.human_seat:
 		return
+	_ready_auto_serial += 1
 	_selecting = false
 	_declaring_ready = false
 	_response_disc = tile

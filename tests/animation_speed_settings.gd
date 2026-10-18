@@ -72,10 +72,12 @@ func _ai_waits() -> void:
 		r._ask_turn_actor()
 		t.expect(r.turns.size() == 1, "draw-to-discard speed does not delay win/kong decisions")
 	r = _probe()
-	r.ai_delay_seconds = 2.0
+	r.ai_delay_seconds = 0.02
 	r.players[0].just_drew = ""
 	r._ask_turn_actor()
-	t.expect(r.turns.size() == 1, "post-pung discard without a draw has no draw wait")
+	t.expect(r.turns.is_empty(), "post-pung discard also waits")
+	await create_timer(0.06).timeout
+	t.expect(r.turns.size() == 1 and r.turns[0].decision == {"discard": "tong9"}, "post-pung delay applies exactly one recorded decision")
 	for ai in [0.0, 0.8, 1.3, 2.0]:
 		for action in ["pong", "kong", "win", "pass"]:
 			r = _probe()
@@ -94,6 +96,7 @@ func _ai_waits() -> void:
 	for speed in ["fast", "medium", "slow"]:
 		host.ai_speed = speed
 		t.expect(host._ai_turn_delay() == root.get_node("GameConfig").AI_SPEED_DELAYS[speed], "network and offline use the same draw wait rates")
+		t.expect(host._ai_response_delay() == root.get_node("GameConfig").AI_SPEED_DELAYS[speed], "claim beat matches the same speed selection")
 	host.free()
 
 func _run() -> void:

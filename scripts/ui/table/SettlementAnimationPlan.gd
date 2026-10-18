@@ -77,10 +77,12 @@ static func build(result: Dictionary, meta: Dictionary, players: Array, human_se
 			# The ledger base payment is used, never the kong item's amount:
 			# chicken_amount/flip_amount already belong to the chicken comparison.
 			_pay(kong_matrix, payer, receiver, amount)
-		elif reason in ["未叫牌杠中鸡", "未叫牌出牌鸡"] and not called[payer] and called[receiver]:
+		elif reason in ["未叫牌杠中鸡", "未叫牌出牌鸡", "未叫牌碰鸡"] and not called[payer] and called[receiver]:
 			var category := str(kong_chickens.get(index, ""))
 			if reason == "未叫牌出牌鸡":
 				category = _discard_category(players, meta, payer, gold_tiles)
+			elif reason == "未叫牌碰鸡":
+				category = "chicken"
 			if category == "flip":
 				_pay(flip_matrix, payer, receiver, amount)
 			elif category == "chicken":

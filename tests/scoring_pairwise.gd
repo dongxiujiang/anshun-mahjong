@@ -127,6 +127,23 @@ func _test_uncalled_kong_chicken() -> void:
 	t.expect(result.pairwise[0][1] == -16.0 and result.pairwise[0][2] == -16.0,
 		"未叫牌明杠幺鸡按8分杠中鸡逐家补付")
 
+func _test_uncalled_pong_chicken() -> void:
+	var r := _fixture(0)
+	r.round_meta.chicken_multiplier = 1
+	r.players[1].melds = [{"kind": "pung", "tile": "tiao1", "from_seat": 0}]
+	r.players[1].concealed = ["wan1", "wan2", "wan4", "wan5", "tiao2", "tiao3", "tong3", "tong4", "tong6", "tong7"]
+	r.players[2].concealed = WAIT.duplicate()
+	r.players[3].concealed = ["wan1", "wan2", "wan4", "wan5", "tiao2", "tiao3", "tong3", "tong4", "tong6", "tong7"]
+	var result := ScoringEngine.settle(r)
+	ORACLE.check(r, result, t, "未叫牌碰幺鸡")
+	for receiver in [0, 2]:
+		t.expect(result.transfers.any(func(row):
+			return int(row.from) == 1 and int(row.to) == receiver and row.reason == "未叫牌碰鸡" and is_equal_approx(float(row.amount), 6.0)),
+			"未叫牌碰幺鸡向叫牌者%d补6分" % receiver)
+	t.expect(result.items[1].any(func(item):
+		return item.label == "未叫牌碰鸡" and is_equal_approx(float(item.amount), -6.0)),
+		"未叫牌碰鸡在结算明细中显示为6分债务")
+
 func _test_mutual_kongs() -> void:
 	# 同局两家有杠：既要抵消通用鸡分/暗加杠4，也要保留不同的明杠付款人。
 	for winner in 4:
@@ -188,6 +205,7 @@ func _run() -> void:
 	_test_six_pairs()
 	_test_uncalled_discard_chicken()
 	_test_uncalled_kong_chicken()
+	_test_uncalled_pong_chicken()
 	_test_mutual_kongs()
 	await _test_result_ui()
 	print("[scoring_pairwise] %d mixed six-pair settlements + screenshot, sync and UI" % settlements)

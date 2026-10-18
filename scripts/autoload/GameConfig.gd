@@ -71,7 +71,8 @@ var online_mode := false
 
 # AI 思考速度：快 0.8 秒 / 中 1.3 秒 / 慢 2 秒。
 const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
-const AI_RESPONSE_SECONDS := 0.18 # Fixed claim beat, independent of AI turn speed.
+# Claims use the same wait as an ordinary AI discard; the speed buttons control
+# both. Pass and win responses remain immediate.
 var ai_speed := "fast"
 const ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0}
 const TILE_ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0, "slow": 1.8}
@@ -147,6 +148,9 @@ func ai_delay_seconds() -> float:
 	if DisplayServer.get_name() == "headless":
 		return 0.0
 	return float(AI_SPEED_DELAYS.get(ai_speed, 1.0))
+
+func ai_response_delay_seconds() -> float:
+	return ai_delay_seconds()
 
 func set_animation_speed(value: String, persist: bool = true) -> void:
 	if ANIMATION_SPEEDS.has(value):

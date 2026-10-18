@@ -42,9 +42,10 @@ static func build(result: Dictionary, meta: Dictionary, players: Array, plan: Di
 			_kongs(items, transfers, snapshot, groups, seat, is_draw, called, gold)
 		for group in groups.values():
 			if seat == burned: _note(group, "烧鸡：本局收入0，补付照算。")
-			elif not called[seat]: _note(group, "未叫牌：手中、碰杠中的鸡不记正分。")
+			elif not called[seat]: _note(group, "未叫牌：手中鸡不记正分；碰、杠中的鸡按规则补付。")
 		if not called[seat]:
 			_debt(groups, occurrences, transfers, seat, "未叫牌出牌鸡", "discard", gold, is_draw)
+			_debt(groups, occurrences, transfers, seat, "未叫牌碰鸡", "pung_chicken", gold, is_draw)
 			_debt(groups, occurrences, transfers, seat, "未叫牌杠分", "kong", gold, is_draw)
 			_debt(groups, occurrences, transfers, seat, "未叫牌杠中鸡", "kong_chicken", gold, is_draw)
 		if is_draw:
@@ -121,7 +122,9 @@ static func _sources(snapshot, visual, seat: int, meta: Dictionary, winners: Arr
 		group._title = "碰牌" if kind == "pung" else _kong_label(meld)
 		if group._robbed: _note(group, "被抢杠，本组不收杠分。")
 		if kind == "pung" and (is_draw or (not TILE.is_chicken(str(meld.get("tile", ""))) and str(meld.get("tile", "")) not in related)):
-			_note(group, "本组碰牌不计分。")
+			# A non-scoring pong has nothing to explain; leave its detail blank
+			# instead of adding a "not scored" sentence to every ordinary pung.
+			group["_hide_empty"] = true
 		for slot in (3 if kind == "pung" else 4):
 			var tile := str(meld.get("tile", ""))
 			if kind == "pung" and not is_draw:
@@ -266,8 +269,12 @@ static func _rows(transfers: Array, seat: int, reason: String, incoming: bool) -
 static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, reason: String, category: String, gold: Array, is_draw: bool = false) -> void:
 	var candidates: Array = []
 	for group in groups.values():
-		if category == "discard" and group.area == "chicken": candidates.append(group)
-		elif category != "discard" and group._kong and not group._robbed:
+		if category == "discard" and group.area == "chicken":
+			candidates.append(group)
+		elif category == "pung_chicken" and group.area == "meld" and not group._kong and not bool(group.get("_robbed", false)):
+			if not group.tiles.is_empty() and TILE.is_chicken(str(group.tiles[0])):
+				candidates.append(group)
+		elif category not in ["discard", "pung_chicken"] and group._kong and not group._robbed:
 			if category == "kong" or (not group.tiles.is_empty() and TILE.is_chicken(group.tiles[0])): candidates.append(group)
 	var rows := _rows(transfers, seat, reason, false).filter(func(row): return int(row.from) == seat)
 	var hidden := category == "discard" and pool.any(func(source): return source.key == "")
@@ -281,6 +288,11 @@ static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, 
 				# "-12分" followed by three payer rows. The stage total below
 				# still keeps the real ledger amount for the player's net score.
 				var label := ("冲锋" if bool(group.get("charge", false)) else "") + _tile_name(str(group.tiles[0]))
+				group["_simple"] = true
+				for row in rows:
+					_part(group, stage, label, -float(row.amount), 1, -float(row.amount), true)
+			elif category == "pung_chicken":
+				var label := "碰" + _tile_name(str(group.tiles[0]))
 				group["_simple"] = true
 				for row in rows:
 					_part(group, stage, label, -float(row.amount), 1, -float(row.amount), true)
@@ -345,10 +357,10 @@ static func _finish_group(group: Dictionary) -> void:
 		lines.append(caption)
 	if not bool(group.get("_simple", false)):
 		for note in group._notes: lines.append(str(note))
-	if group.stages.is_empty() and not lines.any(func(line): return str(line).contains("不计分") or str(line).contains("暂无") or str(line).contains("收入0")):
+	if group.stages.is_empty() and not bool(group.get("_hide_empty", false)) and not lines.any(func(line): return str(line).contains("不计分") or str(line).contains("暂无") or str(line).contains("收入0")):
 		lines.append("本组不计分。")
 	group.detail = "\n".join(lines)
-	for key in ["_notes", "_parts", "_robbed", "_kong", "_base_stage", "_title", "_simple", "charge"]: group.erase(key)
+	for key in ["_notes", "_parts", "_robbed", "_kong", "_base_stage", "_title", "_simple", "_hide_empty", "charge"]: group.erase(key)
 
 static func _flow(row: Dictionary, seat: int) -> String:
 	var incoming := int(row.to) == seat

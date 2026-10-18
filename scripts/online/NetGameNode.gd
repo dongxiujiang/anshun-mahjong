@@ -76,6 +76,9 @@ func _ai_turn_delay() -> float:
 	if not dedicated and DisplayServer.get_name() == "headless": return 0.0
 	return float(preload("res://scripts/autoload/GameConfig.gd").AI_SPEED_DELAYS.get(ai_speed, 0.8))
 
+func _ai_response_delay() -> float:
+	return _ai_turn_delay()
+
 func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000", title: String = "麻将房间", server_only: bool = false, owner_token: String = "") -> bool:
 	if not valid_room_number(number): return false
 	var peer := ENetMultiplayerPeer.new()
@@ -362,6 +365,7 @@ func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 		if peer != _owner_peer or speed_key not in ["fast", "medium", "slow"]: return
 		ai_speed = speed_key
 		game.ai_delay_seconds = _ai_turn_delay()
+		game.ai_response_delay_seconds = _ai_response_delay()
 		_publish_lobby()
 		return
 	if _started:
@@ -443,7 +447,7 @@ func start_net_game(seed_value: int = -1) -> bool:
 		ctrls.append(AiPlayer.new("AI%d" % seat) if _ctrl_hint[seat] == AUTO else null)
 	game.controllers = ctrls
 	game.ai_delay_seconds = _ai_turn_delay()
-	game.ai_response_delay_seconds = preload("res://scripts/autoload/GameConfig.gd").AI_RESPONSE_SECONDS if dedicated or DisplayServer.get_name() != "headless" else 0.0
+	game.ai_response_delay_seconds = _ai_response_delay()
 	game.opening_delay_seconds = GameConfig.OPENING_WAIT_SECONDS if dedicated or DisplayServer.get_name() != "headless" else 0.0
 	game.require_turn.connect(_on_host_require_turn)
 	game.require_response.connect(_on_host_require_response)

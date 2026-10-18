@@ -20,6 +20,7 @@ static func expected(round: RoundState) -> Dictionary:
 	var called: Array = []
 	var chicken_values: Array = [0.0, 0.0, 0.0, 0.0]
 	var discard_values: Array = [0.0, 0.0, 0.0, 0.0]
+	var pong_values: Array = [0.0, 0.0, 0.0, 0.0]
 	var matrix := _empty_matrix()
 	for seat in 4:
 		var player: PlayerState = round.players[seat]
@@ -27,9 +28,10 @@ static func expected(round: RoundState) -> Dictionary:
 		called.append(is_called)
 		var profile := _chicken_values(round, seat, related)
 		discard_values[seat] = profile.discarded if is_called else profile.debt
-		# 胡牌局中，叫牌者用完整鸡分比较；未叫牌者以已打出鸡的负分
-		# 参与比较。这样核账器与 ScoringEngine 的付款范围完全一致。
-		chicken_values[seat] = profile.total if is_called else -profile.debt
+		pong_values[seat] = 0.0 if is_called else float(profile.pung_debt)
+		# 胡牌局中，叫牌者用完整鸡分比较；未叫牌者以已打出鸡和
+		# 碰中鸡的负分参与比较。这样核账器与 ScoringEngine 完全一致。
+		chicken_values[seat] = profile.total if is_called else -(float(profile.debt) + float(profile.pung_debt))
 
 	if has_winner:
 		for first in 4:
@@ -47,7 +49,7 @@ static func expected(round: RoundState) -> Dictionary:
 				continue
 			for receiver in 4:
 				if called[receiver]:
-					_credit(matrix, payer, receiver, float(discard_values[payer]) + float(discard_values[receiver]) + 4.0, burned)
+					_credit(matrix, payer, receiver, float(discard_values[payer]) + float(discard_values[receiver]) + float(pong_values[payer]) + 4.0, burned)
 
 	# 杠基础分是定向费用；杠中鸡在胡牌局已经进入鸡分比较，流局时
 	# 才向未叫牌者单独收取。未叫牌杠牌者的杠收入则反向记为其付款。
@@ -182,6 +184,7 @@ static func _chicken_values(round: RoundState, seat: int, related: Array) -> Dic
 	var player: PlayerState = round.players[seat]
 	var total := 0.0
 	var discarded := 0.0
+	var pung_debt := 0.0
 	for index in player.discards.size():
 		var tile := str(player.discards[index])
 		if tile not in ["tiao1", "tong8"]:
@@ -207,9 +210,11 @@ static func _chicken_values(round: RoundState, seat: int, related: Array) -> Dic
 		total += _held_chicken(str(tile_value), related)
 	for meld in player.melds:
 		var count := 3 if meld.kind == "pung" else 4
+		if meld.kind == "pung" and str(meld.tile) in ["tiao1", "tong8"]:
+			pung_debt += 2.0 * (2.0 if str(meld.tile) in related else 1.0) * 3.0
 		for _index in count:
 			total += _held_chicken(str(meld.tile), related)
-	return {"total": 0.0 if seat == int(round.round_meta.get("burn_chicken_seat", -1)) else total, "discarded": 0.0 if seat == int(round.round_meta.get("burn_chicken_seat", -1)) else discarded, "debt": discarded}
+	return {"total": 0.0 if seat == int(round.round_meta.get("burn_chicken_seat", -1)) else total, "discarded": 0.0 if seat == int(round.round_meta.get("burn_chicken_seat", -1)) else discarded, "debt": discarded, "pung_debt": pung_debt}
 
 static func _held_chicken(tile: String, related: Array) -> float:
 	if tile in ["tiao1", "tong8"]:

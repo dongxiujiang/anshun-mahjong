@@ -285,7 +285,10 @@ func _ask_turn_actor() -> void:
 	if actor != null and actor.has_method("decide_turn"):
 		var decision: Dictionary = actor.decide_turn(self, current_turn)
 		var discarding: bool = not decision.get("self_win", false) and decision.get("kong_declares", []).is_empty() and decision.get("add_kong", []).is_empty()
-		if discarding and ai_delay_seconds > 0.0 and players[current_turn].just_drew != "":
+		# Delay every AI discard, including the post-pong/kong discard that has
+		# no fresh draw. The previous version only delayed after a draw, which
+		# made claims look instant even with the slow wait selected.
+		if discarding and ai_delay_seconds > 0.0:
 			_queue_ai_turn(current_turn, actor, decision)
 		else:
 			_apply_turn_action(current_turn, decision)
