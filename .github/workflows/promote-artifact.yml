@@ -1,0 +1,56 @@
+name: Promote full release artifact
+
+# Download a completed full-release artifact inside GitHub (fast) and publish
+# only the APK + manifest as a normal Release asset. This avoids downloading
+# the 200+ MB Actions artifact through a slow connection.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Full release workflow run ID
+        required: true
+        default: "39136889832"
+      artifact_name:
+        description: Full release artifact name
+        required: true
+        default: "full-release-39136889832"
+      tag:
+        description: Release tag for the download-only bridge
+        required: true
+        default: "V1.0.0-bridge"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download full-release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          path: artifact
+
+      - name: Collect APK and manifest
+        shell: bash
+        run: |
+          test -n "$(find artifact -type f -name '*.apk' -print -quit)" || { echo "No APK in artifact"; exit 1; }
+          test -n "$(find artifact -type f -name 'update-manifest.json' -print -quit)" || { echo "No update-manifest.json in artifact"; exit 1; }
+          mkdir -p release
+          find artifact -type f -name '*.apk' -exec cp -v {} release/ \;
+          find artifact -type f -name 'update-manifest.json' -exec cp -v {} release/ \;
+          ls -lh release
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          files: release/*
+          fail_on_unmatched_files: true
+          make_latest: false
