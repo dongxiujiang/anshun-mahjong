@@ -103,15 +103,18 @@ func _layout() -> void:
 func _sync() -> void:
 	summary.text = _manager.message
 	rollback_button.visible = get_node("/root/PatchBoot").can_rollback()
-	rollback_button.disabled = _manager.state in ["checking", "downloading"]
+	rollback_button.disabled = _manager.state in ["checking", "downloading", "opening"]
 	var current_notes := str(_manager.latest.get("notes", ""))
 	if notes.text != current_notes: notes.text = current_notes
-	check_button.disabled = _manager.state in ["checking", "downloading"]
+	check_button.disabled = _manager.state in ["checking", "downloading", "opening"]
 	progress.visible = _manager.state == "downloading"
 	progress.value = clampf(100.0 * _manager.downloaded_bytes / maxf(1, _manager.total_bytes), 0.0, 100.0)
 	progress.show_percentage = _manager.total_bytes > 0
 	action_button.disabled = false
 	match _manager.state:
+		"opening":
+			action_button.text = "取消"
+			detail.text = "正在检测下载线路，随后交给浏览器下载"
 		"downloading":
 			action_button.text = "取消下载"
 			detail.text = "已下载 %.1f MB%s；可关闭此面板继续游玩" % [_manager.downloaded_bytes / 1048576.0, " / %.1f MB" % (_manager.total_bytes / 1048576.0) if _manager.total_bytes > 0 else ""]
@@ -145,7 +148,7 @@ func _sync() -> void:
 
 func _action() -> void:
 	match _manager.state:
-		"downloading": _manager.cancel_download()
+		"downloading", "opening": _manager.cancel_download()
 		"ready":
 			if _manager.can_install(): _manager.install_and_restart()
 			else: _manager.open_download_folder()

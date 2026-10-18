@@ -10,6 +10,7 @@ const SUITES: Array[String] = [
 	"res://tests/smoke_lobby.gd",
 	"res://tests/smoke_lobby_flow.gd",
 	"res://tests/smoke_update.gd",
+	"res://tests/update_download_routes.gd",
 	"res://tests/smoke_hot_update.gd",
 	"res://tests/smoke_tiles.gd",
 	"res://tests/smoke_wall.gd",

@@ -5,6 +5,11 @@ signal check_finished
 
 const DOWNLOAD_DIR := "user://updates"
 const MAX_PACKAGE_BYTES := 1024 * 1024 * 1024
+# Public release assets only. GitHub API metadata/digests stay on GitHub HTTPS.
+const DEFAULT_DOWNLOAD_PROXIES := ["https://ghproxy.net/", "https://ghproxy.com/", "https://gh.llkk.cc/"]
+const ROUTE_IDLE_SECONDS := 8.0
+var download_proxies: Array = DEFAULT_DOWNLOAD_PROXIES.duplicate()
+var use_download_proxies := true
 var download_directory := DOWNLOAD_DIR
 var state := "idle"
 var message := "点击检查是否有新版本"
@@ -27,11 +32,28 @@ var _automatic_retry_pending := false
 var _progress_timer := 0.0
 var _release_context: Dictionary = {}
 var _manifest_digest := ""
+var _metadata_routes: Array[String] = []
+var _metadata_route := 0
+var _download_routes: Array[String] = []
+var _download_route := 0
+var _chunk_path := ""
+var _request_offset := 0
+var _range_chunk_bytes := 4 * 1024 * 1024
+var _download_generation := 0
+var _idle_seconds := 0.0
+var _last_progress := 0
+var _link_probe: HTTPRequest
+var _link_routes: Array[String] = []
+var _link_route := 0
+var _link_range_probe := false
+var _last_browser_route := ""
 
 func _ready() -> void:
 	repository = str(ProjectSettings.get_setting("updates/github_repository", ""))
 	manifest_url = str(ProjectSettings.get_setting("updates/manifest_url", ""))
 	auto_check = bool(ProjectSettings.get_setting("updates/auto_check", true))
+	use_download_proxies = bool(ProjectSettings.get_setting("updates/use_download_proxies", true))
+	download_proxies = Array(ProjectSettings.get_setting("updates/download_proxies", DEFAULT_DOWNLOAD_PROXIES))
 	_metadata = HTTPRequest.new()
 	_metadata.timeout = 15.0
 	_metadata.body_size_limit = 512 * 1024
@@ -46,6 +68,13 @@ func _ready() -> void:
 	_download.use_threads = true
 	add_child(_download)
 	_download.request_completed.connect(_download_done)
+	_link_probe = HTTPRequest.new()
+	_link_probe.timeout = ROUTE_IDLE_SECONDS
+	_link_probe.body_size_limit = 64 * 1024
+	_link_probe.max_redirects = 5
+	_link_probe.use_threads = true
+	add_child(_link_probe)
+	_link_probe.request_completed.connect(_link_done)
 	var boot := get_node("/root/PatchBoot")
 	if boot.boot_message != "": message = boot.boot_message
 	var pending: Dictionary = boot.pending_patch()
@@ -126,16 +155,44 @@ static func valid_sha256(value: String) -> bool:
 		if not (character >= 48 and character <= 57 or character >= 97 and character <= 102): return false
 	return true
 
+static func is_github_asset(url: String) -> bool:
+	# Do not forward API calls, credentials, signed query strings, or URLs from
+	# arbitrary origins to third-party services. Never recursively wrap a proxy.
+	if not safe_url(url) or not url.begins_with("https://github.com/") or url.contains("?") or url.contains("#") or url.contains("\\"): return false
+	var path := url.trim_prefix("https://github.com/").split("/")
+	return path.size() == 6 and path[0] != "" and path[1] != "" and path[2] == "releases" and ((path[3] == "download" and path[4] != "") or (path[3] == "latest" and path[4] == "download")) and path[5] != ""
+
+func _routes_for(url: String) -> Array[String]:
+	var routes: Array[String] = []
+	if use_download_proxies and is_github_asset(url):
+		for raw in download_proxies:
+			var prefix := str(raw).strip_edges().trim_suffix("/") + "/"
+			if not safe_url(prefix) or prefix.contains("?") or prefix.contains("#") or prefix.contains("\\"): continue
+			# A prefix must be an HTTPS origin, never another wrapped target URL.
+			if prefix.trim_prefix("https://").split("/").size() != 2: continue
+			var candidate := prefix + url
+			if candidate not in routes: routes.append(candidate)
+			if routes.size() >= 6: break
+	routes.append(url)
+	return routes
+
+static func _header(headers: PackedStringArray, key: String) -> String:
+	for line in headers:
+		var colon := line.find(":")
+		if colon > 0 and line.left(colon).to_lower() == key.to_lower(): return line.substr(colon + 1).strip_edges()
+	return ""
+
 func platform_key() -> String:
 	return "android" if OS.get_name() == "Android" else "windows"
 
 func check_updates() -> void:
-	if state in ["checking", "downloading"]: return
+	if state in ["checking", "downloading", "opening"]: return
 	_automatic_retry_pending = false
 	_automatic_check_active = false
 	latest.clear()
 	_release_context.clear()
 	_manifest_digest = ""
+	_metadata_routes.clear()
 	var local_allowed := not OS.has_feature("template")
 	if manifest_url != "":
 		_check_url = manifest_url
@@ -152,9 +209,22 @@ func check_updates() -> void:
 		_set_state("error", "更新来源地址无效，请使用 HTTPS 下载地址")
 		return
 	_set_state("checking", "正在检查新版本…")
-	var headers := PackedStringArray(["User-Agent: Anshun-Mahjong/" + current_version(), "Accept: application/json"])
-	if _metadata.request(_check_url, headers) != OK:
-		_set_state("error", "无法开始检查，请稍后重试")
+	_start_metadata([_check_url])
+
+func _start_metadata(routes: Array[String]) -> void:
+	_metadata_routes = routes
+	_metadata_route = -1
+	_request_next_metadata()
+
+func _request_next_metadata() -> bool:
+	_metadata_route += 1
+	while _metadata_route < _metadata_routes.size():
+		_metadata.timeout = ROUTE_IDLE_SECONDS
+		var headers := PackedStringArray(["User-Agent: Anshun-Mahjong/" + current_version(), "Accept: application/json"])
+		if _metadata.request(_metadata_routes[_metadata_route], headers) == OK: return true
+		_metadata_route += 1
+	_set_state("error", "无法读取更新信息，请稍后重试")
+	return false
 
 func _set_state(value: String, text_value: String) -> void:
 	state = value
@@ -166,7 +236,10 @@ func _metadata_done(result: int, code: int, _headers: PackedStringArray, body: P
 	if result != HTTPRequest.RESULT_SUCCESS:
 		_set_state("error", "检查更新失败，请检查网络后重试")
 	elif code == 404:
-		_set_state("no_release", "暂未发布正式更新，当前版本 %s" % current_version())
+		if _release_context.is_empty():
+			_set_state("no_release", "暂未发布正式更新，当前版本 %s" % current_version())
+		else:
+			_set_state("error", "更新清单暂时不可用，请稍后重试")
 	elif code == 403 or code == 429:
 		_set_state("error", "更新来源暂时限制访问，请稍后重试")
 	elif code < 200 or code >= 300:
@@ -192,11 +265,14 @@ func _metadata_done(result: int, code: int, _headers: PackedStringArray, body: P
 					if str(data.get("notes", "")) == "": data["notes"] = str(_release_context.get("body", ""))
 					data["release_url"] = str(_release_context.get("html_url", ""))
 					apply_release(data, platform_key(), not OS.has_feature("template"))
-				_release_context.clear()
-				_manifest_digest = ""
 			else:
 				apply_release(data, platform_key(), not OS.has_feature("template"))
+	if state in ["error", "no_release"] and _metadata_route + 1 < _metadata_routes.size():
+		_set_state("checking", "当前线路不可用，正在切换下载线路…")
+		if _request_next_metadata(): return
 	if state != "checking":
+		_release_context.clear()
+		_manifest_digest = ""
 		# 启动时网络尚未就绪或服务临时失败，稍后自动重试一次。
 		var transient_failure := result != HTTPRequest.RESULT_SUCCESS or code >= 500 or code == 429
 		if state == "error" and transient_failure and _automatic_check_active and not _automatic_retry_used:
@@ -224,9 +300,8 @@ func _fetch_release_manifest(data: Dictionary, allow_local: bool) -> bool:
 			return true
 		_release_context = data.duplicate(true)
 		_set_state("checking", "正在读取新版本更新内容…")
-		if _metadata.request(url, PackedStringArray(["User-Agent: Anshun-Mahjong-Updater", "Accept: application/json"])) != OK:
-			_release_context.clear()
-			_set_state("error", "无法读取更新清单，请重试")
+		# Only proxy a manifest pinned by a digest obtained from the official API.
+		_start_metadata(_routes_for(url) if valid_sha256(_manifest_digest) else [url])
 		return true
 	return false
 
@@ -313,14 +388,58 @@ func can_install() -> bool:
 	return state == "ready" and OS.get_name() == "Windows" and OS.has_feature("template") and not OS.has_feature("editor")
 
 func open_download_page() -> Error:
-	if latest.is_empty(): return ERR_UNAVAILABLE
+	if latest.is_empty() or state in ["checking", "downloading", "opening"]: return ERR_UNAVAILABLE
 	var url := str(latest.url if latest.platform == "android" and latest.url != "" else latest.page)
 	if url == "": url = str(latest.url)
 	if not safe_url(url, not OS.has_feature("template")): return ERR_INVALID_PARAMETER
+	if not is_github_asset(url): return _open_browser_url(url)
+	_link_routes = _routes_for(url)
+	if _last_browser_route in _link_routes:
+		# Browser downloads cannot report failures back to the game. A second
+		# tap starts with another route instead of reopening the same bad link.
+		var start := (_link_routes.find(_last_browser_route) + 1) % _link_routes.size()
+		_link_routes = _link_routes.slice(start) + _link_routes.slice(0, start)
+	_link_route = -1
+	_set_state("opening", "正在选择可用下载线路…")
+	_next_link()
+	return OK
+
+func _open_browser_url(url: String) -> Error:
 	return OS.shell_open(url)
 
+func _next_link() -> void:
+	_link_route += 1
+	_link_range_probe = false
+	while _link_route < _link_routes.size():
+		if _link_probe.request(_link_routes[_link_route], PackedStringArray(["User-Agent: Anshun-Mahjong-Updater", "Accept-Encoding: identity"]), HTTPClient.METHOD_HEAD) == OK: return
+		_link_route += 1
+	_set_state("available", "暂时没有可用下载线路，请稍后重试")
+
+func _link_done(result: int, code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+	if state != "opening": return
+	# Some proxies reject HEAD. A bounded Range probe checks the first bytes.
+	if code in [405, 501] and not _link_range_probe:
+		_link_range_probe = true
+		if _link_probe.request(_link_routes[_link_route], PackedStringArray(["User-Agent: Anshun-Mahjong-Updater", "Accept-Encoding: identity", "Range: bytes=0-3"])) == OK: return
+	var content_type := _header(headers, "Content-Type").to_lower()
+	var length := _header(headers, "Content-Length").to_int()
+	var expected := int(latest.get("size", 0))
+	var valid := result == HTTPRequest.RESULT_SUCCESS and code in [200, 206] and not content_type.contains("text/") and not content_type.contains("json")
+	if _link_range_probe:
+		var magic := PackedByteArray([80, 75]) if latest.get("platform", "") == "android" else PackedByteArray([77, 90])
+		valid = valid and body.size() >= magic.size() and body.slice(0, magic.size()) == magic
+		if code == 206: valid = valid and _valid_range(headers, 0, expected, body.size())
+	else:
+		valid = valid and length > 0 and (expected <= 0 or length == expected)
+	if valid and _open_browser_url(_link_routes[_link_route]) == OK:
+		_last_browser_route = _link_routes[_link_route]
+		_set_state("available", "已打开下载；未成功可再次点击下载按钮切换线路")
+	else:
+		_next_link()
+
 func download_update() -> void:
-	if state == "downloading" or not can_download(): return
+	if state in ["checking", "downloading", "opening"] or not can_download(): return
+	_download_generation += 1
 	var err := DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(download_directory))
 	if err != OK:
 		_set_state("error", "无法创建更新文件夹，请检查磁盘空间")
@@ -328,26 +447,78 @@ func download_update() -> void:
 	downloaded_path = ""
 	var extension := "pck" if latest.get("kind", "full") == "patch" else "exe"
 	_partial_path = download_directory + "/mahjong-%s.%s.part" % [latest.version, extension]
-	_download.download_file = _partial_path
+	_chunk_path = _partial_path + ".chunk"
+	_cleanup_partial()
+	_download_routes = _routes_for(str(latest.url))
+	_download_route = -1
 	total_bytes = int(latest.size)
 	downloaded_bytes = 0
 	_set_state("downloading", "正在下载小版本，完成后重启生效" if extension == "pck" else "正在下载新版应用，完成后可重启更新")
-	if _download.request(str(latest.url), PackedStringArray(["User-Agent: Anshun-Mahjong-Updater"])) != OK:
+	_next_download("无法开始下载，请重试")
+
+static func _file_length(path: String) -> int:
+	var file := FileAccess.open(path, FileAccess.READ) if FileAccess.file_exists(path) else null
+	return file.get_length() if file != null else 0
+
+func _next_download(failure: String) -> void:
+	_download_route += 1
+	while _download_route < _download_routes.size():
+		if _download_route > 0: _set_state("downloading", "正在切换下载线路，继续下载…")
+		if _request_download_chunk() == OK: return
+		_download_route += 1
+	_cleanup_partial()
+	_set_state("error", failure)
+
+func _request_download_chunk() -> Error:
+	if FileAccess.file_exists(_chunk_path): DirAccess.remove_absolute(ProjectSettings.globalize_path(_chunk_path))
+	_request_offset = _file_length(_partial_path)
+	var expected := int(latest.size)
+	if expected > 0 and _request_offset >= expected:
 		_cleanup_partial()
-		_set_state("error", "无法开始下载，请重试")
+		_request_offset = 0
+	_download.download_file = _chunk_path
+	_idle_seconds = 0.0
+	_last_progress = 0
+	downloaded_bytes = _request_offset
+	var headers := PackedStringArray(["User-Agent: Anshun-Mahjong-Updater", "Accept-Encoding: identity"])
+	if expected > 0:
+		var last := mini(expected - 1, _request_offset + maxi(256, _range_chunk_bytes) - 1)
+		headers.append("Range: bytes=%d-%d" % [_request_offset, last])
+	# Commit only completed HTTP ranges. HTTPRequest can omit response headers
+	# on disconnect, so an interrupted chunk is retried from its last checkpoint.
+	return _download.request(_download_routes[_download_route], headers)
+
+func _continue_download(generation: int) -> void:
+	if state == "downloading" and generation == _download_generation and _request_download_chunk() != OK:
+		_next_download("无法继续下载，请稍后重试")
 
 func _process(delta: float) -> void:
 	if state != "downloading": return
+	var received := _download.get_downloaded_bytes()
+	_idle_seconds = 0.0 if received > _last_progress else _idle_seconds + delta
+	_last_progress = received
+	if _idle_seconds >= ROUTE_IDLE_SECONDS:
+		_download.cancel_request()
+		# No completion headers on cancellation: do not trust/merge this chunk.
+		_next_download("下载线路长时间没有响应，请稍后重试")
+		return
 	_progress_timer -= delta
 	if _progress_timer > 0.0: return
 	_progress_timer = 0.2
-	downloaded_bytes = _download.get_downloaded_bytes()
+	downloaded_bytes = _request_offset + maxi(0, received)
 	var size_value := _download.get_body_size()
-	if size_value > 0: total_bytes = size_value
+	if int(latest.size) <= 0 and size_value > 0: total_bytes = _request_offset + size_value
+	if total_bytes > 0: downloaded_bytes = mini(downloaded_bytes, total_bytes)
 	state_changed.emit()
 
 func cancel_download() -> void:
+	if state == "opening":
+		_link_probe.cancel_request()
+		_link_routes.clear()
+		_set_state("available", "已取消选择下载线路")
+		return
 	if state != "downloading": return
+	_download_generation += 1
 	_download.cancel_request()
 	_cleanup_partial()
 	_set_state("available", "下载已取消，可以稍后继续")
@@ -355,12 +526,56 @@ func cancel_download() -> void:
 func _cleanup_partial() -> void:
 	if _partial_path != "" and FileAccess.file_exists(_partial_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(_partial_path))
+	if _chunk_path != "" and FileAccess.file_exists(_chunk_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_chunk_path))
 
-func _download_done(result: int, code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+static func _valid_range(headers: PackedStringArray, offset: int, expected: int, length: int) -> bool:
+	var regex := RegEx.new()
+	regex.compile("^bytes ([0-9]+)-([0-9]+)/([0-9]+)$")
+	var matched := regex.search(_header(headers, "Content-Range"))
+	if matched == null: return false
+	var first := matched.get_string(1).to_int()
+	var last := matched.get_string(2).to_int()
+	var total := matched.get_string(3).to_int()
+	return first == offset and last >= first and total > last and total <= MAX_PACKAGE_BYTES and (expected <= 0 or total == expected) and length <= last - first + 1
+
+func _merge_chunk(code: int, headers: PackedStringArray) -> bool:
+	var length := _file_length(_chunk_path)
+	var expected := int(latest.size)
+	if length <= 0 or length > MAX_PACKAGE_BYTES: return false
+	var encoding := _header(headers, "Content-Encoding").to_lower()
+	if encoding not in ["", "identity"]: return false
+	var content_type := _header(headers, "Content-Type").to_lower()
+	if content_type.contains("text/") or content_type.contains("json"): return false
+	if code == 200:
+		# A server can ignore Range. Replace the partial file rather than append
+		# a whole response to it. No proxy's Range support is assumed.
+		if expected > 0 and length > expected: return false
+		if FileAccess.file_exists(_partial_path): DirAccess.remove_absolute(ProjectSettings.globalize_path(_partial_path))
+		return DirAccess.rename_absolute(ProjectSettings.globalize_path(_chunk_path), ProjectSettings.globalize_path(_partial_path)) == OK
+	if code != 206 or not _valid_range(headers, _request_offset, expected, length): return false
+	if _file_length(_partial_path) != _request_offset: return false
+	var source := FileAccess.open(_chunk_path, FileAccess.READ)
+	var target := FileAccess.open(_partial_path, FileAccess.READ_WRITE if _request_offset > 0 else FileAccess.WRITE)
+	if source == null or target == null: return false
+	target.seek_end()
+	while source.get_position() < length:
+		var buffer := source.get_buffer(mini(65536, length - source.get_position()))
+		if buffer.is_empty(): return false
+		target.store_buffer(buffer)
+		if target.get_error() != OK: return false
+	target.close()
+	source.close()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(_chunk_path))
+	return true
+
+func _download_done(result: int, code: int, headers: PackedStringArray, _body: PackedByteArray) -> void:
 	if state != "downloading": return
-	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
-		_cleanup_partial()
-		_set_state("error", "下载未完成，请检查网络和磁盘空间后重试")
+	var merged := _merge_chunk(code, headers)
+	if not merged or result != HTTPRequest.RESULT_SUCCESS:
+		# Only known-size validated response spans are kept for another route.
+		if int(latest.size) <= 0: _cleanup_partial()
+		_next_download("下载未完成，请检查网络和磁盘空间后重试")
 		return
 	var file := FileAccess.open(_partial_path, FileAccess.READ)
 	var length := file.get_length() if file != null else 0
@@ -369,16 +584,18 @@ func _download_done(result: int, code: int, _headers: PackedStringArray, _body: 
 	var valid_package := file != null and file.get_buffer(magic.size()) == magic
 	if file != null: file.close()
 	if length == 0 or int(latest.size) > 0 and length != int(latest.size):
-		_cleanup_partial()
-		_set_state("error", "更新包不完整，请重新下载")
+		if code == 206 and length > 0 and length < int(latest.size):
+			call_deferred("_continue_download", _download_generation)
+			return
+		_next_download("更新包不完整，请重新下载")
 		return
 	if not valid_package:
 		_cleanup_partial()
-		_set_state("error", "下载文件不是有效的小版本补丁，请重试" if patch else "下载文件不是有效的 Windows 程序，请重试")
+		_next_download("下载文件不是有效的小版本补丁，请重试" if patch else "下载文件不是有效的 Windows 程序，请重试")
 		return
 	if FileAccess.get_sha256(_partial_path).to_lower() != str(latest.sha256):
 		_cleanup_partial()
-		_set_state("error", "更新文件校验失败，已删除下载文件，请重试")
+		_next_download("更新文件校验失败，已删除下载文件，请重试")
 		return
 	var completed := download_directory + "/mahjong-%s.%s" % [latest.version, "pck" if patch else "exe"]
 	if DirAccess.rename_absolute(ProjectSettings.globalize_path(_partial_path), ProjectSettings.globalize_path(completed)) != OK:
