@@ -140,6 +140,7 @@ func _test_locks_and_ready() -> void:
 		t.expect(submissions.is_empty(), "focus recovery cannot bypass dealing or settled locks")
 	_fixture()
 	table._table_animation_controller._animation_busy = true
+	table._table_animation_controller._event = {"type": "draw", "seat": table.human_seat}
 	table.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
 	table.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
 	_click(_tile(2))

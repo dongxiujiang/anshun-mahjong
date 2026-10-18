@@ -14,23 +14,16 @@ var hand_finish_discard_removed := false
 var hand_finish_draw_transferred := false
 var hand_finish_count := 0
 
-func _log_hand_finish(_event_id: int) -> void:
-	if controller_is_hand_discard():
-		var source = table._table_animation_controller._event.get("draw_node")
-		hand_finish_draw_transferred = is_instance_valid(source) and source == hand_old_draw and source.get_parent() == table.hand_box[0] and table.draw_box[0].get_child_count() == 0
-		hand_finish_reused_nodes = true
-		for node in hand_old_nodes:
-			if node == hand_old_discard:
-				continue
-			hand_finish_reused_nodes = hand_finish_reused_nodes and is_instance_valid(node) and node.get_parent() == table.hand_box[0]
-		hand_finish_discard_removed = not is_instance_valid(hand_old_discard) or hand_old_discard.get_parent() == null or hand_old_discard.is_queued_for_deletion()
-		for node in table.hand_box[0].get_children():
-			if node is TileView:
-				hand_finish_count += 1
-
-func controller_is_hand_discard() -> bool:
-	var event: Dictionary = table._table_animation_controller._event
-	return event.get("type", "") == "discard" and event.get("discard_from_hand", false)
+func _log_hand_finish(event: Dictionary) -> void:
+	var source = event.get("draw_node")
+	hand_finish_draw_transferred = is_instance_valid(source) and source == hand_old_draw and source.get_parent() == table.hand_box[0] and table.draw_box[0].get_child_count() == 0
+	hand_finish_reused_nodes = true
+	for node in hand_old_nodes:
+		if node == hand_old_discard: continue
+		hand_finish_reused_nodes = hand_finish_reused_nodes and is_instance_valid(node) and node.get_parent() == table.hand_box[0]
+	hand_finish_discard_removed = not is_instance_valid(hand_old_discard) or hand_old_discard.get_parent() == null or hand_old_discard.is_queued_for_deletion()
+	for node in table.hand_box[0].get_children():
+		if node is TileView: hand_finish_count += 1
 
 func _initialize() -> void: call_deferred("_run")
 
@@ -56,13 +49,13 @@ func _play(label: String, data: Dictionary) -> void:
 		# The animation then moves that visible tile into the hand; it must not
 		# create a blank draw position before the movement starts.
 		controller.refresh_masks()
-		t.expect(is_equal_approx(draw_tile.modulate.a, 1.0), "Draw slot is visible before the draw animation starts: " + label)
+		t.expect(is_zero_approx(draw_tile.modulate.a), "Persistent draw is hidden before flight starts: " + label)
 	await process_frame
 	await process_frame
 	for frame in 5:
 		await _shot(label + "_%02d" % frame)
 		await create_timer(0.06).timeout
-	while controller._animation_busy:
+	while controller.has_pending():
 		await process_frame
 	timings.append({"effect": label, "duration_ms": Time.get_ticks_msec() - started})
 	if draw_tile != null:
@@ -79,8 +72,18 @@ func _run() -> void:
 	root.content_scale_size = Vector2i.ZERO
 	root.size = Vector2i(1280,720)
 	root.get_node("UpdateManager").auto_check = false
+	var network = root.get_node("Network")
+	var fixed_round := RoundState.new()
+	fixed_round.set_rng_seed(20261018)
+	fixed_round.controllers = [null,null,null,null]
+	network.mode = "host"
+	network.net_node.game = fixed_round
+	network.net_node.my_seat = 0
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(table)
+	network.mode = ""
+	fixed_round.opening_delay_seconds = root.get_node("GameConfig").OPENING_WAIT_SECONDS
+	fixed_round.start_round(0,3)
 	await process_frame
 	var controller = table._table_animation_controller
 	table.round.controllers = [null,null,null,null]
@@ -118,10 +121,9 @@ func _run() -> void:
 		if int(tile.get_meta("concealed_index", -1)) == 3:
 			hand_old_discard = tile
 	hand_old_draw = table.draw_box[0].get_child(0) if not table.draw_box[0].get_children().is_empty() else null
-	if not table._animation_layer.finished.is_connected(_log_hand_finish):
-		table._animation_layer.finished.connect(_log_hand_finish)
 	table.round._discard(0, "tong2", 3)
 	t.expect(is_instance_valid(hand_old_discard) and hand_old_discard.get_parent() == table.hand_box[0] and is_instance_valid(hand_old_draw) and hand_old_draw.get_parent() == table.draw_box[0], "Hand discard keeps the pre-discard hand and draw slot in place before animation")
+	var hand_event: Dictionary = {}
 	var saw_hand_discard := false
 	var hand_motion_data := false
 	var held_old_row := false
@@ -129,17 +131,20 @@ func _run() -> void:
 	var saw_hidden_draw_source := false
 	var hand_timed_out := false
 	var hand_deadline := Time.get_ticks_msec() + 8000
-	while (controller._animation_busy or not controller._animation_queue.is_empty()) and Time.get_ticks_msec() < hand_deadline:
-		if controller._animation_busy and controller._event.get("type", "") == "discard" and controller._event.get("discard_from_hand", false):
+	while controller.has_pending() and Time.get_ticks_msec() < hand_deadline:
+		for task in controller._discard_tasks.values():
+			if task.event.get("seat", -1) == 0: hand_event = task.event
+		if not hand_event.is_empty() and controller.holds_seat_refresh(0):
 			saw_hand_discard = true
-			hand_motion_data = not controller._event.get("hand_moves", []).is_empty() and not controller._event.get("hand_insert", {}).is_empty()
+			hand_motion_data = not hand_event.get("hand_moves", []).is_empty() and not hand_event.get("hand_insert", {}).is_empty()
 			held_old_row = controller.holds_seat_refresh(0)
-			discard_destination_ready = not controller._event.get("destinations", []).is_empty()
-			var insert: Dictionary = controller._event.get("hand_insert", {})
+			discard_destination_ready = not hand_event.get("destinations", []).is_empty()
+			var insert: Dictionary = hand_event.get("hand_insert", {})
 			var draw_source = insert.get("source_node")
 			if not insert.is_empty() and is_instance_valid(draw_source) and draw_source is TileView and not draw_source.visible:
 				saw_hidden_draw_source = true
 		await process_frame
+	_log_hand_finish(hand_event)
 	hand_timed_out = Time.get_ticks_msec() >= hand_deadline
 	t.expect(saw_hand_discard and hand_motion_data and held_old_row and discard_destination_ready and not controller.holds_seat_refresh(0), "Hand discard starts at the clicked slot, holds the old row, and ends with a real discard target")
 	t.expect(saw_hidden_draw_source, "Draw-slot tile is hidden while the drawn tile is inserted into the hand")
@@ -162,9 +167,9 @@ func _run() -> void:
 		await process_frame
 		var started := Time.get_ticks_msec()
 		layer.play({"type": "draw", "tile": "wan1", "from": Vector2(100,100), "to": Vector2(600,400)})
-		await layer.finished
+		if layer._active != null: await layer.finished
 		timings.append({"effect": speed, "duration_ms": Time.get_ticks_msec() - started})
-	t.expect(timings[-2].duration_ms >= 100, "Fast animation still has a visible transition")
+	t.expect(timings[-2].duration_ms < 100, "Instant animation completes without a visible transition")
 	t.expect(timings[-1].duration_ms > timings[-2].duration_ms, "Slow animation takes longer than fast")
 	# Cancellation during a real Tween prevents stale callbacks and ghost tiles.
 	var completed: Array = []

@@ -20,6 +20,8 @@ var name_labels := {}
 var _status_labels := {}
 var _exposed_layouts := {}
 var _seat_visual_keys := {}
+var _exposed_keys := {}
+var _river_keys := {}
 
 func build() -> void:
 	for seat in 4:
@@ -143,6 +145,7 @@ func _settlement_reveals_hands() -> bool:
 	return not winners.is_empty() or int(table.round.round_meta.get("winner", -1)) >= 0
 
 func _meld_revealed(seat: int, index: int) -> bool:
+	if table._table_animation_controller.holds_meld_reveal(seat, index): return false
 	if table.round.phase != RoundState.Phase.SETTLED or _settlement_reveals_hands():
 		return table.round.is_meld_revealed(seat, index)
 	# Core settlement reveals melds for scoring. A draw keeps the same physical
@@ -150,6 +153,16 @@ func _meld_revealed(seat: int, index: int) -> bool:
 	var player: PlayerState = table.round.players[seat]
 	var meld: Dictionary = player.melds[index]
 	return not bool(meld.get("concealed", false)) or player.discard_count >= int(meld.get("after_discard", 0)) + 2
+
+func _hand_key(seat: int) -> PackedByteArray:
+	var player: PlayerState = table.round.players[seat]
+	var controller = table._table_animation_controller
+	return var_to_bytes([table.human_seat, table._design_size(), table.round.audio_session,
+		player.concealed, player.just_drew, _settlement_reveals_hands(), table._hand_layout(seat),
+		controller.opening_active(), controller.dealt_count(seat), controller.holds_draw_slot(seat)])
+
+func cache_current_hand(seat: int) -> void:
+	_seat_visual_keys[seat] = _hand_key(seat)
 
 func _refresh_seat(seat: int) -> void:
 	var relative = table._relative_seat(seat)
@@ -171,15 +184,13 @@ func _refresh_seat(seat: int) -> void:
 	var opening: bool = table._table_animation_controller.opening_active()
 	var opening_dealt: int = table._table_animation_controller.dealt_count(seat)
 	var draw_hidden: bool = table._table_animation_controller.holds_draw_slot(seat)
-	var plans: Array = _exposed_layouts.get(seat, [])
-	var key = var_to_bytes([table.human_seat, table._design_size(), table.round.audio_session, player.concealed, player.just_drew, player.melds,
-		player.discards, player.discard_ids, player.discard_count, _settlement_reveals_hands(), table.round.last_discard, plans,
-		table.round.round_meta.get("charge_chickens", {}), table._hand_layout(seat), opening, opening_dealt, draw_hidden])
+	_refresh_exposed(seat)
+	_refresh_discards(seat)
+	# Hand identity excludes unrelated discards and exposed-layout changes.
+	var key := _hand_key(seat)
 	if _seat_visual_keys.get(seat) == key: return
 	_seat_visual_keys[seat] = key
 	if seat == table.human_seat: table._selected_tile = null
-	table._clear_box(meld_box[seat])
-	table._clear_box(chicken_box[seat])
 	var cards: Array = []
 	if opening:
 		# During the opening, the authoritative hand is already complete but the
@@ -201,53 +212,17 @@ func _refresh_seat(seat: int) -> void:
 			if player.concealed[source_index] == player.just_drew:
 				drawn_index = source_index
 				break
-	var player_unit: float = table._player_tile_unit(seat)
-	var width = TileView.BASE_W * player_unit
-	var height = TileView.BASE_H * player_unit
 	# Exposed tiles grow from the left table edge.  The horizontal players' hand
 	# and reserved draw slot are centered together without changing tile sizes.
 	var metrics: Dictionary = table._seat_metrics(seat)
 	var row: Dictionary = table._hand_layout(seat)
 	var draw_x: float = row.draw_x
 	var hand_x: float = row.hand_x
-	for group in _exposed_layouts.get(seat, []):
-		var group_origin: Vector2 = group.origin
-		if group.has("chicken"):
-			var chicken: Dictionary = group.chicken
-			var tile: TileView = table._make_tile(chicken.tile, true, player_unit)
-			tile.set_meta("discard_id", int(chicken.history_index))
-			tile.set_meta("charge_chicken", chicken.charge)
-			tile.set_highlight(chicken.latest)
-			if chicken.charge:
-				tile.rotation = -PI / 2.0
-				table._put_tile(chicken_box[seat], tile, group_origin + Vector2(0, height))
-			else:
-				table._put_tile(chicken_box[seat], tile, group_origin)
-			continue
-		var meld: Dictionary = group.meld
-		var count = 3 if meld.kind == "pung" else 4
-		var layout: Dictionary = group.layout
-		var charge_index := -1
-		var up: bool = _meld_revealed(seat, group.meld_index)
-		for index in count:
-			var tile: TileView = table._make_tile(meld.tile if up else "", up, player_unit)
-			tile.set_meta("meld_index", int(group.meld_index))
-			# Keep the physical slot so a meld animation can place the claimed
-			# discard in the sideways kong position while the other tiles come from
-			# the caller's old concealed row.
-			tile.set_meta("meld_slot", index)
-			tile.set_meta("meld_sideways", int(layout.sideways))
-			tile.set_meta("charge_chicken", index == charge_index)
-			if index == charge_index:
-				tile.set_highlight(true)
-			if index == int(layout.sideways):
-				tile.rotation = -PI / 2.0
-			table._put_tile(meld_box[seat], tile, group_origin + Vector2(layout.positions[index]))
 	table._clear_box(hand_box[seat])
 	table._clear_box(draw_box[seat])
 	var own = seat == table.human_seat
 	var hand_unit: float = table._hand_tile_unit(seat)
-	width = TileView.BASE_W * hand_unit
+	var width := TileView.BASE_W * hand_unit
 	var x = hand_x
 	var y: float = metrics.hand_y
 	var reveal: bool = own or _settlement_reveals_hands()
@@ -283,6 +258,51 @@ func _refresh_seat(seat: int) -> void:
 		if drawn_index >= 0:
 			drawn.set_meta("concealed_index", drawn_index)
 	table._refresh_discards(seat)
+
+func _refresh_exposed(seat: int) -> void:
+	var player: PlayerState = table.round.players[seat]
+	var revealed: Array = []
+	for index in player.melds.size(): revealed.append(_meld_revealed(seat, index))
+	var key = var_to_bytes([table.round.audio_session, _exposed_layouts.get(seat, []), revealed])
+	if _exposed_keys.get(seat) == key: return
+	_exposed_keys[seat] = key
+	table._clear_box(meld_box[seat])
+	table._clear_box(chicken_box[seat])
+	var player_unit: float = table._player_tile_unit(seat)
+	var height := TileView.BASE_H * player_unit
+	for group in _exposed_layouts.get(seat, []):
+		var group_origin: Vector2 = group.origin
+		if group.has("chicken"):
+			var chicken: Dictionary = group.chicken
+			var tile: TileView = table._make_tile(chicken.tile, true, player_unit)
+			tile.set_meta("discard_id", int(chicken.history_index))
+			tile.set_meta("charge_chicken", chicken.charge)
+			tile.set_highlight(chicken.latest)
+			if chicken.charge:
+				tile.rotation = -PI / 2.0
+				table._put_tile(chicken_box[seat], tile, group_origin + Vector2(0, height))
+			else:
+				table._put_tile(chicken_box[seat], tile, group_origin)
+			continue
+		var meld: Dictionary = group.meld
+		var count = 3 if meld.kind == "pung" else 4
+		var layout: Dictionary = group.layout
+		var charge_index := -1
+		var up: bool = _meld_revealed(seat, group.meld_index)
+		for index in count:
+			var tile: TileView = table._make_tile(meld.tile if up else "", up, player_unit)
+			tile.set_meta("meld_index", int(group.meld_index))
+			# Keep the physical slot so a meld animation can place the claimed
+			# discard in the sideways kong position while the other tiles come from
+			# the caller's old concealed row.
+			tile.set_meta("meld_slot", index)
+			tile.set_meta("meld_sideways", int(layout.sideways))
+			tile.set_meta("charge_chicken", index == charge_index)
+			if index == charge_index:
+				tile.set_highlight(true)
+			if index == int(layout.sideways):
+				tile.rotation = -PI / 2.0
+			table._put_tile(meld_box[seat], tile, group_origin + Vector2(layout.positions[index]))
 
 func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> Dictionary:
 	var width = TileView.BASE_W * unit
@@ -437,6 +457,10 @@ func _refresh_discards(seat: int) -> void:
 	var player: PlayerState = table.round.players[seat]
 	var metrics: Dictionary = table._seat_metrics(seat)
 	var columns: int = metrics.river_columns
+	var latest_discard: Dictionary = table.round.last_discard if int(table.round.last_discard.get("seat", -1)) == seat else {}
+	var key = var_to_bytes([table.round.audio_session, player.discards, player.discard_ids, latest_discard, metrics])
+	if _river_keys.get(seat) == key: return
+	_river_keys[seat] = key
 	for box in discard_box[seat]:
 		table._clear_box(box)
 	var width = TileView.BASE_W * UI.RIVER_TILE_UNIT

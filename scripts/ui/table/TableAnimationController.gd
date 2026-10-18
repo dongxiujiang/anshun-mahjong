@@ -12,6 +12,7 @@ var _session := ""
 var _masked: Array[Control] = []
 var _event := {}
 var _opening := false
+var _opening_speed_scale := 1.0
 var _sorting := false
 var _dealt := [0, 0, 0, 0]
 ## Seats whose persistent draw slot stays hidden until the draw flight lands.
@@ -22,6 +23,32 @@ var _held_draw_seats: Dictionary = {}
 ## RoundState emits the event before state_update, so without this hold the
 ## final sorted hand would flash on screen before the old row can animate out.
 var _held_refresh_seats: Dictionary = {}
+# Discard flight + insert own a separate lane; claims and the next draw never
+# wait for that lane. Only a subsequent action by the same seat reconciles it.
+var _discard_tasks: Dictionary = {}
+var _parallel_effects: Dictionary = {}
+var _task_id := 0
+var _tile_pool = preload("res://scripts/ui/TileViewPool.gd").new()
+
+func has_pending() -> bool:
+	return _animation_busy or not _animation_queue.is_empty() or not _discard_tasks.is_empty() or not _parallel_effects.is_empty()
+
+func defers_discard_sound() -> bool:
+	return DisplayServer.get_name() != "headless" and GameConfig.animation_speed != "instant" and not _animation_layer._skip
+
+func dispose_pool() -> void:
+	_tile_pool.clear()
+
+func holds_meld_reveal(seat: int, index: int) -> bool:
+	if DisplayServer.get_name() == "headless": return false
+	var events: Array = _animation_queue.duplicate()
+	if _animation_busy: events.append(_event)
+	for effect in _parallel_effects.values(): events.append(effect.event)
+	for event in events:
+		if event.get("type", "") == "meld_reveal" and int(event.get("seat", -1)) == seat and int(event.get("index", -1)) == index:
+			return true
+	return false
+
 
 func holds_seat_refresh(seat: int) -> bool:
 	return _held_refresh_seats.has(seat)
@@ -40,10 +67,17 @@ func dealt_count(seat: int) -> int:
 
 func input_locked() -> bool:
 	if _opening or _sorting: return true
-	# A physical table does not accept the next claim while a tile is still in
-	# the air.  The old implementation only locked the local draw, which let a
-	# response button appear while a remote discard or meld was still moving.
-	return _animation_busy or not _animation_queue.is_empty()
+	var seat: int = table.human_seat
+	# A response reads a discard, not the opponent's still-sorting hand.
+	# For our turn, the draw/own meld must have finished before any button shows.
+	if holds_draw_slot(seat): return true
+	if table._selecting and holds_seat_refresh(seat): return true
+	var events: Array = _animation_queue.duplicate()
+	if _animation_busy: events.append(_event)
+	for event in events:
+		if int(event.get("seat", -1)) == seat and event.get("type", "") in ["draw", "meld"]:
+			return true
+	return false
 
 func reset() -> void:
 	cancel()
@@ -54,8 +88,19 @@ func reset() -> void:
 
 func cancel(skip_next_event: bool = false) -> void:
 	var had_draw_holds := not _held_draw_seats.is_empty()
-	var had_hand_holds := not _held_refresh_seats.is_empty()
+	var had_hand_holds := not _held_refresh_seats.is_empty() or _sorting
+	if _sorting and is_instance_valid(table): table._seat_visual_keys.clear()
+	if is_instance_valid(table):
+		for seat in _held_refresh_seats: table._seat_visual_keys.erase(seat)
 	_restore()
+	for task in _discard_tasks.values():
+		task.layer.cancel()
+		task.layer.queue_free()
+	_discard_tasks.clear()
+	for effect in _parallel_effects.values():
+		effect.layer.cancel()
+		effect.layer.queue_free()
+	_parallel_effects.clear()
 	_animation_queue.clear()
 	_animation_busy = false
 	_event = {}
@@ -75,6 +120,7 @@ func cancel(skip_next_event: bool = false) -> void:
 func build() -> void:
 	_animation_layer = ANIMATION_LAYER.new()
 	_animation_layer.name = "AnimationLayer"
+	_animation_layer.tile_pool = _tile_pool
 	table.add_child(_animation_layer)
 
 func _on_visual_event(event: Dictionary) -> void:
@@ -98,38 +144,63 @@ func _on_visual_event(event: Dictionary) -> void:
 	if _skip_visual_once:
 		_skip_visual_once = false
 		return
+	if event.get("fast_forward", false):
+		cancel()
+		return
 	var copy := event.duplicate(true)
 	if event.get("type", "") == "dice" and DisplayServer.get_name() != "headless":
 		_opening = true
+		_opening_speed_scale = 1.0 if table._net_mode() != "" else float(GameConfig.ANIMATION_SPEEDS.get(GameConfig.animation_speed, 1.0))
 	var seat := int(event.get("seat", 0))
+	if event.get("type", "") in ["draw", "meld", "discard"]:
+		_finish_seat_discard(seat)
 	if event.get("type", "") == "draw":
 		# Set this before state_update.  The refresh that follows will create the
 		# persistent node but PlayerTileAreas will keep it invisible until the
 		# temporary flying tile reaches the same slot.
 		_held_draw_seats[seat] = int(_held_draw_seats.get(seat, 0)) + 1
 	if event.get("type", "") == "discard":
+		# The authority may run faster than an observer's UI. Retire superseded
+		# own draws/melds without delaying the real discard or rebuilding its source.
+		if _animation_busy and int(_event.get("seat", -1)) == seat and _event.get("type", "") in ["draw", "meld"]:
+			_animation_layer.finish_now()
+		_animation_queue = _animation_queue.filter(func(pending): return not (int(pending.get("seat", -1)) == seat and pending.get("type", "") in ["draw", "meld"]))
+		_held_draw_seats.erase(seat)
 		var discard_tile := str(event.get("tile", ""))
 		var from_draw := bool(event.get("discard_from_draw", false))
-		copy["from"] = _origin(table.draw_box[seat], discard_tile) if from_draw else _discard_origin(seat, discard_tile, int(event.get("discard_index", -1)))
+		copy["from"] = _animation_target_for_seat(seat) if from_draw else _discard_origin(seat, discard_tile, int(event.get("discard_index", -1)))
 		copy["from_unit"] = table._hand_tile_unit(seat)
 		copy["from_rotation"] = UI.ROTATIONS[table._relative_seat(seat)]
-		if not from_draw:
+		if not from_draw and int(event.get("discard_index", -1)) >= 0:
 			copy["discard_from_hand"] = true
 			copy["draw_from"] = _origin(table.draw_box[seat], str(event.get("draw_tile", "")))
 			copy["hand_snapshot"] = _hand_snapshot(seat)
 			# Hold the rendered old row while RoundState publishes its new
 			# concealed array.  The animation must start from these exact nodes.
 			_held_refresh_seats[seat] = int(_held_refresh_seats.get(seat, 0)) + 1
+		# Materialize only public zones now: a following claim can remove this
+		# discard before the deferred pump. Preserve its real landing coordinates.
+		table._prepare_exposed_layouts()
+		table._player_tile_areas._refresh_exposed(seat)
+		table._player_tile_areas._refresh_discards(seat)
+		copy["landing_destinations"] = _destinations(copy)
 	elif event.get("type", "") == "meld" and event.has("source"):
 		copy["from"] = _discard_visual_origin(int(event.get("source", -1)), str(event.get("tile", "")), int(event.get("source_discard_id", -1)))
 		copy["from_rotation"] = UI.ROTATIONS[table._relative_seat(int(event.get("source", -1)))] if int(event.get("source", -1)) in range(4) else UI.ROTATIONS[table._relative_seat(seat)]
 		# The authority removes the two/three matching hand tiles before emitting
 		# the meld event.  Capture their old screen positions before state_update
 		# rebuilds the hand, so the visual can show the physical take-and-place.
-		copy["meld_hand_snapshot"] = _hand_snapshot(seat)
+		copy["meld_hand_snapshot"] = _hand_snapshot(seat, true)
 	elif event.get("type", "") == "meld":
 		copy["from_rotation"] = UI.ROTATIONS[table._relative_seat(seat)]
-		copy["meld_hand_snapshot"] = _hand_snapshot(seat)
+		copy["meld_hand_snapshot"] = _hand_snapshot(seat, true)
+	if copy.get("type", "") == "meld" and copy.has("source"):
+		_claim_discard(copy)
+	if copy.get("type", "") == "discard":
+		copy["destinations"] = copy.get("landing_destinations", [])
+		if copy.get("discard_from_hand", false): _prepare_hand_discard_motion(copy)
+		_start_discard(copy)
+		return
 	_animation_queue.append(copy)
 	table._update_interactivity()
 	refresh_masks()
@@ -154,10 +225,25 @@ func _pump_visual_animation() -> void:
 	if not _event.has("from"):
 		_event["from"] = _source_for_event(_event)
 	_event["badge_at"] = table._table_center() + [Vector2(0,170), Vector2(250,0), Vector2(0,-170), Vector2(-250,0)][table._relative_seat(seat)]
-	_event["destinations"] = _destinations(_event)
+	_event["destinations"] = _event.get("landing_destinations", _destinations(_event))
 	if _event.get("type", "") == "discard" and bool(_event.get("discard_from_hand", false)):
 		_prepare_hand_discard_motion(_event)
 	if _event.get("type", "") == "draw" and seat != table.human_seat: _event["tile"] = ""
+	if _event.get("type", "") == "discard":
+		var discard := _event
+		_event = {}
+		_animation_busy = false
+		_start_discard(discard)
+		table.call_deferred("_pump_visual_animation")
+		return
+	if _event.get("type", "") in ["ready", "meld_reveal"]:
+		var effect := _event
+		_event = {}
+		_animation_busy = false
+		_start_parallel_effect(effect)
+		table.call_deferred("_pump_visual_animation")
+		return
+	if _opening: _event["speed_scale"] = _opening_speed_scale
 	refresh_masks()
 	_animation_layer.play(_event, Callable(table, "_on_visual_animation_finished"))
 
@@ -188,10 +274,12 @@ func _origin(box: Control, card: String, discard_id: int = -1) -> Vector2:
 		if tile.tile == card and tile.face_up: return _position(tile)
 	return _position(tiles.back()) if not tiles.is_empty() else table._table_center()
 
-func _hand_snapshot(seat: int) -> Array:
+func _hand_snapshot(seat: int, include_draw: bool = false) -> Array:
 	var result: Array = []
 	if seat < 0 or seat >= table.hand_box.size(): return result
-	for tile in _tiles_in(table.hand_box[seat]):
+	var tiles := _tiles_in(table.hand_box[seat])
+	if include_draw: tiles.append_array(_tiles_in(table.draw_box[seat]))
+	for tile in tiles:
 		var source_index := int(tile.get_meta("concealed_index", -1))
 		if source_index < 0: continue
 		result.append({
@@ -265,7 +353,9 @@ func _targets(event: Dictionary) -> Array[TileView]:
 	if type in ["meld", "meld_reveal"]:
 		var group: Array[TileView] = []
 		for tile in _tiles_in(table.meld_box[seat]):
-			if int(tile.get_meta("meld_index", -1)) == int(event.get("index", -2)): group.append(tile)
+			if int(tile.get_meta("meld_index", -1)) == int(event.get("index", -2)):
+				if type == "meld" and event.get("kind", "") == "add_kong" and int(tile.get_meta("meld_slot", -1)) != 3: continue
+				group.append(tile)
 		return group
 	if type == "discard":
 		var candidates := _tiles_in(table.chicken_box[seat]) + _tiles_in(table.discard_scroll[seat])
@@ -273,7 +363,7 @@ func _targets(event: Dictionary) -> Array[TileView]:
 			var candidate: TileView = candidates[index]
 			if event.has("discard_id") and int(candidate.get_meta("discard_id", -1)) == int(event.get("discard_id", -2)):
 				return [candidate]
-			if candidate.tile == str(event.get("tile", "")) and bool(candidate.get_meta("charge_chicken", false)) == bool(event.get("charge", false)): return [candidate]
+			if not event.has("discard_id") and candidate.tile == str(event.get("tile", "")) and bool(candidate.get_meta("charge_chicken", false)) == bool(event.get("charge", false)): return [candidate]
 	return []
 
 func _destinations(event: Dictionary) -> Array:
@@ -296,13 +386,14 @@ func _destinations(event: Dictionary) -> Array:
 			var meld_card := str(event.get("tile", ""))
 			for item in event.get("meld_hand_snapshot", []):
 				var item_card := str(item.get("tile", ""))
-				if (meld_card != "" and item_card == meld_card) or (meld_card == "" and item_card == ""):
+				var indices: Array = event.get("hand_indices", [])
+				if (indices.has(int(item.get("index", -1))) if not indices.is_empty() else ((meld_card != "" and item_card == meld_card) or (meld_card == "" and item_card == ""))):
 					hand_origins.append(item)
 			# A hidden opponent hand has no tile names.  Its rightmost old tiles
 			# still give us a stable physical origin without leaking their values.
 			if hand_origins.is_empty(): hand_origins = event.get("meld_hand_snapshot", []).duplicate()
 		var source_slot := -1
-		if type == "meld" and event.has("source") and str(event.get("kind", "")) == "kong":
+		if type == "meld" and event.has("source") and str(event.get("kind", "")) in ["kong", "pung"]:
 			for index in targets.size():
 				if int(targets[index].get_meta("meld_sideways", -1)) == int(targets[index].get_meta("meld_slot", -2)):
 					source_slot = index
@@ -341,7 +432,6 @@ func _prepare_hand_discard_motion(event: Dictionary) -> void:
 	var seat := int(event.get("seat", 0))
 	var source_index := int(event.get("discard_index", -1))
 	var drawn_hand_index := int(event.get("drawn_hand_index", -1))
-	var discard_hand_index := int(event.get("discard_hand_index", -1))
 	var row_count := int(event.get("hand_row_count", 0))
 	var slot_map: Dictionary = event.get("hand_slot_map", {})
 	var snapshot: Array = event.get("hand_snapshot", [])
@@ -351,6 +441,14 @@ func _prepare_hand_discard_motion(event: Dictionary) -> void:
 	event["discard_node"] = discard_node
 	event["draw_node"] = draw_node
 	if row_count <= 0: row_count = snapshot.size()
+	if drawn_source_index < 0:
+		# A post-pung discard has no draw to insert, but still closes its hole.
+		row_count = maxi(0, snapshot.size() - 1)
+		event["hand_row_count"] = row_count
+		slot_map = {}
+		for item in snapshot:
+			var old_index := int(item.get("index", -1))
+			if old_index != source_index: slot_map[old_index] = slot_map.size()
 	var moves: Array = []
 	for item in snapshot:
 		var old_index := int(item.get("index", -1))
@@ -369,7 +467,7 @@ func _prepare_hand_discard_motion(event: Dictionary) -> void:
 			"rotation": float(item.get("rotation", UI.ROTATIONS[table._relative_seat(seat)]))
 		})
 	event["hand_moves"] = moves
-	event["hand_move_required"] = drawn_hand_index >= 0 and discard_hand_index >= 0 and drawn_hand_index != discard_hand_index
+	event["hand_move_required"] = moves.any(func(data): return not Vector2(data.from).is_equal_approx(Vector2(data.to)))
 	# The real drawn tile is now part of the hand snapshot.  Compute its final
 	# sorted slot in the same coordinate system used by PlayerTileAreas.
 	if drawn_hand_index < 0:
@@ -424,7 +522,7 @@ func _opening_hand_slot_target(seat: int, slot: int) -> Vector2:
 func _all_opening_tiles_dealt() -> bool:
 	if table.round == null or table.round.players.size() != 4: return false
 	for seat in 4:
-		if int(_dealt[seat]) < table.round.players[seat].concealed.size(): return false
+		if int(_dealt[seat]) < 13: return false
 	return true
 
 func _sort_destinations() -> Array:
@@ -447,8 +545,8 @@ func _sort_destinations() -> Array:
 			result.append({
 				"node": tile,
 				"to": _opening_hand_slot_local(seat, slot),
-				"rotation": UI.ROTATIONS[table._relative_seat(seat)],
-				"delay": float(slot) * GameConfig.animation_duration(UI.SORT_TILE_STAGGER)
+				"rotation": 0.0,
+				"delay": float(slot) * UI.SORT_TILE_STAGGER
 			})
 	return result
 
@@ -456,6 +554,7 @@ func _start_sorting_animation() -> void:
 	if _sorting: return
 	_sorting = true
 	_event = {"type": "sort_hand", "destinations": _sort_destinations()}
+	if _opening: _event["speed_scale"] = _opening_speed_scale
 	_animation_busy = true
 	table._update_interactivity()
 	_animation_layer.play(_event, Callable(table, "_on_visual_animation_finished"))
@@ -463,19 +562,105 @@ func _start_sorting_animation() -> void:
 func refresh_masks() -> void:
 	_restore()
 	if DisplayServer.get_name() == "headless": return
-	if _animation_busy and _event.get("type", "") in ["draw", "discard", "meld", "meld_reveal"]:
-		for tile in _targets(_event): _mask(tile)
-		if _event.get("type", "") == "discard" and bool(_event.get("discard_from_hand", false)):
-			var source_node = _event.get("discard_node")
-			if is_instance_valid(source_node) and source_node is TileView:
-				# Only the clicked source tile is hidden. The remaining persistent
-				# hand nodes stay visible and move into the discarded gap directly.
-				_mask(source_node)
-			else:
-				var seat := int(_event.get("seat", 0))
-				var source_index := int(_event.get("discard_index", -1))
-				var fallback := _tile_with_concealed_index(table.hand_box[seat], source_index)
-				if is_instance_valid(fallback): _mask(fallback)
+	var events: Array = _animation_queue.duplicate()
+	if _animation_busy: events.append(_event)
+	for effect in _parallel_effects.values():
+		if effect.event.get("type", "") == "meld_reveal":
+			for tile in _targets(effect.event): _mask(tile)
+	for task in _discard_tasks.values():
+		var event: Dictionary = task.event
+		if not task.landed and not event.get("claimed", false):
+			for tile in _targets(event): _mask(tile)
+		var source_node = event.get("discard_node")
+		if is_instance_valid(source_node): _mask(source_node)
+	for event in events:
+		if event.get("type", "") in ["draw", "discard", "meld"]:
+			for tile in _targets(event): _mask(tile)
+		if event.get("type", "") == "meld_reveal" and _animation_busy and event == _event:
+			for tile in _targets(event): _mask(tile)
+
+func _start_parallel_effect(event: Dictionary) -> void:
+	_task_id += 1
+	var id := _task_id
+	var layer = ANIMATION_LAYER.new()
+	layer.name = "TableEffect%d" % id
+	layer.tile_pool = _tile_pool
+	layer.set_skip(_animation_layer._skip)
+	_animation_layer.add_child(layer)
+	_parallel_effects[id] = {"event": event, "layer": layer}
+	refresh_masks()
+	layer.play(event, _finish_parallel_effect.bind(id))
+
+func _finish_parallel_effect(id: int) -> void:
+	if not _parallel_effects.has(id): return
+	var effect: Dictionary = _parallel_effects[id]
+	_parallel_effects.erase(id)
+	effect.layer.queue_free()
+	refresh_masks()
+	table.call_deferred("_refresh")
+
+func _start_discard(event: Dictionary) -> void:
+	_task_id += 1
+	var id := _task_id
+	var layer = ANIMATION_LAYER.new()
+	layer.name = "DiscardLane%d" % id
+	layer.tile_pool = _tile_pool
+	layer.set_skip(_animation_layer._skip)
+	# Child of the design-space layer: resize/letterboxing applies to all lanes.
+	_animation_layer.add_child(layer)
+	_discard_tasks[id] = {"event": event, "layer": layer, "landed": false, "sound": defers_discard_sound()}
+	layer.discard_landed.connect(_discard_landed.bind(id))
+	refresh_masks()
+	layer.play(event, _finish_discard.bind(id))
+	table._update_interactivity()
+
+func _discard_landed(id: int) -> void:
+	if not _discard_tasks.has(id): return
+	var task: Dictionary = _discard_tasks[id]
+	if task.landed: return
+	task.landed = true
+	if not task.event.get("claimed", false) and task.sound:
+		AudioManager.play_discard_impact(table)
+	refresh_masks()
+
+func _finish_discard(id: int, refresh: bool = true) -> void:
+	if not _discard_tasks.has(id): return
+	var task: Dictionary = _discard_tasks[id]
+	_discard_tasks.erase(id)
+	var event: Dictionary = task.event
+	var seat := int(event.get("seat", -1))
+	task.layer.cancel()
+	task.layer.queue_free()
+	_restore()
+	if event.get("discard_from_hand", false):
+		var committed := _commit_hand_discard_visual(event)
+		_held_refresh_seats.erase(seat)
+		if committed and refresh and table.round.phase == RoundState.Phase.PLAYING: table._player_tile_areas.cache_current_hand(seat)
+		if not committed: table._seat_visual_keys.erase(seat)
+		# Refresh only on failure or future state changes. Successful commits keep
+		# the physical entities; update the key on the next normal refresh.
+	refresh_masks()
+	table._update_interactivity()
+	if refresh: table.call_deferred("_refresh")
+
+func _finish_seat_discard(seat: int) -> void:
+	for id in _discard_tasks.keys():
+		if int(_discard_tasks[id].event.get("seat", -1)) == seat:
+			_finish_discard(id, false)
+
+func _claim_discard(claim: Dictionary) -> void:
+	var source := int(claim.get("source", -1))
+	var discard_id := int(claim.get("source_discard_id", -1))
+	for event in _animation_queue:
+		if event.get("type", "") == "discard" and int(event.get("seat", -2)) == source and int(event.get("discard_id", -2)) == discard_id:
+			event["claimed"] = true
+	for task in _discard_tasks.values():
+		var event: Dictionary = task.event
+		if int(event.get("seat", -2)) != source or int(event.get("discard_id", -2)) != discard_id: continue
+		if not task.landed:
+			claim["from"] = task.layer.discard_position(Vector2(claim.get("from", Vector2.ZERO)))
+			event["claimed"] = true
+			task.layer.hide_discard_flight()
 
 func _mask(tile: Control) -> void:
 	if not _masked.has(tile): _masked.append(tile)
@@ -497,52 +682,39 @@ func _commit_hand_discard_visual(event: Dictionary) -> bool:
 	var drawn_source_index_after := int(event.get("drawn_index_after", -1))
 	var drawn_slot := int(event.get("drawn_hand_index", -1))
 	var row_count := int(event.get("hand_row_count", 0))
-	var moves: Array = event.get("hand_moves", [])
+	var slot_nodes: Dictionary = {}
+	var source_indices: Dictionary = {}
 	var draw_node = event.get("draw_node")
-	if row_count <= 0 or drawn_source_index_after < 0 or drawn_slot < 0 or not (is_instance_valid(draw_node) and draw_node is TileView):
-		return false
-	for data in moves:
-		if not (is_instance_valid(data.get("node")) and data.get("node") is TileView):
-			return false
-	var discard_node = event.get("discard_node")
-	if not (is_instance_valid(discard_node) and discard_node is TileView):
-		return false
-	# Remove the old discarded entity and move the drawn entity out of draw_box.
-	if discard_node.get_parent() != null:
-		discard_node.get_parent().remove_child(discard_node)
-	discard_node.queue_free()
-	if draw_node.get_parent() != hand_box:
-		if draw_node.get_parent() != null: draw_node.get_parent().remove_child(draw_node)
-		hand_box.add_child(draw_node)
-	draw_node.visible = true
-	draw_node.modulate.a = 1.0
-	draw_node.set_meta("drawn", false)
-	draw_node.set_meta("concealed_index", drawn_source_index_after)
-	var slot_nodes: Dictionary = {drawn_slot: draw_node}
-	for data in moves:
-		var node: TileView = data.get("node")
-		var old_index := int(data.get("old_index", -1))
+	if drawn_slot >= 0:
+		if drawn_source_index_after < 0 or not is_instance_valid(draw_node): return false
+		slot_nodes[drawn_slot] = draw_node
+		source_indices[drawn_slot] = drawn_source_index_after
+	for data in event.get("hand_moves", []):
+		var node = data.get("node")
 		var slot := int(data.get("slot", -1))
-		if slot < 0: return false
-		# Removing the discarded array element shifts every later concealed index.
-		var new_index := old_index - (1 if old_index > source_index else 0)
-		node.set_meta("concealed_index", new_index)
-		node.set_meta("drawn", false)
-		node.visible = true
-		node.modulate.a = 1.0
+		var old_index := int(data.get("old_index", -1))
+		if slot < 0 or not is_instance_valid(node): return false
 		slot_nodes[slot] = node
-	# Place the existing nodes in their final sorted order without rebuilding the
-	# hand container. This preserves the physical hand movement on screen.
-	for slot in range(row_count):
+		source_indices[slot] = old_index - (1 if old_index > source_index else 0)
+	var discard_node = event.get("discard_node")
+	if not is_instance_valid(discard_node) or slot_nodes.size() != row_count: return false
+	for slot in row_count:
 		if not slot_nodes.has(slot): return false
+	# Validate the entire row before mutating any UI entity. Rules are untouched.
+	if discard_node.get_parent() != null: discard_node.get_parent().remove_child(discard_node)
+	discard_node.queue_free()
+	for slot in row_count:
 		var node: TileView = slot_nodes[slot]
 		if node.get_parent() != hand_box:
 			if node.get_parent() != null: node.get_parent().remove_child(node)
 			hand_box.add_child(node)
+		node.visible = true
+		node.modulate.a = 1.0
+		node.set_meta("concealed_index", source_indices[slot])
+		node.set_meta("drawn", false)
 		hand_box.move_child(node, mini(slot, hand_box.get_child_count() - 1))
 		node.set_table_position(_hand_slot_local_target(seat, slot, row_count))
-	if seat == table.human_seat:
-		table._selected_tile = null
+	if seat == table.human_seat: table._selected_tile = null
 	return true
 
 func _on_visual_animation_finished() -> void:
@@ -562,7 +734,6 @@ func _on_visual_animation_finished() -> void:
 		table.call_deferred("_refresh")
 		table.call_deferred("_pump_visual_animation")
 		return
-	var refresh_seat := int(_event.get("seat", -1)) if finished_type == "discard" and bool(_event.get("discard_from_hand", false)) else -1
 	if _event.get("type", "") == "deal":
 		_dealt[int(_event.get("seat", 0))] += _event.get("cards", []).size()
 		# Commit this packet to the persistent hand immediately.  The hand area is
@@ -575,9 +746,6 @@ func _on_visual_animation_finished() -> void:
 	if finished_type == "draw" or _animation_queue.is_empty():
 		_opening = false
 	_restore()
-	var committed_hand_discard := false
-	if refresh_seat >= 0 and int(_held_refresh_seats.get(refresh_seat, 1)) <= 1:
-		committed_hand_discard = _commit_hand_discard_visual(_event)
 	_animation_busy = false
 	table._update_interactivity()
 	refresh_masks()
@@ -594,16 +762,8 @@ func _on_visual_animation_finished() -> void:
 				table.call_deferred("_refresh")
 			else:
 				_held_draw_seats[draw_seat] = remaining_draw_holds
-	if refresh_seat >= 0:
-		var remaining_holds := int(_held_refresh_seats.get(refresh_seat, 1)) - 1
-		if remaining_holds <= 0:
-			_held_refresh_seats.erase(refresh_seat)
-			# The existing nodes have already been moved and reordered. Rebuild only
-			# when a late snapshot made the physical-node commit impossible.
-			if not committed_hand_discard:
-				table.call_deferred("_refresh")
-		else:
-			_held_refresh_seats[refresh_seat] = remaining_holds
+	table._update_interactivity()
+	if finished_type == "meld_reveal": table.call_deferred("_refresh")
 	table.call_deferred("_pump_visual_animation")
 	if _animation_queue.is_empty() and table.round.phase == RoundState.Phase.SETTLED:
 		table._refresh.call_deferred()

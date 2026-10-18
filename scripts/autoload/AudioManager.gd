@@ -3,6 +3,7 @@ extends Node
 
 signal settings_changed
 signal event_played(event: Dictionary)
+signal discard_impact_played
 signal settlement_cue_played(cue: String)
 
 const AUDIO_ROOT := "res://res/audio/"
@@ -156,7 +157,7 @@ func stop_settlement_cue(owner: Node = null) -> void:
 	if owner != null and owner.get_instance_id() != _table_owner: return
 	if settlement_player != null: settlement_player.stop()
 
-func play_event(event: Dictionary) -> void:
+func play_event(event: Dictionary, defer_discard_effect: bool = false) -> void:
 	if not table_active:
 		return
 	var action := str(event.get("action", ""))
@@ -175,14 +176,20 @@ func play_event(event: Dictionary) -> void:
 	if _application_paused:
 		return
 	if action == "discard":
-		if enabled.effects and float(volumes.effects) > 0.0:
-			effects_player.stream = _stream("effects/discard")
-			if effects_player.stream != null:
-				effects_player.play()
+		if not defer_discard_effect: play_discard_impact()
 		_queue_voice(tile, false, int(event.get("seat", 0)))
 	else:
 		_queue_voice(action, action in ["hu", "zimo"], int(event.get("seat", 0)))
 	event_played.emit(event.duplicate(true))
+
+func play_discard_impact(owner_node: Node = null) -> void:
+	if not table_active or _application_paused: return
+	if owner_node != null and owner_node.get_instance_id() != _table_owner: return
+	if enabled.effects and float(volumes.effects) > 0.0:
+		effects_player.stream = _stream("effects/discard")
+		if effects_player.stream != null:
+			effects_player.play()
+			discard_impact_played.emit()
 
 func _queue_voice(key: String, priority: bool, seat: int = 0) -> void:
 	if not enabled.voice or float(volumes.voice) <= 0.0:

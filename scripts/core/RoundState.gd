@@ -642,17 +642,19 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 			player.passed_pong_tiles.append(tile)
 	if action == "kong" and options.can_kong:
 		var source_discard_id: int = _discard_id_for_tile(source, tile)
+		var hand_indices := _visual_hand_indices(player.concealed, tile, 3)
 		_remove_n(player.concealed, tile, 3)
 		player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
 		_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
 		current_turn = seat
 		_kong_draw_kind = KongKind.EXPOSED
 		_emit_audio_event("kong", seat)
-		_emit_visual_event("meld", {"seat": seat, "source": source, "source_discard_id": source_discard_id, "tile": tile, "kind": "kong", "index": player.melds.size() - 1})
+		_emit_visual_event("meld", {"seat": seat, "source": source, "source_discard_id": source_discard_id, "hand_indices": hand_indices, "tile": tile, "kind": "kong", "index": player.melds.size() - 1})
 		_state_after_kong_draw()
 		return
 	if action == "pong" and options.can_pong:
 		var source_discard_id: int = _discard_id_for_tile(source, tile)
+		var hand_indices := _visual_hand_indices(player.concealed, tile, 2)
 		_remove_n(player.concealed, tile, 2)
 		player.melds.append({"kind": "pung", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
 		_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
@@ -660,7 +662,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		player.forbidden_discard_tile = tile
 		current_turn = seat
 		_kong_draw_turn = false
-		_emit_visual_event("meld", {"seat": seat, "source": source, "source_discard_id": source_discard_id, "tile": tile, "kind": "pung", "index": player.melds.size() - 1})
+		_emit_visual_event("meld", {"seat": seat, "source": source, "source_discard_id": source_discard_id, "hand_indices": hand_indices, "tile": tile, "kind": "pung", "index": player.melds.size() - 1})
 		_emit_audio_event("pong", seat)
 		_ask_turn_actor()
 		return
@@ -728,11 +730,12 @@ func _state_after_kong_draw() -> void:
 func _do_concealed_kong(seat: int, tile: String, player: PlayerState) -> void:
 	if player.ready or Tiles.count(player.concealed, tile) < 4 or _wall_count() < 1:
 		return
+	var hand_indices := _visual_hand_indices(player.concealed, tile, 4)
 	_remove_n(player.concealed, tile, 4)
 	player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "concealed": true, "after_discard": player.discard_count})
 	current_turn = seat
 	_kong_draw_kind = KongKind.CONCEALED
-	_emit_visual_event("meld", {"seat": seat, "tile": "", "kind": "concealed", "index": player.melds.size() - 1})
+	_emit_visual_event("meld", {"seat": seat, "tile": "", "hand_indices": hand_indices, "kind": "concealed", "index": player.melds.size() - 1})
 	# 只喊“杠”，公共声音事件不能泄露暗杠的牌。
 	_emit_audio_event("kong", seat)
 	_state_after_kong_draw()
@@ -756,10 +759,11 @@ func _complete_add_kong() -> void:
 	var seat: int = _pending_kong.seat
 	var tile: String = _pending_kong.tile
 	var player: PlayerState = players[seat]
+	var hand_indices := _visual_hand_indices(player.concealed, tile, 1)
 	player.concealed.erase(tile)
 	player.melds[_pending_kong.index].kind = "add_kong"
 	player.melds[_pending_kong.index]["after_discard"] = player.discard_count
-	_emit_visual_event("meld", {"seat": seat, "tile": tile, "kind": "add_kong", "index": int(_pending_kong.index)})
+	_emit_visual_event("meld", {"seat": seat, "tile": tile, "hand_indices": hand_indices, "kind": "add_kong", "index": int(_pending_kong.index)})
 	_pending_kong = {}
 	_awaiting_response = {}
 	current_turn = seat
@@ -981,6 +985,15 @@ func export_replay(path: String = "") -> String:
 
 func replay_record() -> Dictionary:
 	return _recorder.record.duplicate(true)
+
+# Presentation metadata only: positions of consumed entities, never hidden values.
+func _visual_hand_indices(cards: Array, tile: String, count: int) -> Array:
+	var indices: Array = []
+	for index in cards.size():
+		if cards[index] == tile:
+			indices.append(index)
+			if indices.size() == count: break
+	return indices
 
 func _remove_n(cards: Array, tile: String, count: int) -> void:
 	for index in count:

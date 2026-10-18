@@ -31,8 +31,8 @@ func _ready() -> void:
 	# Tile identity is already visible on the face; do not show a second text
 	# description when the pointer rests over a tile.
 	tooltip_text = ""
-	mouse_entered.connect(func(): _hovered = true; _update_lift(true))
-	mouse_exited.connect(func(): _hovered = false; _update_lift(true))
+	mouse_entered.connect(func(): _hovered = true)
+	mouse_exited.connect(func(): _hovered = false)
 
 func set_table_position(pos: Vector2) -> void:
 	_table_position = pos
@@ -40,7 +40,6 @@ func set_table_position(pos: Vector2) -> void:
 
 func set_selected(on: bool) -> void:
 	selected = on
-	_update_lift(true)
 	queue_redraw()
 
 func set_interactive(on: bool) -> void:
@@ -48,7 +47,6 @@ func set_interactive(on: bool) -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP if on else Control.MOUSE_FILTER_IGNORE
 	focus_mode = Control.FOCUS_ALL if on else Control.FOCUS_NONE
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if on else Control.CURSOR_ARROW
-	_update_lift()
 
 func set_winning(on: bool) -> void:
 	if _win_tween != null: _win_tween.kill()
@@ -224,3 +222,15 @@ func reset() -> void:
 	_table_position = Vector2.ZERO
 	modulate = Color.WHITE
 	visible = true
+	if _lift_tween != null: _lift_tween.kill()
+	_lift_tween = null
+	_win_tween = null
+	_hovered = false
+	position = Vector2.ZERO
+	rotation = 0.0
+	scale = Vector2.ONE
+	pivot_offset = Vector2.ZERO
+	self_modulate = Color.WHITE
+	z_index = 0
+	tooltip_text = ""
+	for key in get_meta_list(): remove_meta(key)

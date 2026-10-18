@@ -40,6 +40,7 @@ const SUITES: Array[String] = [
 	"res://tests/smoke_table_layout.gd",
 	"res://tests/table_components.gd",
 	"res://tests/ui_presentation.gd",
+	"res://tests/play_animation_flow.gd",
 	"res://tests/table_interaction.gd",
 	"res://tests/focus_return_input.gd",
 	"res://tests/discard_identity.gd",

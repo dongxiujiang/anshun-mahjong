@@ -24,11 +24,6 @@ var _settlement_immediate := false
 var _awaiting_rejoin_snapshot := false
 
 func _ready() -> void:
-	# 初始化 TileView 对象池以减少 GC 压力
-	var pool := preload("res://scripts/ui/TileViewPool.gd").new()
-	if _table_animation_controller._animation_layer:
-		_table_animation_controller._animation_layer.tile_pool = pool
-
 	AudioManager.begin_table(self)
 	_build_static_ui()
 	get_window().focus_exited.connect(_on_input_focus_changed)
@@ -61,7 +56,7 @@ func _connect_audio_round() -> void:
 		round.visual_event.connect(_on_visual_event)
 
 func _on_audio_event(event: Dictionary) -> void:
-	AudioManager.play_event(event)
+	AudioManager.play_event(event, _table_animation_controller.defers_discard_sound())
 
 func _exit_tree() -> void:
 	if round != null and _net_mode() == "": round.cancel_opening()
@@ -71,6 +66,7 @@ func _exit_tree() -> void:
 		_audio_round.visual_event.disconnect(_on_visual_event)
 	_audio_round = null
 	_table_animation_controller.cancel()
+	_table_animation_controller.dispose_pool()
 	_settlement_animation_controller.reset()
 	AudioManager.end_table(self)
 
@@ -134,7 +130,7 @@ func new_game() -> void:
 		controllers.append(null if seat == human_seat else AiPlayer.new("AI%d" % seat))
 	round.controllers = controllers
 	round.ai_delay_seconds = GameConfig.ai_delay_seconds()
-	round.opening_delay_seconds = GameConfig.OPENING_WAIT_SECONDS if DisplayServer.get_name() != "headless" else 0.0
+	round.opening_delay_seconds = GameConfig.animation_duration(GameConfig.OPENING_WAIT_SECONDS) if DisplayServer.get_name() != "headless" else 0.0
 	round.randomize_seed()
 	# 先带入累计分数，再让新庄家开始行动（AI 庄家也可能马上结算）。
 	if scores.size() == 4:
@@ -218,6 +214,7 @@ func _refresh() -> void:
 			# The discard target must exist immediately, but the hand and draw
 			# boxes stay on their pre-discard snapshot until the animation ends.  A
 			# sorting pass also owns the physical hand nodes until it completes.
+			_player_tile_areas._refresh_exposed(seat)
 			_player_tile_areas._refresh_discards(seat)
 			continue
 		_refresh_seat(seat)
@@ -229,7 +226,7 @@ func _refresh() -> void:
 	queue_redraw()
 	if round.phase == RoundState.Phase.SETTLED and round.players.size() == 4 \
 		and not _settlement_animation_controller.has_started() \
-		and not _animation_busy and _animation_queue.is_empty():
+		and not _table_animation_controller.has_pending():
 		var immediate := _settlement_immediate
 		_settlement_immediate = false
 		_start_settlement_animation(immediate)

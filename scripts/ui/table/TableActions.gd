@@ -38,7 +38,7 @@ func _layout_actions() -> void:
 	# The rightmost action aligns with the right edge of the drawn tile.  The row
 	# grows leftwards as optional actions appear, keeping all actions above it.
 	var count = action_bar.get_child_count()
-	action_bar.visible = count > 0
+	action_bar.visible = count > 0 and not input_locked()
 	var row_size = Vector2(0, UI.ACTION_BUTTON_SIZE.y)
 	for button in action_bar.get_children():
 		row_size.x += button.custom_minimum_size.x
@@ -178,6 +178,7 @@ func _update_interactivity() -> void:
 			# input is still controlled by interactive and the turn state.
 			tile.modulate = Color.WHITE
 	for button in action_bar.get_children(): button.disabled = input_locked()
+	action_bar.visible = action_bar.get_child_count() > 0 and not input_locked()
 
 func _safe_discard() -> String:
 	if is_instance_valid(_selected_tile):

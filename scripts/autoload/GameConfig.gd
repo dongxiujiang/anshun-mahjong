@@ -72,7 +72,7 @@ var online_mode := false
 # AI 思考速度：快 0.8 秒 / 中 1.3 秒 / 慢 2 秒。
 const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
 var ai_speed := "fast"
-const ANIMATION_SPEEDS := {"instant": 0.05, "fast": 0.5, "standard": 1.0}
+const ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0}
 # 结算阅读节奏独立于摸牌、出牌等动画；慢速默认留足查看计分的时间。
 signal settlement_speed_changed
 const SETTLEMENT_SPEEDS := {"instant": 0.0, "standard": 1.0, "slow": 2.0, "detail": 3.5}

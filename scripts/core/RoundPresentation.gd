@@ -38,6 +38,21 @@ func apply_sync(state: Dictionary) -> void:
 	if not sync_initialized:
 		sync_initialized = true
 		return
+	var pending: Array = []
 	for event in events:
 		if str(event.get("session", "")) == session and int(event.get("id", 0)) > last_id:
-			visual_event.emit(event.duplicate(true))
+			pending.append(event)
+	# A merged snapshot has already consumed intermediate entities. Do not invent
+	# flights from its final hand (or from the table centre). Fast-forward the
+	# batch, retaining the latest authoritative prompt and all privacy filtering.
+	var changed_hand: Dictionary = {}
+	var fast_forward := false
+	for event in pending:
+		var seat := int(event.get("seat", -1))
+		if event.get("type", "") in ["discard", "meld", "win"] and changed_hand.has(seat):
+			fast_forward = true
+		if event.get("type", "") in ["draw", "meld", "discard"]: changed_hand[seat] = true
+	for event in pending:
+		var copy: Dictionary = event.duplicate(true)
+		if fast_forward: copy["fast_forward"] = true
+		visual_event.emit(copy)

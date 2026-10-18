@@ -20,8 +20,18 @@ func _run() -> void:
 	root.get_node("UpdateManager").auto_check = false
 	var config = root.get_node("GameConfig")
 	config.animation_speed = "standard"
+	var startup_network = root.get_node("Network")
+	var fixed_round := RoundState.new()
+	fixed_round.set_rng_seed(20261018)
+	fixed_round.controllers = [null,null,null,null]
+	startup_network.mode = "host"
+	startup_network.net_node.game = fixed_round
+	startup_network.net_node.my_seat = 0
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(table)
+	startup_network.mode = ""
+	fixed_round.opening_delay_seconds = root.get_node("GameConfig").OPENING_WAIT_SECONDS
+	fixed_round.start_round(0,3)
 	table.round.controllers = [null,null,null,null]
 	var controller = table._table_animation_controller
 	var start := Time.get_ticks_msec()
@@ -39,13 +49,13 @@ func _run() -> void:
 	t.expect(Time.get_ticks_msec() - start >= int(config.OPENING_WAIT_SECONDS * 1000), "Visual unlock cannot precede the authoritative opening deadline")
 	t.expect(not controller.input_locked() and table.draw_box[0].get_child(0).interactive, "The drawn tile becomes clickable after its slow animation finishes")
 	# Replaying a draw event against the current snapshot verifies the visual
-	# contract independently from the opening timer: the tile is already visible
-	# in the draw slot before movement starts, then remains visible after it lands.
+	# contract independently from the opening timer: no duplicate permanent tile
+	# is shown underneath the flight; the real slot is restored on completion.
 	var replay_draw: TileView = table.draw_box[0].get_child(0)
 	var replay_id: int = int(controller._animation_last_id) + 1
 	controller._on_visual_event({"id": replay_id, "type": "draw", "seat": 0, "tile": str(table.round.players[0].just_drew), "kind": "head"})
 	controller.refresh_masks()
-	t.expect(is_equal_approx(replay_draw.modulate.a, 1.0), "Replay draw keeps the slot visible before animation starts")
+	t.expect(is_zero_approx(replay_draw.modulate.a), "Replay draw hides the persistent slot until animation finishes")
 	while controller._animation_busy or not controller._animation_queue.is_empty(): await process_frame
 	t.expect(is_equal_approx(replay_draw.modulate.a, 1.0), "Replay draw reveals the slot after animation finishes")
 	await _shot("01_table")
@@ -55,28 +65,32 @@ func _run() -> void:
 	setting_tap.position = table._settings_button.global_position + Vector2(20, (table._settings_button.size.y + 20) * table.surface.scale.y)
 	setting_tap.pressed = true
 	Input.parse_input_event(setting_tap)
+	Input.flush_buffered_events()
 	await process_frame
+	setting_tap = setting_tap.duplicate()
 	setting_tap.pressed = false
 	Input.parse_input_event(setting_tap)
+	Input.flush_buffered_events()
 	await process_frame
 	t.expect(table._sound_settings.is_open(), "Expanded settings hit area opens the panel without enlarging its visible button")
 	table._sound_settings.close(false)
-	# 两档设置都要保留真正的 0.5 秒落定停留。
-	for speed in ["instant", "standard"]:
+	# Offline dice use the chosen speed; online openings explicitly use shared speed_scale=1.
+	for speed in ["instant", "fast", "standard"]:
 		config.animation_speed = speed
 		var layer = table._animation_layer
 		await process_frame
-		await create_timer(0.05).timeout
-		await process_frame
 		start = Time.get_ticks_msec()
 		layer.play({"type": "dice", "value": 6})
-		await create_timer(config.OPENING_DICE_SECONDS + 0.06).timeout
+		if speed == "instant":
+			t.expect(layer._active == null and layer._temporary.is_empty(), "Instant dice skip both roll and hold")
+			continue
+		await create_timer(config.animation_duration(config.OPENING_DICE_SECONDS) + 0.04).timeout
 		var die = layer._temporary[0] if not layer._temporary.is_empty() else null
 		t.expect(die != null and die.value == 6 and is_equal_approx(die.rotation, TAU), "Final dice face is stationary in " + speed)
-		if speed == "instant": await _shot("02_dice_hold")
+		if speed == "standard": await _shot("02_dice_hold")
 		while layer._active != null: await process_frame
-		print("[capture_table_controls] dice %s: %d ms" % [speed, Time.get_ticks_msec() - start])
-		t.expect(Time.get_ticks_msec() - start >= 1650, "Dice roll and fixed half-second hold ignore per-client speed")
+		var expected: float = config.animation_duration(config.OPENING_DICE_SECONDS + config.OPENING_DICE_HOLD_SECONDS) * 1000.0
+		t.expect(Time.get_ticks_msec() - start >= expected - 50, "Dice roll and hold use one consistent speed factor")
 	# 完整一次点牌，输入经界面边界提交，但不在客户端本地改变牌局。
 	table._on_require_turn(0)
 	table._update_interactivity()

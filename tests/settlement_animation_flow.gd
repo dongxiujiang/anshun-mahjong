@@ -326,18 +326,27 @@ func _check_layout() -> void:
 			rows.append(row.get_rect())
 		var relative: int = posmod(seat - table.human_seat, 4)
 		var order: Array = [2, 1, 0] if relative in [1, 2] else [0, 1, 2]
+		var directions: Array = [["上", "对", "下"], ["下", "对", "上"], ["下", "对", "上"], ["上", "对", "下"]][relative]
 		for slot in 3:
-			var position: Vector2 = c.payment_labels[seat][order[slot]].get_parent().position
+			var row: Control = c.payment_labels[seat][order[slot]].get_parent()
+			t.expect(row.get_node("Direction").text == directions[slot], "each seat retains its specified relative direction order")
+			var position: Vector2 = row.position
 			if slot > 0:
 				var previous: Vector2 = c.payment_labels[seat][order[slot - 1]].get_parent().position
-				t.expect(is_equal_approx(position.y, previous.y) and position.x > previous.x, "every seat has three horizontal payments in its specified order")
-				t.expect(position.x - previous.x >= UI.SETTLEMENT_PAYMENT_ROW_SIZE.x + 20, "payment columns retain a visible gap")
+				if relative % 2 == 1:
+					t.expect(is_equal_approx(position.x, previous.x) and position.y > previous.y, "side seats have three vertical payments in top-to-bottom order")
+					t.expect(is_equal_approx(position.y - previous.y - UI.SETTLEMENT_PAYMENT_ROW_SIZE.y, 56.0), "side payment rows use the wider 56px vertical gap")
+				else:
+					t.expect(is_equal_approx(position.y, previous.y) and position.x > previous.x, "local and opposite seats have three horizontal payments in left-to-right order")
+					t.expect(is_equal_approx(position.x - previous.x - UI.SETTLEMENT_PAYMENT_ROW_SIZE.x, 28.0), "local/opposite payment columns retain their 28px horizontal gap")
 		var river: Control = table.discard_scroll[seat]
 		var center := river.get_global_transform() * (river.size / 2)
 		if relative % 2 == 0:
 			t.expect((board.get_global_transform() * (board.size / 2)).is_equal_approx(center), "top/bottom board replaces river at its center")
 		else:
-			t.expect(is_equal_approx(board.get_rect().get_center().y, table._table_center().y), "side payment rows align on the same horizontal centerline")
+			t.expect(is_equal_approx(board.get_rect().get_center().y, table._table_center().y), "side vertical boards remain centered beside the table")
+			var offset_x: float = board.get_rect().get_center().x - table._table_center().x
+			t.expect(is_equal_approx(offset_x, 560.0 if relative == 1 else -560.0), "side payment boards move inward symmetrically without changing vertical spacing")
 	for seat in 4:
 		var label: Label = c.identity_labels[seat]
 		var bounds: Rect2 = label.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, label.size)

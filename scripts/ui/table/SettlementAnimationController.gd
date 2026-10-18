@@ -269,17 +269,20 @@ func refresh_layout() -> void:
 	for seat in boards:
 		var relative: int = table._relative_seat(seat)
 		var board: Control = boards[seat]
-		board.size = Vector2(UI.SETTLEMENT_PAYMENT_ROW_SIZE.x * 3 + UI.SETTLEMENT_PAYMENT_GAP * 2, UI.SETTLEMENT_PAYMENT_ROW_SIZE.y)
+		var vertical := relative % 2 == 1
+		var row_size: Vector2 = UI.SETTLEMENT_PAYMENT_ROW_SIZE
+		var gap: float = UI.SETTLEMENT_PAYMENT_VERTICAL_GAP if vertical else UI.SETTLEMENT_PAYMENT_GAP
+		board.size = Vector2(row_size.x, row_size.y * 3 + gap * 2) if vertical else Vector2(row_size.x * 3 + gap * 2, row_size.y)
 		var river: Control = table.discard_scroll[seat]
 		var center: Vector2 = layer.get_global_transform().affine_inverse() * (river.get_global_transform() * (river.size / 2.0))
-		if relative % 2 == 1:
-			# 两侧也横排；同一水平线向外留白，避开累计分与身份说明。
+		if vertical:
+			# 两侧恢复竖排，保留桌心外侧的留白，避开累计分与身份说明。
 			center = table._table_center() + Vector2(UI.SETTLEMENT_SIDE_BOARD_OFFSET * (1 if relative == 1 else -1), 0)
 		board.position = center - board.size / 2.0
 		var order := [2, 1, 0] if relative in [1, 2] else [0, 1, 2]
 		for slot in 3:
 			var row: Control = payment_labels[seat][order[slot]].get_parent()
-			row.position = Vector2(slot * (UI.SETTLEMENT_PAYMENT_ROW_SIZE.x + UI.SETTLEMENT_PAYMENT_GAP), 0)
+			row.position = Vector2(0, slot * (row_size.y + gap)) if vertical else Vector2(slot * (row_size.x + gap), 0)
 	if is_instance_valid(_flip_view): _flip_view.position = table._table_center() - _flip_view.size / 2.0
 	if is_instance_valid(_notice): _notice.position = table._table_center() - _notice.size / 2.0
 	if is_instance_valid(_burn_badge) and boards.has(int(plan.burned)):
