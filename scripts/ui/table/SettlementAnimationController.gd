@@ -3,12 +3,14 @@ extends "res://scripts/ui/table/TableComponent.gd"
 
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
 const PLAN := preload("res://scripts/ui/table/SettlementAnimationPlan.gd")
+const ANNOTATIONS := preload("res://scripts/ui/table/SettlementScoreAnnotations.gd")
 
 var layer: Control
 var boards: Dictionary = {}
 ## 数组始终按该座位自己的 [上、对、下] 索引，布局顺序另行处理。
 var payment_labels: Dictionary = {}
 var identity_labels: Dictionary = {}
+var score_annotations
 var current_pairs: Array = []
 var plan: Dictionary = {}
 var _flip_view: TileView
@@ -41,10 +43,13 @@ func build() -> void:
 	_skip_button.add_theme_font_size_override("font_size", 30)
 	layer.add_child(_skip_button)
 	_skip_button.hide()
+	score_annotations = ANNOTATIONS.new(table)
+	layer.add_child(score_annotations)
 	refresh_layout()
 
 func reset() -> void:
 	_kill_timeline()
+	if is_instance_valid(score_annotations): score_annotations.reset()
 	AudioManager.stop_settlement_cue(table)
 	_clear_tile_highlights()
 	_active = false
@@ -92,6 +97,7 @@ func _prepare() -> bool:
 	if has_started() or table.round == null or table.round.phase != RoundState.Phase.SETTLED or table.round.players.size() != 4:
 		return false
 	plan = PLAN.build(table.round.last_result, table.round.round_meta, table.round.players, table.human_seat)
+	score_annotations.configure(table.round.last_result, table.round.round_meta, table.round.players, plan)
 	_active = true
 	_completed = false
 	_stage_key = ""
@@ -195,6 +201,7 @@ func _complete() -> void:
 	# kill() also handles a skip during a callback; no deferred stage can reappear.
 	_kill_timeline()
 	apply_displays()
+	score_annotations.finish()
 	table._on_settlement_animation_finished()
 
 func _finish_all_called() -> void:
@@ -236,17 +243,28 @@ func _build_identities() -> void:
 	for seat in 4:
 		var identity: Dictionary = plan.identities[seat]
 		var caption := str(identity.title)
-		if identity.detail != "": caption += "\n" + str(identity.detail)
+		var font_size := UI.SETTLEMENT_IDENTITY_FONT_SIZE
+		while font_size > 18 and TileView._font().get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > UI.SETTLEMENT_IDENTITY_SIZE.x:
+			font_size -= 1
+		var line := ""
+		for detail in str(identity.detail).split(" · ", false):
+			var next := detail if line == "" else line + " · " + detail
+			if line != "" and TileView._font().get_string_size(next, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > UI.SETTLEMENT_IDENTITY_SIZE.x:
+				caption += "\n" + line
+				line = detail
+			else:
+				line = next
+		if line != "": caption += "\n" + line
 		var color: Color = UI.GOLD if identity.winner else (UI.MUTED if identity.called else UI.SCORE_LOSS)
 		var label := _text(layer, caption, UI.SETTLEMENT_IDENTITY_FONT_SIZE, color)
 		label.name = "SettlementIdentity%d" % seat
 		label.size = UI.SETTLEMENT_IDENTITY_SIZE
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-		var font_size := UI.SETTLEMENT_IDENTITY_FONT_SIZE
 		while font_size > 18 and TileView._font().get_multiline_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > label.size.x:
 			font_size -= 1
 		label.add_theme_font_size_override("font_size", font_size)
+		label.size.y = maxf(label.size.y, TileView._font().get_multiline_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).y)
 		identity_labels[seat] = label
 
 func _create_flip() -> void:
@@ -288,6 +306,7 @@ func refresh_layout() -> void:
 	if is_instance_valid(_burn_badge) and boards.has(int(plan.burned)):
 		var board: Control = boards[int(plan.burned)]
 		_burn_badge.position = board.position + Vector2((board.size.x - _burn_badge.size.x) / 2.0, -38)
+	if is_instance_valid(score_annotations): score_annotations.refresh()
 
 func apply_displays() -> void:
 	if not has_started() or _display_scores.size() != 4: return
@@ -321,14 +340,23 @@ func _set_river_alpha(value: float) -> void:
 func _begin_stage(key: String) -> void:
 	_stage_key = key
 	_highlight_stage(key)
+	score_annotations.show_stage(key)
 	AudioManager.play_settlement_cue(key, table)
 
 func _end_stage() -> void:
 	_stage_key = ""
 	_clear_tile_highlights()
+	score_annotations.show_stage("")
 
 func _highlight_stage(key: String) -> void:
 	_clear_tile_highlights()
+	if key in ["kong", "other"]:
+		for group in score_annotations.groups:
+			var seat := int(group.seat)
+			if group.area != "meld" or not group.stages.has(key) or seat == int(plan.burned) or not bool(plan.called[seat]): continue
+			if float(group.stages[key].amount) <= 0.0: continue
+			for tile in score_annotations._tiles_for(group): tile.set_score_highlight(true)
+		return
 	if plan.is_draw or key not in ["flip", "chicken"]: return
 	var called: Array = plan.get("called", [false, false, false, false])
 	for seat in 4:

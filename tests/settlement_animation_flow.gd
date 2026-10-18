@@ -42,7 +42,7 @@ class ReadyEndpoint extends RefCounted:
 func _initialize() -> void:
 	call_deferred("_run")
 
-func _fixture(kind: String) -> RoundState:
+func _fixture(kind: String, multiplier: int = 1) -> RoundState:
 	var r := RoundState.new()
 	r.set_rng_seed(20261018)
 	r.build_players(0)
@@ -59,6 +59,7 @@ func _fixture(kind: String) -> RoundState:
 	r.round_meta.winners = [0]
 	r.round_meta.self_draw = true
 	r.round_meta.win_tile = "wan9"
+	r.round_meta.chicken_multiplier = multiplier
 	var flip := "wan8"
 	match kind:
 		"ready_self": r.players[0].ready = true
@@ -73,8 +74,9 @@ func _fixture(kind: String) -> RoundState:
 				r.players[1].concealed = ["tiao1", "tiao2", "tiao3"] + WAIT.slice(3)
 		"triplets":
 			r.players[0].concealed = ["wan1", "wan1", "wan1", "wan3", "wan3", "wan3", "tiao2", "tiao2", "tiao2", "tong5", "tong5", "tong5", "wan9", "wan9"]
-		"flush":
+		"flush", "ready_flush":
 			r.players[0].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "wan4", "wan5", "wan6", "wan7", "wan8", "wan9", "wan9", "wan9"]
+			r.players[0].ready = kind == "ready_flush"
 		"ron", "zero":
 			r.round_meta.self_draw = false
 			r.round_meta.discard_seat = 1
@@ -82,7 +84,8 @@ func _fixture(kind: String) -> RoundState:
 				r.players[0].concealed = WAIT.duplicate()
 				r.players[0].concealed.append("wan9")
 				flip = "tiao6"
-		"rob_kong":
+		"rob_kong", "ready_rob_kong":
+			r.players[0].ready = kind == "ready_rob_kong"
 			r.round_meta.self_draw = false
 			r.round_meta.discard_seat = 1
 			r.round_meta.robbed_kong = true
@@ -711,22 +714,42 @@ func _test_settlement_speed() -> void:
 	config.set_animation_speed(old_animation)
 	config.set_settlement_speed(old_settlement)
 
-func _test_settlement_identities() -> void:
-	for sample in [["self_draw", "胡牌 · 自摸", ""], ["ready_self", "胡牌 · 报听自摸", ""],
-		["ready_ron", "胡牌 · 报听胡对家", ""], ["ron", "胡牌 · 下家放炮", ""],
-		["rob_kong", "胡牌 · 抢杠下家", ""], ["dry", "胡牌 · 自摸", "干扣"],
-		["big_dry", "胡牌 · 自摸", "大干扣"], ["triplets", "胡牌 · 自摸", "大队子"],
-		["flush", "胡牌 · 自摸", "清一色"]]:
-		var r := _fixture(sample[0])
+func _test_settlement_identities(render: bool = true) -> void:
+	for sample in [["self_draw", "胡牌 · 自摸 +4", "", 1],
+		["ready_self", "胡牌 · 报听自摸 +24", "自摸基础分 +4", 1],
+		["ready_ron", "胡牌 · 报听胡对家 +24", "", 1], ["ron", "胡牌 · 下家放炮", "", 1],
+		["rob_kong", "胡牌 · 抢杠下家 +12", "", 1], ["dry", "胡牌 · 自摸", "干扣 +14", 1],
+		["big_dry", "胡牌 · 自摸", "大干扣 +24", 1], ["triplets", "胡牌 · 自摸", "大队子 +14", 1],
+		["flush", "胡牌 · 自摸", "清一色 +24", 1],
+		["ready_flush", "胡牌 · 报听自摸 +24", "清一色 +24", 1],
+		["ready_rob_kong", "胡牌 · 抢杠下家 +12", "报听 +24", 1],
+		["self_draw", "胡牌 · 自摸 +8", "", 2],
+		["ready_self", "胡牌 · 报听自摸 +48", "自摸基础分 +8", 2],
+		["ready_ron", "胡牌 · 报听胡对家 +48", "", 2],
+		["ready_rob_kong", "胡牌 · 抢杠下家 +24", "报听 +48", 2],
+		["ready_flush", "胡牌 · 报听自摸 +48", "清一色 +48", 2],
+		["dry", "胡牌 · 自摸", "干扣 +28", 2], ["big_dry", "胡牌 · 自摸", "大干扣 +48", 2],
+		["triplets", "胡牌 · 自摸", "大队子 +28", 2]]:
+		var r := _fixture(sample[0], sample[3])
 		var before := _snapshot(r)
-		_bind(r)
-		var c = table._settlement_animation_controller
-		t.expect(c.plan.identities[0].title == sample[1], sample[0] + ": winner source matches settled metadata")
-		t.expect(c.plan.identities[0].detail == sample[2], sample[0] + ": actual scored pattern appears without rerunning hand analysis")
-		var expected: String = sample[1] + ("\n" + sample[2] if sample[2] != "" else "")
-		t.expect(c.identity_labels[0].text == expected, sample[0] + ": full status rendered next to total")
-		if sample[0] in ["ron", "rob_kong"]: t.expect(c.identity_labels[1].text == "叫牌", "nonwinner shows called state only, including discarder and robbed player")
+		var identities: Array = PLAN.build(r.last_result, r.round_meta, r.players).identities
+		t.expect(identities[0].title == sample[1], sample[0] + ": winner source matches settled metadata")
+		t.expect(identities[0].detail == sample[2], sample[0] + ": actual scored pattern appears without rerunning hand analysis")
+		t.expect(identities[0].winner and identities[0].called, "winner/called identity fields remain compatible")
+		if render:
+			_bind(r)
+			var c = table._settlement_animation_controller
+			var expected: String = sample[1] + ("\n" + sample[2] if sample[2] != "" else "")
+			t.expect(c.identity_labels[0].text == expected, sample[0] + ": full status rendered next to total")
+			if sample[0] in ["ron", "rob_kong"]: t.expect(c.identity_labels[1].text == "叫牌", "nonwinner shows called state only, including discarder and robbed player")
+		for human in 4:
+			var client := RoundState.new()
+			client.apply_sync(r.serialize_for_seat(human))
+			t.expect(PLAN.build(client.last_result, client.round_meta, client.players, human).identities == identities, "reconnect retains every source and detail amount for each viewing seat")
 		t.expect(_snapshot(r) == before and _sum(r.last_result.scores) == 800.0, "identity does not change score, hands or result")
+	if not render:
+		_test_identity_item_amounts()
+		return
 	var draw := _fixture("draw")
 	_bind(draw)
 	for seat in 4:
@@ -742,22 +765,10 @@ func _test_settlement_identities() -> void:
 		for seat in 4: table._player_tile_areas.name_labels[seat].show()
 		_check_layout()
 		t.expect(c.identity_labels[0].text == "胡牌 · 下家放炮", "multi-win source is relative to winner zero, not viewer")
-		t.expect(c.identity_labels[2].text == "胡牌 · 报听胡上家", "reconnected second winner retains ready/source metadata")
+		t.expect(c.identity_labels[2].text == "胡牌 · 报听胡上家 +24", "reconnected second winner retains ready/source metadata and item amount")
 		t.expect(c.identity_labels[3].text == "叫牌", "nonwinning called player has no potential win pattern")
 	t.expect(_snapshot(multi) == before, "reconnected identity rendering leaves host unchanged")
-	# Cover every authoritative pattern label, including the longest combined bonus line.
-	for pattern in ["大队子", "大队子单吊", "小七对", "龙七对", "清一色", "清大对", "清七对", "清单吊", "清龙对", "干扣", "大干扣"]:
-		var result := {"items": [[{"kind": "bonus" if pattern in ["干扣", "大干扣"] else "pattern", "label": pattern},
-			{"kind": "bonus", "label": "杠开"}, {"kind": "bonus", "label": "海底捞"}], [], [], []], "called": [true, true, false, true]}
-		var meta := {"winner": 0, "self_draw": true}
-		var snapshot := var_to_bytes([result, meta])
-		var plan := PLAN.build(result, meta, [])
-		t.expect(plan.identities[0].detail == ("清龙七对" if pattern == "清龙对" else pattern) + " · 杠开 · 海底捞", "pattern and extra bonuses use actual result items")
-		t.expect(var_to_bytes([result, meta]) == snapshot, "identity projection is read-only")
-	for seat in 4:
-		for offset in [1, 2, 3]:
-			var plan := PLAN.build({"items": [[], [], [], []]}, {"winner": seat, "discard_seat": (seat + offset) % 4, "robbed_kong": true}, [])
-			t.expect(plan.identities[seat].title == "胡牌 · 抢杠" + ["", "下家", "对家", "上家"][offset], "robbed source is correct at every absolute seat")
+	_test_identity_item_amounts()
 	# Exercise long, two-line labels at every physical position, without mutating
 	# a settled round to fabricate hand patterns or scoring bonuses.
 	for human in 4:
@@ -766,12 +777,92 @@ func _test_settlement_identities() -> void:
 		for label in c.identity_labels.values(): c._remove_visual(label)
 		c.identity_labels.clear()
 		for seat in 4:
-			c.plan.identities[seat] = {"title": "胡牌 · 报听抢杠上家", "detail": "清龙七对 · 杠开 · 海底捞", "winner": true, "called": true}
+			c.plan.identities[seat] = {"title": "胡牌 · 抢杠上家 +12", "detail": "报听 +24 · 清龙七对 +64", "winner": true, "called": true}
 			table._player_tile_areas.name_labels[seat].show()
 		c._build_identities()
 		c.refresh_layout()
 		_check_layout()
 	t.expect(_snapshot(multi) == before, "long-label layout leaves the real round and ledger unchanged")
+
+func _expect_identity_items(entries: Array, meta: Dictionary, title: String, detail: String, ready: bool = false) -> void:
+	# Deliberately unrelated net/transfer totals expose any accidental substitution
+	# of player income or three payers' combined receipts for an item's amount.
+	var result := {"winners": [0], "called": [true, true, false, false], "deltas": [321.0, -107.0, -107.0, -107.0],
+		"items": [entries, [{"kind": "pattern", "label": "清一色", "amount": 24}],
+			[{"kind": "ready", "label": "报听胡牌", "amount": 24}], []], "transfers": [
+			{"from": 1, "to": 0, "amount": 24.0, "reason": "报听胡牌"},
+			{"from": 2, "to": 0, "amount": 24.0, "reason": "报听胡牌"},
+			{"from": 3, "to": 0, "amount": 24.0, "reason": "报听胡牌"}]}
+	var players := [{"ready": ready}, {"ready": true}, {"ready": true}, {"ready": false}]
+	var snapshot := var_to_bytes([result, meta, players])
+	var identities: Array = PLAN.build(result, meta, players).identities
+	t.expect(identities[0] == {"title": title, "detail": detail, "winner": true, "called": true},
+		"independent settled item text: " + title + " / " + detail + "; got " + str(identities[0]))
+	for seat in [1, 2, 3]:
+		t.expect(identities[seat] == {"title": "叫牌" if seat == 1 else "未叫牌", "detail": "", "winner": false, "called": seat == 1},
+			"nonwinner cannot expose readiness fees or potential pattern amounts")
+	t.expect(var_to_bytes([result, meta, players]) == snapshot, "identity amounts leave all ledger and metadata inputs unchanged")
+
+func _test_identity_item_amounts() -> void:
+	# Cover every label with both missing and nonstandard ledger amounts. The
+	# display must never fetch its price from the rule table or apply meta's multiplier.
+	for pattern in ["大队子", "大队子单吊", "小七对", "龙七对", "清一色", "清大对", "清七对", "清单吊", "清龙对", "干扣", "大干扣"]:
+		for amount in [null, 37.5]:
+			var entries := [{"kind": "bonus" if pattern in ["干扣", "大干扣"] else "pattern", "label": pattern},
+				{"kind": "bonus", "label": "杠开"}, {"kind": "bonus", "label": "海底捞"}]
+			if amount != null:
+				for item in entries: item.amount = amount
+			var suffix := "" if amount == null else " +37.5"
+			_expect_identity_items(entries, {"winner": 0, "self_draw": true, "chicken_multiplier": 2}, "胡牌 · 自摸",
+				("清龙七对" if pattern == "清龙对" else pattern) + suffix + " · 杠开" + suffix + " · 海底捞" + suffix)
+	for seat in 4:
+		for offset in [1, 2, 3]:
+			var plan := PLAN.build({"items": [[], [], [], []]}, {"winner": seat, "discard_seat": (seat + offset) % 4, "robbed_kong": true}, [])
+			t.expect(plan.identities[seat].title == "胡牌 · 抢杠" + ["", "下家", "对家", "上家"][offset], "robbed source is correct at every absolute seat")
+	var self_meta := {"winner": 0, "self_draw": true, "chicken_multiplier": 2}
+	var ron_meta := {"winner": 0, "discard_seat": 2}
+	var rob_meta := {"winner": 0, "discard_seat": 1, "robbed_kong": true}
+	var base := {"kind": "bonus", "label": "自摸", "amount": 4.0}
+	var ready := {"kind": "ready", "label": "报听胡牌", "amount": 24.0}
+	var robbed := {"kind": "win", "label": "抢杠胡基础分", "amount": 12.0}
+	_expect_identity_items([base, ready], self_meta, "胡牌 · 报听自摸 +24", "自摸基础分 +4")
+	_expect_identity_items([ready, base], self_meta, "胡牌 · 报听自摸 +24", "自摸基础分 +4")
+	_expect_identity_items([ready], self_meta, "胡牌 · 报听自摸 +24", "")
+	_expect_identity_items([base], self_meta, "胡牌 · 报听自摸", "自摸基础分 +4", true)
+	_expect_identity_items([], self_meta, "胡牌 · 自摸", "")
+	_expect_identity_items([], ron_meta, "胡牌 · 报听胡对家", "", true)
+	_expect_identity_items([ready, {"kind": "pattern", "label": "清一色", "amount": 24.0}], self_meta,
+		"胡牌 · 报听自摸 +24", "清一色 +24")
+	_expect_identity_items([robbed, ready], rob_meta, "胡牌 · 抢杠下家 +12", "报听 +24")
+	_expect_identity_items([ready, robbed], rob_meta, "胡牌 · 抢杠下家 +12", "报听 +24")
+	_expect_identity_items([ready], rob_meta, "胡牌 · 抢杠下家", "报听 +24")
+	_expect_identity_items([robbed], rob_meta, "胡牌 · 报听抢杠下家 +12", "", true)
+	for sample in [["点炮基础分（叫牌）", 17], ["点炮基础分（未叫牌）", 21]]:
+		var entry := {"kind": "win", "label": sample[0], "amount": sample[1]}
+		_expect_identity_items([entry], ron_meta, "胡牌 · 对家放炮 +%d" % sample[1], "")
+		_expect_identity_items([entry, ready], ron_meta, "胡牌 · 报听胡对家 +24", "%s +%d" % sample)
+	_expect_identity_items([
+		{"kind": "bonus", "label": "自摸", "amount": 6.25},
+		{"kind": "ready", "label": "报听胡牌", "amount": 31.5}], self_meta,
+		"胡牌 · 报听自摸 +31.5", "自摸基础分 +6.25")
+	# Missing or invalid amounts preserve known captions without inventing zero,
+	# default rule prices, own_amount totals, or a missing ordinary self-draw item.
+	_expect_identity_items([{"kind": "ready", "label": "报听胡牌", "own_amount": 72},
+		{"kind": "bonus", "label": "自摸"}], self_meta, "胡牌 · 报听自摸", "自摸基础分")
+	for amount in [null, "unknown", INF, NAN]:
+		_expect_identity_items([{"kind": "ready", "label": "报听胡牌", "amount": amount},
+			{"kind": "pattern", "label": "清一色", "amount": amount}], self_meta, "胡牌 · 报听自摸", "清一色")
+	_expect_identity_items([{"kind": "bonus", "label": "自摸", "amount": 0},
+		{"kind": "pattern", "label": "清一色", "amount": -1.25}], self_meta, "胡牌 · 自摸 +0", "清一色 -1.25")
+	# Repeated labels remain independent rows, even when their amounts agree.
+	_expect_identity_items([base, ready, ready, {"kind": "pattern", "label": "清一色", "amount": 24},
+		{"kind": "pattern", "label": "清一色", "amount": 48}], self_meta,
+		"胡牌 · 报听自摸 +24", "自摸基础分 +4 · 报听 +24 · 清一色 +24 · 清一色 +48")
+	_expect_identity_items([base, {"kind": "chicken", "label": "报听胡牌", "amount": 99},
+		{"kind": "kong", "label": "清一色", "amount": 88}], self_meta, "胡牌 · 自摸 +4", "")
+	_expect_identity_items([ready, {"kind": "pattern", "label": "清龙对", "amount": 128},
+		{"kind": "bonus", "label": "杠开", "amount": 10}, {"kind": "bonus", "label": "海底捞", "amount": 10}],
+		self_meta, "胡牌 · 报听自摸 +24", "清龙七对 +128 · 杠开 +10 · 海底捞 +10")
 
 func _test_exit() -> void:
 	var r := _fixture("rob_kong")
@@ -892,6 +983,12 @@ func _capture_review() -> void:
 	table._sound_settings.close(false)
 
 func _run() -> void:
+	# Allow ledger/text checks while presentation collaborators are updating UI
+	# helpers; the default run still exercises the complete rendered flow.
+	if "--identity-items-only" in OS.get_cmdline_user_args():
+		_test_settlement_identities(false)
+		quit(t.finish("settlement_identity_items"))
+		return
 	var master := AudioServer.get_bus_index("Master")
 	var was_muted := AudioServer.is_bus_mute(master)
 	AudioServer.set_bus_mute(master, true)

@@ -115,7 +115,7 @@ static func build(result: Dictionary, meta: Dictionary, players: Array, human_se
 		stages.append({"key": "other", "matrix": residual})
 	return plan
 
-## 只读已结算的牌型项目，不给仅叫牌的玩家推测潜在胡牌牌型。
+## 只读已结算的独立项目金额，不重定价、不合计三家收入或借用玩家净分。
 ## 来源方位以该玩家自己为基准，与观看者/庄家位置无关。
 static func _identities(result: Dictionary, meta: Dictionary, players: Array, winners: Array, called: Array) -> Array:
 	var identities: Array = []
@@ -125,38 +125,73 @@ static func _identities(result: Dictionary, meta: Dictionary, players: Array, wi
 	var robbed := bool(meta.get("robbed_kong", false))
 	for seat in 4:
 		var won := seat in winners
-		var ready := seat < players.size() and bool(players[seat].ready)
-		var patterns: Array[String] = []
-		var extras: Array[String] = []
-		if won and seat < items.size():
-			for item in items[seat]:
-				var kind := str(item.get("kind", ""))
-				var caption := str(item.get("label", ""))
-				if kind == "ready": ready = true
-				if kind == "pattern" or (kind == "bonus" and caption in ["干扣", "大干扣"]):
-					# 牌型显示沿用文档名称；兼容账本中清龙对的简称。
-					if caption == "清龙对": caption = "清龙七对"
-					if caption != "" and caption not in patterns: patterns.append(caption)
-				elif kind == "bonus" and caption in ["杠开", "海底捞"]:
-					if caption not in extras: extras.append(caption)
 		var title := "叫牌" if called[seat] else "未叫牌"
 		var detail: Array[String] = []
 		if won:
+			var seat_items: Array = items[seat] if seat < items.size() else []
+			var ready := seat < players.size() and players[seat] != null and bool(players[seat].ready)
+			var has_ready_item := false
+			for item in seat_items:
+				if str(item.get("kind", "")) == "ready":
+					ready = true
+					has_ready_item = true
 			var direction: String = ["", "下家", "对家", "上家"][posmod(source - seat, 4)] if source in range(4) else ""
 			var origin := "胡牌"
 			if self_draw:
 				origin = "报听自摸" if ready else "自摸"
 			elif robbed:
-				origin = ("报听" if ready else "") + ("抢杠" + direction if direction != "" else "抢杠胡")
+				# 抢杠金额属于抢杠基础项，报听项另列，避免把 12+24 混成来源总分。
+				origin = ("报听" if ready and not has_ready_item else "") + ("抢杠" + direction if direction != "" else "抢杠胡")
 			elif ready:
 				origin = "报听胡" + direction
 			elif direction != "":
 				origin = direction + "放炮"
-			title = "胡牌 · " + origin
+			var patterns: Array[String] = []
+			var extras: Array[String] = []
+			var used_origin := false
+			for item in seat_items:
+				var kind := str(item.get("kind", ""))
+				var caption := str(item.get("label", ""))
+				if not used_origin and _identity_source_item(item, self_draw, robbed, ready):
+					origin = _identity_with_amount(origin, item)
+					used_origin = true
+					continue
+				if kind == "ready": caption = "报听"
+				elif caption == "清龙对": caption = "清龙七对"
+				elif caption == "自摸": caption = "自摸基础分"
+				if caption == "": continue
+				var entry := _identity_with_amount(caption, item)
+				if kind == "pattern" or (kind == "bonus" and caption in ["干扣", "大干扣"]):
+					patterns.append(entry)
+				elif kind in ["ready", "win"] or (kind == "bonus" and caption == "自摸基础分"):
+					# 报听自摸的普通自摸项仍单列；大牌型/干扣没有该项时不补造 4 分。
+					detail.append(entry)
+				elif kind == "bonus":
+					extras.append(entry)
 			detail.append_array(patterns)
 			detail.append_array(extras)
+			title = "胡牌 · " + origin
 		identities.append({"title": title, "detail": " · ".join(detail), "winner": won, "called": called[seat]})
 	return identities
+
+static func _identity_source_item(item: Dictionary, self_draw: bool, robbed: bool, ready: bool) -> bool:
+	var kind := str(item.get("kind", ""))
+	var caption := str(item.get("label", ""))
+	if robbed and not self_draw:
+		return kind == "win" and caption == "抢杠胡基础分"
+	if ready:
+		return kind == "ready"
+	if self_draw:
+		return kind in ["bonus", "win"] and caption in ["自摸", "自摸基础分"]
+	return kind == "win" and caption in ["点炮基础分（叫牌）", "点炮基础分（未叫牌）"]
+
+static func _identity_with_amount(caption: String, item: Dictionary) -> String:
+	var value = item.get("amount")
+	if typeof(value) not in [TYPE_INT, TYPE_FLOAT]: return caption
+	var amount := float(value)
+	if not is_finite(amount): return caption
+	var signed := "%+.0f" % amount if amount == floor(amount) else ("+" if amount > 0.0 else "") + str(amount)
+	return caption + " " + signed
 
 static func _winners(result: Dictionary, meta: Dictionary, human_seat: int) -> Array:
 	var source: Array = result.get("winners", [])
