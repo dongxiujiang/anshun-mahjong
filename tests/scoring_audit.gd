@@ -1,4 +1,5 @@
 extends SceneTree
+## 新规则审计：以 3,476 个确定性组合验证结算不变式、牌型优先级和付款守恒。
 ## 新规则审计：以 3,472 个确定性组合验证结算不变式、牌型优先级和付款守恒。
 const H := preload("res://tests/test_harness.gd")
 const ORACLE := preload("res://tests/settlement_oracle.gd")
@@ -61,7 +62,20 @@ func _run() -> void:
 				r.players[seat].discards = ["tiao1"]
 				r.players[seat].discard_ids = [0]
 				r.round_meta.charge_chickens["tiao1"] = {"owner": seat, "location": "discard", "discard_id": 0}
-		check_result(r, "draw-%d" % mask)
+	# 流局倍率测试：验证 multiplier=2 时所有金额翻倍
+	for mask in [0, 15]:  # 0=全不叫, 15=四家叫
+		for multiplier in [1, 2]:
+			var rd := fixture()
+			rd.round_meta.winner = -1
+			rd.round_meta.chicken_multiplier = multiplier
+			for seat in 4:
+				rd.players[seat].concealed = WAIT.duplicate() if bool(mask & (1 << seat)) else []
+				rd.players[seat].ready = bool(mask & (1 << seat))
+				if seat % 2 == 0:
+					rd.players[seat].discards = ["tiao1"]
+					rd.players[seat].discard_ids = [0]
+					rd.round_meta.charge_chickens["tiao1"] = {"owner": seat, "location": "discard", "discard_id": 0}
+			check_result(rd, "draw-x%d-mask%d" % [multiplier, mask])
 	for kind in ["kong", "concealed", "add_kong"]:
 		for source in 4:
 			for mask in 16:
@@ -78,6 +92,5 @@ func _run() -> void:
 						r.round_meta.self_draw = true
 						r.round_meta.winners = [0]
 					check_result(r, "kong-%s-%d-%d-x%d" % [kind, source, mask, multiplier])
-	print("[scoring_audit] independently checked settlements: %d" % cases)
-	print("[scoring_audit] 3,072 winner cases, 16 draw cases and 384 kong cases")
+	print("[scoring_audit] 3,072 winner, 16 draw, 4 draw×multiplier and 384 kong cases")
 	quit(t.finish("scoring_audit"))

@@ -43,6 +43,7 @@ func _connect_audio_round() -> void:
 	_audio_round = round
 	AudioManager.reset_round(round.audio_session, round.audio_event_id)
 	_table_animation_controller.reset()
+	_settlement_animation_controller.reset()
 	_last_tile_input_ms = -1000
 	round.audio_event.connect(_on_audio_event)
 	if not round.visual_event.is_connected(_on_visual_event):
@@ -59,6 +60,7 @@ func _exit_tree() -> void:
 		_audio_round.visual_event.disconnect(_on_visual_event)
 	_audio_round = null
 	_table_animation_controller.cancel()
+	_settlement_animation_controller.reset()
 	AudioManager.end_table(self)
 
 func _net_mode() -> String:
@@ -102,6 +104,8 @@ func new_game() -> void:
 		round.cancel_opening()
 	_clear_actions()
 	_result_shown = false
+	_settlement_animation_controller.reset()
+	_settlement_card.hide_post_settlement_controls()
 	_declaring_ready = false
 	_selected_tile = null
 	if result_layer != null:
@@ -191,6 +195,7 @@ func _refresh() -> void:
 	if round.phase != RoundState.Phase.SETTLED:
 		_result_shown = false
 		result_layer.hide()
+		_settlement_card.hide_post_settlement_controls()
 		if _result_restore != null and is_instance_valid(_result_restore):
 			_result_restore.hide()
 		# 新一局开始前把结算层的状态复位，避免遮罩残留挡住牌桌。
@@ -212,9 +217,10 @@ func _refresh() -> void:
 	_update_interactivity()
 	_table_animation_controller.refresh_masks()
 	queue_redraw()
-	if round.phase == RoundState.Phase.SETTLED and not _result_shown and not _animation_busy and _animation_queue.is_empty():
-		_result_shown = true
-		_show_result.call_deferred()
+	if round.phase == RoundState.Phase.SETTLED and not _result_shown \
+		and not _settlement_animation_controller.has_started() \
+		and not _animation_busy and _animation_queue.is_empty():
+		_start_settlement_animation()
 
 func _refresh_center() -> void:
 	center_info.text = str(_sum_wall()) if not round.players.is_empty() else "--"

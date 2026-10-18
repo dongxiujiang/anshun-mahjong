@@ -19,7 +19,7 @@ const PATTERN_SAMPLES := 20
 const NORMAL_GAME_SAMPLES := 200
 const PATTERN_KINDS := [
 	"normal", "big", "big_single", "seven", "dragon", "flush",
-	"clean_big", "clean_big_single", "clean_seven", "clean_dragon", "clean_single",
+	"clean_big", "clean_single_kong", "clean_seven", "clean_dragon", "clean_single",
 ]
 
 const RULE_SECTIONS := [
@@ -409,7 +409,7 @@ func _chicken_fixture(local: RandomNumberGenerator, sample: int) -> RoundState:
 
 func _independent_chicken(round: RoundState, seat: int, flip: String) -> Dictionary:
 	var player: PlayerState = round.players[seat]
-	var multiplier := clampi(int(round.round_meta.chicken_multiplier), 1, 2)
+	var multiplier := 1 # 原始鸡分单倍，统一在结算末尾翻倍
 	var related := Tiles.flip_related(flip)
 	var burned := seat == int(round.round_meta.burn_chicken_seat)
 	if burned: return {"total": 0.0, "discarded": 0.0, "held": 0.0}
@@ -455,13 +455,16 @@ func _make_pattern(kind: String, local: RandomNumberGenerator) -> Dictionary:
 				for rank in 3: hand.append(suits[index] + str(starts[index] + rank))
 			var pair := "tong" + str(1 + local.randi_range(0, 8))
 			hand.append(pair); hand.append(pair); win_tile = suits[3] + str(starts[3])
-		"big", "big_single", "clean_big", "clean_big_single":
+		"big", "big_single", "clean_big", "clean_single_kong":
 			var used := []
 			for index in 4:
 				var tile: String = (suit if kind not in ["big", "big_single"] else ["wan", "tiao", "tong", "wan"][index]) + str(index + 1 + local.randi_range(0, 1))
 				while tile in used: tile = (suit if kind not in ["big", "big_single"] else ["wan", "tiao", "tong", "wan"][index]) + str(local.randi_range(1, 9))
 				used.append(tile)
-				for _index in 3: hand.append(tile)
+				if kind in ["big_single", "clean_single_kong"]:
+					melds.append({"kind": "kong" if kind == "clean_single_kong" else "pung", "tile": tile, "concealed": kind == "clean_single_kong"})
+				else:
+					for _index in 3: hand.append(tile)
 			var pair: String = suit + str(9 - local.randi_range(0, 2)) if kind not in ["big", "big_single"] else "tong9"
 			if pair in used:
 				var candidates: Array = Tiles.all_values()
@@ -473,7 +476,7 @@ func _make_pattern(kind: String, local: RandomNumberGenerator) -> Dictionary:
 						pair = candidate
 						break
 			hand.append(pair); hand.append(pair)
-			win_tile = pair if kind in ["big_single", "clean_big_single"] else used[0]
+			win_tile = pair if kind in ["big_single", "clean_single_kong"] else used[0]
 		"seven", "clean_seven":
 			var values: Array = ["wan1", "wan2", "wan3", "wan5", "wan6", "wan8", "wan9"]
 			if kind == "clean_seven":
@@ -496,14 +499,13 @@ func _make_pattern(kind: String, local: RandomNumberGenerator) -> Dictionary:
 			var pair: String = suit + str(5 + local.randi_range(0, 2))
 			hand.append(pair); hand.append(pair); win_tile = pair if kind == "clean_single" else hand[0]
 		"clean_single":
-			# 用四个同花刻子和一对，保证胡牌张恰好是单吊；
-			# 它同时满足清大队单吊，按规则应取清单吊54分。
+			# 四组固定同花碰，手牌只剩成将的一对（§十六）。
 			var used := []
 			for index in 4:
 				var tile: String = suit + str(index + 1 + local.randi_range(0, 1))
 				while tile in used: tile = suit + str(local.randi_range(1, 9))
 				used.append(tile)
-				for _index in 3: hand.append(tile)
+				melds.append({"kind": "pung", "tile": tile})
 			var pair: String = suit + str(9 - local.randi_range(0, 2))
 			while pair in used: pair = suit + str(local.randi_range(1, 9))
 			hand.append(pair); hand.append(pair); win_tile = pair
@@ -525,17 +527,17 @@ func _pattern_matches(kind: String, pattern: Dictionary) -> bool:
 		"dragon": return bool(pattern.dragon_seven_pairs) and not bool(pattern.flush)
 		"flush": return bool(pattern.flush) and bool(pattern.normal) and not bool(pattern.all_triplets) and not bool(pattern.seven_pairs)
 		"clean_big": return bool(pattern.clean_big_triplets)
-		"clean_big_single": return bool(pattern.clean_big_single_wait)
+		"clean_single_kong": return bool(pattern.clean_single_wait)
 		"clean_seven": return bool(pattern.clean_seven_pairs)
 		"clean_dragon": return bool(pattern.clean_dragon_seven_pairs)
 		"clean_single": return bool(pattern.clean_single_wait)
 	return false
 
 func _expected_label(kind: String) -> String:
-	return {"big": "大队子", "big_single": "大队子单吊", "seven": "小七对", "dragon": "龙七对", "flush": "清一色", "clean_big": "清大对", "clean_big_single": "清单吊", "clean_seven": "清七对", "clean_dragon": "清龙对", "clean_single": "清单吊"}.get(kind, "")
+	return {"big": "大队子", "big_single": "大队子单吊", "seven": "小七对", "dragon": "龙七对", "flush": "清一色", "clean_big": "清大对", "clean_single_kong": "清单吊", "clean_seven": "清七对", "clean_dragon": "清龙对", "clean_single": "清单吊"}.get(kind, "")
 
 func _expected_score(kind: String) -> int:
-	return {"big": 14, "big_single": 24, "seven": 24, "dragon": 44, "flush": 24, "clean_big": 34, "clean_big_single": 54, "clean_seven": 44, "clean_dragon": 64, "clean_single": 54}.get(kind, 0)
+	return {"big": 14, "big_single": 24, "seven": 24, "dragon": 44, "flush": 24, "clean_big": 34, "clean_single_kong": 54, "clean_seven": 44, "clean_dragon": 64, "clean_single": 54}.get(kind, 0)
 
 func _max_four(hand: Array, melds: Array) -> bool:
 	var counts := Tiles.to_counts(hand)

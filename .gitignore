@@ -1,6 +1,10 @@
 # ── Godot 4 ──────────────────────────────────────────────
 # 编辑器导入缓存与本地设置，随时可重建
 .godot/
+# 部分工具把 APPDATA 重定向到工程内；此目录含本机设置和 MCP 会话令牌。
+/Godot/
+# 即使令牌路径被配置到其他目录，也不能入库。
+mcp_token
 # 导出时写入的签名凭据（keystore 路径/口令），绝不能提交
 .godot/export_credentials.cfg
 export_credentials.cfg
@@ -26,6 +30,11 @@ desktop.ini
 *.err
 __pycache__/
 *.pyc
+# 自动生成的牌型测试输出和截图（测试脚本、规则验证报告仍保留）。
+/test_results/
+/test_screenshots/
+# 临时源码备份，不作为正式实现发布。
+*.bak
 
 # ── Android 签名文件 ─────────────────────────────────────
 *.keystore

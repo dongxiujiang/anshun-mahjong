@@ -13,10 +13,11 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 	var robbed_kong: bool = bool(meta.get("robbed_kong", false))
 	var source := int(meta.get("discard_seat", -1))
 	var pattern := RuleEngine.hand_pattern(player.concealed, player.melds, str(meta.get("win_tile", "")))
+	if winner == int(meta.get("burn_chicken_seat", -1)):
+		return pattern
 	var pattern_info := _pattern_info(pattern)
 	var pattern_amount: float = float(pattern_info.get("score", 0.0))
 	var pattern_label := str(pattern_info.get("label", ""))
-	var ready_primary := false
 	var base_payers: Array = []
 	for payer in 4:
 		if payer == winner:
@@ -28,12 +29,7 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		var primary_amount: float = pattern_amount
 		var primary_label := pattern_label
 		if primary_amount <= 0.0:
-			if player.ready:
-				primary_amount = CFG.SCORE_READY
-				primary_label = "报听胡牌"
-				ready_primary = true
-				items[winner].append(_item("ready", primary_label, primary_amount, "含自摸基础4分"))
-			elif CHICKEN.chicken_profile(round, winner, str(meta.get("flip_tile", ""))).total == 0.0:
+			if not player.ready and CHICKEN.chicken_profile(round, winner, str(meta.get("flip_tile", ""))).total == 0.0:
 				# 大干扣按最终参与比较的四家鸡分判断；未叫牌者的结算鸡分为 0。
 				var all_chickenless := true
 				for other in 4:
@@ -52,6 +48,11 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		for payer in base_payers:
 			PAY.transfer(deltas, transfers, payer, winner, primary_amount, primary_label)
 		lines.append("%s：每家付 %.0f" % [primary_label, primary_amount])
+		if player.ready:
+			for payer in base_payers:
+				PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_READY, "报听胡牌")
+			items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "另加报听分，三家各付"))
+			lines.append("报听胡牌：每家另付 %.0f" % CFG.SCORE_READY)
 	else:
 		# 非自摸胡分成三类：抢杠胡、暗/加杠后的单次放炮，以及
 		# 报听/大牌胡。普通弃牌不再产生点炮基础分。
@@ -80,14 +81,18 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		if pattern_amount > 0.0:
 			for payer in fee_payers:
 				PAY.transfer(deltas, transfers, payer, winner, pattern_amount, pattern_label)
-			items[winner].append(_item("pattern", pattern_label, pattern_amount, "每家支付"))
-			lines.append("%s：每家付 %.0f" % [pattern_label, pattern_amount])
-		# 报听者打出被胡时，额外承担 24 分杀报；这笔费用与
-		# 赢家本人的报听/牌型费用分开记录。
-		if source in range(4) and source != winner and round.players[source].ready:
-			PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY, "杀报")
-			items[source].append({"kind": "penalty", "label": "杀报", "tile": "", "tiles": [], "amount": -CFG.SCORE_READY, "note": "付给%s" % _nm(winner, int(meta.get("dealer_seat", 0)))})
-			lines.append("%s 杀报：付给%s %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), _nm(winner, int(meta.get("dealer_seat", 0))), CFG.SCORE_READY])
+			# §十八：多赢家之间也比较牌型分；只由低分赢家付正差额一次。
+			for other in winner_seats:
+				if int(other) == winner:
+					continue
+				var other_player: PlayerState = round.players[int(other)]
+				var other_info := _pattern_info(RuleEngine.hand_pattern(other_player.concealed, other_player.melds, str(meta.get("win_tile", ""))))
+				var other_amount := float(other_info.get("score", 0.0))
+				if int(other) == int(meta.get("burn_chicken_seat", -1)):
+					other_amount = 0.0
+				PAY.transfer(deltas, transfers, int(other), winner, pattern_amount - other_amount, "牌型差额")
+			items[winner].append(_item("pattern", pattern_label, pattern_amount, "按两两差额结算"))
+			lines.append("%s：牌型分 %.0f，按两两差额结算" % [pattern_label, pattern_amount])
 	if self_draw and int(meta.get("kong_draw_seat", -1)) == winner:
 		_apply_extra(round, winner, CFG.SCORE_KONG_DRAW, "杠开", chicken_points, winner_seats, deltas, transfers, items, lines)
 	if self_draw and int(meta.get("last_four_self_draw_seat", -1)) == winner:

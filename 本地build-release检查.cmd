@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
@@ -14,13 +14,16 @@ echo.
 echo 检查内容：
 echo   1. Godot 导入检查
 echo   2. 导出配置验证
-echo   3. 核心回归测试（41项，含未叫牌出牌鸡、杠中鸡补付）
+echo   3. 核心回归测试（含当前规则逐条规格及已确认歧义回归，差异会阻止通过）
 echo   4. 网络联机测试
 echo   5. 在线房间测试
 echo   6. 断线重连测试
 echo.
 echo 进度会实时显示，完整日志保存在：
 echo   build\local-build-release\[时间戳]
+echo.
+echo 规则澄清记录：tests\rules_clarifications_2026-10-18.md
+echo 结算按单倍求和后统一应用倍率；规则文档保持只读。
 echo.
 echo 开始检查...
 echo.
@@ -39,6 +42,8 @@ echo   build\local-build-release\[最新时间戳]
 echo.
 echo 重点日志文件：
 echo   - core_tests.log       （核心回归）
+echo   - build\rules_audit\report.md   （当前规则审计表与最小复现，项目目录下）
+echo   - build\rules_audit\results.json（逐条断言原始结果，项目目录下）
 echo   - network_tests.log    （网络测试）
 echo   - reconnect_tests.log  （断线重连）
 echo   - import.log           （Godot导入）

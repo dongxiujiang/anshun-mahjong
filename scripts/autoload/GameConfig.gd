@@ -35,12 +35,11 @@ const SCORE_CLEAN_BIG_TRIPLETS := 34.0 # 清大对（清一色大对子）
 const SCORE_CLEAN_SINGLE_WAIT := 54.0 # 清单吊
 const SCORE_BIG_SET_SINGLE_WAIT := 24.0 # 大队子单吊。
 const SCORE_CLEAN_SEVEN_PAIRS := 44.0 # 清七对。
-const SCORE_CLEAN_BIG_SET_SINGLE_WAIT := 44.0 # 清大队单吊；与清单吊同时成立时采用54分。
 const SCORE_CLEAN_DRAGON_SEVEN_PAIRS := 64.0 # 清龙对。
-const SCORE_READY := 24.0         # 报听：自摸每家给24；被杀给24；胡别家别家给24
+const SCORE_READY := 24.0         # 报听单独加24：自摸三家付，非自摸只由被胡者付。
 
 # ---------- 番型表 ----------
-# 自摸牌型值包含基础4分；点炮另收17/21分基础费，再收牌型分。
+# 牌型按最高项替代；仅暗杠/加杠后放炮另收17/21，普通放炮无基础费。
 const PATTERNS := [
 	{"key": "seven_pairs", "label": "小七对", "score": SCORE_SEVEN_PAIRS},
 	{"key": "dragon_seven_pairs", "label": "龙七对", "score": SCORE_DRAGON_SEVEN_PAIRS},
@@ -48,7 +47,6 @@ const PATTERNS := [
 	{"key": "big_triplet_single_wait", "label": "大队子单吊", "score": SCORE_BIG_SET_SINGLE_WAIT},
 	{"key": "flush", "label": "清一色", "score": SCORE_FLUSH},
 	{"key": "clean_big_triplets", "label": "清大对", "score": SCORE_CLEAN_BIG_TRIPLETS},
-	{"key": "clean_big_single_wait", "label": "清大队单吊", "score": SCORE_CLEAN_BIG_SET_SINGLE_WAIT},
 	{"key": "clean_seven_pairs", "label": "清七对", "score": SCORE_CLEAN_SEVEN_PAIRS},
 	{"key": "clean_single_wait", "label": "清单吊", "score": SCORE_CLEAN_SINGLE_WAIT},
 	{"key": "clean_dragon_seven_pairs", "label": "清龙对", "score": SCORE_CLEAN_DRAGON_SEVEN_PAIRS},

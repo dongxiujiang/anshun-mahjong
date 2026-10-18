@@ -16,7 +16,9 @@ var _dragged := false
 var _touch_index := -1
 
 func input_locked() -> bool:
-	return table.round == null or table.round.phase == RoundState.Phase.DEALING or table._table_animation_controller.input_locked()
+	return table.round == null or table.round.phase == RoundState.Phase.DEALING \
+		or table._table_animation_controller.input_locked() \
+		or table._settlement_animation_controller.is_active()
 
 func build() -> void:
 	action_bar = HBoxContainer.new()

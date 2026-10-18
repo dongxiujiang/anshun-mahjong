@@ -78,6 +78,7 @@ func _build_static_ui() -> void:
 	status_label.hide()
 	table._settlement_card.build()
 	table._table_animation_controller.build()
+	table._settlement_animation_controller.build()
 
 func _layout() -> void:
 	if surface == null:

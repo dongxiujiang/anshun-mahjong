@@ -7,6 +7,7 @@ var tile := ""       # 牌值 "tong3"/"tiao1"/"wan9"
 var face_up := true
 var unit := 1.0      # 玩家牌与牌墙/出牌区可分别指定尺寸倍率。
 var highlight := false   # 金框高亮（用于标记鸡牌）
+var score_highlight := false   # 结算预览阶段的记分牌黄色底色
 var selected := false
 var interactive := false
 var _table_position := Vector2.ZERO
@@ -105,6 +106,10 @@ func set_highlight(on: bool) -> void:
 	highlight = on
 	queue_redraw()
 
+func set_score_highlight(on: bool) -> void:
+	score_highlight = on
+	queue_redraw()
+
 func set_unit(k: float) -> void:
 	unit = k
 	_apply_size()
@@ -121,16 +126,22 @@ func _draw() -> void:
 	draw_style_box(_tile_style(Color(0, 0, 0, 0.30), Color.TRANSPARENT), Rect2(2 * unit, 4 * unit, w, h))
 	draw_style_box(_tile_style(Color("#becbb9"), Color("#8a9c86")), Rect2(0, 0, w, h))
 	if face_up and tile != "":
-		draw_style_box(_tile_style(Color("#f6f7ed"), Color("#d9dfd2")), Rect2(0, 0, w, h - depth))
+		var face_color := Color("#f6f7ed") if not score_highlight else Color("#f3d875")
+		var face_border := Color("#d9dfd2") if not score_highlight else Color("#c89d32")
+		draw_style_box(_tile_style(face_color, face_border), Rect2(0, 0, w, h - depth))
 		var tex := _get_texture(tile)
 		if tex != null:
 			draw_texture_rect(tex, Rect2(3 * unit, 2 * unit, w - 6 * unit, h - depth - 4 * unit), false)
 		else:
 			_draw_face_proc(w, h - depth)
+		if score_highlight:
+			draw_rect(Rect2(0, 0, w, h - depth), Color(0.95, 0.78, 0.22, 0.30))
 		if Tiles.is_chicken(tile):
 			draw_circle(Vector2(w - 4 * unit, 4 * unit), 2 * unit, Color("#c5993e"))
 	else:
 		_draw_back(w, h - depth)
+		if score_highlight:
+			draw_rect(Rect2(0, 0, w, h - depth), Color(0.95, 0.78, 0.22, 0.40))
 	if highlight or selected or _win_glow > 0:
 		var glow := _tile_style(Color.TRANSPARENT, Color(0.95, 0.80, 0.39, maxf(0.24, _win_glow)))
 		glow.set_border_width_all(4)
@@ -207,6 +218,7 @@ func reset() -> void:
 	set_interactive(false)
 	set_winning(false)
 	set_highlight(false)
+	set_score_highlight(false)
 	tile = ""
 	face_up = false
 	_table_position = Vector2.ZERO

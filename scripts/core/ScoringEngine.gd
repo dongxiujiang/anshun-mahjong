@@ -29,18 +29,19 @@ static func settle(round) -> Dictionary:
 		var profile := chicken_profile(round, seat, flip)
 		# 未叫牌不把手中/碰杠中的鸡算作正分；其已打出的鸡记为
 		# 负分，和叫牌者逐家比较后由未叫者补付。
-		points[seat] = float(profile.total) if called else -float(profile.discarded)
+		var discard_debt := float(profile.get("discard_debt", profile.discarded))
+		points[seat] = float(profile.total) if called else -discard_debt
 		# 荒牌结算保留未叫者本人的出牌鸡值；另由荒牌补付逻辑加入基础4分。
-		discard_points[seat] = float(profile.discarded)
+		discard_points[seat] = float(profile.discarded) if called else discard_debt
 		for item in profile.raw_items:
 			var source := str(item.get("source", ""))
 			if source == "kong":
 				continue
 			if winner >= 0 and called or winner < 0 and source == "discard":
 				items[seat].append(item.duplicate(true))
-		if not called and profile.discarded > 0.0:
+		if not called and discard_debt > 0.0:
 			items[seat].append({"kind": "penalty", "label": "未叫牌出牌鸡", "tile": "", "tiles": [],
-				"amount": -float(profile.discarded), "own_amount": -float(profile.discarded), "note": "需补付给叫牌玩家"})
+				"amount": -discard_debt, "own_amount": -discard_debt, "note": "需补付给叫牌玩家"})
 		if profile.burned:
 			var burn_label := "杠后出牌烧鸡" if meta.get("burn_chicken_reason", "") == "after_kong_discard" else "抢杠烧鸡"
 			lines.append("%s %s：鸡分 0" % [_nm(seat, dealer), burn_label])
@@ -50,7 +51,7 @@ static func settle(round) -> Dictionary:
 		else:
 			lines.append("%s%s：鸡分 %.0f，打出鸡 %.0f" % [_nm(seat, dealer), " 已叫牌" if called else " 未叫牌", points[seat], discard_points[seat]])
 	if multiplier > 1:
-		lines.append("本局鸡分 ×%d（不影响胡牌额外分、牌型和报听）" % multiplier)
+		lines.append("以下项目按单倍计算；所有收付求和后统一 ×%d（含杠分、报听费和额外分）" % multiplier)
 	if flip != "":
 		for tile in Tiles.flip_related(flip):
 			if Tiles.is_chicken(tile):
@@ -80,17 +81,20 @@ static func settle(round) -> Dictionary:
 			lines.append("荒牌：未叫者向每位叫牌者补付双方出牌鸡、基础4分，并按规则补杠分")
 		for seat in 4:
 			status[seat] = _draw_status(seat, called_seats)
-		return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, all_called, next_multiplier, winners)
+		return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, all_called, next_multiplier, winners, multiplier)
 	# 鸡分是全场逐对比较；胡牌费用则逐个赢家分别结算。
 	PAY.compare_chickens(deltas, transfers, called_seats, points, discard_points)
 	for target in winners:
 		WIN.settle_winner(round, int(target), points, winners, deltas, transfers, items, lines)
 	KONG.pay(round, deltas, transfers, called_seats, items, flip, false)
 	_pay_uncalled_kong_income(round, called_seats, deltas, transfers)
+	# §十五：烧鸡取消本局所有收入，也包括未叫者补付的出牌鸡和杠分。
+	# 统一在账本边界移除该座位的入账，保留其支出，并同步修正双方净值。
+	PAY.cancel_income(deltas, transfers, int(meta.get("burn_chicken_seat", -1)))
 	_record_uncalled_kong_payments(transfers, called_seats, items)
 	for seat in 4:
 		status[seat] = _win_status(seat, winners, self_draw, int(meta.get("discard_seat", -1)), called_seats, round)
-	return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, false, 1, winners)
+	return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, false, 1, winners, multiplier)
 
 static func _pay_uncalled_kong_income(round, called: Array, deltas: Array, transfers: Array) -> void:
 	# 未叫牌杠牌者本应得到的杠基础分改记为负分，向其他叫牌者支付。
@@ -100,29 +104,10 @@ static func _pay_uncalled_kong_income(round, called: Array, deltas: Array, trans
 		for meld in round.players[owner].melds:
 			if meld.get("robbed", false) or meld.get("kind", "") not in ["kong", "add_kong"]:
 				continue
-			if _kong_income_cancelled(round, owner, meld):
-				continue
-			var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
-			var source := int(meld.get("from_seat", -1))
 			for payer in 4:
-				if payer == owner or not called[payer] or (not own_kong and payer != source):
+				if payer == owner or not called[payer] or payer == int(round.round_meta.get("burn_chicken_seat", -1)):
 					continue
 				PAY.transfer(deltas, transfers, owner, payer, CFG.SCORE_DRAW_KONG, "未叫牌杠分")
-
-static func _kong_income_cancelled(round, owner: int, meld: Dictionary) -> bool:
-	if int(round.round_meta.get("burn_chicken_seat", -1)) != owner or str(round.round_meta.get("burn_chicken_reason", "")) != "after_kong_discard":
-		return false
-	var last: Dictionary = round.last_discard
-	if not bool(last.get("after_kong", false)) or int(last.get("seat", -1)) != owner:
-		return false
-	if meld.has("after_discard") and int(meld.get("after_discard", -1)) + 1 != int(round.players[owner].discard_count):
-		return false
-	var kind := int(last.get("kong_kind", RoundState.KongKind.NONE))
-	if kind == RoundState.KongKind.CONCEALED:
-		return meld.kind == "kong" and bool(meld.get("concealed", false))
-	if kind == RoundState.KongKind.ADD_KONG:
-		return meld.kind == "add_kong"
-	return false
 
 static func _record_uncalled_kong_payments(transfers: Array, called: Array, items: Array) -> void:
 	var base_totals := [0.0, 0.0, 0.0, 0.0]
@@ -150,17 +135,31 @@ static func _winner_seats(meta: Dictionary) -> Array:
 		winners.append(int(meta.winner))
 	return winners
 
-static func _result(deltas: Array, lines: Array, points: Array, discard_points: Array, called: Array, transfers: Array, items: Array, status: Array, all_called_draw: bool, next_multiplier: int, winners: Array) -> Dictionary:
+static func _result(deltas: Array, lines: Array, points: Array, discard_points: Array, called: Array, transfers: Array, items: Array, status: Array, all_called_draw: bool, next_multiplier: int, winners: Array, multiplier: int = 1) -> Dictionary:
 	var round_points := [0.0, 0.0, 0.0, 0.0]
 	for seat in 4:
 		items[seat] = group_chicken_items(items[seat])
 		for item in items[seat]:
 			round_points[seat] += maxf(0.0, float(item.get("own_amount", item.get("amount", 0.0))))
+	# multiplier 应用到所有金额（鸡分、牌型分、杠分、报听费、额外胡牌分），
+	# 无论胡牌还是流局都应用。
+	if multiplier > 1:
+		for seat in 4:
+			deltas[seat] *= multiplier
+			points[seat] *= multiplier
+			discard_points[seat] *= multiplier
+			round_points[seat] *= multiplier
+			for item in items[seat]:
+				# 金额字段统一缩放；张数、座位、牌种和付款人保持不变。
+				for key in ["amount", "own_amount", "unit_amount", "base_amount", "chicken_amount", "flip_amount"]:
+					if item.has(key):
+						item[key] *= multiplier
+		for t in transfers:
+			t["amount"] *= multiplier
 	var pairs := pairwise_payments(transfers)
 	return {"deltas": deltas, "lines": lines, "points": points, "round_points": round_points,
 		"discard_points": discard_points, "called": called, "transfers": transfers, "pairwise": pairs,
 		"items": items, "status": status, "winners": winners.duplicate(), "all_called_draw": all_called_draw, "next_chicken_multiplier": next_multiplier}
-
 static func _win_status(seat: int, winners: Array, self_draw: bool, discard_seat: int, called: Array, round) -> String:
 	if winners.has(seat):
 		var player: PlayerState = round.players[seat]

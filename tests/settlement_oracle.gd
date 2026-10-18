@@ -3,6 +3,7 @@ extends RefCounted
 
 static func expected(round: RoundState) -> Dictionary:
 	var meta: Dictionary = round.round_meta
+	var burned := int(meta.get("burn_chicken_seat", -1))
 	var winners: Array = meta.get("winners", []).duplicate()
 	if winners.is_empty() and int(meta.get("winner", -1)) >= 0:
 		winners.append(int(meta.winner))
@@ -24,11 +25,11 @@ static func expected(round: RoundState) -> Dictionary:
 		var player: PlayerState = round.players[seat]
 		var is_called: bool = winners.has(seat) or RuleEngine.is_tenpai(player.concealed, player.melds)
 		called.append(is_called)
-		var profile := _chicken_values(round, seat, related, multiplier)
-		discard_values[seat] = profile.discarded
+		var profile := _chicken_values(round, seat, related)
+		discard_values[seat] = profile.discarded if is_called else profile.debt
 		# 胡牌局中，叫牌者用完整鸡分比较；未叫牌者以已打出鸡的负分
 		# 参与比较。这样核账器与 ScoringEngine 的付款范围完全一致。
-		chicken_values[seat] = profile.total if is_called else -profile.discarded
+		chicken_values[seat] = profile.total if is_called else -profile.debt
 
 	if has_winner:
 		for first in 4:
@@ -37,25 +38,23 @@ static func expected(round: RoundState) -> Dictionary:
 					continue
 				var difference: float = float(chicken_values[first]) - float(chicken_values[second])
 				if difference > 0.0:
-					_credit(matrix, second, first, difference)
+					_credit(matrix, second, first, difference, burned)
 				elif difference < 0.0:
-					_credit(matrix, first, second, -difference)
+					_credit(matrix, first, second, -difference, burned)
 	else:
 		for payer in 4:
 			if called[payer]:
 				continue
 			for receiver in 4:
 				if called[receiver]:
-					_credit(matrix, payer, receiver, float(discard_values[payer]) + float(discard_values[receiver]) + 4.0)
+					_credit(matrix, payer, receiver, float(discard_values[payer]) + float(discard_values[receiver]) + 4.0, burned)
 
 	# 杠基础分是定向费用；杠中鸡在胡牌局已经进入鸡分比较，流局时
 	# 才向未叫牌者单独收取。未叫牌杠牌者的杠收入则反向记为其付款。
 	for receiver in 4:
-		if called[receiver]:
+		if called[receiver] and receiver != burned:
 			for meld in round.players[receiver].melds:
 				if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
-					continue
-				if _cancelled_kong(round, receiver, meld):
 					continue
 				var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
 				var source := int(meld.get("from_seat", -1))
@@ -63,28 +62,26 @@ static func expected(round: RoundState) -> Dictionary:
 					if payer == receiver or (not has_winner and called[payer]):
 						continue
 					if own_kong or payer == source:
-						_credit(matrix, payer, receiver, 4.0)
+						_credit(matrix, payer, receiver, 4.0, burned)
 				if not has_winner and receiver != int(meta.get("burn_chicken_seat", -1)):
 					var tile := str(meld.tile)
-					var chicken_fee := 8.0 * multiplier if tile in ["tiao1", "tong8"] else 0.0
-					var flip_fee := 4.0 * multiplier if tile in related and tile not in ["tiao1", "tong8"] else 0.0
+					var chicken_fee := 8.0 if tile in ["tiao1", "tong8"] else 0.0
+					var flip_fee := 4.0 if tile in related and tile not in ["tiao1", "tong8"] else 0.0
 					for payer in 4:
 						if payer != receiver and not called[payer]:
-							_credit(matrix, payer, receiver, chicken_fee + flip_fee)
-		elif not has_winner:
+							_credit(matrix, payer, receiver, chicken_fee + flip_fee, burned)
+		elif not has_winner and not called[receiver]:
 			# 流局时未叫牌杠牌者不收杠分，反而向每位叫牌者支付4分；
-			# 明杠仍只涉及原放杠者，暗杠/加杠涉及所有叫牌者。
+			# 所有杠都向每个叫牌者反付（§十八一6）。
 			for meld in round.players[receiver].melds:
 				if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
-					continue
-				if _cancelled_kong(round, receiver, meld):
 					continue
 				var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
 				var source := int(meld.get("from_seat", -1))
 				for payer in 4:
-					if payer == receiver or not called[payer] or (not own_kong and payer != source):
+					if payer == receiver or not called[payer]:
 						continue
-					_credit(matrix, receiver, payer, 4.0)
+					_credit(matrix, receiver, payer, 4.0, burned)
 		else:
 			continue
 	# 未叫牌杠家的杠中鸡不计正分，但要向每位叫牌玩家单独补付。
@@ -95,17 +92,15 @@ static func expected(round: RoundState) -> Dictionary:
 		for meld in round.players[owner].melds:
 			if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
 				continue
-			if _cancelled_kong(round, owner, meld):
-				continue
 			var tile := str(meld.tile)
 			if tile not in ["tiao1", "tong8"]:
 				continue
-			var chicken_fee: float = 8.0 * multiplier
+			var chicken_fee: float = 8.0
 			if has_winner and tile in related:
 				chicken_fee *= 2.0
 			for receiver in 4:
 				if called[receiver]:
-					_credit(matrix, owner, receiver, chicken_fee)
+					_credit(matrix, owner, receiver, chicken_fee, burned)
 
 	# For a winning round, an uncalled kong owner pays its directed kong fee to
 	# called players. This is separate from chicken comparison.
@@ -116,25 +111,23 @@ static func expected(round: RoundState) -> Dictionary:
 			for meld in round.players[owner].melds:
 				if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
 					continue
-				if _cancelled_kong(round, owner, meld):
-					continue
 				var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
 				var source := int(meld.get("from_seat", -1))
 				for payer in 4:
-					if payer == owner or not called[payer] or (not own_kong and payer != source):
+					if payer == owner or not called[payer]:
 						continue
-					_credit(matrix, owner, payer, 4.0)
+					_credit(matrix, owner, payer, 4.0, burned)
 
 	if has_winner:
 		for target in winners:
 			var target_seat := int(target)
 			var player: PlayerState = round.players[target_seat]
 			var pattern := RuleEngine.hand_pattern(player.concealed, player.melds, str(meta.get("win_tile", "")))
+			# 所有费用先单倍计算，最后对矩阵统一应用倍率。
 			var pattern_fee := _pattern_fee(pattern)
 			var self_draw := bool(meta.get("self_draw", false))
 			var robbed_kong := bool(meta.get("robbed_kong", false))
 			var source := int(meta.get("discard_seat", -1))
-			var ready_primary := false
 			var base_payers: Array = []
 			for payer in 4:
 				if payer != target_seat and (self_draw or payer == source):
@@ -142,10 +135,7 @@ static func expected(round: RoundState) -> Dictionary:
 			if self_draw:
 				var primary := pattern_fee
 				if primary <= 0.0:
-					if player.ready:
-						primary = 24.0
-						ready_primary = true
-					elif float(_chicken_values(round, target_seat, related, multiplier).total) <= 0.0:
+					if not player.ready and float(_chicken_values(round, target_seat, related).total) <= 0.0:
 						var all_chickenless := true
 						for other in 4:
 							if float(chicken_values[other]) > 0.0:
@@ -155,59 +145,43 @@ static func expected(round: RoundState) -> Dictionary:
 					else:
 						primary = 4.0
 				for payer in base_payers:
-					_credit(matrix, payer, target_seat, primary)
+					_credit(matrix, payer, target_seat, primary + (24.0 if player.ready else 0.0), burned)
 			else:
 				var kong_discard := not robbed_kong and _is_post_kong_discard(round.last_discard)
 				var source_called := source >= 0 and source < 4 and RuleEngine.is_tenpai(round.players[source].concealed, round.players[source].melds)
 				var base := 12.0 if robbed_kong else (17.0 if kong_discard and source_called else (21.0 if kong_discard else 0.0))
 				if source in range(4) and base > 0.0:
-					_credit(matrix, source, target_seat, base)
+					_credit(matrix, source, target_seat, base, burned)
 				if player.ready:
 					# 报听胡牌：点炮时只有点炮者支付
 					if source in range(4) and source != target_seat:
-						_credit(matrix, source, target_seat, 24.0)
+						_credit(matrix, source, target_seat, 24.0, burned)
 				if pattern_fee > 0.0:
 					for payer in 4:
 						if payer != target_seat and not winners.has(payer):
-							_credit(matrix, payer, target_seat, pattern_fee)
-				if source in range(4) and source != target_seat and round.players[source].ready:
-					_credit(matrix, source, target_seat, 24.0)
-			for payer in 4:
-				# 付款已按当前 WinScoring 规则在上方逐家展开。
-				pass
+							_credit(matrix, payer, target_seat, pattern_fee, burned)
+				for other in winners:
+					if int(other) == target_seat: continue
+					var other_player: PlayerState = round.players[int(other)]
+					var other_fee := 0.0 if int(other) == burned else _pattern_fee(RuleEngine.hand_pattern(other_player.concealed, other_player.melds, str(meta.get("win_tile", ""))))
+					_credit(matrix, int(other), target_seat, pattern_fee - other_fee, burned)
 			if self_draw and int(meta.get("kong_draw_seat", -1)) == target_seat:
 				for payer in 4:
 					if payer != target_seat:
-						_credit(matrix, payer, target_seat, 5.0)
+						_credit(matrix, payer, target_seat, 5.0, burned)
 			if self_draw and int(meta.get("last_four_self_draw_seat", -1)) == target_seat:
 				for payer in 4:
 					if payer != target_seat:
-						_credit(matrix, payer, target_seat, 5.0)
+						_credit(matrix, payer, target_seat, 5.0, burned)
 
 	var deltas := [0.0, 0.0, 0.0, 0.0]
 	for seat in 4:
 		for other in 4:
 			deltas[seat] += float(matrix[seat][other])
+	_apply_multiplier(matrix, deltas, multiplier)
 	return {"pairwise": matrix, "deltas": deltas, "called": called, "chickens": chicken_values, "discard_chickens": discard_values}
 
-static func _cancelled_kong(round: RoundState, receiver: int, meld: Dictionary) -> bool:
-	if int(round.round_meta.get("burn_chicken_seat", -1)) != receiver or str(round.round_meta.get("burn_chicken_reason", "")) != "after_kong_discard":
-		return false
-	var last: Dictionary = round.last_discard
-	if not bool(last.get("after_kong", false)) or int(last.get("seat", -1)) != receiver:
-		return false
-	if meld.has("after_discard") and int(meld.get("after_discard", -1)) + 1 != int(round.players[receiver].discard_count):
-		return false
-	var kind := int(last.get("kong_kind", RoundState.KongKind.NONE))
-	if kind == RoundState.KongKind.CONCEALED:
-		return meld.kind == "kong" and bool(meld.get("concealed", false))
-	if kind == RoundState.KongKind.ADD_KONG:
-		return meld.kind == "add_kong"
-	return false
-
-static func _chicken_values(round: RoundState, seat: int, related: Array, multiplier: int) -> Dictionary:
-	if seat == int(round.round_meta.get("burn_chicken_seat", -1)):
-		return {"total": 0.0, "discarded": 0.0}
+static func _chicken_values(round: RoundState, seat: int, related: Array) -> Dictionary:
 	var player: PlayerState = round.players[seat]
 	var total := 0.0
 	var discarded := 0.0
@@ -218,7 +192,7 @@ static func _chicken_values(round: RoundState, seat: int, related: Array, multip
 		var id: int = player.discard_ids[index] if index < player.discard_ids.size() else index
 		var record: Dictionary = round.round_meta.get("charge_chickens", {}).get(tile, {})
 		var charge: bool = record.get("owner", -1) == seat and record.get("location", "") == "discard" and record.get("discard_id", -1) == id
-		var amount := (4.0 if charge else 2.0) * (2.0 if tile in related else 1.0) * multiplier
+		var amount := (4.0 if charge else 2.0) * (2.0 if tile in related else 1.0)
 		discarded += amount
 		total += amount
 	for raw_record in round.round_meta.get("resolved_chicken_discards", []):
@@ -229,21 +203,21 @@ static func _chicken_values(round: RoundState, seat: int, related: Array, multip
 		if tile not in ["tiao1", "tong8"]:
 			continue
 		var charge: bool = bool(record.get("charge", false))
-		var amount := (4.0 if charge else 2.0) * (2.0 if tile in related else 1.0) * multiplier
+		var amount := (4.0 if charge else 2.0) * (2.0 if tile in related else 1.0)
 		discarded += amount
 		total += amount
 	for tile_value in player.concealed:
-		total += _held_chicken(str(tile_value), related, multiplier)
+		total += _held_chicken(str(tile_value), related)
 	for meld in player.melds:
 		var count := 3 if meld.kind == "pung" else 4
 		for _index in count:
-			total += _held_chicken(str(meld.tile), related, multiplier)
-	return {"total": total, "discarded": discarded}
+			total += _held_chicken(str(meld.tile), related)
+	return {"total": 0.0 if seat == int(round.round_meta.get("burn_chicken_seat", -1)) else total, "discarded": 0.0 if seat == int(round.round_meta.get("burn_chicken_seat", -1)) else discarded, "debt": discarded}
 
-static func _held_chicken(tile: String, related: Array, multiplier: int) -> float:
+static func _held_chicken(tile: String, related: Array) -> float:
 	if tile in ["tiao1", "tong8"]:
-		return 2.0 * (2.0 if tile in related else 1.0) * multiplier
-	return float(multiplier) if tile in related else 0.0
+		return 2.0 * (2.0 if tile in related else 1.0)
+	return 1.0 if tile in related else 0.0
 
 static func _is_post_kong_discard(last_discard: Dictionary) -> bool:
 	if not bool(last_discard.get("after_kong", false)):
@@ -254,7 +228,6 @@ static func _pattern_fee(pattern: Dictionary) -> float:
 	if pattern.get("clean_dragon_seven_pairs", false): return 64.0
 	if pattern.get("clean_single_wait", false): return 54.0
 	if pattern.get("clean_seven_pairs", false): return 44.0
-	if pattern.get("clean_big_single_wait", false): return 44.0
 	if pattern.get("clean_big_triplets", false): return 34.0
 	if pattern.get("big_triplet_single_wait", false): return 24.0
 	if pattern.get("dragon_seven_pairs", false): return 44.0
@@ -263,11 +236,20 @@ static func _pattern_fee(pattern: Dictionary) -> float:
 	if pattern.get("flush", false): return 24.0
 	return 0.0
 
+
+static func _apply_multiplier(matrix: Array, deltas: Array, multiplier: int) -> void:
+	if multiplier <= 1:
+		return
+	for seat in 4:
+		deltas[seat] *= multiplier
+		for other in 4:
+			matrix[seat][other] *= multiplier
+
 static func _empty_matrix() -> Array:
 	return [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]
 
-static func _credit(matrix: Array, payer: int, receiver: int, amount: float) -> void:
-	if payer == receiver or amount <= 0.0:
+static func _credit(matrix: Array, payer: int, receiver: int, amount: float, blocked_receiver: int = -1) -> void:
+	if receiver == blocked_receiver or payer == receiver or amount <= 0.0:
 		return
 	matrix[receiver][payer] += amount
 	matrix[payer][receiver] -= amount

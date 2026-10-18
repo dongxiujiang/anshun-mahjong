@@ -8,6 +8,7 @@ const PLAYER_AREAS := preload("res://scripts/ui/table/PlayerTileAreas.gd")
 const ACTIONS_UI := preload("res://scripts/ui/table/TableActions.gd")
 const SETTLEMENT_UI := preload("res://scripts/ui/table/SettlementCard.gd")
 const ANIMATIONS := preload("res://scripts/ui/table/TableAnimationController.gd")
+const SETTLEMENT_ANIMATIONS := preload("res://scripts/ui/table/SettlementAnimationController.gd")
 const WIDGETS := preload("res://scripts/ui/table/TableWidgets.gd")
 
 var _table_layout = LAYOUT.new(self)
@@ -15,6 +16,7 @@ var _player_tile_areas = PLAYER_AREAS.new(self)
 var _table_actions = ACTIONS_UI.new(self)
 var _settlement_card = SETTLEMENT_UI.new(self)
 var _table_animation_controller = ANIMATIONS.new(self)
+var _settlement_animation_controller = SETTLEMENT_ANIMATIONS.new(self)
 var _table_widgets = WIDGETS.new()
 
 ## The table is deliberately designed in landscape.  Both the desktop build and
@@ -75,6 +77,9 @@ var chicken_box: Dictionary:
 var center_labels: Dictionary:
 	get: return _player_tile_areas.center_labels
 	set(value): _player_tile_areas.center_labels = value
+var net_labels: Dictionary:
+	get: return _player_tile_areas.net_labels
+	set(value): _player_tile_areas.net_labels = value
 var wall_box: Dictionary:
 	get: return _player_tile_areas.wall_box
 	set(value): _player_tile_areas.wall_box = value
@@ -144,6 +149,15 @@ var _next_round_status: Label:
 var _next_round_hint: Label:
 	get: return _settlement_card._next_round_hint
 	set(value): _settlement_card._next_round_hint = value
+var _post_controls: Panel:
+	get: return _settlement_card._post_controls
+	set(value): _settlement_card._post_controls = value
+var _post_view_button: Button:
+	get: return _settlement_card._post_view_button
+	set(value): _settlement_card._post_view_button = value
+var _post_next_button: Button:
+	get: return _settlement_card._post_next_button
+	set(value): _settlement_card._post_next_button = value
 var _status_labels: Dictionary:
 	get: return _player_tile_areas._status_labels
 	set(value): _player_tile_areas._status_labels = value
@@ -186,6 +200,25 @@ func _pump_visual_animation() -> void:
 
 func _on_visual_animation_finished() -> void:
 	_table_animation_controller._on_visual_animation_finished()
+
+func _start_settlement_animation() -> void:
+	_settlement_animation_controller.start()
+
+func _on_settlement_animation_finished() -> void:
+	_settlement_card.show_post_settlement_controls()
+	_update_interactivity()
+
+func _settlement_animation_active() -> bool:
+	return _settlement_animation_controller.is_active()
+
+func _settlement_animation_started() -> bool:
+	return _settlement_animation_controller.has_started()
+
+func _settlement_animation_done() -> bool:
+	return _settlement_animation_controller.is_completed()
+
+func _skip_settlement_animation() -> void:
+	_settlement_animation_controller.skip()
 
 func _animation_target_for_seat(seat: int) -> Vector2:
 	return _table_animation_controller._animation_target_for_seat(seat)

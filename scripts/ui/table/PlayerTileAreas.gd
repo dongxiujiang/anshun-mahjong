@@ -10,6 +10,7 @@ var discard_box := {}
 var discard_scroll := {}
 var chicken_box := {}
 var center_labels := {}
+var net_labels := {}
 var wall_box := {}
 var seat_roots := {}
 var wind_labels := {}
@@ -63,6 +64,9 @@ func build() -> void:
 		avatars[seat] = avatar
 		center_labels[seat] = table._label(table.surface, "", Vector2.ZERO, UI.CENTER_SCORE_SIZE, UI.CENTER_SCORE_FONT_SIZE)
 		center_labels[seat].vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		net_labels[seat] = table._label(table.surface, "", Vector2.ZERO, Vector2(150, UI.CENTER_SCORE_SIZE.y), UI.CENTER_SCORE_FONT_SIZE, UI.INK)
+		net_labels[seat].vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		net_labels[seat].hide()
 		var nickname: Label = table._label(table.surface, "", Vector2.ZERO, Vector2(UI.CENTER_SCORE_SIZE.x, 32), UI.CENTER_NAME_FONT_SIZE, UI.MUTED)
 		nickname.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		nickname.clip_text = true
@@ -103,6 +107,11 @@ func _refresh_identity(seat: int) -> void:
 	while font_size > 12 and TileView._font().get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > label.size.x: font_size -= 1
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", UI.GOLD if player.ready else UI.INK)
+	var net_label: Label = net_labels[seat]
+	net_label.position = label.position + Vector2(label.size.x + 8.0, 0)
+	net_label.size = Vector2(150, label.size.y)
+	net_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	net_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var nickname: Label = name_labels[seat]
 	nickname.text = "人机" if not player.is_human else str(player.name_label).strip_edges()
 	if nickname.text == "": nickname.text = "玩家"

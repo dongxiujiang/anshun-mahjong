@@ -5,16 +5,11 @@ const PAY := preload("res://scripts/core/PaymentLedger.gd")
 
 static func pay(round, deltas: Array, transfers: Array, called: Array, items: Array, flip: String, is_draw: bool) -> void:
 	var related: Array = Tiles.flip_related(flip)
-	var multiplier := clampi(int(round.round_meta.get("chicken_multiplier", 1)), 1, CFG.MAX_CHICKEN_MULTIPLIER)
 	for receiver in 4:
-		if not called[receiver]:
+		if not called[receiver] or receiver == int(round.round_meta.get("burn_chicken_seat", -1)):
 			continue
 		for meld in round.players[receiver].melds:
 			if meld.get("robbed", false) or meld.kind not in ["kong", "add_kong"]:
-				continue
-			# 暗杠/加杠后的第一张出牌被胡时，本次杠不产生杠基础分或杠内鸡分。
-			# 其他历史杠仍按正常规则结算。
-			if _cancelled_by_kong_discard(round, receiver, meld):
 				continue
 			var tile := str(meld.get("tile", ""))
 			var source := int(meld.get("from_seat", -1))
@@ -31,11 +26,11 @@ static func pay(round, deltas: Array, transfers: Array, called: Array, items: Ar
 			if receiver != round.round_meta.get("burn_chicken_seat", -1):
 				if Tiles.is_chicken(tile):
 					# 冲锋鸡被杠后按普通鸡每张2分计，明杠放牌者另付杠分4。
-					chicken_value = CFG.SCORE_CALL_CHICKEN * 4.0 * multiplier
+					chicken_value = CFG.SCORE_CALL_CHICKEN * 4.0
 					if not is_draw:
 						chicken_value *= CFG.SCORE_FLIP_DOUBLE if tile in related else 1.0
 				elif not is_draw and tile in related:
-					flip_value = CFG.SCORE_FLIP_CHICKEN * 4.0 * multiplier
+					flip_value = CFG.SCORE_FLIP_CHICKEN * 4.0
 			for payer in payers:
 				PAY.transfer(deltas, transfers, payer, receiver, CFG.SCORE_DRAW_KONG, ("查叫" if is_draw else "") + kind_name)
 			var chicken_payers: Array = []
@@ -64,31 +59,12 @@ static func pay(round, deltas: Array, transfers: Array, called: Array, items: Ar
 		for meld in round.players[owner].melds:
 			if meld.get("robbed", false) or meld.kind not in ["kong", "add_kong"]:
 				continue
-			if _cancelled_by_kong_discard(round, owner, meld):
-				continue
 			var tile := str(meld.get("tile", ""))
 			if not Tiles.is_chicken(tile):
 				continue
-			var chicken_value: float = CFG.SCORE_CALL_CHICKEN * 4.0 * multiplier
+			var chicken_value: float = CFG.SCORE_CALL_CHICKEN * 4.0
 			if not is_draw and tile in related:
 				chicken_value *= CFG.SCORE_FLIP_DOUBLE
 			for receiver in 4:
-				if called[receiver]:
+				if called[receiver] and receiver != int(round.round_meta.get("burn_chicken_seat", -1)):
 					PAY.transfer(deltas, transfers, owner, receiver, chicken_value, "未叫牌杠中鸡")
-
-static func _cancelled_by_kong_discard(round, receiver: int, meld: Dictionary) -> bool:
-	if int(round.round_meta.get("burn_chicken_seat", -1)) != receiver:
-		return false
-	if str(round.round_meta.get("burn_chicken_reason", "")) != "after_kong_discard":
-		return false
-	var last: Dictionary = round.last_discard
-	if not bool(last.get("after_kong", false)) or int(last.get("seat", -1)) != receiver:
-		return false
-	if meld.has("after_discard") and int(meld.get("after_discard", -1)) + 1 != int(round.players[receiver].discard_count):
-		return false
-	var kind := int(last.get("kong_kind", RoundState.KongKind.NONE))
-	if kind == RoundState.KongKind.CONCEALED:
-		return meld.kind == "kong" and bool(meld.get("concealed", false))
-	if kind == RoundState.KongKind.ADD_KONG:
-		return meld.kind == "add_kong"
-	return false

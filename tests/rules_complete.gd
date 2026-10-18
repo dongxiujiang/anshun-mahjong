@@ -14,6 +14,7 @@ func expect(condition: bool, message: String) -> void:
 
 func fixture() -> RoundState:
 	var round := RoundState.new()
+	round.set_rng_seed(20261018)
 	round.build_players(0)
 	round.controllers = [null, null, null, null]
 	round.phase = RoundState.Phase.PLAYING
@@ -154,7 +155,7 @@ func _test_discard_win_restrictions() -> void:
 	expect(normal.can_win_on_discard(1, 0, "wan9"), "Ready winner can win another player's discard")
 	normal.players[1].ready = false
 	normal.players[0].ready = true
-	expect(not normal.can_win_on_discard(1, 0, "wan9"), "Ready source does not bypass the winner hand pattern restriction")
+	expect(normal.can_win_on_discard(1, 0, "wan9"), "§十一：报听弃牌者允许普通小牌胡")
 
 	var seven := fixture()
 	seven.players[1].concealed = ["wan1", "wan1", "wan2", "wan2", "wan3", "wan3", "wan4", "wan4", "wan5", "wan5", "wan6", "wan6", "wan9"]
@@ -170,7 +171,7 @@ func _test_discard_win_restrictions() -> void:
 	source_ready.players[1].concealed = thirteen.duplicate()
 	source_ready.players[0].ready = true
 	source_ready.last_discard = {"seat": 0, "tile": "wan9"}
-	expect(not source_ready.can_win_on_discard(1, 0, "wan9"), "Ready source does not permit an ordinary discard win")
+	expect(source_ready.can_win_on_discard(1, 0, "wan9"), "§十一：报听弃牌者是通行条件")
 	var after_kong := fixture()
 	after_kong.players[1].concealed = thirteen.duplicate()
 	after_kong.last_discard = {"seat": 0, "tile": "wan9", "after_kong": true, "kong_kind": RoundState.KongKind.ADD_KONG}
@@ -184,7 +185,7 @@ func _test_discard_win_restrictions() -> void:
 	var exposed_after_kong := fixture()
 	exposed_after_kong.players[1].concealed = thirteen.duplicate()
 	exposed_after_kong.last_discard = {"seat": 0, "tile": "wan9", "after_kong": true, "kong_kind": RoundState.KongKind.EXPOSED}
-	expect(not exposed_after_kong.can_win_on_discard(1, 0, "wan9"), "Exposed-kong discard is not a post-kong gun win")
+	expect(exposed_after_kong.can_win_on_discard(1, 0, "wan9"), "§十一：明杠后也能胡，但不烧鸡")
 	exposed_after_kong._pending_responders = [1]
 	exposed_after_kong._response_stage = RoundState.ResponseStage.WIN
 	exposed_after_kong._process_response(1, 0, "wan9", {"action": "win"})
@@ -205,7 +206,7 @@ func _test_discard_win_restrictions() -> void:
 	expect(rob.can_win_on_discard(1, 0, "wan9", RoundState.ResponseStage.ROB), "Robbed added kong permits discard win")
 
 func _test_wall_and_patterns() -> void:
-	var expected := [2, 32, 6, 90, 10, 40]
+	var expected := [2, 86, 6, 36, 10, 94]
 	for die in range(1, 7):
 		expect(WallRing.compute_break(die) == expected[die - 1], "Dice break must skip specified stacks")
 	var wall := WallRing.new(TileSetFactory.create_deck())
@@ -217,7 +218,7 @@ func _test_wall_and_patterns() -> void:
 	expect(RuleEngine.analyze(quad_pairs, []).seven_pairs, "Four identical tiles may form two pairs")
 	var clean_single := ["tiao1", "tiao2", "tiao3", "tiao4", "tiao5", "tiao6", "tiao2", "tiao3", "tiao4", "tiao5", "tiao6", "tiao7", "tiao9", "tiao9"]
 	var single_pattern := RuleEngine.analyze(clean_single, [], "tiao9")
-	expect(single_pattern.win and single_pattern.clean_single_wait, "清单吊 is four one-suit sequences plus a pair made by the winning tile")
+	expect(single_pattern.win and not single_pattern.clean_single_wait, "§十六：闭手四顺不能判清单吊")
 	expect(not RuleEngine.analyze(clean_single, [], "tiao6").clean_single_wait, "清单吊 requires the actual winning tile to complete the pair")
 	var clean_round := fixture()
 	clean_round.round_meta.winner = 0
@@ -225,8 +226,8 @@ func _test_wall_and_patterns() -> void:
 	clean_round.round_meta.win_tile = "tiao9"
 	clean_round.players[0].concealed = clean_single.duplicate()
 	var clean_result := scored(clean_round)
-	expect(clean_result.items[0].any(func(item): return item.get("kind", "") == "pattern" and item.get("label", "") == "清单吊" and item.get("amount", 0) == 54), "清单吊 scores 54 and replaces plain 清一色")
-	expect(clean_result.items[0].all(func(item): return item.get("label", "") != "清一色"), "清单吊 does not double count 清一色")
+	expect(clean_result.items[0].any(func(item): return item.get("kind", "") == "pattern" and item.get("label", "") == "清一色" and item.get("amount", 0) == 24), "四顺清一色只计24")
+	expect(clean_result.items[0].all(func(item): return item.get("label", "") != "清单吊"), "含顺子不能计清单吊54")
 	var clean_big := ["tiao1", "tiao1", "tiao1", "tiao2", "tiao2", "tiao2", "tiao4", "tiao4", "tiao4", "tiao6", "tiao6", "tiao6", "tiao9", "tiao9"]
 	var big_pattern := RuleEngine.analyze(clean_big, [])
 	expect(big_pattern.clean_big_triplets and RuleEngine.special_pattern_key(big_pattern) == "clean_big_triplets", "清大对 special pattern has priority")
@@ -303,5 +304,6 @@ func _test_invariants() -> void:
 	multi.round_meta.discard_seat = 2
 	_check_settlement_invariants(ScoringEngine.settle(multi), "一炮多响")
 	var live := RoundState.new()
+	live.set_rng_seed(20261018)
 	live.start_round(0, 1)
 	expect(_tile_accounted(live) == 108, "开局发牌后牌墙、手牌、弃牌和碰杠牌必须守恒")

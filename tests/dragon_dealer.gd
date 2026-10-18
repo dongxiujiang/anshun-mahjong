@@ -18,6 +18,7 @@ func _run() -> void:
 
 func _fixture(dealer: int = 0) -> RoundState:
 	var game := RoundState.new()
+	game.set_rng_seed(20261018)
 	game.dealer_seat = dealer
 	game.next_dealer_seat = dealer
 	game._reset_meta()
@@ -79,7 +80,7 @@ func _test_next_dealer() -> void:
 				discard.players[winner].concealed = DRAGON.slice(0, 13)
 				discard.players[source].discards = ["tiao9"]
 				discard._discard_win(winner, source, "tiao9")
-				t.expect(discard.next_dealer_seat == source, "放炮换庄优先于胡牌者")
+				t.expect(discard.next_dealer_seat == winner, "§二十一：放炮胡的赢家当庄")
 		var draw := _fixture(dealer)
 		for player in draw.players:
 			player.concealed = CALLED.duplicate()
@@ -90,11 +91,11 @@ func _test_next_dealer() -> void:
 			for player in mixed.players:
 				player.concealed = CALLED.duplicate() if player.seat != uncalled else []
 			mixed._penzu()
-			t.expect(mixed.next_dealer_seat == dealer and mixed.next_chicken_multiplier == 1, "流局有人未叫牌时当前庄家连庄")
+			t.expect(mixed.next_dealer_seat == uncalled and mixed.next_chicken_multiplier == 1, "唯一未叫者成为下庄")
 		var multiple := _fixture(dealer)
 		multiple.players[dealer].concealed = CALLED.duplicate()
 		multiple._penzu()
-		t.expect(multiple.next_dealer_seat == dealer, "多人未叫牌时当前庄家连庄")
+		t.expect(multiple.next_dealer_seat in range(4) and multiple.next_dealer_seat != dealer, "并列从未叫者中随机选庄")
 
 func _test_deal() -> void:
 	for dealer in 4:
@@ -125,7 +126,7 @@ func _test_deal() -> void:
 				index += 1
 			expected[dealer].append(ring[posmod(index, 108)])
 			for seat in 4:
-				t.expect(game.players[seat].concealed == expected[seat] and game.players[seat].is_dealer == (seat == dealer), "从新庄顺时针发牌且庄家标记唯一")
+				t.expect(game.players[seat].concealed == expected[seat] and game.players[seat].is_dealer == (seat == dealer), "从新庄逆时针发牌且庄家标记唯一")
 			t.expect(game.players[0].score == -24 and game.players[2].score == 500, "换庄保留累计和负数分值")
 			var client := RoundState.new()
 			client.apply_sync(game.serialize_for_seat(1))

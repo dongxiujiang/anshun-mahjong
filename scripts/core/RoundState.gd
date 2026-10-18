@@ -454,7 +454,7 @@ func _discard(seat: int, tile: String, discard_index: int = -1) -> void:
 	player.discard_count += 1
 	player.just_drew = ""
 	player.first_turn_done = true
-	var after_kong := _kong_draw_turn and _kong_draw_kind in [KongKind.CONCEALED, KongKind.ADD_KONG]
+	var after_kong := _kong_draw_turn and _kong_draw_kind != KongKind.NONE
 	last_discard = {
 		"seat": seat,
 		"tile": tile,
@@ -905,12 +905,34 @@ func _finish() -> void:
 func _choose_next_dealer(called: Array) -> int:
 	var winner := int(round_meta.get("winner", -1))
 	if winner >= 0:
-		if round_meta.get("self_draw", false):
-			return winner
-		var source := int(round_meta.get("discard_seat", -1))
-		return source if source in SEATS else winner
-	# 当前规则中所有流局都连庄；未叫牌者只影响荒牌付款，不影响庄家。
-	return dealer_seat
+		# 多赢家规则经用户确认：本局净得分最高的赢家做庄，并列随机。
+		var winners: Array = round_meta.get("winners", []).duplicate()
+		if winners.is_empty():
+			winners.append(winner)
+		var best: Array = []
+		var highest := -INF
+		for seat in winners:
+			var delta := float(_last_deltas[int(seat)])
+			if delta > highest:
+				highest = delta
+				best = [int(seat)]
+			elif is_equal_approx(delta, highest):
+				best.append(int(seat))
+		return best[0] if best.size() == 1 else best[_rng.randi_range(0, best.size() - 1)]
+	var candidates: Array = []
+	var lowest := INF
+	for seat in SEATS:
+		if called[seat]:
+			continue
+		var delta := float(_last_deltas[seat])
+		if delta < lowest:
+			lowest = delta
+			candidates = [seat]
+		elif is_equal_approx(delta, lowest):
+			candidates.append(seat)
+	if candidates.is_empty():
+		return dealer_seat
+	return candidates[_rng.randi_range(0, candidates.size() - 1)]
 
 func build_result() -> Dictionary:
 	var result := {

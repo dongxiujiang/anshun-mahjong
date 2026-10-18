@@ -9,6 +9,16 @@ static func transfer(deltas: Array, transfers: Array, payer: int, receiver: int,
 	deltas[receiver] += amount
 	transfers.append({"from": payer, "to": receiver, "amount": amount, "reason": reason})
 
+static func cancel_income(deltas: Array, transfers: Array, receiver: int) -> void:
+	if receiver not in range(4):
+		return
+	for index in range(transfers.size() - 1, -1, -1):
+		var entry: Dictionary = transfers[index]
+		if int(entry.to) == receiver:
+			deltas[int(entry.from)] += float(entry.amount)
+			deltas[receiver] -= float(entry.amount)
+			transfers.remove_at(index)
+
 static func pay_win(deltas: Array, transfers: Array, winner: int, meta: Dictionary, amount: float, reason: String) -> void:
 	if meta.get("self_draw", false):
 		for seat in 4:

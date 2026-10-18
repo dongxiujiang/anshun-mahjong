@@ -142,7 +142,7 @@ func _test_score_defense() -> void:
 	t.expect(float(more_costly.merit) < float(dangerous.merit), "Equal danger probabilities react to larger payable scores")
 	var ready_risk := ai.opponent_model.risk(context, "wan9", true, false, false, 0)
 	var kong_risk := ai.opponent_model.risk(context, "wan9", false, true, false, 0)
-	t.expect(float(ready_risk.probability) == float(kong_risk.probability) and float(ready_risk.loss) > float(kong_risk.loss), "Ready fee increases payment separately from ron eligibility")
+	t.expect(float(ready_risk.probability) == float(kong_risk.probability) and float(ready_risk.loss) == float(kong_risk.loss), "§十二：放炮者报听不额外收杀报，通行条件相同则费用相同")
 
 func _test_dragon_kong() -> void:
 	var r := RoundState.new()

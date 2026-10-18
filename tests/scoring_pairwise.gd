@@ -1,5 +1,5 @@
 extends SceneTree
-## 截图24/20回归、所有座位六对补差、客户端重复同步及实际结算卡。
+## 截图28/20回归、所有座位六对补差、客户端重复同步及实际结算卡。
 const H := preload("res://tests/test_harness.gd")
 const ORACLE := preload("res://tests/settlement_oracle.gd")
 const SCREENSHOT_WIN := ["tong1", "tong1", "wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "wan6", "wan7", "wan8"]
@@ -12,6 +12,7 @@ func _initialize() -> void: call_deferred("_run")
 
 func _fixture(winner: int) -> RoundState:
 	var r := RoundState.new()
+	r.set_rng_seed(20261018)
 	r.build_players(0)
 	r.controllers = [null, null, null, null]
 	r.phase = RoundState.Phase.PLAYING
@@ -28,23 +29,23 @@ func _test_screenshot() -> void:
 		t.expect(RuleEngine.analyze(r.players[winner].concealed, []).win, "截图回归手牌是合法普通胡")
 		var result := ScoringEngine.settle(r)
 		ORACLE.check(r, result, t, "截图胜者%d" % winner)
-		t.expect(result.round_points[winner] == 24, "冲锋金鸡16+翻鸡4+自摸4=24")
+		t.expect(result.round_points[winner] == 28, "冲锋金鸡16+翻鸡4+自摸8=28（流局后×2）")
 		var components := {}
 		for item in result.items[winner]: components[item.label] = item.amount
-		t.expect(components == {"冲锋金鸡": 16.0, "翻鸡": 4.0, "自摸": 4.0}, "准确复现截图的三项得分")
+		t.expect(components == {"冲锋金鸡": 16.0, "翻鸡": 4.0, "自摸": 8.0}, "准确复现截图的三项得分（自摸8已含×2倍率）")
 		for other in 4:
 			if other == winner: continue
-			t.expect(result.round_points[other] == 0 and result.pairwise[winner][other] == 24, "本局0分向24分玩家支付24，不能漏翻鸡")
-			t.expect(result.deltas[other] == -24, "每个付款人实际扣24")
-		t.expect(result.deltas[winner] == 72, "胜者三家合计收72")
+			t.expect(result.round_points[other] == 0 and result.pairwise[winner][other] == 28, "本局0分向28分玩家支付28，不能漏翻鸡")
+			t.expect(result.deltas[other] == -28, "每个付款人实际扣28")
+		t.expect(result.deltas[winner] == 84, "胜者三家合计收84")
 		# 验证实际入账，而非只验证 settle() 返回的数字。
 		r.wall = WallRing.new(TileSetFactory.create_deck())
 		r.wall.set_head(0)
 		r.wall._ring[0] = "tong9"
 		r._finish()
-		t.expect(r.players[winner].score == 272, "胜者累计200+72=272")
+		t.expect(r.players[winner].score == 284, "胜者累计200+84=284")
 		for other in 4:
-			if other != winner: t.expect(r.players[other].score == 176, "其他累计200-24=176")
+			if other != winner: t.expect(r.players[other].score == 172, "其他累计200-28=172")
 		var scores: Array = r.players.map(func(player): return player.score)
 		r._finish()
 		t.expect(scores == r.players.map(func(player): return player.score), "重复结束不能二次扣费")
@@ -123,7 +124,7 @@ func _test_uncalled_kong_chicken() -> void:
 	r.players[2].concealed = WAIT.duplicate()
 	var result := ScoringEngine.settle(r)
 	ORACLE.check(r, result, t, "未叫牌明杠幺鸡流局")
-	t.expect(result.pairwise[0][1] == -16.0 and result.pairwise[0][2] == -12.0,
+	t.expect(result.pairwise[0][1] == -16.0 and result.pairwise[0][2] == -16.0,
 		"未叫牌明杠幺鸡按8分杠中鸡逐家补付")
 
 func _test_mutual_kongs() -> void:
@@ -166,11 +167,11 @@ func _test_result_ui() -> void:
 		await process_frame
 		for seat in 4:
 			var row: Control = table._result_panel.get_node("ResultSeat%d" % seat)
-			t.expect(row.get_node("RoundPoints").text == ("本局24分" if seat == 3 else "本局0分"), "结算卡显示自己的得分点")
+			t.expect(row.get_node("RoundPoints").text == ("本局28分" if seat == 3 else "本局0分"), "结算卡显示自己的得分点")
 			for index in 3:
 				var other := posmod(seat + [3, 2, 1][index], 4)
-				var text: String = "+24" if seat == 3 else ("-24" if other == 3 else "0")
-				t.expect(row.get_node("Payment%d" % index).text == text, "四个视角卡片按本人的上/对/下家显示真实24分补差")
+				var text: String = "+28" if seat == 3 else ("-28" if other == 3 else "0")
+				t.expect(row.get_node("Payment%d" % index).text == text, "四个视角卡片按本人的上/对/下家显示真实28分补差")
 	table.queue_free()
 	await process_frame
 

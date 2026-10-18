@@ -12,6 +12,7 @@ func _initialize() -> void:
 
 func fixture() -> RoundState:
 	var r := RoundState.new()
+	r.set_rng_seed(20261018)
 	r.build_players(0)
 	r.controllers = [null, null, null, null]
 	r.players[0].concealed = WIN.duplicate()
@@ -106,8 +107,9 @@ func _test_groups() -> void:
 	r.wall.set_head(0)
 	r.wall._ring[0] = "tiao8"
 	r._finish()
-	t.expect(r.last_result.round_points[0] == 28, "小七对牌型24与手中鸡4只各计一次，共28")
+	t.expect(r.last_result.round_points[0] == 52, "§十二：小七对24+报听24+手中鸡4=52，每项只记一次")
 	var client := RoundState.new()
+	client.set_rng_seed(20261018)
 	client.apply_sync(r.serialize_for_seat(2))
 	t.expect(client.last_result.round_points == r.last_result.round_points and client.last_result.pairwise == r.last_result.pairwise, "联机必须同步本局分和实际三家收付")
 	t.expect(client.last_result.items == r.last_result.items, "联机必须同步全部牌面及杠来源")
@@ -117,6 +119,7 @@ func _test_chicken_kong_example() -> void:
 		for source_called in [false, true]:
 			for multiplier in [1, 2]:
 				var r := RoundState.new()
+				r.set_rng_seed(20261018)
 				r.build_players(0)
 				r.players[0].concealed = MELD_WAIT.duplicate()
 				r.players[0].melds = [{"kind": "kong", "tile": "tiao1", "from_seat": 1}]

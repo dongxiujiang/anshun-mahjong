@@ -38,7 +38,10 @@ func _run() -> void:
 		await create_timer(0.3).timeout
 		net.game._finish()
 	t.expect(await _wait_until(func(): return net.game.phase == RoundState.Phase.SETTLED and net.lobby.get("ready_round", -1) == 1), "Settlement ready state reaches every human")
+	t.expect(await _wait_until(func(): return table._settlement_animation_controller.is_completed()), "Settlement preview finishes before controls unlock")
 	await process_frame
+	t.expect(not table.result_layer.visible and table._settlement_card._post_controls.visible, "Settlement card waits for an explicit view action")
+	table._settlement_card._post_view_button.pressed.emit()
 	await process_frame
 	t.expect(table.result_layer.visible and not table._next_round_button.disabled, "Every player has an enabled settlement ready button")
 	t.expect(table._next_round_button.text == "准备下一局", "Guests get ready button instead of return to lobby")

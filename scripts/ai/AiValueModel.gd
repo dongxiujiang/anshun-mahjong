@@ -35,8 +35,8 @@ static func _unit_values(flips: Dictionary, multiplier: int) -> Dictionary:
 	return values
 
 static func profile(round, seat: int, hand: Array, melds: Array, flips: Dictionary, discard: String = "") -> Dictionary:
-	var multiplier := clampi(int(round.round_meta.get("chicken_multiplier", 1)), 1, CFG.MAX_CHICKEN_MULTIPLIER)
-	var values := _unit_values(flips, multiplier)
+	# 与结算一致：鸡分、牌型和定向费用先按单倍计算，最后统一翻倍。
+	var values := _unit_values(flips, 1)
 	var result := {"discarded": 0.0, "total": 0.0, "kong_chickens": 0.0, "no_chicken": 0.0}
 	var tiles := hand.duplicate()
 	for meld in melds:
@@ -82,6 +82,9 @@ static func kong_base(melds: Array, payer: int) -> float:
 			result += CFG.SCORE_DRAW_KONG
 	return result
 
+static func uncalled_kong_base(melds: Array) -> float:
+	return CFG.SCORE_DRAW_KONG * melds.filter(func(meld): return meld.kind in ["kong", "add_kong"] and not meld.get("robbed", false)).size()
+
 static func has_self_kong(melds: Array) -> bool:
 	return melds.any(func(meld): return meld.kind == "add_kong" or (meld.kind == "kong" and meld.get("concealed", false)))
 
@@ -113,14 +116,15 @@ static func potential_pattern(hand: Array, melds: Array) -> float:
 
 ## Net receipts if we win, conditional on public estimates of who is called.
 ## A meld's base 4 is charged only to its source unless it is an own kong.
-static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictionary, opponents: Array, declared_ready: bool, self_draw: bool = true, source: int = -1, discard: String = "", kong_draw: bool = false) -> float:
+static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictionary, opponents: Array, declared_ready: bool, self_draw: bool = true, source: int = -1, discard: String = "", kong_draw: bool = false, win_tile: String = "") -> float:
 	var own := profile(round, seat, hand, melds, flips, discard)
-	var pattern := RuleEngine.analyze(hand, melds)
+	var pattern := RuleEngine.analyze(hand, melds, win_tile if win_tile != "" else str(round.round_meta.get("win_tile", "")))
+	var multiplier := clampi(int(round.round_meta.get("chicken_multiplier", 1)), 1, CFG.MAX_CHICKEN_MULTIPLIER)
 	var points := pattern_points(pattern) if pattern.win else 0.0
 	var primary := points
 	if self_draw and primary <= 0.0:
-		primary = CFG.SCORE_READY if declared_ready else CFG.SCORE_SELF_DRAW
-		if float(own.total) <= 0.0:
+		primary = CFG.SCORE_SELF_DRAW
+		if not declared_ready and float(own.total) <= 0.0:
 			var all_dry := true
 			for opponent in opponents:
 				if float(opponent.tenpai_probability) > 0.0 and float(opponent.chickens) > 0.0:
@@ -135,14 +139,13 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 		# 未叫牌者以出牌鸡负分参与比较，因此赢家还收取对方保留的
 		# 出牌鸡；叫牌者则按完整鸡分逐家比较。
 		total += called * (float(own.total) - float(opponent.chickens)) + (1.0 - called) * (float(own.total) + float(opponent.discarded))
-		if self_draw or payer == source:
-			total += kong_base(melds, payer) - called * kong_base(opponent.melds, seat)
-		elif kong_base(melds, -1) > 0.0:
-			# 暗杠/加杠的基础分由胡牌局每位付款人承担，
-			# 即使该付款人不是放炮者也要计入估值。
-			total += kong_base(melds, -1)
+		total += kong_base(melds, payer) - called * kong_base(opponent.melds, seat)
+		# §十八（一）6：未叫杠主的全部杠基础和杠中鸡向每个叫牌者反付。
+		total += (1.0 - called) * (uncalled_kong_base(opponent.melds) + float(opponent.get("kong_chickens", 0.0)))
 		if self_draw:
 			total += bonus
+			if declared_ready:
+				total += CFG.SCORE_READY
 		var base_payer := self_draw or payer == source
 		if base_payer:
 			if self_draw:
@@ -155,18 +158,16 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 					total += CFG.SCORE_ROB_KONG
 				elif ACTIONS.is_post_kong_discard(round.last_discard):
 					total += CFG.SCORE_RON_CALLED if called > 0.5 else CFG.SCORE_RON_UNCALLED
-		# 点炮胡牌：报听费由点炮者支付；牌型费由每家逐家支付；杀报由报听点炮者额外支付。
+		# §十二：报听费只由点炮者支付，点炮者是否报听不产生额外费用。
 		if not self_draw:
 			# 牌型费：每家逐家支付
 			if points > 0.0:
 				total += points
-			# 报听费和杀报：只有点炮者支付
+			# 报听费：只有点炮者支付
 			if payer == source:
 				if declared_ready:
 					total += CFG.SCORE_READY
-				if opponent.ready:
-					total += CFG.SCORE_READY
-	return total
+	return total * multiplier
 
 static func draw_value(round, seat: int, hand: Array, melds: Array, opponents: Array, discard: String = "") -> Dictionary:
 	# No flip in an exhaustive draw. Only retained discards and kong chickens count.
@@ -175,11 +176,12 @@ static func draw_value(round, seat: int, hand: Array, melds: Array, opponents: A
 	var uncalled_value := 0.0
 	for opponent in opponents:
 		var probability := float(opponent.tenpai_probability)
-		called_value += (1.0 - probability) * (float(own.discarded) + float(opponent.draw_discarded) + CFG.SCORE_SELF_DRAW + float(own.kong_chickens) + kong_base(melds, int(opponent.seat)))
+		called_value += (1.0 - probability) * (float(own.discarded) + float(opponent.draw_discarded) + CFG.SCORE_SELF_DRAW + float(own.kong_chickens) + kong_base(melds, int(opponent.seat)) + uncalled_kong_base(opponent.melds) + float(opponent.get("draw_kong_chickens", 0.0)))
 		# 未叫牌方也要为自己的杠中鸡向每位已叫牌对手逐家补付；
 		# 因此估值中同时扣除对手的杠中鸡和本人的杠中鸡。
-		uncalled_value -= probability * (float(opponent.draw_discarded) + float(own.discarded) + CFG.SCORE_SELF_DRAW + float(opponent.draw_kong_chickens) + float(own.kong_chickens) + kong_base(opponent.melds, seat) + kong_base(melds, int(opponent.seat)))
-	return {"called": called_value, "uncalled": uncalled_value}
+		uncalled_value -= probability * (float(opponent.draw_discarded) + float(own.discarded) + CFG.SCORE_SELF_DRAW + float(opponent.draw_kong_chickens) + float(own.kong_chickens) + kong_base(opponent.melds, seat) + uncalled_kong_base(melds))
+	var multiplier := clampi(int(round.round_meta.get("chicken_multiplier", 1)), 1, CFG.MAX_CHICKEN_MULTIPLIER)
+	return {"called": called_value * multiplier, "uncalled": uncalled_value * multiplier}
 
 static func settlement_value(round, seat: int, hand: Array, melds: Array, flips: Dictionary, opponents: Array, discard: String = "") -> Dictionary:
 	var own := profile(round, seat, hand, melds, flips, discard)
@@ -190,4 +192,5 @@ static func settlement_value(round, seat: int, hand: Array, melds: Array, flips:
 		called_value += probability * (float(own.total) - float(opponent.chickens)) + (1.0 - probability) * (float(own.total) + float(opponent.discarded))
 		called_value += kong_base(melds, int(opponent.seat)) - probability * kong_base(opponent.melds, seat)
 		uncalled_value -= probability * (float(opponent.discarded) + kong_base(opponent.melds, seat))
-	return {"called": called_value, "uncalled": uncalled_value}
+	var multiplier := clampi(int(round.round_meta.get("chicken_multiplier", 1)), 1, CFG.MAX_CHICKEN_MULTIPLIER)
+	return {"called": called_value * multiplier, "uncalled": uncalled_value * multiplier}

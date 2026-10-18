@@ -12,12 +12,41 @@ var _next_round_button: Button
 var _next_round_status: Label
 var _next_round_hint: Label
 var _ready_chips: Array[Panel] = []
+var _post_controls: Panel
+var _post_view_button: Button
+var _post_next_button: Button
 
 func build() -> void:
 	result_layer = table._box(table.surface)
 	result_layer.size = UI.DESIGN_SIZE
 	result_layer.mouse_filter = Control.MOUSE_FILTER_STOP
 	result_layer.hide()
+	_post_controls = Panel.new()
+	_post_controls.name = "PostSettlementControls"
+	_post_controls.position = Vector2((UI.DESIGN_SIZE.x - 760.0) / 2.0, UI.DESIGN_SIZE.y - 168.0)
+	_post_controls.size = Vector2(760, 126)
+	_post_controls.mouse_filter = Control.MOUSE_FILTER_STOP
+	_post_controls.z_index = 250
+	_post_controls.add_theme_stylebox_override("panel", table._style(UI.RESULT_BACKGROUND, UI.RESULT_BORDER, UI.RESULT_RADIUS, 1))
+	table.surface.add_child(_post_controls)
+	var row := HBoxContainer.new()
+	row.position = Vector2(24, 18)
+	row.size = Vector2(712, 90)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 24)
+	_post_controls.add_child(row)
+	_post_view_button = table._button("查看结算", func(): table._show_result(), Vector2(320, 90), true)
+	_post_view_button.name = "PostSettlementViewButton"
+	_post_view_button.add_theme_font_size_override("font_size", UI.NEXT_ROUND_FONT_SIZE)
+	row.add_child(_post_view_button)
+	_post_next_button = table._button("下一局" if table._net_mode() == "" else "准备下一局", table._next_round, Vector2(320, 90), false)
+	_post_next_button.name = "PostSettlementNextButton"
+	_post_next_button.add_theme_font_size_override("font_size", UI.NEXT_ROUND_FONT_SIZE)
+	row.add_child(_post_next_button)
+	# Keep the legacy bridge field pointing at the visible post-animation button
+	# until the detailed result card creates its own next-round button.
+	_next_round_button = _post_next_button
+	_post_controls.hide()
 
 func _result_card_size() -> Vector2:
 	return UI.LANDSCAPE_RESULT_SIZE if table._landscape else UI.RESULT_CARD_SIZE
@@ -29,6 +58,8 @@ func _draw_result_title() -> String:
 	return "四家叫牌 · 流局" if table.round.round_meta.get("all_called_draw", false) else "牌墙摸完 · 查叫"
 
 func _show_result() -> void:
+	hide_post_settlement_controls()
+	_result_shown = true
 	_ready_chips.clear()
 	_next_round_status = null
 	_next_round_hint = null
@@ -138,6 +169,17 @@ func _show_result() -> void:
 	table._toggle_result_panel(true)
 	preload("res://scripts/ui/UiMotion.gd").appear(result_layer)
 	preload("res://scripts/ui/UiMotion.gd").slide_in(panel)
+
+func show_post_settlement_controls() -> void:
+	if _result_shown or _post_controls == null or not is_instance_valid(_post_controls): return
+	_post_controls.show()
+	if _post_next_button != null and table._net_mode() == "":
+		_post_next_button.disabled = false
+	_refresh_next_round_controls()
+
+func hide_post_settlement_controls() -> void:
+	if _post_controls != null and is_instance_valid(_post_controls):
+		_post_controls.hide()
 
 func _draw_result_details(row: Control, seat: int, status: String, list: Array, winner: int) -> void:
 	var background = Panel.new()
@@ -281,6 +323,8 @@ func panel_position_for_result_toggle() -> Vector2:
 	return (table._design_size() - table._result_card_size()) / 2.0 + table._result_toggle_position()
 
 func _toggle_result_panel(show_card: bool) -> void:
+	if show_card:
+		hide_post_settlement_controls()
 	if _result_shade != null and is_instance_valid(_result_shade):
 		_result_shade.visible = show_card
 	if _result_panel != null and is_instance_valid(_result_panel):
@@ -289,6 +333,8 @@ func _toggle_result_panel(show_card: bool) -> void:
 	result_layer.mouse_filter = Control.MOUSE_FILTER_STOP if show_card else Control.MOUSE_FILTER_IGNORE
 	if _result_restore != null and is_instance_valid(_result_restore):
 		_result_restore.visible = not show_card
+	if not show_card and _result_panel != null and is_instance_valid(_result_panel) and table._settlement_animation_done():
+		show_post_settlement_controls()
 
 func _next_round() -> void:
 	if table._net_mode() != "":
@@ -300,16 +346,17 @@ func _next_round() -> void:
 		table.new_game()
 
 func _refresh_next_round_controls() -> void:
-	if table._net_mode() == "" or table.round == null or table.round.phase != RoundState.Phase.SETTLED or not is_instance_valid(_next_round_button): return
+	var active_button: Button = _post_next_button if _post_controls != null and _post_controls.visible else _next_round_button
+	if table._net_mode() == "" or table.round == null or table.round.phase != RoundState.Phase.SETTLED or not is_instance_valid(active_button): return
 	var network = table._net_node()
 	var state: Dictionary = network.lobby
 	var seats: Array = state.get("seats", [])
-	_next_round_button.disabled = state.get("ready_round", -1) != network.round_number or seats.size() != 4
-	if _next_round_button.disabled: return
+	active_button.disabled = state.get("ready_round", -1) != network.round_number or seats.size() != 4
+	if active_button.disabled: return
 	var seconds = int(state.get("countdown", -1))
 	var ready: bool = seats[table.human_seat].ready
-	_next_round_button.text = "%d 秒后开始 · 取消" % seconds if seconds >= 0 else ("已准备 · 点击取消" if ready else "准备下一局")
-	_next_round_button.add_theme_font_size_override("font_size", UI.READY_NEXT_ROUND_FONT_SIZE)
+	active_button.text = "%d 秒后开始 · 取消" % seconds if seconds >= 0 else ("已准备 · 点击取消" if ready else "准备下一局")
+	active_button.add_theme_font_size_override("font_size", UI.READY_NEXT_ROUND_FONT_SIZE)
 	var waiting = PackedStringArray()
 	var ready_count := 0
 	var index := 0
@@ -330,5 +377,7 @@ func _refresh_next_round_controls() -> void:
 			label.add_theme_color_override("font_color", UI.GOLD if prepared else UI.MUTED)
 		index += 1
 		if not seats[seat].ready: waiting.append(name_value)
-	_next_round_status.text = "下一局准备  %d / 4" % ready_count
-	_next_round_hint.text = "全部准备，%d 秒后自动开局" % seconds if seconds >= 0 else ("等待：" + "、".join(waiting) + " · 人机默认准备")
+	if _next_round_status != null and is_instance_valid(_next_round_status):
+		_next_round_status.text = "下一局准备  %d / 4" % ready_count
+	if _next_round_hint != null and is_instance_valid(_next_round_hint):
+		_next_round_hint.text = "全部准备，%d 秒后自动开局" % seconds if seconds >= 0 else ("等待：" + "、".join(waiting) + " · 人机默认准备")

@@ -16,6 +16,7 @@ func check(value: bool, message: String) -> void:
 
 func fixture() -> RoundState:
 	var r := RoundState.new()
+	r.set_rng_seed(20261018)
 	r.build_players(0)
 	r.controllers = [null, null, null, null]
 	r.wall = WallRing.new(TileSetFactory.create_deck())
@@ -123,7 +124,19 @@ func _test_chicken_values() -> void:
 		check(ScoringEngine.chicken_profile(r, 0, "").discarded == 6.0, "Ordinary two plus charge four")
 		check(ScoringEngine.chicken_profile(r, 0, tile).discarded == 12.0, "Flipped ordinary four plus charge eight, no extra flip point")
 		r.round_meta.chicken_multiplier = 2
-		check(ScoringEngine.chicken_profile(r, 0, tile).total == 24.0, "Carry multiplier stacks with flipped chicken doubling")
+		var profile_mult = ScoringEngine.chicken_profile(r, 0, tile)
+		check(profile_mult.total == 12.0, "chicken_profile returns base discarded, before multiplier (flipped = 12)")
+		# 倍率在settle里应用。玩家0已打出2张鸡（翻牌后各6分，共12），其他玩家无鸡。
+		# 流局结算：0得 (12-0)*3*2倍 = 72
+		r.round_meta.outcome = "draw_all_called"
+		r.round_meta.dealer_seat = 0
+		# 让所有玩家都听牌（13张听1张）
+		# 玩家0已打出2张鸡，手牌清空。补成听牌：3副+孤张（听对子）
+		r.players[0].concealed = ["wan1", "wan1", "wan1", "wan2", "wan2", "wan2", "wan3", "wan3", "wan3", "wan4", "wan4", "wan4", "wan5"]  # 听wan5（13张）
+		for i in range(1, 4):
+			r.players[i].concealed = ["wan1", "wan1", "wan1", "wan2", "wan2", "wan2", "wan3", "wan3", "wan3", "wan4", "wan4", "wan4", "wan5"]  # 听wan5（13张），无鸡
+		var s = settle(r)
+		check(s.deltas == [0.0, 0.0, 0.0, 0.0], "§二十：四家叫牌流局本局不计分，即使倍率为2")
 		r.round_meta.burn_chicken_seat = 0
 		check(ScoringEngine.chicken_profile(r, 0, tile).total == 0.0, "Robbed added kong burns all chicken points")
 	var r := fixture()
@@ -197,15 +210,15 @@ func _test_uncalled_discard_chicken_payments() -> void:
 
 func _test_uncalled_kong_chicken_payments() -> void:
 	# 未叫牌明杠幺鸡：四张按普通鸡每张2分，杠中鸡8分逐家补给叫牌者。
-	# 明杠基础4分仍只在原放杠者已叫牌时反向产生。
+	# 未叫杠主向每位叫牌者反付基础4分（§十八一6）。
 	var draw := fixture()
 	draw.players[0].concealed = ["wan2"]
 	draw.players[0].melds = [{"kind": "kong", "tile": "tiao1", "from_seat": 1, "concealed": false}]
 	draw.players[1].concealed = WAIT.duplicate()
 	draw.players[2].concealed = WAIT.duplicate()
 	var draw_result := settle(draw)
-	check(draw_result.pairwise[0][1] == -16.0 and draw_result.pairwise[0][2] == -12.0,
-		"未叫牌明杠幺鸡流局：原放杠者收16，其余叫牌者收12")
+	check(draw_result.pairwise[0][1] == -16.0 and draw_result.pairwise[0][2] == -16.0,
+		"未叫牌明杠幺鸡流局：每位叫牌者收基础补付4+杠4+杠中鸡8=16")
 	check(draw_result.transfers.any(func(item): return item.get("from", -1) == 0 and item.get("to", -1) == 1 and item.get("reason", "") == "未叫牌杠中鸡" and float(item.get("amount", 0.0)) == 8.0),
 		"未叫牌明杠幺鸡向原放杠叫牌者补8分")
 	check(draw_result.transfers.any(func(item): return item.get("from", -1) == 0 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌杠中鸡" and float(item.get("amount", 0.0)) == 8.0),
@@ -215,8 +228,8 @@ func _test_uncalled_kong_chicken_payments() -> void:
 	no_source_called.players[0].melds = [{"kind": "kong", "tile": "tiao1", "from_seat": 1, "concealed": false}]
 	no_source_called.players[2].concealed = WAIT.duplicate()
 	var no_source_result := settle(no_source_called)
-	check(no_source_result.pairwise[0][2] == -12.0 and no_source_result.pairwise[0][1] == 0.0,
-		"原放杠者未叫牌时不产生明杠基础4分")
+	check(no_source_result.pairwise[0][2] == -16.0 and no_source_result.pairwise[0][1] == 0.0,
+		"原放杠者未叫牌也必须向每位叫牌者反付杠4分")
 	var win := fixture()
 	win.round_meta.winner = 2
 	win.round_meta.winners = [2]
@@ -251,10 +264,10 @@ func _test_win_payments() -> void:
 	check(probe.deltas == [58.0, -14.0, -22.0, -22.0], "Win flip doubles retained charge and held chicken; uncalled pays full chicken")
 	r.round_meta.chicken_multiplier = 2
 	probe = settle(r)
-	check(probe.deltas == [104.0, -24.0, -40.0, -40.0], "Carry doubles chicken differences and full chicken compensation but not self draw")
+	check(probe.deltas == [116.0, -28.0, -44.0, -44.0], "先单倍结算后整体翻倍，包含自摸")
 	r.round_meta.burn_chicken_seat = 1
 	probe = settle(r)
-	check(probe.deltas == [108.0, -36.0, -36.0, -36.0], "Burned called player has zero chicken points but still pays")
+	check(probe.deltas == [120.0, -40.0, -40.0, -40.0], "Burned called player has zero chicken points but still pays")
 
 func _test_draw_payments() -> void:
 	var r := fixture()
@@ -295,12 +308,12 @@ func _test_kong_payments() -> void:
 				expected = [8.0, 8.0, -8.0, -8.0] if source_called else [12.0, -4.0, -4.0, -4.0]
 			check(settle(r).deltas == expected, "Draw kong payer selection: %s / source called %s" % [kind, source_called])
 			r.round_meta.chicken_multiplier = 4
-			check(settle(r).deltas == expected, "Chicken multiplier does not multiply kong fees")
+			check(settle(r).deltas == expected.map(func(v): return v * 2.0), "Chicken multiplier DOES multiply kong fees (capped at 2x)")
 			r.players[0].concealed = ["wan2"]
 			var uncalled_expected := [0.0, 0.0, 0.0, 0.0]
 			if source_called:
 				uncalled_expected = [-8.0, 16.0, -4.0, -4.0] if kind in ["concealed", "add_kong", "kong"] else [-4.0, 12.0, -4.0, -4.0]
-			check(settle(r).deltas == uncalled_expected, "未叫牌杠牌者向叫牌者支付对应杠分")
+			check(settle(r).deltas == uncalled_expected.map(func(v): return v * 2.0), "未叫牌杠牌者向叫牌者支付对应杠分（倍率作用）")
 	# Four concealed kongs: per-group fees plus a discarded charge.
 	var r := fixture()
 	r.players[0].concealed = ["wan9"]
@@ -334,7 +347,7 @@ func _test_multiplier() -> void:
 	r.round_meta.charge_chickens = {"tiao1": {"owner": 0, "location": "discard", "discard_id": 0}}
 	r.round_meta.chicken_multiplier = 2
 	r._penzu()
-	check(r.last_result.deltas == [36.0, -12.0, -12.0, -12.0], "荒牌补付包含基础4分并按倍率计算出牌鸡")
+	check(r.last_result.deltas == [48.0, -16.0, -16.0, -16.0], "荒牌(出牌冲锋鸡4+基础4)最后整体乘2")
 	check(r.next_chicken_multiplier == 1, "Mixed draw resets multiplier")
 	r.round_meta.winner = 0
 	r.players[0].concealed.append("wan9")

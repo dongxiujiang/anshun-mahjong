@@ -30,7 +30,7 @@ func observe(round, seat: int, seen: Dictionary) -> Dictionary:
 	var profiles: Array = []
 	for spec in specs: profiles.append(_infer(round, spec, pool, flips, random))
 	_cache_key = key
-	_cached = {"opponents": profiles, "flips": flips, "unknown": pool.reduce(func(a, b): return a + b, 0)}
+	_cached = {"opponents": profiles, "flips": flips, "multiplier": clampi(int(round.round_meta.get("chicken_multiplier", 1)), 1, VALUE.CFG.MAX_CHICKEN_MULTIPLIER), "unknown": pool.reduce(func(a, b): return a + b, 0)}
 	return _cached
 
 func _infer(round, spec: Dictionary, pool: Array[int], flips: Dictionary, random: RandomNumberGenerator) -> Dictionary:
@@ -69,14 +69,13 @@ func _infer(round, spec: Dictionary, pool: Array[int], flips: Dictionary, random
 			for tile in Tiles.all_values():
 				var full := hand.duplicate()
 				full.append(tile)
-				var pattern := RuleEngine.analyze(full, melds)
+				var pattern := RuleEngine.analyze(full, melds, tile)
 				if not pattern.win: continue
 				var full_profile := VALUE.profile(round, int(spec.seat), full, melds, flips)
 				var pattern_fee := VALUE.pattern_points(pattern)
 				# 点炮基础费按放炮者叫牌状态区分；牌型分另行叠加。
 				var primary_fee := _discard_win_primary_fee(pattern_fee, bool(spec.ready))
 				var cost: float = primary_fee + float(full_profile.total)
-				if spec.ready and pattern_fee > 0.0: cost += VALUE.CFG.SCORE_READY
 				cost += VALUE.kong_base(melds, -1) # Source-specific bases are added by risk().
 				var uncalled_cost: float = cost - float(full_profile.total) + float(full_profile.discarded) + float(full_profile.kong_chickens)
 				hits[tile] = float(hits.get(tile, 0.0)) + weight
@@ -99,7 +98,7 @@ func _infer(round, spec: Dictionary, pool: Array[int], flips: Dictionary, random
 	var unknown_total: int = pool.reduce(func(a, b): return a + b, 0)
 	var expected_hidden := 0.0
 	for tile in Tiles.all_values():
-		expected_hidden += (13 - 3 * spec.melds.size()) * pool[Tiles.value_index(tile)] / float(maxi(1, unknown_total)) * VALUE.tile_value(tile, flips, int(round.round_meta.get("chicken_multiplier", 1)))
+		expected_hidden += (13 - 3 * spec.melds.size()) * pool[Tiles.value_index(tile)] / float(maxi(1, unknown_total)) * VALUE.tile_value(tile, flips, 1)
 	result.chickens = sample_chickens / sum_weight if sum_weight > 0 else float(known.total) + expected_hidden
 	for tile in Tiles.all_values():
 		var index := Tiles.value_index(tile)
@@ -138,16 +137,14 @@ func risk(context: Dictionary, tile: String, source_ready: bool = false, after_s
 		if not own_called: costs = opponent.uncalled_costs if unrestricted else opponent.special_uncalled_costs
 		var p := float(opponent.tenpai_probability) * float(waits.get(tile, 0.0))
 		var payment := float(costs.get(tile, 0.0)) + VALUE.kong_base(opponent.melds, source) - VALUE.kong_base(opponent.melds, -1)
-		if source_ready and not opponent.ready: payment += VALUE.CFG.SCORE_READY
 		if not rob_kong: payment -= own_chickens
 		# 一张弃牌可被多家同胡，分别累加每位胡牌者的预期损失。
 		expected_loss += p * maxf(0.0, payment)
 		probability = 1.0 - (1.0 - probability) * (1.0 - p)
-	return {"probability": probability, "loss": expected_loss}
+	return {"probability": probability, "loss": expected_loss * int(context.get("multiplier", 1))}
 
 static func _discard_win_primary_fee(pattern_fee: float, declared_ready: bool, source_called: bool = false) -> float:
-	# 普通弃牌不收17/21基础费；报听和牌型胡按每位非赢家逐家
-	# 支付，杠后/抢杠基础费由调用方根据实际弃牌窗口另行加入。
+	# 估算放炮者对该赢家的付款：普通弃牌不收17/21，报听额外24。
 	return pattern_fee + (VALUE.CFG.SCORE_READY if declared_ready else 0.0)
 
 func _tile_weights(spec: Dictionary) -> Array[float]:

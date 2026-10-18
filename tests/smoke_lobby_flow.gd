@@ -6,6 +6,12 @@ var online_url := ""
 
 func _initialize() -> void: call_deferred("_run")
 
+func _wait_until(predicate: Callable, seconds: float = 12.0) -> bool:
+	var deadline := Time.get_ticks_msec() + int(seconds * 1000.0)
+	while not predicate.call() and Time.get_ticks_msec() < deadline:
+		await process_frame
+	return bool(predicate.call())
+
 func _run() -> void:
 	var network := root.get_node("Network")
 	network.reset()
@@ -55,8 +61,11 @@ func _run() -> void:
 			var decision := actor.decide_response(table.round, 2, request.disc_seat, request.tile, request.options)
 			table._commit_response(decision.action)
 	t.expect(table.round.phase == RoundState.Phase.SETTLED, "Lobby-to-table full game finishes")
+	t.expect(await _wait_until(func(): return table._settlement_animation_controller.is_completed()), "Lobby-launched settlement preview finishes")
+	t.expect(not table.result_layer.visible and table._settlement_card._post_controls.visible, "Lobby-launched game waits for settlement view")
+	table._settlement_card._post_view_button.pressed.emit()
 	await process_frame
-	t.expect(table.result_layer.visible, "Lobby-launched game shows settlement")
+	t.expect(table.result_layer.visible, "Lobby-launched game opens settlement after a click")
 	var scores: Array = table.round.players.map(func(player): return player.score)
 	var next_dealer: int = table.round.next_dealer_seat
 	table._next_round()

@@ -31,7 +31,7 @@ func _pick_discard(round, seat: int) -> Dictionary:
 	var player: PlayerState = round.players[seat]
 	var seen := _seen_map(round, seat)
 	var context := opponent_model.observe(round, seat, seen)
-	var after_kong: bool = round._kong_draw_turn and round._kong_draw_kind in [RoundState.KongKind.CONCEALED, RoundState.KongKind.ADD_KONG]
+	var after_kong: bool = round._kong_draw_turn
 	last_analysis = _discard_options(round, seat, player.concealed, player.melds, seen, context, round.can_declare_ready(seat), after_kong)
 	var ordinary := last_analysis.filter(func(candidate): return not bool(candidate.get("declare_ready", false)))
 	var search_candidates: Array = ordinary.duplicate(true)
@@ -90,16 +90,16 @@ func _evaluate_hand(round, seat: int, hand: Array, melds: Array, seen: Dictionar
 		if Shanten.shanten(full, melds) >= distance: continue
 		outs += available
 		if distance != 0: continue
-		var pattern := RuleEngine.analyze(full, melds)
+		var pattern := RuleEngine.analyze(full, melds, tile)
 		if not pattern.win: continue
 		var draw_seen := seen.duplicate()
 		draw_seen[tile] = int(draw_seen.get(tile, 0)) + 1
 		var win_flips := VALUE.flip_distribution(draw_seen)
-		self_value += available * VALUE.win_value(round, seat, full, melds, win_flips, context.opponents, declared, true, -1, discard)
+		self_value += available * VALUE.win_value(round, seat, full, melds, win_flips, context.opponents, declared, true, -1, discard, false, tile)
 		for opponent in context.opponents:
 			if VALUE.allows_ron(pattern, melds, declared) or opponent.ready:
 				ron_outs += available / 3.0
-				ron_value += available / 3.0 * VALUE.win_value(round, seat, full, melds, win_flips, context.opponents, declared, false, int(opponent.seat), discard)
+				ron_value += available / 3.0 * VALUE.win_value(round, seat, full, melds, win_flips, context.opponents, declared, false, int(opponent.seat), discard, false, tile)
 	if distance == 0:
 		self_value /= maxi(1, outs)
 		ron_value /= maxf(1.0, ron_outs)
@@ -136,7 +136,6 @@ func _evaluate_hand(round, seat: int, hand: Array, melds: Array, seen: Dictionar
 	var merit := self_probability * self_value + (1.0 - self_probability) * ron_probability * ron_value
 	merit += (1.0 - win_probability) * (called_probability * called_balance + (1.0 - called_probability) * uncalled_balance)
 	merit -= float(risk.loss) * inference_weight
-	if declared: merit -= (1.0 - win_probability) * (1.0 - enemy_survival) * VALUE.CFG.SCORE_READY
 	var expected_net := merit
 	# Future hand probabilities are approximate. Preserve an attack-efficiency
 	# anchor so speculative pattern income cannot outweigh real live improvements.

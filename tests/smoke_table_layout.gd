@@ -687,7 +687,15 @@ func _test_draw_results() -> void:
 	await process_frame
 	await process_frame
 	_expect(table.round.last_result.deltas == [32.0, 20.0, -24.0, -28.0], "Visible draw result must match chicken, base4 and kong payer rules")
-	_expect(table.result_layer.visible and not table.status_label.visible and table.status_label.text == "", "Mixed draw keeps table status text hidden")
+	_expect(table._settlement_animation_controller.has_started() and not table.result_layer.visible, "Mixed draw starts settlement preview without opening the result card")
+	for _frame in 20:
+		if table._settlement_animation_controller.is_completed(): break
+		await process_frame
+	_expect(table._settlement_animation_controller.is_completed() and table._settlement_card._post_controls.visible, "Settlement controls appear only after the preview finishes")
+	_expect(not table.status_label.visible and table.status_label.text == "", "Mixed draw keeps table status text hidden")
+	table._show_result()
+	await process_frame
+	_expect(table.result_layer.visible, "Result card opens only after an explicit view action")
 	if rendering:
 		await RenderingServer.frame_post_draw
 		_expect(root.get_texture().get_image().save_png("res://docs/rules_draw_result.png") == OK)

@@ -10,6 +10,7 @@ func _initialize() -> void: call_deferred("_run")
 
 func fixture() -> RoundState:
 	var r := RoundState.new()
+	r.set_rng_seed(20261018)
 	r.build_players(0)
 	r.controllers = [null, null, null, null]
 	r.phase = RoundState.Phase.PLAYING
@@ -38,7 +39,7 @@ func _test_config_and_patterns() -> void:
 	t.expect(GameConfig.SCORE_KONG_DRAW == 5.0 and GameConfig.SCORE_LAST_FOUR == 5.0, "杠开与海底均为5分")
 	var big := ["wan1","wan1","wan1","wan2","wan2","wan2","tong3","tong3","tong3","tiao4","tiao4","tiao4","wan9","wan9"]
 	var p := RuleEngine.analyze(big, [], "wan9")
-	t.expect(p.all_triplets and p.big_triplet_single_wait, "大队子及大队子单吊判定")
+	t.expect(p.all_triplets and not p.big_triplet_single_wait, "闭手大队子并非手牌只剩一张的单吊")
 	var seven := ["tiao1","tiao1","tiao2","tiao2","tiao3","tiao3","tiao4","tiao4","tiao5","tiao5","tiao6","tiao6","tiao9","tiao9"]
 	p = RuleEngine.analyze(seven, [])
 	t.expect(p.clean_seven_pairs and RuleEngine.special_pattern_key(p) == "clean_seven_pairs", "清七对优先于小七对和清一色")
@@ -46,8 +47,8 @@ func _test_config_and_patterns() -> void:
 	p = RuleEngine.analyze(dragon, [])
 	t.expect(p.clean_dragon_seven_pairs and RuleEngine.special_pattern_key(p) == "clean_dragon_seven_pairs", "清龙对判定")
 	var single := ["tiao1","tiao2","tiao3","tiao4","tiao5","tiao6","tiao2","tiao3","tiao4","tiao5","tiao6","tiao7","tiao9","tiao9"]
-	t.expect(RuleEngine.analyze(single, [], "tiao9").clean_single_wait, "清单吊判定")
-	for item in [["小七对", 24.0], ["龙七对", 44.0], ["大队子", 14.0], ["大队子单吊", 24.0], ["清一色", 24.0], ["清大对", 34.0], ["清大队单吊", 44.0], ["清七对", 44.0], ["清单吊", 54.0], ["清龙对", 64.0]]:
+	t.expect(not RuleEngine.analyze(single, [], "tiao9").clean_single_wait, "有顺子不是清单吊")
+	for item in [["小七对", 24.0], ["龙七对", 44.0], ["大队子", 14.0], ["大队子单吊", 24.0], ["清一色", 24.0], ["清大对", 34.0], ["清七对", 44.0], ["清单吊", 54.0], ["清龙对", 64.0]]:
 		var found := false
 		for raw in GameConfig.PATTERNS:
 			if raw.label == item[0] and float(raw.score) == item[1]: found = true
@@ -69,7 +70,7 @@ func _test_payments() -> void:
 	var multi_result := ScoringEngine.settle(multi)
 	t.expect(multi_result.pairwise[0][2] == 0.0 and multi_result.pairwise[1][2] == 0.0 and multi_result.deltas[2] == 0.0, "普通一炮多响不收基础费")
 	var ready := fixture(); ready.players[0].concealed = PLAIN.duplicate(); ready.players[0].ready = true; ready.round_meta.winner = 0; ready.round_meta.winners = [0]; ready.round_meta.self_draw = true
-	t.expect(ScoringEngine.settle(ready).deltas == [72.0, -24.0, -24.0, -24.0], "报听普通胡牌每家付24")
+	t.expect(ScoringEngine.settle(ready).deltas == [84.0, -28.0, -28.0, -28.0], "报听普通自摸每家4+24=28，不用干扣")
 	var killed := fixture(); killed.players[0].concealed = PLAIN.duplicate(); killed.players[1].concealed = PLAIN.duplicate(); killed.players[1].ready = true; killed.round_meta.winner = 0; killed.round_meta.winners = [0]; killed.round_meta.self_draw = true
 	var killed_result := ScoringEngine.settle(killed)
 	t.expect(killed_result.deltas == [72.0, -24.0, -24.0, -24.0], "自摸不把其他报听者重复计为杀报")

@@ -44,6 +44,8 @@ func _run() -> void:
 				if opponent != seat:
 					_expect(round.players[opponent].concealed.all(func(tile): return tile == "hidden0"), "Opponent hand values must stay private")
 		if round.phase == RoundState.Phase.SETTLED:
+			while not table._settlement_animation_controller.is_completed() and Time.get_ticks_msec() - start < 10000:
+				await get_tree().process_frame
 			_expect(audio_events > 0, "Host and client table must both receive audio events")
 			_expect(AudioManager._last_event_id == round.audio_event_id, "Table audio must reach the latest synced event")
 			if host_mode:
@@ -57,7 +59,10 @@ func _run() -> void:
 					return
 			else:
 				await get_tree().process_frame
-				_expect(table.result_layer.visible, "Client must display settlement")
+				_expect(not table.result_layer.visible and table._settlement_card._post_controls.visible, "Client waits for an explicit settlement view action")
+				table._settlement_card._post_view_button.pressed.emit()
+				await get_tree().process_frame
+				_expect(table.result_layer.visible, "Client opens settlement only after the view button is pressed")
 				_expect(round.last_result.has("deltas"), "Settlement scores must synchronize")
 				_expect(turns > 0 and responses > 0, "Client must complete turn and response workflows")
 				Network.net_node.rpc_id(1, "ack", "turns=%d responses=%d UI=%s" % [turns, responses, "fail" if failed else "ok"])
