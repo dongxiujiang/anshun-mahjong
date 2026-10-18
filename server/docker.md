@@ -7,6 +7,49 @@
 
 游戏房间使用 ENet UDP，**不经过 Caddy**，由 `app` 容器直接暴露 `7600-7631/udp`。
 
+## 模式二（推荐）：CI 构建镜像，服务器不克隆
+
+仓库新增了 [`.github/workflows/docker-image.yml`](../.github/workflows/docker-image.yml)：
+
+- push `V1.0.*` 标签或手动触发时，构建 `linux/amd64` 镜像并推送到 GHCR。
+- 同时上传 `server-deploy-bundle` 产物，里面只有 `compose.prod.yaml`、`docker/Caddyfile`、`deploy-image.sh`、`.env.example`。
+
+服务器只需要这四个文件，**不需要项目源码、Godot 或 Python**：
+
+```text
+/opt/mahjong/
+  compose.prod.yaml
+  docker/Caddyfile
+  deploy-image.sh
+  .env
+```
+
+`.env` 示例：
+
+```dotenv
+APP_IMAGE=ghcr.io/<owner>/<repo>:V1.0.4
+DOMAIN=play.example.com
+PUBLIC_HOST=play.example.com
+MAX_ROOMS=16
+FIRST_PORT=7600
+```
+
+部署/更新/回滚都只换镜像标签：
+
+```sh
+sh deploy-image.sh play.example.com ghcr.io/<owner>/<repo>:V1.0.4
+```
+
+脚本会更新 `.env` 里的 `APP_IMAGE`，执行 `docker compose -f compose.prod.yaml pull` 和 `up -d`。
+
+如果镜像是私有包，服务器先登录：
+
+```sh
+docker login ghcr.io -u <GitHub用户名> -p <带 read:packages 的 PAT>
+```
+
+更新时换标签即可；回滚就填旧标签。GHCR 在国内可能较慢，可以把同一镜像重新推到阿里云 ACR/腾讯云 TCR，`APP_IMAGE` 填对应 registry 地址即可。
+
 ## 1. 前置条件
 
 - 一台 Linux x86_64 云服务器，建议至少 2 核 4G；4 核 8G 可开更多房间。
@@ -20,7 +63,7 @@
 
 如果域名使用 Cloudflare，`DOMAIN` 对应记录必须设为 **DNS only（灰云）**，否则 UDP 房间端口无法直连。
 
-## 2. 一键启动
+## 2. 模式一：源码构建启动
 
 在仓库根目录执行：
 
