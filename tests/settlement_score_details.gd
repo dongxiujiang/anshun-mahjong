@@ -93,14 +93,14 @@ func _test_exposed_kong() -> void:
 	_amount(group, "other", 4, "win round exposed base remains other")
 	_amount(group, "chicken", 8, "kong chicken contribution separate from base")
 	t.expect(not group.stages.has("kong"), "exposed base not moved to own-kong phase")
-	t.expect(group.detail.contains("明杠对家4分"), "payer relative to owner seat1, not human/dealer")
+	t.expect(group.detail.contains("杠对家幺鸡4分"), "payer relative to owner seat1, not human/dealer")
 	t.expect(group.tiles.size() == 4, "whole kong node group")
 	var plain := _fixture()
 	plain.players[1].melds = [{"kind": "kong", "tile": "wan2", "from_seat": 3}]
 	plain.result.items[1] = [_kong("wan2", "明杠", 3, [3], 4, 0, 0, 1)]
 	_pay(plain, 3, 1, 4, "明杠")
 	var plain_group := _find(_build(plain), "1:meld_0")
-	t.expect(plain_group.detail == "明杠对家4分", "plain exposed kong uses only compact heading and payer")
+	t.expect(plain_group.detail == "杠对家2万4分", "plain exposed kong uses tile, direction and per-payer unit")
 	# The same from_seat on an added kong is NOT its sole base payer.
 	f.players[1].melds[0].kind = "add_kong"
 	f.result.items[1] = [_kong("tiao1", "加杠", 3, [0, 2, 3], 8, 16, 0, 1)]
@@ -108,7 +108,7 @@ func _test_exposed_kong() -> void:
 	for payer in [0, 2, 3]: _pay(f, payer, 1, 8, "加杠")
 	group = _find(_build(f), "1:meld_0")
 	_amount(group, "kong", 24, "added kong uses actual three payments")
-	t.expect(group.stages.kong.text == "加杠8分", "added kong payer count and scaled unit")
+	t.expect(group.stages.kong.text == "杠幺鸡8分", "added kong payer count and scaled unit")
 
 func _test_multiple_same_kongs() -> void:
 	var f := _fixture()
@@ -120,7 +120,7 @@ func _test_multiple_same_kongs() -> void:
 	for index in 2:
 		var group := _find(groups, "0:meld_%d" % index)
 		_amount(group, "kong", 12, "complete same-rate rows match meld order")
-		t.expect(group.stages.kong.text == "暗杠4分", "three real payers")
+		t.expect(group.stages.kong.text == ("杠1万4分" if index == 0 else "杠2万4分"), "three real payers")
 	# Truncated/aggregated row count is not enough to allocate payer1's money.
 	f.result.transfers.remove_at(3)
 	groups = _build(f)
@@ -192,6 +192,22 @@ func _test_uncalled_charge_short_label() -> void:
 	t.expect(group.stages.chicken.text == "冲锋八筒-4分", "uncalled charge chicken shows one short tile line")
 	t.expect(group.detail == "冲锋八筒-4分", "click uses the same short tile line")
 	t.expect(is_equal_approx(float(group.stages.chicken.amount), -12.0), "short label keeps the real 12-point ledger total")
+
+func _test_uncalled_kong_captions() -> void:
+	var f := _fixture()
+	f.result.called = [true, false, true, true]
+	f.players[1].melds = [{"kind": "kong", "tile": "wan2", "concealed": true}]
+	for receiver in [0, 2, 3]:
+		_pay(f, 1, receiver, 4, "未叫牌杠分")
+	var group := _find(_build(f), "1:meld_0")
+	t.expect(group.stages.kong.text == "杠2万-4分" and group.detail == group.stages.kong.text, "uncalled own kong shows one negative tile line")
+	t.expect(is_equal_approx(float(group.stages.kong.amount), -12.0), "negative kong short line keeps the real three-payer total")
+	var exposed := _fixture()
+	exposed.result.called = [true, false, true, true]
+	exposed.players[1].melds = [{"kind": "kong", "tile": "wan2", "from_seat": 0}]
+	_pay(exposed, 1, 0, 4, "未叫牌杠分")
+	group = _find(_build(exposed), "1:meld_0")
+	t.expect(group.stages.other.text == "杠上家2万-4分" and group.detail == group.stages.other.text, "uncalled exposed kong shows payer-relative direction")
 
 func _test_burn_robbed_and_normal_pung() -> void:
 	var f := _fixture()
@@ -297,7 +313,7 @@ func _test_requested_captions() -> void:
 			f.result.items[owner] = [_kong("wan2", "明杠", payer, [payer], 4, 0, 0, owner)]
 			_pay(f, payer, owner, 4, "明杠")
 			var group := _find(_build(f), "%d:meld_0" % owner)
-			t.expect(group.detail == "明杠%s4分" % ["", "下家", "对家", "上家"][offset], "exposed kong direction is relative to owner in all seats")
+			t.expect(group.detail == "杠%s2万4分" % ["", "下家", "对家", "上家"][offset], "exposed kong direction is relative to owner in all seats")
 	for kind in ["kong", "add_kong"]:
 		var label := "暗杠" if kind == "kong" else "加杠"
 		var f := _fixture()
@@ -305,7 +321,7 @@ func _test_requested_captions() -> void:
 		f.result.items[0] = [_kong("wan2", label, -1, [1, 2, 3])]
 		for payer in [1, 2, 3]: _pay(f, payer, 0, 4, label)
 		var group := _find(_build(f), "0:meld_0")
-		t.expect(group.detail == label + "4分" and group.stages.kong.text == group.detail, "kong caption reports per-payer base without formula")
+		t.expect(group.detail == "杠2万4分" and group.stages.kong.text == group.detail, "kong caption reports per-payer base without formula")
 		t.expect(group.stages.kong.amount == 12.0, "short kong caption never changes the real three-payer income")
 
 func _run() -> void:
@@ -316,6 +332,7 @@ func _run() -> void:
 	_test_draw()
 	_test_uncalled_debts()
 	_test_uncalled_charge_short_label()
+	_test_uncalled_kong_captions()
 	_test_burn_robbed_and_normal_pung()
 	_test_resolved_and_multiwinner_snapshot()
 	_test_missing_data()

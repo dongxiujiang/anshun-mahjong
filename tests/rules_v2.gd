@@ -70,7 +70,7 @@ func _test_payments() -> void:
 	var multi_result := ScoringEngine.settle(multi)
 	t.expect(multi_result.pairwise[0][2] == 0.0 and multi_result.pairwise[1][2] == 0.0 and multi_result.deltas[2] == 0.0, "普通一炮多响不收基础费")
 	var ready := fixture(); ready.players[0].concealed = PLAIN.duplicate(); ready.players[0].ready = true; ready.round_meta.winner = 0; ready.round_meta.winners = [0]; ready.round_meta.self_draw = true
-	t.expect(ScoringEngine.settle(ready).deltas == [84.0, -28.0, -28.0, -28.0], "报听普通自摸每家4+24=28，不用干扣")
+	t.expect(ScoringEngine.settle(ready).deltas == [72.0, -24.0, -24.0, -24.0], "报听普通自摸每家24，不再加自摸4")
 	var killed := fixture(); killed.players[0].concealed = PLAIN.duplicate(); killed.players[1].concealed = PLAIN.duplicate(); killed.players[1].ready = true; killed.round_meta.winner = 0; killed.round_meta.winners = [0]; killed.round_meta.self_draw = true
 	var killed_result := ScoringEngine.settle(killed)
 	t.expect(killed_result.deltas == [72.0, -24.0, -24.0, -24.0], "自摸不把其他报听者重复计为杀报")

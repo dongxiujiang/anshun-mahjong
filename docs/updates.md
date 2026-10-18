@@ -1,6 +1,97 @@
-# 两级更新：GitHub Releases
+# 两级更新：自建源与 GitHub Releases
 
-游戏使用公开仓库 `dongxiujiang/anshun-mahjong` 的 GitHub Releases，无需自建更新服务器，也不依赖联机房间服务。
+新完整 APK 默认使用自建 HTTPS 更新源，GitHub Releases 只作为旧版/备用发布渠道，不再作为手机端首选检查地址。
+
+## 自建 HTTPS 更新源（新完整 APK）
+
+新 APK 在 `project.godot` 中内置：
+
+```ini
+[updates]
+manifest_url=""
+manifest_urls=[
+"https://mj.dongxiu.fun/updates/update-manifest.json",
+"https://mj.dongxiu.fun/updates/update-manifest-fallback.json"
+]
+```
+
+两份清单内容相同，前者失败时客户端自动尝试后者；两者都指向同一个自建域名，不使用 GitHub 或 Gitee。
+
+`manifest_urls` 为空时才走旧的 `manifest_url` / GitHub Releases 逻辑，因此新 APK 的检查更新不会先访问 `api.github.com`。
+
+### 1.1.9 及更早版本
+
+旧版更新器仍然请求 GitHub API。因为热更新的第一步就是读取清单，旧版无法通过热更新把自己切换到自建源；必须先安装一次新完整 APK，之后才能走自建源热更新。
+
+### 发布补丁
+
+先生成补丁目录（沿用现有基线流程）：
+
+```powershell
+python tools/update/prepare_hot_update.py patch `
+  --godot "C:/Users/xiu/Desktop/Godot_v4.7.2-stable_win64.exe" `
+  --baseline build/update_baselines/1.0.0-boot1 `
+  --version 1.1.10 --notes "优化手机端热更新"
+```
+
+然后把补丁推到指定域名：
+
+```powershell
+python tools/update/publish_self_hosted.py `
+  --release build/releases/v1.1.10 `
+  --domain mj.dongxiu.fun `
+  --ssh admin@47.108.185.96 `
+  --remote-dir /var/www/mahjong/updates
+```
+
+脚本会：
+
+- 把清单里的 GitHub 下载地址改写成 `https://<域名>/updates/<文件名>`；
+- 生成 `update-manifest.json` 和 `update-manifest-fallback.json`；
+- 把 PCK/APK 和两份清单先上传为临时文件，再原子替换到服务器目录。
+
+不指定 `--ssh` 时只在本地生成暂存目录：
+
+```text
+build/self-hosted/<域名>/
+```
+
+可以先用 `--dry-run` 查看命令，不上传。
+
+### 服务器目录
+
+Nginx 需要把 `/updates/` 映射到实际目录，完整配置见 [README](../README.md) 的 Docker 部署 3.1.6：
+
+```nginx
+location /updates/ {
+    alias /var/www/mahjong/updates/;
+    add_header Cache-Control "no-store";
+    types {
+        application/octet-stream pck;
+        application/vnd.android.package-archive apk;
+        application/json json;
+    }
+    default_type application/octet-stream;
+}
+```
+
+首次准备：
+
+```sh
+sudo mkdir -p /var/www/mahjong/updates
+sudo chown admin:admin /var/www/mahjong/updates
+```
+
+发布后验证：
+
+```sh
+curl -fsS https://mj.dongxiu.fun/updates/update-manifest.json
+curl -fsS https://mj.dongxiu.fun/updates/update-manifest-fallback.json
+```
+
+### 完整 APK
+
+新完整 APK 必须包含上面的 `manifest_urls`，并沿用正式签名、递增 Android `version/code`。1.1.9 用户安装这一次完整包后，后续小版本才从 `mj.dongxiu.fun` 热更新。
 
 ## 玩家体验
 

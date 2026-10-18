@@ -6,7 +6,7 @@
 
 - 单机：1 名真人（座位0，首局为庄）+ 3 个 AI；之后按本局结果换庄。
 - 联机：局域网自动搜索房间，也支持连接云端房间服务；先选座、换座和准备，人不够由默认准备的 AI 补位，全部准备后开局。
-- 更新：主菜单和联机大厅都可「检查更新」。更新包放在 GitHub Releases，不需要额外更新服务器。
+- 更新：主菜单和联机大厅都可「检查更新」。新完整 APK 默认使用自建 HTTPS 更新源，主清单和回退清单都在 `https://mj.dongxiu.fun/updates/`；1.1.9 及更早版本仍需先安装一次新完整包。
 
 联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 
@@ -50,9 +50,249 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 6. 已开局房间不接受新加入者；真人中途断线由人机代打。局域网主机关闭则房间结束，在线房主退出可转交房主权限。
 7. 选择「在线」后，在「服务器设置」保存房间服务地址，之后自动搜索在线房间，创建/加入沿用同一准备流程。在线房主也是客户端，游戏由云端 Godot 进程权威运行，房主可以点「下一局」。**没有配置服务器时显示设置提示，不显示模拟房间。**
 
-工程附带可部署的云端服务，部署方法见 [server/README.md](server/README.md)。当前已通过本机 HTTP 服务 + 独立 Godot 房间服务器测试，尚未连接真实云服务器。
+工程附带可部署的云端服务，当前已部署在 `https://mj.dongxiu.fun`。完整 Docker 生产流程见下面的 3.1；服务端脚本和排障细节见 [server/README.md](server/README.md) 与 [server/docker.md](server/docker.md)。
 
 局域网同时使用 UDP 广播、绑定 Wi-Fi/热点网卡的定向查询和有节奏的本地网段扫描（7499～7508）；房主也会向搜索端口 7509～7518 主动发送房间信息。这样手机给电脑开热点时不依赖系统转发全网广播，也无需输入 IP。只扫描当前私有 IPv4 地址所在的 /24，不扫描公网；更大网段仍使用广播发现。游戏端口建房时自动选取，不在 UI 展示 IP。在线使用 HTTP(S) 房间目录 + ENet/UDP 独立游戏端口，玩家无需配置本地端口映射。
+
+### 3.1 在线服务器 Docker 部署
+
+生产环境由两部分组成：
+
+```text
+公网 TCP 80/443 → Nginx（宿主机） → 127.0.0.1:18080 → app 容器
+公网 UDP 7600-7631 → app 容器（每个房间一个 Godot 进程）
+```
+
+`app` 镜像由 GitHub Actions 构建，服务器只拉镜像，不克隆项目。Nginx 负责 HTTPS；`caddy` 容器在这种模式下保持停止，避免抢 80/443。
+
+#### 3.1.1 构建镜像
+
+GitHub Actions → **Build online server image** → **Run workflow**，或推送 `V1.0.*` 标签。
+
+- 手动运行在 `main` 上：镜像标签通常是 `sha-<短提交>`，例如 `sha-c1d0274`。
+- 推版本标签：会同时生成版本标签和 `latest`。
+- 镜像地址：`ghcr.io/dongxiujiang/anshun-mahjong:<标签>`。
+- 每次运行还会上传 `server-deploy-bundle`，内含 `compose.prod.yaml`、`docker/Caddyfile`、`deploy-image.sh`、`.env.example`。
+
+私有包需要 PAT（`read:packages`）：
+
+```sh
+echo "$GHCR_TOKEN" | docker login ghcr.io -u dongxiujiang --password-stdin
+```
+
+Public 包可以跳过登录。
+
+#### 3.1.2 服务器安装 Docker
+
+Ubuntu 24.04：
+
+```sh
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-v2
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+newgrp docker
+docker --version
+docker compose version
+```
+
+Docker Hub 是否可访问不影响 app 镜像（GHCR）；只有使用 `caddy:2-alpine` 时才需要 Docker Hub，或配置阿里云镜像加速器。
+
+#### 3.1.3 获取部署文件
+
+不需要克隆仓库。镜像里已经包含部署文件，拉取后直接复制：
+
+```sh
+cd ~
+mkdir -p mahjong/docker
+
+docker pull ghcr.io/dongxiujiang/anshun-mahjong:sha-c1d0274
+
+docker create --name mahjong-bundle \
+  ghcr.io/dongxiujiang/anshun-mahjong:sha-c1d0274
+
+docker cp mahjong-bundle:/app/compose.prod.yaml ~/mahjong/
+docker cp mahjong-bundle:/app/deploy-image.sh ~/mahjong/
+docker cp mahjong-bundle:/app/.env.example ~/mahjong/
+docker cp mahjong-bundle:/app/docker/Caddyfile ~/mahjong/docker/
+
+docker rm mahjong-bundle
+```
+
+也可以从 Actions 下载 `server-deploy-bundle`，或只从仓库取这四个文件。国内服务器直接 `curl raw.githubusercontent.com` 可能很慢，优先用镜像内的文件。
+
+#### 3.1.4 配置 `.env`
+
+```sh
+cd ~/mahjong
+cp .env.example .env
+nano .env
+```
+
+```dotenv
+APP_IMAGE=ghcr.io/dongxiujiang/anshun-mahjong:sha-c1d0274
+DOMAIN=mj.dongxiu.fun
+PUBLIC_HOST=mj.dongxiu.fun
+MAX_ROOMS=16
+FIRST_PORT=7600
+```
+
+- `APP_IMAGE` 必须填实际标签。
+- `DOMAIN` 用于 Nginx 的 HTTPS 站点名。
+- `PUBLIC_HOST` 是目录返回给客户端的房间连接地址，通常同 `DOMAIN`；如果客户端 ENet 解析域名有问题，可改成服务器公网 IP。
+- `MAX_ROOMS` 与 `FIRST_PORT` 要和 `compose.prod.yaml` 的 UDP 端口范围、云安全组一致。
+
+#### 3.1.5 只启动 app，使用现有 Nginx
+
+如果 80/443 已被 Nginx 占用，不要启动 `caddy`。在 `compose.prod.yaml` 的 `app.ports` 中确认有：
+
+```yaml
+- "127.0.0.1:18080:8080"
+- "7600-7631:7600-7631/udp"
+```
+
+然后：
+
+```sh
+cd ~/mahjong
+docker compose -f compose.prod.yaml config
+docker compose -f compose.prod.yaml up -d app --pull never
+```
+
+验证本机：
+
+```sh
+docker compose -f compose.prod.yaml ps
+curl -fsS http://127.0.0.1:18080/healthz
+```
+
+返回：
+
+```json
+{"ok":true,"rooms":0,"max_rooms":16,"version":"1"}
+```
+
+不要执行 `docker compose up -d`，否则会启动 `caddy` 并和 Nginx 抢 80/443。
+
+#### 3.1.6 配置 Nginx
+
+```sh
+sudo tee /etc/nginx/sites-available/mj.dongxiu.fun >/dev/null <<'NGINX'
+server {
+    listen 80;
+    server_name mj.dongxiu.fun;
+
+    location /updates/ {
+        alias /var/www/mahjong/updates/;
+        add_header Cache-Control "no-store";
+        types {
+            application/octet-stream pck;
+            application/vnd.android.package-archive apk;
+            application/json json;
+        }
+        default_type application/octet-stream;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+NGINX
+
+sudo mkdir -p /var/www/mahjong/updates
+sudo chown admin:admin /var/www/mahjong/updates
+
+sudo ln -sf /etc/nginx/sites-available/mj.dongxiu.fun /etc/nginx/sites-enabled/mj.dongxiu.fun
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+热更新清单和 PCK 放到 `/var/www/mahjong/updates/`；客户端从 `https://mj.dongxiu.fun/updates/update-manifest.json` 读取。发布命令见 [docs/updates.md](docs/updates.md) 的“自建更新源”一节。
+
+先在本机验证反代，不依赖 DNS：
+
+```sh
+curl -i -H 'Host: mj.dongxiu.fun' http://127.0.0.1/healthz
+```
+
+返回 200 后再申请证书：
+
+```sh
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d mj.dongxiu.fun
+```
+
+前提：域名 A 记录指向服务器公网 IP；阿里云安全组开放 TCP 80/443；Cloudflare 对应记录为 DNS only（灰云）。
+
+#### 3.1.7 云安全组和 DNS
+
+必须开放：
+
+```text
+TCP 80, 443
+UDP 7600-7631
+```
+
+只开 80/443 时网页和建房接口正常，但客户端加入房间会连接超时。
+
+#### 3.1.8 验证
+
+```sh
+curl -fsS https://mj.dongxiu.fun/healthz
+curl -fsS https://mj.dongxiu.fun/rooms
+```
+
+正常返回：
+
+```json
+{"ok":true,"rooms":0,"max_rooms":16,"version":"1"}
+{"rooms":[]}
+```
+
+客户端：
+
+```text
+联机房间 → 在线 → 服务器设置
+https://mj.dongxiu.fun
+```
+
+客户端首次启动会预填 `https://mj.dongxiu.fun`；如果本机已经保存过其他服务器地址，以保存值为准，可在服务器设置里改回生产地址。
+
+用客户端创建房间，第二台设备用手机 4G 加入，测准备、发牌、断线重连。
+
+#### 3.1.9 更新和回滚
+
+只更新 app，不启动 Caddy：
+
+```sh
+cd ~/mahjong
+docker pull ghcr.io/dongxiujiang/anshun-mahjong:<新标签>
+
+sed -i 's|^APP_IMAGE=.*|APP_IMAGE=ghcr.io/dongxiujiang/anshun-mahjong:<新标签>|' .env
+docker compose -f compose.prod.yaml up -d app --pull never
+```
+
+回滚就是填回旧标签再执行一次。Nginx 配置和证书不需要改。
+
+#### 3.1.10 常见问题
+
+| 现象 | 原因/处理 |
+|---|---|
+| Caddy 报 `port 80 already in use` | Nginx 占用 80/443；只启动 app，不要启动 Caddy |
+| `docker compose pull` 卡住 | Docker Hub 不可达；app 用 GHCR 可直连，Caddy 可走镜像加速器或改用 Nginx |
+| GHCR `unauthorized` | 私有包需要 `read:packages` PAT，先 `docker login ghcr.io` |
+| `/healthz` 404 | Nginx 没加载站点，检查 `nginx -T` 和 `sites-enabled` 软链 |
+| HTTPS 证书失败 | DNS、80 端口、Cloudflare 灰云三项逐一检查 |
+| 建房成功但加入超时 | 云安全组 UDP 7600-7631 未开放，或 `PUBLIC_HOST` 客户端不可达 |
+| 服务器重启后 Caddy 起来抢端口 | 保持 `caddy` 停止；只使用 `up -d app` |
+| app 不健康 | `docker compose -f compose.prod.yaml logs --tail=100 app` |
+
+如果 80/443 完全空闲，也可以使用带 Caddy 的完整模式：`compose.prod.yaml` 同时启动 `app` 和 `caddy`，由 Caddy 自动申请证书，不需要 Nginx 和 Certbot。当前生产服务器已有 Nginx，因此采用 app + Nginx 方案。
 
 ## 四、规则实现要点
 
@@ -61,18 +301,18 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 - **起手**：按庄→下家→对家→上家的顺时针方向轮流拿 4，三轮后各 12，再各 1 共 13；庄再摸 1 成 14 开打。之后统一按顺时针摸牌、出牌和检查响应。
 - **行牌**：只能碰/杠，不能吃。杠从牌尾补一张。暗杠和加杠补牌后的第一张弃牌可以被胡；只有这两类弃牌被胡才算杠后放炮并烧鸡，明杠后弃牌不触发。只有加杠可以被抢，抢杠胡由被抢杠者支付12分及牌型分，被抢者烧鸡（鸡分为 0）。胡牌优先于碰牌，碰牌优先于摸牌；同一张弃牌允许多人同胡。小七对、大对子、清一色等牌型可胡别人打出的牌；普通牌只有自摸，除非持有自己的暗杠/加杠、报听，或牌来自报听者/杠后出牌等特殊情形。
 - **过牌限制**：过胡后直到自己下一次摸牌前只能自摸；过碰后同张牌在自己下一次摸牌前不能再碰。碰牌后不能立即打出刚碰的同一张牌。
-- **报听**：第一次摸牌后的出牌机会，打出后形成听牌且此前只暗杠时可报听；报听胡牌24，报听后未自摸或被其他人胡为杀报24；报听者打出的牌允许直接胡。
-- **胡牌分值**：普通自摸4；干扣14、大干扣24；小七对24、龙七对44、大对子14、大对子单吊24、清一色24、清大对34、清七对44、清单吊54、清龙对64。牌型按最高一项计；龙七对不叠加小七对。牌型总分已包含基础自摸4，不重复加4。
+- **报听**：第一次摸牌后的出牌机会，打出后形成听牌且此前只暗杠时可报听；报听胡牌24；报听自摸普通牌只收24+鸡、不再加自摸4，有牌型为牌型分+24+鸡；报听后未自摸或被其他人胡为杀报24；报听者打出的牌允许直接胡。
+- **胡牌分值**：普通自摸4（报听自摸的普通牌不再加4，只收24+鸡）；干扣14、大干扣24；小七对24、龙七对44、大对子14、大对子单吊24、清一色24、清大对34、清七对44、清单吊54、清龙对64。牌型按最高一项计；龙七对不叠加小七对。牌型总分已包含基础自摸4，不重复加4。
 - **下局庄家**：自摸者为庄；胡别人或抢加杠时，放炮者/被抢杠者为庄。流局无论是否有人未叫牌均由当前庄家连庄。新庄家首先摸牌出牌，发牌顺序、14/13墩牌墙和骰子破墙都以新庄家为准；单机与联机均保留累计分数。
 - **捉鸡**：
   - 鸡牌 = 一条、八筒。
   - 冲锋鸡：幺鸡、八筒各自全场第一张打出的牌为冲锋鸡，每张 4 分；后续同种牌为普通鸡。被碰杠后，原出牌者的弃牌及记录移除，鸡分与冲锋标记归领取者。
   - 叫牌鸡：已叫牌者，保留的出牌鸡与手中、碰杠中的普通鸡每张 2 分。冲锋鸡被碰或杠后按普通鸡计，每张保留 2 分；若翻鸡命中，照普通鸡翻倍。
   - 翻牌鸡：胡牌后翻牌头下一张；上下张同花色首尾循环，翻一取九、一、二，翻九取八、九、一。叫牌者手中（含碰杠）的三张翻牌范围内普通牌每张 1 分；若三张包含幺鸡或八筒，该鸡牌算金鸡，普通鸡从 2 变 4、冲锋鸡从 4 变 8，其他两张仍按翻鸡每张 1 分；出牌鸡也按金鸡翻倍。
-  - 普通牌自摸4；赢家鸡分为0时干扣总计14；若四家结算鸡分都为0，大干扣改为总计24，不叠加干扣。干扣只用于普通小牌自摸，报听和大牌自摸不加干扣。
+  - 普通牌自摸4；报听自摸的普通牌只收24+鸡，不再加自摸4；赢家鸡分为0时干扣总计14；若四家结算鸡分都为0，大干扣改为总计24，不叠加干扣。干扣只用于普通小牌自摸，报听和大牌自摸不加干扣。
   - 杠开 +5；海底（最后四张任意牌）自摸 +5；干扣、牌型、报听分值均按各自条款结算。
   - 胡牌结算的杠基础分：叫牌者暗杠、加杠每组由其他每家各付4；明杠每组仅放杠者付4。杠内鸡/翻鸡纳入完整鸡分逐家比较一次，不再额外重复收鸡分。杠牌者未叫牌不收杠分。例：明杠四张普通鸡，放杠者付鸡分8+杠分4=12，其他无可抵鸡分的玩家各付鸡分8。
-  - 有人胡牌时，四家两两比较幺鸡八筒、杠分和翻鸡分（手中、碰杠、保留出牌鸡、金鸡及翻鸡）；未叫牌者鸡分按0参与，低分向高分补差，同分不付款。自摸由另外三家各付完整胡牌分并包含自摸4分；普通放炮不收17/21，**放炮牌型分只由放炮者支付**，其他两家不付牌型分，只按幺鸡八筒、杠分、翻鸡分比较。杠放炮的17/21由放炮者另付；抢杠12由被抢杠者另付。多家同胡时放炮者向每位胡牌者分别支付各自的牌型分，赢家之间不互付牌型差额。杠分、报听/杀报按各自付款关系另算。结算卡片“本局分”展示本人的得分点，“上家/对家/下家”展示实际逐家收付；分数从200起累计，可为负。
+  - 有人胡牌时，四家两两比较幺鸡八筒、杠分和翻鸡分（手中、碰杠、保留出牌鸡、金鸡及翻鸡）；未叫牌者鸡分按0参与，低分向高分补差，同分不付款。自摸由另外三家各付完整胡牌分；普通自摸含4分，报听自摸普通牌为24+鸡、不再加4，有牌型为牌型分+24+鸡；普通放炮不收17/21，**放炮牌型分只由放炮者支付**，其他两家不付牌型分，只按幺鸡八筒、杠分、翻鸡分比较。杠放炮的17/21由放炮者另付；抢杠12由被抢杠者另付。多家同胡时放炮者向每位胡牌者分别支付各自的牌型分，赢家之间不互付牌型差额。杠分、报听/杀报按各自付款关系另算。结算卡片“本局分”展示本人的得分点，“上家/对家/下家”展示实际逐家收付；分数从200起累计，可为负。
 - **牌墙摸完无人胡牌**：不翻鸡。四家均叫牌时本局不计分，下局鸡分翻倍；连续流局时倍率仍保持 ×2，不继续倍增。若有人未叫牌，由未叫牌者向每位叫牌者补双方当前保留出牌鸡之和与应付杠分，叫牌者之间不补差；手中、碰中的鸡不加入本次补分。
   - 暗杠、加杠：每组基础杠分 4 分，杠中每张鸡再加 2 分；每个未叫牌者向叫牌的杠牌者支付。
   - 明杠：基础杠分4仅由未叫牌的放杠者付；杠中四张鸡的鸡分8由每个未叫牌者付。放杠者已叫牌时不收其基础4，其他未叫牌者仍补鸡分8。

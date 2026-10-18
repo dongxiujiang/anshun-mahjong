@@ -28,6 +28,7 @@ func _run() -> void:
 	directory.settings_path = network.settings_path
 	directory.persist_settings = true
 	root.add_child(directory)
+	t.expect(directory.base_url == "https://mj.dongxiu.fun", "Fresh install uses the production directory by default")
 	t.expect(directory.configure("https://example.com/rooms-service/"), "Directory address can be saved")
 	var session := {"host": "127.0.0.1", "port": 7594, "number": "001234", "name": "朋友房间",
 		"player_name": "重启后的玩家", "token": "a".repeat(64), "online": true}

@@ -516,11 +516,11 @@ func _test_ready_and_win_fees() -> void:
 		r.players[0].concealed = BIG.duplicate() if special else PLAIN.duplicate()
 		r.players[0].ready = true
 		win_meta(r,0,-1,"wan2" if special else "wan9")
-		begin("ready_self_big" if special else "ready_self_plain",r,"0报听自摸; 牌型=大对子14或普通4; 其他三家各另付24")
+		begin("ready_self_big" if special else "ready_self_plain",r,"0报听自摸; 牌型=大对子14或普通0; 普通牌只收24+鸡，不再加自摸4")
 		var result := settle(r)
 		for payer in [1,2,3]:
 			eq([158,242,287],"座%d另付报听24" % payer,fee(result,payer,0,"报听胡牌"),24.0,"scripts/core/WinScoring.gd:9")
-			eq([158,287],"座%d牌型加报听" % payer,result.pairwise[0][payer],38.0 if special else 28.0,"scripts/core/WinScoring.gd:9")
+			eq([158,287],"座%d牌型加报听" % payer,result.pairwise[0][payer],38.0 if special else 24.0,"scripts/core/WinScoring.gd:9")
 		eq([251],"不叠干扣",label_amount(result,0,"干扣"),0.0,"scripts/core/WinScoring.gd:9")
 		eq([251],"不叠大干扣",label_amount(result,0,"大干扣"),0.0,"scripts/core/WinScoring.gd:9")
 	for source_ready in [false,true]:

@@ -8,6 +8,10 @@ func _run() -> void:
 	var updater = load("res://scripts/autoload/UpdateManager.gd").new()
 	updater.auto_check = false
 	root.add_child(updater)
+	t.expect(updater.manifest_urls == [
+		"https://mj.dongxiu.fun/updates/update-manifest.json",
+		"https://mj.dongxiu.fun/updates/update-manifest-fallback.json",
+	], "self-hosted primary and fallback manifests are compiled in")
 	var asset := "https://github.com/owner/repo/releases/download/V1.2.3/game.apk"
 	var routes: Array = updater._routes_for(asset)
 	t.expect(routes.size() == 4 and routes[-1] == asset, "three public proxies then original GitHub URL")

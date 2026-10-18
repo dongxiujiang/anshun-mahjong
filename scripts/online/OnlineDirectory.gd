@@ -13,10 +13,13 @@ var settings_path := "user://network.cfg"
 var persist_settings := DisplayServer.get_name() != "headless"
 
 func _ready() -> void:
+	# Fresh installs use the production directory; once the player saves a
+	# server in the settings dialog, that saved address wins.
+	base_url = str(ProjectSettings.get_setting("online/default_url", ""))
 	if persist_settings:
 		var config := STORE.read_config(settings_path)
 		var saved_url = config.get_value("online", "url", "")
-		if saved_url is String: base_url = saved_url
+		if saved_url is String and saved_url != "": base_url = saved_url
 	_http = HTTPRequest.new()
 	_http.timeout = 12.0
 	_http.body_size_limit = 256 * 1024

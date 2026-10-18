@@ -718,7 +718,7 @@ func _test_settlement_speed() -> void:
 
 func _test_settlement_identities(render: bool = true) -> void:
 	for sample in [["self_draw", "胡牌 · 自摸 +4", "", 1],
-		["ready_self", "胡牌 · 报听自摸 +24", "自摸基础分 +4", 1],
+		["ready_self", "胡牌 · 报听自摸 +24", "", 1],
 		["ready_ron", "胡牌 · 报听胡对家 +24", "", 1], ["ron", "胡牌 · 下家放炮", "", 1],
 		["rob_kong", "胡牌 · 抢杠下家 +12", "", 1], ["dry", "胡牌 · 自摸", "干扣 +14", 1],
 		["big_dry", "胡牌 · 自摸", "大干扣 +24", 1], ["triplets", "胡牌 · 自摸", "大对子 +14", 1],
@@ -726,7 +726,7 @@ func _test_settlement_identities(render: bool = true) -> void:
 		["ready_flush", "胡牌 · 报听自摸 +24", "清一色 +24", 1],
 		["ready_rob_kong", "胡牌 · 抢杠下家 +12", "报听 +24", 1],
 		["self_draw", "胡牌 · 自摸 +8", "", 2],
-		["ready_self", "胡牌 · 报听自摸 +48", "自摸基础分 +8", 2],
+		["ready_self", "胡牌 · 报听自摸 +48", "", 2],
 		["ready_ron", "胡牌 · 报听胡对家 +48", "", 2],
 		["ready_rob_kong", "胡牌 · 抢杠下家 +24", "报听 +48", 2],
 		["ready_flush", "胡牌 · 报听自摸 +48", "清一色 +48", 2],

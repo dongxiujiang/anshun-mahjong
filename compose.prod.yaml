@@ -12,6 +12,9 @@ services:
       MAX_ROOMS: ${MAX_ROOMS:-16}
       FIRST_PORT: ${FIRST_PORT:-7600}
     ports:
+      # Host-local HTTP for an existing Nginx reverse proxy. Caddy mode can
+      # leave this unused; it never exposes port 8080 publicly.
+      - "127.0.0.1:18080:8080"
       # Keep this range in sync with MAX_ROOMS and the cloud firewall.
       - "7600-7631:7600-7631/udp"
     volumes:

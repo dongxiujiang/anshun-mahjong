@@ -29,25 +29,28 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		var primary_amount: float = pattern_amount
 		var primary_label := pattern_label
 		if primary_amount <= 0.0:
-			if not player.ready and CHICKEN.chicken_profile(round, winner, str(meta.get("flip_tile", ""))).total == 0.0:
-				# 大干扣按最终参与比较的四家鸡分判断；未叫牌者的结算鸡分为 0。
-				var all_chickenless := true
-				for other in 4:
-					if float(chicken_points[other]) > 0.0:
-						all_chickenless = false
-						break
-				primary_amount = CFG.SCORE_BIG_NO_CHICKEN if all_chickenless else CFG.SCORE_NO_CHICKEN
-				primary_label = "大干扣" if all_chickenless else "干扣"
-				items[winner].append(_item("bonus", primary_label, primary_amount, "含自摸基础4分"))
-			else:
-				primary_amount = CFG.SCORE_SELF_DRAW
-				primary_label = "自摸基础分"
-				items[winner].append(_item("bonus", "自摸", primary_amount, ""))
+			if not player.ready:
+				if CHICKEN.chicken_profile(round, winner, str(meta.get("flip_tile", ""))).total == 0.0:
+					# 大干扣按最终参与比较的四家鸡分判断；未叫牌者的结算鸡分为 0。
+					var all_chickenless := true
+					for other in 4:
+						if float(chicken_points[other]) > 0.0:
+							all_chickenless = false
+							break
+					primary_amount = CFG.SCORE_BIG_NO_CHICKEN if all_chickenless else CFG.SCORE_NO_CHICKEN
+					primary_label = "大干扣" if all_chickenless else "干扣"
+					items[winner].append(_item("bonus", primary_label, primary_amount, "含自摸基础4分"))
+				else:
+					primary_amount = CFG.SCORE_SELF_DRAW
+					primary_label = "自摸基础分"
+					items[winner].append(_item("bonus", "自摸", primary_amount, ""))
+			# 报听自摸的普通牌只收 24 + 鸡，不再另收自摸 4。
 		if pattern_amount > 0.0:
 			items[winner].append(_item("pattern", pattern_label, pattern_amount, "牌型分含基础4分"))
-		for payer in base_payers:
-			PAY.transfer(deltas, transfers, payer, winner, primary_amount, primary_label)
-		lines.append("%s：每家付 %.0f" % [primary_label, primary_amount])
+		if primary_amount > 0.0:
+			for payer in base_payers:
+				PAY.transfer(deltas, transfers, payer, winner, primary_amount, primary_label)
+			lines.append("%s：每家付 %.0f" % [primary_label, primary_amount])
 		if player.ready:
 			for payer in base_payers:
 				PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_READY, "报听胡牌")

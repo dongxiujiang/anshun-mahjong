@@ -123,14 +123,18 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 	var points := pattern_points(pattern) if pattern.win else 0.0
 	var primary := points
 	if self_draw and primary <= 0.0:
-		primary = CFG.SCORE_SELF_DRAW
-		if not declared_ready and float(own.total) <= 0.0:
-			var all_dry := true
-			for opponent in opponents:
-				if float(opponent.tenpai_probability) > 0.0 and float(opponent.chickens) > 0.0:
-					all_dry = false
-					break
-			primary = CFG.SCORE_BIG_NO_CHICKEN if all_dry else CFG.SCORE_NO_CHICKEN
+		if declared_ready:
+			# 报听自摸的普通牌只收 24 + 鸡，不再另收自摸 4。
+			primary = 0.0
+		else:
+			primary = CFG.SCORE_SELF_DRAW
+			if float(own.total) <= 0.0:
+				var all_dry := true
+				for opponent in opponents:
+					if float(opponent.tenpai_probability) > 0.0 and float(opponent.chickens) > 0.0:
+						all_dry = false
+						break
+				primary = CFG.SCORE_BIG_NO_CHICKEN if all_dry else CFG.SCORE_NO_CHICKEN
 	var bonus := (CFG.SCORE_KONG_DRAW if kong_draw else 0.0) + (CFG.SCORE_LAST_FOUR if self_draw and round._wall_count() <= 4 else 0.0)
 	var total := 0.0
 	for opponent in opponents:

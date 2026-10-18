@@ -135,7 +135,9 @@ static func expected(round: RoundState) -> Dictionary:
 			if self_draw:
 				var primary := pattern_fee
 				if primary <= 0.0:
-					if not player.ready and float(_chicken_values(round, target_seat, related).total) <= 0.0:
+					if player.ready:
+						primary = 0.0
+					elif float(_chicken_values(round, target_seat, related).total) <= 0.0:
 						var all_chickenless := true
 						for other in 4:
 							if float(chicken_values[other]) > 0.0:

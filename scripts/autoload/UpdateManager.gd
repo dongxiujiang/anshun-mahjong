@@ -19,6 +19,7 @@ var downloaded_bytes := 0
 var total_bytes := 0
 var repository := ""
 var manifest_url := ""
+var manifest_urls: Array[String] = []
 var auto_check := true
 var _metadata: HTTPRequest
 var _download: HTTPRequest
@@ -51,6 +52,12 @@ var _last_browser_route := ""
 func _ready() -> void:
 	repository = str(ProjectSettings.get_setting("updates/github_repository", ""))
 	manifest_url = str(ProjectSettings.get_setting("updates/manifest_url", ""))
+	manifest_urls.clear()
+	var configured_manifests = ProjectSettings.get_setting("updates/manifest_urls", [])
+	if configured_manifests is Array:
+		for value in configured_manifests:
+			if value is String and str(value).strip_edges() != "":
+				manifest_urls.append(str(value).strip_edges())
 	auto_check = bool(ProjectSettings.get_setting("updates/auto_check", true))
 	use_download_proxies = bool(ProjectSettings.get_setting("updates/use_download_proxies", true))
 	download_proxies = Array(ProjectSettings.get_setting("updates/download_proxies", DEFAULT_DOWNLOAD_PROXIES))
@@ -194,22 +201,27 @@ func check_updates() -> void:
 	_manifest_digest = ""
 	_metadata_routes.clear()
 	var local_allowed := not OS.has_feature("template")
+	var routes: Array[String] = []
 	if manifest_url != "":
-		_check_url = manifest_url
+		routes = [manifest_url]
+	elif not manifest_urls.is_empty():
+		routes = manifest_urls.duplicate()
 	elif repository != "":
 		var pieces := repository.split("/")
 		if pieces.size() != 2 or repository.contains(" ") or repository.contains("..") or repository.contains("?") or repository.contains("#"):
 			_set_state("error", "更新仓库配置无效")
 			return
-		_check_url = "https://api.github.com/repos/%s/releases/latest" % repository
+		routes = ["https://api.github.com/repos/%s/releases/latest" % repository]
 	else:
 		_set_state("error", "尚未配置更新来源")
 		return
-	if not safe_url(_check_url, local_allowed):
-		_set_state("error", "更新来源地址无效，请使用 HTTPS 下载地址")
-		return
+	for route in routes:
+		if not safe_url(route, local_allowed):
+			_set_state("error", "更新来源地址无效，请使用 HTTPS 下载地址")
+			return
+	_check_url = routes[0]
 	_set_state("checking", "正在检查新版本…")
-	_start_metadata([_check_url])
+	_start_metadata(routes)
 
 func _start_metadata(routes: Array[String]) -> void:
 	_metadata_routes = routes

@@ -54,6 +54,10 @@ renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
 
+[online]
+
+default_url="https://mj.dongxiu.fun"
+
 [updates]
 
 base_id="1.0.0-boot1"
@@ -61,6 +65,10 @@ tag_prefix="V"
 manifest_asset="update-manifest.json"
 github_repository="dongxiujiang/anshun-mahjong"
 manifest_url=""
+manifest_urls=[
+"https://mj.dongxiu.fun/updates/update-manifest.json",
+"https://mj.dongxiu.fun/updates/update-manifest-fallback.json"
+]
 auto_check=true
 windows_asset="anshun-mahjong-windows-x64.exe"
 android_asset="anshun-mahjong.apk"
