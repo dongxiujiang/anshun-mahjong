@@ -105,7 +105,7 @@ func set_enabled(want: bool) -> bool:
 	if OS.has_feature("android") and not _has_record_permission():
 		permission_pending = true
 		_last_permission_request = Time.get_ticks_msec()
-		var requested := OS.request_permission("RECORD_AUDIO")
+		var requested := OS.request_permission("android.permission.RECORD_AUDIO")
 		_status = "等待麦克风权限" if requested else "无法请求麦克风权限"
 		status_changed.emit(false, _status)
 		return false
