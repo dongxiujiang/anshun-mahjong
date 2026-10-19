@@ -24,6 +24,7 @@ var _settlement_phase := -1
 var _settlement_immediate := false
 var _awaiting_rejoin_snapshot := false
 var _quitting := false
+var _opening_primed := false
 var _ai_service = null
 
 func _ready() -> void:
@@ -48,6 +49,7 @@ func _connect_audio_round() -> void:
 	if _audio_round != null and _audio_round.visual_event.is_connected(_on_visual_event):
 		_audio_round.visual_event.disconnect(_on_visual_event)
 	_audio_round = round
+	_opening_primed = false
 	AudioManager.reset_round(round.audio_session, round.audio_event_id)
 	_table_animation_controller.reset()
 	_settlement_animation_controller.reset()
@@ -226,11 +228,11 @@ func _setup_host_view() -> void:
 	round.round_finished.connect(_on_round_finished)
 	round.state_update.connect(_refresh)
 	if round.phase != RoundState.Phase.IDLE:
+		_prime_opening_visuals()
 		_on_net_prompt(human_seat)
 		_refresh()
 	network.connection_error.connect(_on_connection_error)
 	network.lobby_updated.connect(_on_net_lobby_updated)
-	_prime_opening_visuals()
 
 func _setup_client_view() -> void:
 	var network = _net_node()
@@ -258,16 +260,21 @@ func _setup_client_view() -> void:
 	enable_net(network.submit_client_turn, network.submit_client_response)
 	if network.my_seat >= 0:
 		human_seat = network.my_seat
+	_prime_opening_visuals()
 	_refresh()
 	_on_net_prompt(human_seat)
-	_prime_opening_visuals()
 
 func _prime_opening_visuals() -> void:
 	# The lobby may hand us the first snapshot before the table has connected.
-	# Only replay an untouched opening; live reconnects retain their baseline.
-	if round == null or round.phase not in [RoundState.Phase.DEALING, RoundState.Phase.PLAYING] or round.players.size() != 4: return
+	# Prime the opening before the first hand refresh; otherwise the final hand
+	# is painted for one frame and immediately replaced by the deal animation.
+	if _opening_primed or round == null: return
+	if round.phase not in [RoundState.Phase.DEALING, RoundState.Phase.PLAYING] or round.players.size() != 4: return
 	for player in round.players:
-		if player.discard_count > 0 or not player.melds.is_empty(): return
+		if player.discard_count > 0 or not player.melds.is_empty():
+			_opening_primed = true
+			return
+	_opening_primed = true
 	for event in round.visual_events: _on_visual_event(event)
 
 func _refresh() -> void:
@@ -387,6 +394,9 @@ func _on_client_state_updated() -> void:
 	_selecting = false
 	_response_disc = ""
 	_clear_actions()
+	# The first client snapshot can arrive after the table scene is ready. Prime
+	# its untouched opening before the hand refresh exposes the final deal.
+	_prime_opening_visuals()
 	_refresh()
 
 func _on_net_lobby_updated() -> void:
