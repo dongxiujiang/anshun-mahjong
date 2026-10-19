@@ -22,6 +22,11 @@ on:
         description: Release tag for the download-only bridge
         required: true
         default: "V1.0.0-bridge"
+      make_latest:
+        description: Mark this release as GitHub latest
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -68,4 +73,4 @@ jobs:
           name: ${{ inputs.tag }}
           files: release/*
           fail_on_unmatched_files: true
-          make_latest: false
+          make_latest: ${{ inputs.make_latest || false }}
