@@ -1,6 +1,7 @@
 extends Control
 const STYLE := preload("res://scripts/ui/UiStyle.gd")
 const MOTION := preload("res://scripts/ui/UiMotion.gd")
+const RESUME_DIALOG := preload("res://scripts/ui/ResumeRoomDialog.gd")
 
 const MENU_SIZE := Vector2(1800, 1000)
 const ENTRY_BUTTON_SIZE := Vector2(760, 184)
@@ -10,7 +11,8 @@ var update_panel: UpdatePanel
 var update_button: Button
 var update_status_label: Label
 var rule_guide: Control
-var resume_dialog: ConfirmationDialog
+var resume_dialog: Control
+var _multiplayer_button: Button
 
 func _ready() -> void:
 	var theme_resource := Theme.new()
@@ -58,12 +60,12 @@ func _ready() -> void:
 	solo.position = Vector2(984, 272)
 	content.add_child(solo)
 	var multiplayer_text := "返回房间 %s    ›" % Network.saved_session.number if Network.has_saved_session() else "联机房间    ›"
-	var multiplayer_button := _button(multiplayer_text, func():
+	_multiplayer_button = _button(multiplayer_text, func():
 		Network.resume_on_lobby = Network.has_saved_session()
 		get_tree().change_scene_to_file("res://scenes/Lobby.tscn"), true)
-	multiplayer_button.name = "MultiplayerButton"
-	multiplayer_button.position = Vector2(984, 484)
-	content.add_child(multiplayer_button)
+	_multiplayer_button.name = "MultiplayerButton"
+	_multiplayer_button.position = Vector2(984, 484)
+	content.add_child(_multiplayer_button)
 	sound_settings = SoundSettings.new()
 	add_child(sound_settings)
 	var sound := _button("声音设置", sound_settings.open)
@@ -96,16 +98,19 @@ func _ready() -> void:
 	PatchBoot.confirm_boot()
 	if Network.has_saved_session() and not Network.resume_prompt_shown:
 		Network.resume_prompt_shown = true
-		resume_dialog = ConfirmationDialog.new()
-		resume_dialog.title = "返回上次房间"
-		resume_dialog.dialog_text = "发现上次联机房间 %s。\n是否尝试恢复原来的座位和对局？" % Network.saved_session.number
-		resume_dialog.ok_button_text = "返回房间"
-		resume_dialog.cancel_button_text = "稍后"
+		resume_dialog = RESUME_DIALOG.new()
+		resume_dialog.name = "ResumeRoomDialog"
 		add_child(resume_dialog)
 		resume_dialog.confirmed.connect(func():
 			Network.resume_on_lobby = true
 			get_tree().change_scene_to_file("res://scenes/Lobby.tscn"))
-		resume_dialog.call_deferred("popup_centered", Vector2i(660, 240))
+		resume_dialog.leave_requested.connect(_leave_saved_room)
+		resume_dialog.call_deferred("open", str(Network.saved_session.number))
+
+func _leave_saved_room() -> void:
+	Network.clear_saved_session()
+	if _multiplayer_button != null:
+		_multiplayer_button.text = "联机房间    ›"
 
 func _update_badge() -> void:
 	match UpdateManager.state:

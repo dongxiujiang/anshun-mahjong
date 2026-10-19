@@ -9,7 +9,9 @@ signal replay_export_requested
 ## 主菜单和牌桌共用的声音面板，独立于旋转、缩放的牌桌。
 
 const PANEL_SIZE := Vector2(680, 560)
-const TABLE_PANEL_SIZE := Vector2(1120, 680)
+const TABLE_PANEL_SIZE := Vector2(1120, 720)
+const SLIDER_HEIGHT := 56.0
+const SLIDER_KNOB := 48
 const TITLES := {"music": "背景音乐", "voice": "出牌 / 动作语音", "effects": "落桌 / 结算音效"}
 var overlay: Control
 var panel: Panel
@@ -29,6 +31,8 @@ var confirm_exit_button: Button
 var cancel_exit_button: Button
 var replay_export_button: Button
 var replay_status: Label
+var _slider_knob: Texture2D
+var _slider_knob_hot: Texture2D
 var mic_gain_slider: HSlider
 var remote_volume_slider: HSlider
 var mic_gain_percent: Label
@@ -48,6 +52,8 @@ func _ready() -> void:
 	shade.color = Color(0.02, 0.06, 0.04, 0.8)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(shade)
+	_slider_knob = _make_knob(Color("#e8d29a"), Color("#7d6435"))
+	_slider_knob_hot = _make_knob(Color("#ffe6a1"), Color("#c59b4f"))
 	panel = Panel.new()
 	panel.size = TABLE_PANEL_SIZE if table_mode else PANEL_SIZE
 	var style := StyleBoxFlat.new()
@@ -74,11 +80,13 @@ func _ready() -> void:
 		panel.add_child(toggle)
 		switches[channel] = toggle
 		var slider := HSlider.new()
-		slider.position = Vector2(324, y + 8)
-		slider.size = Vector2(234, 48)
+		slider.position = Vector2(324, y)
+		slider.size = Vector2(234, SLIDER_HEIGHT)
+		slider.custom_minimum_size = Vector2(234, SLIDER_HEIGHT)
 		slider.min_value = 0
 		slider.max_value = 100
 		slider.step = 1
+		_style_slider(slider)
 		slider.value_changed.connect(_on_slider.bind(channel))
 		panel.add_child(slider)
 		sliders[channel] = slider
@@ -122,26 +130,30 @@ func _ready() -> void:
 		_label("四项速度独立调整", Vector2(716, 478), Vector2(368, 30), 20)
 		exit_room_button = _button("退出房间", Vector2(716, 514), Vector2(368, 80), func(): exit_requested.emit())
 		exit_room_button.name = "ExitRoomButton"
-		_label("麦克风音量", Vector2(716, 604), Vector2(132, 24), 16)
+		_label("麦克风音量", Vector2(716, 598), Vector2(132, 24), 16)
 		mic_gain_slider = HSlider.new()
-		mic_gain_slider.position = Vector2(846, 608)
-		mic_gain_slider.size = Vector2(158, 22)
+		mic_gain_slider.position = Vector2(846, 590)
+		mic_gain_slider.size = Vector2(158, 48)
+		mic_gain_slider.custom_minimum_size = Vector2(158, 48)
 		mic_gain_slider.min_value = 0
 		mic_gain_slider.max_value = 200
 		mic_gain_slider.step = 1
+		_style_slider(mic_gain_slider)
 		mic_gain_slider.value_changed.connect(_on_mic_gain_changed)
 		panel.add_child(mic_gain_slider)
 		mic_gain_percent = _label("", Vector2(1012, 602), Vector2(72, 24), 16)
 		_label("他人语音音量", Vector2(716, 644), Vector2(132, 24), 16)
 		remote_volume_slider = HSlider.new()
-		remote_volume_slider.position = Vector2(846, 648)
-		remote_volume_slider.size = Vector2(158, 22)
+		remote_volume_slider.position = Vector2(846, 636)
+		remote_volume_slider.size = Vector2(158, 48)
+		remote_volume_slider.custom_minimum_size = Vector2(158, 48)
 		remote_volume_slider.min_value = 0
 		remote_volume_slider.max_value = 100
 		remote_volume_slider.step = 1
+		_style_slider(remote_volume_slider)
 		remote_volume_slider.value_changed.connect(_on_remote_volume_changed)
 		panel.add_child(remote_volume_slider)
-		remote_volume_percent = _label("", Vector2(1012, 642), Vector2(72, 24), 16)
+		remote_volume_percent = _label("", Vector2(1012, 648), Vector2(72, 24), 16)
 		replay_export_button = _button("保存本局记录", Vector2(36, 514), Vector2(296, 80), func(): replay_export_requested.emit())
 		replay_export_button.name = "SaveRoundButton"
 		replay_status = _label("选择保存位置，建议放在“下载”文件夹，方便查找和发送。", Vector2(36, 604), Vector2(660, 60), 18)
@@ -175,6 +187,45 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if GameConfig.voice_chat_settings_changed.is_connected(_sync_voice_settings):
 		GameConfig.voice_chat_settings_changed.disconnect(_sync_voice_settings)
+
+func _make_knob(fill: Color, border: Color) -> Texture2D:
+	var image := Image.create(SLIDER_KNOB, SLIDER_KNOB, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	var center := Vector2(SLIDER_KNOB * 0.5 - 0.5, SLIDER_KNOB * 0.5 - 0.5)
+	var outer := SLIDER_KNOB * 0.5 - 2.0
+	var inner := outer - 4.0
+	for y in SLIDER_KNOB:
+		for x in SLIDER_KNOB:
+			var distance := Vector2(x, y).distance_to(center)
+			if distance <= inner:
+				image.set_pixel(x, y, fill)
+			elif distance <= outer:
+				image.set_pixel(x, y, border)
+	return ImageTexture.create_from_image(image)
+
+func _style_slider(slider: HSlider) -> void:
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color("#102e27")
+	track.border_color = Color("#526c58")
+	track.set_border_width_all(1)
+	track.set_corner_radius_all(7)
+	track.content_margin_top = 10.0
+	track.content_margin_bottom = 10.0
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color("#d7b56e")
+	fill.set_corner_radius_all(7)
+	fill.content_margin_top = 10.0
+	fill.content_margin_bottom = 10.0
+	var highlight := fill.duplicate() as StyleBoxFlat
+	highlight.bg_color = Color("#f1d28a")
+	slider.add_theme_stylebox_override("slider", track)
+	slider.add_theme_stylebox_override("grabber_area", fill)
+	slider.add_theme_stylebox_override("grabber_area_highlight", highlight)
+	slider.add_theme_icon_override("grabber", _slider_knob)
+	slider.add_theme_icon_override("grabber_highlight", _slider_knob_hot)
+	slider.add_theme_icon_override("grabber_disabled", _slider_knob)
+	slider.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	slider.focus_mode = Control.FOCUS_ALL
 
 func _label(text: String, pos: Vector2, dimensions: Vector2, font_size: int) -> Label:
 	var label := Label.new()
