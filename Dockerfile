@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxkbcommon0 \
         libasound2 \
         libpulse0 \
+        libpipewire-0.3-0 \
         libdbus-1-3 \
         libudev1 \
         libzstd1 \

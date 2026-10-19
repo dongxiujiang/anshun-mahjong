@@ -157,6 +157,8 @@ func _on_disconnected() -> void:
 	_connected = false
 	_connecting = false
 	_stop_mic()
+	_track = null
+	_source = null
 	_clear_remote()
 	_status = "语音已断开"
 	status_changed.emit(false, _status)
@@ -276,6 +278,8 @@ func _start_mic() -> void:
 			_fail("无法创建语音轨道")
 			return
 		_room.get_local_participant().publish_track(_track, {})
+	else:
+		_track.unmute()
 	if _mic_player == null:
 		_mic_player = AudioStreamPlayer.new()
 		_mic_player.name = "LiveKitMicrophone"
@@ -422,6 +426,8 @@ func _leave_room() -> void:
 	if _room != null:
 		_room.disconnect_from_room()
 	_room = null
+	_track = null
+	_source = null
 	_connected = false
 	_connecting = false
 

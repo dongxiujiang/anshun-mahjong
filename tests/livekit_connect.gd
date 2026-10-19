@@ -30,5 +30,6 @@ func _run() -> void:
 			break
 	print("connected=", connected[0], " state=", room.get_connection_state())
 	room.disconnect_from_room()
-	await create_timer(0.5).timeout
+	room = null
+	await create_timer(1.0).timeout
 	quit(0 if connected[0] else 4)

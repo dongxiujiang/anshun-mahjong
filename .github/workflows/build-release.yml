@@ -136,6 +136,10 @@ jobs:
           test -f /tmp/templates/templates/android_release.apk
           cp -a /tmp/templates/templates/. "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
 
+      - name: Install LiveKit Linux runtime dependency
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-0
+
       - name: Configure Godot Android export
         shell: bash
         env:
