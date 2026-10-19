@@ -172,6 +172,10 @@ func _ready() -> void:
 	_update_speed_buttons()
 	overlay.hide()
 
+func _exit_tree() -> void:
+	if GameConfig.voice_chat_settings_changed.is_connected(_sync_voice_settings):
+		GameConfig.voice_chat_settings_changed.disconnect(_sync_voice_settings)
+
 func _label(text: String, pos: Vector2, dimensions: Vector2, font_size: int) -> Label:
 	var label := Label.new()
 	label.text = text

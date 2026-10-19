@@ -43,7 +43,7 @@ func setup(owner: Node, allow_audio: bool) -> void:
 	if _config != null:
 		_mic_gain = clampf(float(_config.voice_chat_mic_gain), 0.0, 2.0)
 		_remote_volume = clampf(float(_config.voice_chat_remote_volume), 0.0, 1.0)
-		if not _config.voice_chat_settings_changed.is_connected(_on_settings_changed):
+		if audio_available and not _config.voice_chat_settings_changed.is_connected(_on_settings_changed):
 			_config.voice_chat_settings_changed.connect(_on_settings_changed)
 	if audio_available:
 		_setup_audio()
@@ -159,6 +159,9 @@ func _disable() -> void:
 	if _status != "":
 		_status = "麦克风已关闭"
 		status_changed.emit(false, _status)
+
+func _exit_tree() -> void:
+	shutdown()
 
 func shutdown() -> void:
 	_disable()
