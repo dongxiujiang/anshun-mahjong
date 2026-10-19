@@ -73,15 +73,15 @@ var online_mode := false
 const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
 # Claims use the same wait as an ordinary AI discard; the speed buttons control
 # both. Pass and win responses remain immediate.
-var ai_speed := "fast"
+var ai_speed := "medium"
 const ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0}
 const TILE_ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0, "slow": 1.8}
-var draw_animation_speed := "standard"
-var discard_animation_speed := "standard"
+var draw_animation_speed := "fast"
+var discard_animation_speed := "fast"
 # 结算阅读节奏独立于摸牌、出牌等动画；慢速默认留足查看计分的时间。
 signal settlement_speed_changed
 const SETTLEMENT_SPEEDS := {"instant": 0.0, "standard": 1.0, "slow": 2.0, "detail": 3.5}
-var settlement_speed := "slow"
+var settlement_speed := "standard"
 # 联机语音聊天：麦克风增益与其它玩家语音音量独立保存。
 signal voice_chat_settings_changed
 var voice_chat_mic_gain := 1.0

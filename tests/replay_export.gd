@@ -220,7 +220,7 @@ func _test_ui() -> void:
 	t.expect(FileAccess.file_exists(exporter.last_path) and settings.replay_status.text.contains("ui-saved.json"), "按钮可真正写出文件并显示位置")
 	var buttons: Array = [settings.replay_export_button, settings.continue_button, settings.exit_room_button]
 	for button in buttons:
-		t.expect(button.position.y == 514 and button.size.y == 80, "保存/继续/退出同一行等高")
+		t.expect(button.position.y == 682 and button.size.y == 80, "保存/继续/退出同一行等高")
 		t.expect(button.get_rect().end.y < settings.replay_status.position.y, "底部状态不挤压按钮")
 	t.expect(buttons[0].size == buttons[1].size, "保存与继续同宽且文字不会拥挤")
 	t.expect(buttons[1].position.x - buttons[0].get_rect().end.x >= 16, "保存与继续保留明确间距")

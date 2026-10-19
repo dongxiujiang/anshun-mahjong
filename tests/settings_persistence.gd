@@ -26,7 +26,7 @@ func _audio(path: String):
 func _test_defaults_and_recovery() -> void:
 	var path := directory + "/validation.cfg"
 	var config = _game(path)
-	t.expect(config.ai_speed == "fast" and config.draw_animation_speed == "standard" and config.discard_animation_speed == "standard" and config.settlement_speed == "slow", "new installation uses defaults")
+	t.expect(config.ai_speed == "medium" and config.draw_animation_speed == "fast" and config.discard_animation_speed == "fast" and config.settlement_speed == "standard", "new installation uses defaults")
 	t.expect(not FileAccess.file_exists(path), "loading missing settings never writes defaults")
 	config.set_settlement_speed("slow")
 	t.expect(STORE.read_config(path).get_value("game", "settlement_speed") == "slow", "explicitly choosing the current default is still saved for future upgrades")
@@ -48,7 +48,7 @@ func _test_defaults_and_recovery() -> void:
 	var digest := FileAccess.get_sha256(path)
 	var loaded = _game(path)
 	t.expect(loaded.ai_speed == "slow" and loaded.settlement_speed == "detail", "valid choices survive invalid neighboring fields")
-	t.expect(loaded.draw_animation_speed == "standard" and loaded.discard_animation_speed == "standard", "invalid type and obsolete key fall back individually")
+	t.expect(loaded.draw_animation_speed == "fast" and loaded.discard_animation_speed == "fast", "invalid type and obsolete key fall back individually")
 	t.expect(loaded.animation_speed == "standard", "a newly added setting uses its default")
 	loaded.set_ai_speed("invalid")
 	t.expect(FileAccess.get_sha256(path) == digest, "loading and invalid selections do not rewrite the saved file")
@@ -158,7 +158,7 @@ func _test_restart_and_patch() -> void:
 	var game_hash := FileAccess.get_sha256(directory + "/restart_game.cfg")
 	var audio_hash := FileAccess.get_sha256(directory + "/restart_audio.cfg")
 	_run_child("read")
-	var game_source := FileAccess.get_file_as_string(GAME).replace('var ai_speed := "fast"', 'var ai_speed := "slow"').replace('var settlement_speed := "slow"', 'var settlement_speed := "instant"')
+	var game_source := FileAccess.get_file_as_string(GAME).replace('var ai_speed := "medium"', 'var ai_speed := "slow"').replace('var settlement_speed := "standard"', 'var settlement_speed := "instant"')
 	var audio_source := FileAccess.get_file_as_string(AUDIO).replace('{"music": 0.12, "voice": 0.8, "effects": 0.65}', '{"music": 0.5, "voice": 0.5, "effects": 0.5}')
 	var pack := PCKPacker.new()
 	t.expect(pack.pck_start(directory + "/new-defaults.pck") == OK, "create preference upgrade fixture")

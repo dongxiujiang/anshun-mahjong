@@ -9,7 +9,7 @@ signal replay_export_requested
 ## 主菜单和牌桌共用的声音面板，独立于旋转、缩放的牌桌。
 
 const PANEL_SIZE := Vector2(680, 560)
-const TABLE_PANEL_SIZE := Vector2(1120, 720)
+const TABLE_PANEL_SIZE := Vector2(1120, 840)
 const SLIDER_HEIGHT := 56.0
 const SLIDER_KNOB := 48
 const TITLES := {"music": "背景音乐", "voice": "出牌 / 动作语音", "effects": "落桌 / 结算音效"}
@@ -91,23 +91,50 @@ func _ready() -> void:
 		panel.add_child(slider)
 		sliders[channel] = slider
 		percentages[channel] = _label("", Vector2(574, y + 12), Vector2(78, 42), 24)
+	if table_mode:
+		var mic_y := 126.0 + AudioManager.CHANNELS.size() * 88.0
+		_label("麦克风音量", Vector2(28, mic_y), Vector2(280, 62), 24)
+		mic_gain_slider = HSlider.new()
+		mic_gain_slider.position = Vector2(324, mic_y)
+		mic_gain_slider.size = Vector2(234, SLIDER_HEIGHT)
+		mic_gain_slider.custom_minimum_size = Vector2(234, SLIDER_HEIGHT)
+		mic_gain_slider.min_value = 0
+		mic_gain_slider.max_value = 200
+		mic_gain_slider.step = 1
+		_style_slider(mic_gain_slider)
+		mic_gain_slider.value_changed.connect(_on_mic_gain_changed)
+		panel.add_child(mic_gain_slider)
+		mic_gain_percent = _label("", Vector2(574, mic_y + 12), Vector2(78, 42), 24)
+		var remote_y := mic_y + 88.0
+		_label("他人语音音量", Vector2(28, remote_y), Vector2(280, 62), 24)
+		remote_volume_slider = HSlider.new()
+		remote_volume_slider.position = Vector2(324, remote_y)
+		remote_volume_slider.size = Vector2(234, SLIDER_HEIGHT)
+		remote_volume_slider.custom_minimum_size = Vector2(234, SLIDER_HEIGHT)
+		remote_volume_slider.min_value = 0
+		remote_volume_slider.max_value = 100
+		remote_volume_slider.step = 1
+		_style_slider(remote_volume_slider)
+		remote_volume_slider.value_changed.connect(_on_remote_volume_changed)
+		panel.add_child(remote_volume_slider)
+		remote_volume_percent = _label("", Vector2(574, remote_y + 12), Vector2(78, 42), 24)
 	var credit := LinkButton.new()
 	credit.text = "音乐：Ripples · Kevin MacLeod · incompetech.com · CC BY 4.0"
-	credit.position = Vector2(36, 382)
+	credit.position = Vector2(36, 566 if table_mode else 382)
 	credit.size = Vector2(608, 28)
 	credit.add_theme_font_size_override("font_size", 16)
 	credit.tooltip_text = "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100691\nhttps://creativecommons.org/licenses/by/4.0/\n已调整音量、淡入淡出并转换为 WAV。"
 	credit.pressed.connect(func(): OS.shell_open("https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100691"))
 	panel.add_child(credit)
 	voice_selector = OptionButton.new()
-	voice_selector.position = Vector2(36, 422)
+	voice_selector.position = Vector2(36, 604 if table_mode else 422)
 	voice_selector.size = Vector2(172, 62)
 	for title in ["柔和女声", "轻朗男声", "清柔女声", "沉稳男声"]:
 		voice_selector.add_item(title)
 	voice_selector.item_selected.connect(func(seat: int): AudioManager.set_preview_voice_seat(seat, persist_changes))
 	panel.add_child(voice_selector)
-	preview_button = _button("试听语音", Vector2(220, 422), Vector2(172, 62), _preview_voice)
-	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 514) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
+	preview_button = _button("试听语音", Vector2(220, 604 if table_mode else 422), Vector2(172, 62), _preview_voice)
+	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 682) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
 	continue_button.name = "ContinueGameButton"
 	if table_mode:
 		_label("人机出牌 / 碰杠响应", Vector2(716, 24), Vector2(368, 38), 24)
@@ -128,35 +155,11 @@ func _ready() -> void:
 			var speed_button := _button(item[0], Vector2(716 + settlement_speed_buttons.size() * 94, 408), Vector2(86, 64), func(): _set_settlement_speed(settlement_key))
 			settlement_speed_buttons[settlement_key] = speed_button
 		_label("四项速度独立调整", Vector2(716, 478), Vector2(368, 30), 20)
-		exit_room_button = _button("退出房间", Vector2(716, 514), Vector2(368, 80), func(): exit_requested.emit())
+		exit_room_button = _button("退出房间", Vector2(716, 682), Vector2(368, 80), func(): exit_requested.emit())
 		exit_room_button.name = "ExitRoomButton"
-		_label("麦克风音量", Vector2(716, 598), Vector2(132, 24), 16)
-		mic_gain_slider = HSlider.new()
-		mic_gain_slider.position = Vector2(846, 590)
-		mic_gain_slider.size = Vector2(158, 48)
-		mic_gain_slider.custom_minimum_size = Vector2(158, 48)
-		mic_gain_slider.min_value = 0
-		mic_gain_slider.max_value = 200
-		mic_gain_slider.step = 1
-		_style_slider(mic_gain_slider)
-		mic_gain_slider.value_changed.connect(_on_mic_gain_changed)
-		panel.add_child(mic_gain_slider)
-		mic_gain_percent = _label("", Vector2(1012, 602), Vector2(72, 24), 16)
-		_label("他人语音音量", Vector2(716, 644), Vector2(132, 24), 16)
-		remote_volume_slider = HSlider.new()
-		remote_volume_slider.position = Vector2(846, 636)
-		remote_volume_slider.size = Vector2(158, 48)
-		remote_volume_slider.custom_minimum_size = Vector2(158, 48)
-		remote_volume_slider.min_value = 0
-		remote_volume_slider.max_value = 100
-		remote_volume_slider.step = 1
-		_style_slider(remote_volume_slider)
-		remote_volume_slider.value_changed.connect(_on_remote_volume_changed)
-		panel.add_child(remote_volume_slider)
-		remote_volume_percent = _label("", Vector2(1012, 648), Vector2(72, 24), 16)
-		replay_export_button = _button("保存本局记录", Vector2(36, 514), Vector2(296, 80), func(): replay_export_requested.emit())
+		replay_export_button = _button("保存本局记录", Vector2(36, 682), Vector2(296, 80), func(): replay_export_requested.emit())
 		replay_export_button.name = "SaveRoundButton"
-		replay_status = _label("选择保存位置，建议放在“下载”文件夹，方便查找和发送。", Vector2(36, 604), Vector2(660, 60), 18)
+		replay_status = _label("选择保存位置，建议放在“下载”文件夹，方便查找和发送。", Vector2(36, 766), Vector2(660, 60), 18)
 		replay_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		replay_status.max_lines_visible = 2
 		replay_status.clip_text = true

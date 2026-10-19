@@ -96,7 +96,7 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	multiplayer.multiplayer_peer = peer
 	host_mode = true
 	dedicated = server_only
-	ai_speed = "fast" if dedicated else get_node("/root/GameConfig").ai_speed
+	ai_speed = "medium" if dedicated else get_node("/root/GameConfig").ai_speed
 	_host_ai_fill = ai_fill
 	room_number = number
 	room_name = title.strip_edges().left(24)
