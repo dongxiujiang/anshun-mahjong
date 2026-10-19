@@ -66,17 +66,17 @@ func _connect_voice_ui() -> void:
 	var net = _net_node()
 	if net == null:
 		return
-	if not net.voice_status.is_connected(_on_voice_status):
+	if net.has_signal("voice_status") and not net.voice_status.is_connected(_on_voice_status):
 		net.voice_status.connect(_on_voice_status)
-	if not net.game_started.is_connected(_refresh_voice_button):
+	if net.has_signal("game_started") and not net.game_started.is_connected(_refresh_voice_button):
 		net.game_started.connect(_refresh_voice_button)
-	if not net.host_game_started.is_connected(_refresh_voice_button):
+	if net.has_signal("host_game_started") and not net.host_game_started.is_connected(_refresh_voice_button):
 		net.host_game_started.connect(_refresh_voice_button)
 	_refresh_voice_button()
 
 func _toggle_voice_chat() -> void:
 	var net = _net_node()
-	if net == null:
+	if net == null or not net.has_method("toggle_voice_chat"):
 		return
 	net.toggle_voice_chat()
 	_refresh_voice_button()
@@ -90,24 +90,26 @@ func _refresh_voice_button() -> void:
 	if _voice_button == null:
 		return
 	var net = _net_node()
-	var online := _net_mode() != ""
+	var online: bool = _net_mode() != "" and net != null and net.has_method("voice_chat_enabled")
 	_voice_button.visible = online
-	if not online or net == null:
+	if not online:
 		return
 	_voice_button.text = "麦克风 开" if net.voice_chat_enabled() else "麦克风 关"
 	_voice_button.disabled = not net.voice_chat_allowed()
 
 func _toggle_remote_voice(seat: int) -> void:
 	var net = _net_node()
-	if net == null or net.voice_chat == null:
+	var chat = net.get("voice_chat") if net != null else null
+	if chat == null or not chat.has_method("speaker_enabled"):
 		return
-	net.voice_chat.set_speaker_enabled(seat, not bool(net.voice_chat.speaker_enabled(seat)))
+	chat.set_speaker_enabled(seat, not bool(chat.speaker_enabled(seat)))
 	if _player_tile_areas != null:
 		_player_tile_areas._refresh_identity(seat)
 
 func _remote_voice_enabled(seat: int) -> bool:
 	var net = _net_node()
-	return net != null and net.voice_chat != null and bool(net.voice_chat.speaker_enabled(seat))
+	var chat = net.get("voice_chat") if net != null else null
+	return chat != null and chat.has_method("speaker_enabled") and bool(chat.speaker_enabled(seat))
 
 func _process(_delta: float) -> void:
 	if round != null:
@@ -116,9 +118,10 @@ func _process(_delta: float) -> void:
 func _exit_tree() -> void:
 	var net = _net_node()
 	if net != null:
-		if net.voice_chat != null:
-			net.voice_chat.set_enabled(false)
-		if net.voice_status.is_connected(_on_voice_status):
+		var chat = net.get("voice_chat")
+		if chat != null and chat.has_method("set_enabled"):
+			chat.set_enabled(false)
+		if net.has_signal("voice_status") and net.voice_status.is_connected(_on_voice_status):
 			net.voice_status.disconnect(_on_voice_status)
 	if _ai_service != null:
 		var tree := get_tree()
