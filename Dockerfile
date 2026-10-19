@@ -55,6 +55,8 @@ COPY . /app
 # The development MCP runtime autoload is only for the editor tooling. It must
 # not open a listener inside production room processes.
 RUN sed -i '/^MCPRuntimeServer=/d' /app/project.godot
+# Room servers have no microphone and run headless; do not open an input device.
+RUN sed -i '/^driver\/enable_input=/d' /app/project.godot
 # Bake the import cache into the image so room startup does not race imports.
 RUN /opt/godot/godot --headless --editor --path /app --import \
     && chown -R mahjong:mahjong /app
