@@ -7,11 +7,15 @@ from pathlib import Path
 import re
 import secrets
 import subprocess
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
+# room_directory.py is both executed as a script and imported by the network
+# regression tools, whose sys.path starts at the repository root.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from livekit_token import make_token
 
 NUMBER = re.compile(r"[0-9]{4,8}\Z")
