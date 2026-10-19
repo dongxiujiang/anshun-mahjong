@@ -16,6 +16,7 @@ var _sound_settings: SoundSettings
 var _audio_round: RoundState
 var _sound_button: Button
 var _settings_button: Button
+var _voice_button: Button
 var _settlement_round_id := 0
 var _settlement_session := ""
 var _settlement_round_number := -1
@@ -28,6 +29,7 @@ var _ai_service = null
 func _ready() -> void:
 	AudioManager.begin_table(self)
 	_build_static_ui()
+	_connect_voice_ui()
 	get_window().focus_exited.connect(_on_input_focus_changed)
 	get_window().focus_entered.connect(_on_input_focus_changed)
 	resized.connect(_layout)
@@ -60,11 +62,64 @@ func _connect_audio_round() -> void:
 func _on_audio_event(event: Dictionary) -> void:
 	AudioManager.play_event(event, _table_animation_controller.defers_discard_sound())
 
+func _connect_voice_ui() -> void:
+	var net = _net_node()
+	if net == null:
+		return
+	if not net.voice_status.is_connected(_on_voice_status):
+		net.voice_status.connect(_on_voice_status)
+	if not net.game_started.is_connected(_refresh_voice_button):
+		net.game_started.connect(_refresh_voice_button)
+	if not net.host_game_started.is_connected(_refresh_voice_button):
+		net.host_game_started.connect(_refresh_voice_button)
+	_refresh_voice_button()
+
+func _toggle_voice_chat() -> void:
+	var net = _net_node()
+	if net == null:
+		return
+	net.toggle_voice_chat()
+	_refresh_voice_button()
+
+func _on_voice_status(_enabled: bool, message: String) -> void:
+	if _voice_button != null and message != "":
+		_voice_button.tooltip_text = message
+	_refresh_voice_button()
+
+func _refresh_voice_button() -> void:
+	if _voice_button == null:
+		return
+	var net = _net_node()
+	var online := _net_mode() != ""
+	_voice_button.visible = online
+	if not online or net == null:
+		return
+	_voice_button.text = "麦克风 开" if net.voice_chat_enabled() else "麦克风 关"
+	_voice_button.disabled = not net.voice_chat_allowed()
+
+func _toggle_remote_voice(seat: int) -> void:
+	var net = _net_node()
+	if net == null or net.voice_chat == null:
+		return
+	net.voice_chat.set_speaker_enabled(seat, not bool(net.voice_chat.speaker_enabled(seat)))
+	if _player_tile_areas != null:
+		_player_tile_areas._refresh_identity(seat)
+
+func _remote_voice_enabled(seat: int) -> bool:
+	var net = _net_node()
+	return net != null and net.voice_chat != null and bool(net.voice_chat.speaker_enabled(seat))
+
 func _process(_delta: float) -> void:
 	if round != null:
 		round.poll_ai()
 
 func _exit_tree() -> void:
+	var net = _net_node()
+	if net != null:
+		if net.voice_chat != null:
+			net.voice_chat.set_enabled(false)
+		if net.voice_status.is_connected(_on_voice_status):
+			net.voice_status.disconnect(_on_voice_status)
 	if _ai_service != null:
 		var tree := get_tree()
 		if tree != null:

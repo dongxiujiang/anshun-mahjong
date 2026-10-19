@@ -82,6 +82,10 @@ var discard_animation_speed := "standard"
 signal settlement_speed_changed
 const SETTLEMENT_SPEEDS := {"instant": 0.0, "standard": 1.0, "slow": 2.0, "detail": 3.5}
 var settlement_speed := "slow"
+# 联机语音聊天：麦克风增益与其它玩家语音音量独立保存。
+signal voice_chat_settings_changed
+var voice_chat_mic_gain := 1.0
+var voice_chat_remote_volume := 0.8
 # 开局采用共同节奏，权威端按时钟解锁；客户端动画不推进游戏逻辑。
 const OPENING_DICE_SECONDS := 1.2
 const OPENING_DICE_HOLD_SECONDS := 0.5
@@ -122,6 +126,8 @@ func load_settings(path: String = "") -> void:
 	for key in PREFERENCE_CHOICES:
 		var value = config.get_value("game", key, get(key))
 		if value is String and PREFERENCE_CHOICES[key].has(value): set(key, value)
+	voice_chat_mic_gain = clampf(float(config.get_value("voice_chat", "mic_gain", voice_chat_mic_gain)), 0.0, 2.0)
+	voice_chat_remote_volume = clampf(float(config.get_value("voice_chat", "remote_volume", voice_chat_remote_volume)), 0.0, 1.0)
 
 func save_settings(path: String = "") -> Error:
 	if path == "" and not persist_settings: return OK
@@ -129,7 +135,19 @@ func save_settings(path: String = "") -> Error:
 	var config := SETTINGS_STORE.read_config(target)
 	config.set_value("player", "name", player_name)
 	for key in PREFERENCE_CHOICES: config.set_value("game", key, get(key))
+	config.set_value("voice_chat", "mic_gain", voice_chat_mic_gain)
+	config.set_value("voice_chat", "remote_volume", voice_chat_remote_volume)
 	return SETTINGS_STORE.write_config(config, target)
+
+func set_voice_chat_mic_gain(value: float, persist: bool = true) -> void:
+	voice_chat_mic_gain = clampf(value, 0.0, 2.0)
+	voice_chat_settings_changed.emit()
+	_save_preference(persist)
+
+func set_voice_chat_remote_volume(value: float, persist: bool = true) -> void:
+	voice_chat_remote_volume = clampf(value, 0.0, 1.0)
+	voice_chat_settings_changed.emit()
+	_save_preference(persist)
 
 func set_player_name(value: String, persist: bool = true) -> void:
 	player_name = value.strip_edges().left(16)

@@ -56,6 +56,7 @@ const SUITES: Array[String] = [
 	"res://tests/network_persistence.gd",
 	"res://tests/smoke_ui.gd",
 	"res://tests/smoke_audio.gd",
+	"res://tests/voice_chat.gd",
 	"res://tests/audio_shutdown.gd",
 ]
 

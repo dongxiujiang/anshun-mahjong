@@ -11,7 +11,9 @@ signal game_started
 signal connection_error(message)
 signal reconnecting(attempt, maximum)
 signal session_invalidated
+signal voice_status(enabled, message)
 
+const VOICE_CHAT := preload("res://scripts/online/OnlineVoiceChat.gd")
 const AUTO := "auto"
 const START_DELAY := 3.0
 const NEXT_ROUND_DELAY := 1.0
@@ -58,7 +60,9 @@ var _state_queued := false
 var _state_revision := 0
 var _received_revision := -1
 var ai_speed := "fast"
+var voice_chat = null
 var _ai_service = null
+var _voice_last_ms := {}
 var _sent_audio := {}
 var state_metrics := {"sent": 0, "coalesced": 0, "bytes": 0, "full_bytes": 0}
 var measure_state_traffic := false
@@ -119,7 +123,16 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	if not dedicated: room_ready.emit(my_seat)
 	return true
 
+func _ready() -> void:
+	voice_chat = VOICE_CHAT.new()
+	voice_chat.name = "VoiceChat"
+	add_child(voice_chat)
+	voice_chat.setup(self, DisplayServer.get_name() != "headless")
+	voice_chat.status_changed.connect(func(enabled: bool, message: String): voice_status.emit(enabled, message))
+
 func _process(delta: float) -> void:
+	if voice_chat != null:
+		voice_chat.poll_permission()
 	if game != null:
 		game.poll_ai()
 	if not host_mode:
@@ -333,6 +346,9 @@ func _local_peer() -> int:
 	return 1 if host_mode else multiplayer.get_unique_id()
 
 func _exit_tree() -> void:
+	if voice_chat != null:
+		voice_chat.shutdown()
+		voice_chat = null
 	if _ai_service != null:
 		var tree := get_tree()
 		if tree != null:
@@ -620,6 +636,59 @@ func _reconnect_step() -> void:
 	_reconnect_wait = 5.0
 	multiplayer.multiplayer_peer = null
 	_open_client_peer()
+
+func voice_chat_allowed() -> bool:
+	return _started and game != null and game.phase != RoundState.Phase.IDLE and my_seat >= 0 and not dedicated
+
+func toggle_voice_chat() -> bool:
+	if voice_chat == null:
+		return false
+	return bool(voice_chat.set_enabled(not voice_chat.enabled))
+
+func voice_chat_enabled() -> bool:
+	return voice_chat != null and bool(voice_chat.enabled)
+
+func send_local_voice(packet: PackedByteArray) -> void:
+	if voice_chat == null or not _started or packet.size() < 6 or packet.size() > 1024:
+		return
+	packet[1] = clampi(my_seat, 0, 3)
+	if host_mode:
+		_relay_voice(packet, 0)
+	elif multiplayer.multiplayer_peer != null:
+		voice_packet.rpc_id(1, packet)
+
+func _relay_voice(packet: PackedByteArray, except_peer: int) -> void:
+	if not host_mode:
+		return
+	for peer in _peer_seat.keys():
+		if int(peer) <= 1 or int(peer) == except_peer or not _peer_connected(int(peer)):
+			continue
+		voice_packet.rpc_id(int(peer), packet)
+
+@rpc("any_peer", "call_remote", "unreliable")
+func voice_packet(packet: PackedByteArray) -> void:
+	if not _started or game == null or packet.size() < 6 or packet.size() > 1024:
+		return
+	if not VOICE_CHAT.valid_packet(packet):
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if host_mode:
+		if not _peer_seat.has(sender):
+			return
+		var now := Time.get_ticks_msec()
+		if now - int(_voice_last_ms.get(sender, 0)) < 10:
+			return
+		_voice_last_ms[sender] = now
+		var copy := packet.duplicate()
+		copy[1] = int(_peer_seat[sender])
+		if not dedicated and voice_chat != null:
+			voice_chat.play_packet(copy)
+		_relay_voice(copy, sender)
+	else:
+		if sender != 1:
+			return
+		if voice_chat != null:
+			voice_chat.play_packet(packet)
 
 func _on_client_sync(state: Dictionary) -> void:
 	if not _client_joined:

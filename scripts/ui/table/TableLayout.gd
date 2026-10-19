@@ -59,6 +59,13 @@ func _build_static_ui() -> void:
 	sound_button.position = Vector2(1287, 20)
 	surface.add_child(sound_button)
 	table._sound_button = sound_button
+	var voice_button: Button = table._button("麦克风 关", table._toggle_voice_chat, Vector2(164, UI.SETTINGS_BUTTON_SIZE.y))
+	voice_button.name = "VoiceChatButton"
+	voice_button.add_theme_font_size_override("font_size", UI.SETTINGS_FONT_SIZE - 6)
+	voice_button.tooltip_text = "联机语音聊天，默认关闭"
+	voice_button.visible = false
+	surface.add_child(voice_button)
+	table._voice_button = voice_button
 	# 返回、声音和 AI 速度统一收进大号设置面板，避免右上角小按钮难以点击。
 	table._sound_settings.exit_requested.connect(table._confirm_quit)
 	table._sound_settings.exit_confirmed.connect(table._on_quit)
@@ -116,6 +123,10 @@ func _layout() -> void:
 	table._sound_button.position = Vector2(design.x - UI.SETTINGS_BUTTON_SIZE.x - UI.SETTINGS_EDGE_GAP, UI.SETTINGS_TOP_GAP)
 	table._sound_button.custom_minimum_size = UI.SETTINGS_BUTTON_SIZE
 	table._sound_button.size = table._sound_button.custom_minimum_size
+	if table._voice_button != null:
+		table._voice_button.visible = table._net_mode() != ""
+		table._voice_button.position = table._sound_button.position - Vector2(table._voice_button.size.x + 12.0, 0.0)
+		table._refresh_voice_button()
 	# Actions sit immediately above the local player's draw slot.
 	table._layout_actions()
 	status_label.position = Vector2(60, design.y - 54)

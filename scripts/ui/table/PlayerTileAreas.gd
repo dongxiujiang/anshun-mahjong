@@ -17,6 +17,7 @@ var wind_labels := {}
 var avatars := {}
 var dealer_badges := {}
 var name_labels := {}
+var voice_speaker_buttons := {}
 var _status_labels := {}
 var _exposed_layouts := {}
 var _seat_visual_keys := {}
@@ -90,6 +91,13 @@ func build() -> void:
 		wind.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		wind_labels[seat] = wind
 		wind.hide()
+		var speaker: Button = table._button("喇叭", func(): table._toggle_remote_voice(seat), Vector2(64, 30))
+		speaker.name = "VoiceSpeaker%d" % seat
+		speaker.add_theme_font_size_override("font_size", 16)
+		speaker.tooltip_text = "开关该玩家语音"
+		speaker.hide()
+		table.surface.add_child(speaker)
+		voice_speaker_buttons[seat] = speaker
 
 func _refresh_identity(seat: int) -> void:
 	if seat >= table.round.players.size(): return
@@ -133,6 +141,15 @@ func _refresh_identity(seat: int) -> void:
 	nickname.position = label.position - Vector2(0, nickname.size.y + 4.0)
 	nickname.tooltip_text = nickname.text
 	nickname.visible = table._net_mode() != ""
+	var speaker: Button = voice_speaker_buttons.get(seat)
+	if speaker != null:
+		var remote_human: bool = table._net_mode() != "" and seat != table.human_seat and player.is_human and table.round.phase != RoundState.Phase.SETTLED
+		speaker.visible = remote_human
+		if remote_human:
+			speaker.position = nickname.position + Vector2(nickname.size.x + 6.0, 0.0)
+			var speaker_on: bool = table._remote_voice_enabled(seat)
+			speaker.text = "喇叭" if speaker_on else "静音"
+			speaker.modulate = Color.WHITE if speaker_on else Color(0.62, 0.62, 0.62)
 	var badge: Label = dealer_badges[seat]
 	var score_width := TileView._font().get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	badge.position = label.position + Vector2((label.size.x + score_width) / 2.0 + 8.0, (label.size.y - badge.size.y) / 2.0)

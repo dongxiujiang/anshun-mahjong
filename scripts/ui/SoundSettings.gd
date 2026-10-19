@@ -29,6 +29,10 @@ var confirm_exit_button: Button
 var cancel_exit_button: Button
 var replay_export_button: Button
 var replay_status: Label
+var mic_gain_slider: HSlider
+var remote_volume_slider: HSlider
+var mic_gain_percent: Label
+var remote_volume_percent: Label
 var continue_button: Button
 var exit_room_button: Button
 var replay_exporter: Node
@@ -118,9 +122,29 @@ func _ready() -> void:
 		_label("四项速度独立调整", Vector2(716, 478), Vector2(368, 30), 20)
 		exit_room_button = _button("退出房间", Vector2(716, 514), Vector2(368, 80), func(): exit_requested.emit())
 		exit_room_button.name = "ExitRoomButton"
+		_label("麦克风音量", Vector2(716, 604), Vector2(132, 24), 16)
+		mic_gain_slider = HSlider.new()
+		mic_gain_slider.position = Vector2(846, 608)
+		mic_gain_slider.size = Vector2(158, 22)
+		mic_gain_slider.min_value = 0
+		mic_gain_slider.max_value = 200
+		mic_gain_slider.step = 1
+		mic_gain_slider.value_changed.connect(_on_mic_gain_changed)
+		panel.add_child(mic_gain_slider)
+		mic_gain_percent = _label("", Vector2(1012, 602), Vector2(72, 24), 16)
+		_label("他人语音音量", Vector2(716, 644), Vector2(132, 24), 16)
+		remote_volume_slider = HSlider.new()
+		remote_volume_slider.position = Vector2(846, 648)
+		remote_volume_slider.size = Vector2(158, 22)
+		remote_volume_slider.min_value = 0
+		remote_volume_slider.max_value = 100
+		remote_volume_slider.step = 1
+		remote_volume_slider.value_changed.connect(_on_remote_volume_changed)
+		panel.add_child(remote_volume_slider)
+		remote_volume_percent = _label("", Vector2(1012, 642), Vector2(72, 24), 16)
 		replay_export_button = _button("保存本局记录", Vector2(36, 514), Vector2(296, 80), func(): replay_export_requested.emit())
 		replay_export_button.name = "SaveRoundButton"
-		replay_status = _label("选择保存位置，建议放在“下载”文件夹，方便查找和发送。", Vector2(36, 604), Vector2(1048, 60), 18)
+		replay_status = _label("选择保存位置，建议放在“下载”文件夹，方便查找和发送。", Vector2(36, 604), Vector2(660, 60), 18)
 		replay_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		replay_status.max_lines_visible = 2
 		replay_status.clip_text = true
@@ -141,6 +165,7 @@ func _ready() -> void:
 		cancel_exit_button.reparent(exit_confirmation, false)
 		exit_confirmation.hide()
 	AudioManager.settings_changed.connect(_sync)
+	GameConfig.voice_chat_settings_changed.connect(_sync_voice_settings)
 	get_viewport().size_changed.connect(_layout)
 	_layout()
 	_sync()
@@ -190,6 +215,23 @@ func _sync() -> void:
 		switches[channel].set_pressed_no_signal(AudioManager.enabled[channel])
 		percentages[channel].text = "%d%%" % roundi(float(AudioManager.volumes[channel]) * 100.0)
 		preview_button.disabled = not AudioManager.enabled.voice or float(AudioManager.volumes.voice) <= 0.0
+	_sync_voice_settings()
+
+func _sync_voice_settings() -> void:
+	if mic_gain_slider == null or remote_volume_slider == null:
+		return
+	mic_gain_slider.set_value_no_signal(roundf(GameConfig.voice_chat_mic_gain * 100.0))
+	remote_volume_slider.set_value_no_signal(roundf(GameConfig.voice_chat_remote_volume * 100.0))
+	mic_gain_percent.text = "%d%%" % roundi(GameConfig.voice_chat_mic_gain * 100.0)
+	remote_volume_percent.text = "%d%%" % roundi(GameConfig.voice_chat_remote_volume * 100.0)
+
+func _on_mic_gain_changed(value: float) -> void:
+	GameConfig.set_voice_chat_mic_gain(value / 100.0, persist_changes)
+	_sync_voice_settings()
+
+func _on_remote_volume_changed(value: float) -> void:
+	GameConfig.set_voice_chat_remote_volume(value / 100.0, persist_changes)
+	_sync_voice_settings()
 
 func _on_toggle(on: bool, channel: String) -> void:
 	AudioManager.set_enabled(channel, on, persist_changes)
