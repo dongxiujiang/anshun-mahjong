@@ -57,6 +57,9 @@ COPY . /app
 RUN sed -i '/^MCPRuntimeServer=/d' /app/project.godot
 # Room servers have no microphone and run headless; do not open an input device.
 RUN sed -i '/^driver\/enable_input=/d' /app/project.godot
+# Keep the native extension: the client scripts reference its global classes.
+# The headless room server never opens an audio device, but the Linux library
+# must still load while the project is imported.
 # Bake the import cache into the image so room startup does not race imports.
 RUN /opt/godot/godot --headless --editor --path /app --import \
     && chown -R mahjong:mahjong /app

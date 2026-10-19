@@ -1,0 +1,25 @@
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: true
+  node_ip: 47.108.185.96
+
+turn:
+  enabled: true
+  domain: mj.dongxiu.fun
+  udp_port: 3478
+  tls_port: 5349
+  cert_file: /etc/letsencrypt/live/mj.dongxiu.fun/fullchain.pem
+  key_file: /etc/letsencrypt/live/mj.dongxiu.fun/privkey.pem
+  relay_range_start: 30000
+  relay_range_end: 30050
+
+room:
+  auto_create: true
+
+logging:
+  level: info

@@ -35,6 +35,26 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  livekit:
+    image: livekit/livekit-server:v1.8.4
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    environment:
+      LIVEKIT_KEYS: ${LIVEKIT_KEYS:?set LIVEKIT_KEYS in .env}
+    ports:
+      - "127.0.0.1:7880:7880/tcp"
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+      - "3478:3478/udp"
+      - "5349:5349/tcp"
+      - "5349:5349/udp"
+      - "30000-30050:30000-30050/udp"
+    volumes:
+      - ./server/livekit.yaml:/etc/livekit.yaml:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    security_opt:
+      - no-new-privileges:true
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped

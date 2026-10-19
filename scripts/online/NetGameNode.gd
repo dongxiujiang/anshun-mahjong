@@ -13,7 +13,7 @@ signal reconnecting(attempt, maximum)
 signal session_invalidated
 signal voice_status(enabled, message)
 
-const VOICE_CHAT := preload("res://scripts/online/OnlineVoiceChat.gd")
+const VOICE_CHAT := preload("res://scripts/online/LiveKitVoiceChat.gd")
 const AUTO := "auto"
 const START_DELAY := 3.0
 const NEXT_ROUND_DELAY := 1.0
@@ -492,6 +492,7 @@ func start_net_game(seed_value: int = -1) -> bool:
 	game.start_round(my_seat)
 	_apply_member_names()
 	_host_broadcast()
+	_sync_voice_room()
 	host_game_started.emit()
 	game_started.emit()
 	return true
@@ -637,6 +638,14 @@ func _reconnect_step() -> void:
 	multiplayer.multiplayer_peer = null
 	_open_client_peer()
 
+func _sync_voice_room() -> void:
+	if voice_chat == null or not voice_chat.has_method("connect_room"):
+		return
+	if not voice_chat_allowed() or my_seat < 0 or room_number.length() < 4:
+		return
+	var display_name := str(get_node("/root/GameConfig").player_name).strip_edges()
+	voice_chat.connect_room(room_number, my_seat, display_name if display_name != "" else "玩家")
+
 func voice_chat_allowed() -> bool:
 	# Clients do not set the host-only _started flag until their first snapshot.
 	# Voice follows the active round instead, so a guest can talk as soon as the
@@ -652,13 +661,8 @@ func voice_chat_enabled() -> bool:
 	return voice_chat != null and bool(voice_chat.enabled)
 
 func send_local_voice(packet: PackedByteArray) -> void:
-	if voice_chat == null or not voice_chat_allowed() or packet.size() < 6 or packet.size() > 1024:
-		return
-	packet[1] = clampi(my_seat, 0, 3)
-	if host_mode:
-		_relay_voice(packet, 0)
-	elif multiplayer.multiplayer_peer != null:
-		voice_packet.rpc_id(1, packet)
+	# LiveKit carries media directly over WebRTC; ENet is game-state only.
+	return
 
 func _relay_voice(packet: PackedByteArray, except_peer: int) -> void:
 	if not host_mode:
@@ -669,29 +673,9 @@ func _relay_voice(packet: PackedByteArray, except_peer: int) -> void:
 		voice_packet.rpc_id(int(peer), packet)
 
 @rpc("any_peer", "call_remote", "unreliable")
-func voice_packet(packet: PackedByteArray) -> void:
-	if game == null or game.phase == RoundState.Phase.IDLE or packet.size() < 6 or packet.size() > 1024:
-		return
-	if not VOICE_CHAT.valid_packet(packet):
-		return
-	var sender := multiplayer.get_remote_sender_id()
-	if host_mode:
-		if not _peer_seat.has(sender):
-			return
-		var now := Time.get_ticks_msec()
-		if now - int(_voice_last_ms.get(sender, 0)) < 10:
-			return
-		_voice_last_ms[sender] = now
-		var copy := packet.duplicate()
-		copy[1] = int(_peer_seat[sender])
-		if not dedicated and voice_chat != null:
-			voice_chat.play_packet(copy)
-		_relay_voice(copy, sender)
-	else:
-		if sender != 1:
-			return
-		if voice_chat != null:
-			voice_chat.play_packet(packet)
+func voice_packet(_packet: PackedByteArray) -> void:
+	# Kept for protocol compatibility with 1.2.x peers; 1.3 uses LiveKit.
+	return
 
 func _on_client_sync(state: Dictionary) -> void:
 	if not _client_joined:
@@ -705,6 +689,7 @@ func _on_client_sync(state: Dictionary) -> void:
 	round_number = int(state.get("round_number", 1))
 	game.apply_sync(state)
 	_resume_sync_pending = false
+	_sync_voice_room()
 	state_updated.emit()
 	if first: game_started.emit()
 	if game.awaiting and (game.current_turn == my_seat or game._awaiting_response.get("seat", -1) == my_seat): prompted.emit(my_seat)
