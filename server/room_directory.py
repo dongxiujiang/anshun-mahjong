@@ -14,6 +14,8 @@ from urllib.parse import urlsplit
 
 NUMBER = re.compile(r"[0-9]{4,8}\Z")
 VERSION = "1"
+APP_VERSION = os.environ.get("APP_VERSION", "dev")
+BUILD_SHA = os.environ.get("BUILD_SHA", "")
 
 class RoomDirectory:
     def __init__(self, godot, project, public_host, first_port=7600, max_rooms=32):
@@ -114,6 +116,8 @@ class Handler(BaseHTTPRequestHandler):
                 "rooms": len(rooms),
                 "max_rooms": self.server.directory.max_rooms,
                 "version": VERSION,
+                "app_version": APP_VERSION,
+                "build": BUILD_SHA,
             })
         if path != "/rooms":
             return self._reply(404, {"error": "接口不存在"})

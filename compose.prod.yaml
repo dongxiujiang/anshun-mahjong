@@ -11,6 +11,8 @@ services:
       PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST in .env}
       MAX_ROOMS: ${MAX_ROOMS:-16}
       FIRST_PORT: ${FIRST_PORT:-7600}
+      APP_VERSION: ${APP_VERSION:-unknown}
+      BUILD_SHA: ${BUILD_SHA:-unknown}
     ports:
       # Host-local HTTP for an existing Nginx reverse proxy. Caddy mode can
       # leave this unused; it never exposes port 8080 publicly.
