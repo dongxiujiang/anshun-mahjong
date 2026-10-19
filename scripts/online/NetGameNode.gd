@@ -638,7 +638,10 @@ func _reconnect_step() -> void:
 	_open_client_peer()
 
 func voice_chat_allowed() -> bool:
-	return _started and game != null and game.phase != RoundState.Phase.IDLE and my_seat >= 0 and not dedicated
+	# Clients do not set the host-only _started flag until their first snapshot.
+	# Voice follows the active round instead, so a guest can talk as soon as the
+	# first deal reaches the table.
+	return game != null and game.phase != RoundState.Phase.IDLE and my_seat >= 0 and not dedicated
 
 func toggle_voice_chat() -> bool:
 	if voice_chat == null:
@@ -649,7 +652,7 @@ func voice_chat_enabled() -> bool:
 	return voice_chat != null and bool(voice_chat.enabled)
 
 func send_local_voice(packet: PackedByteArray) -> void:
-	if voice_chat == null or not _started or packet.size() < 6 or packet.size() > 1024:
+	if voice_chat == null or not voice_chat_allowed() or packet.size() < 6 or packet.size() > 1024:
 		return
 	packet[1] = clampi(my_seat, 0, 3)
 	if host_mode:
@@ -667,7 +670,7 @@ func _relay_voice(packet: PackedByteArray, except_peer: int) -> void:
 
 @rpc("any_peer", "call_remote", "unreliable")
 func voice_packet(packet: PackedByteArray) -> void:
-	if not _started or game == null or packet.size() < 6 or packet.size() > 1024:
+	if game == null or game.phase == RoundState.Phase.IDLE or packet.size() < 6 or packet.size() > 1024:
 		return
 	if not VOICE_CHAT.valid_packet(packet):
 		return

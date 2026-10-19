@@ -55,6 +55,18 @@ func _run() -> void:
 	audio_chat.shutdown()
 	audio_chat.queue_free()
 
+	var net = load("res://scripts/online/NetGameNode.gd").new()
+	root.add_child(net)
+	var probe := RoundState.new()
+	probe.build_players(0)
+	probe.phase = RoundState.Phase.PLAYING
+	net.game = probe
+	net.my_seat = 1
+	net._started = false
+	t.expect(net.voice_chat_allowed(), "a guest can use voice before the host-only started flag is set")
+	net.queue_free()
+	await process_frame
+
 	var table = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(table)
 	await process_frame
