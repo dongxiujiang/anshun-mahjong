@@ -32,14 +32,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libdbus-1-3 \
         libudev1 \
         libzstd1 \
-        libpng16-16 \
+        libpng16-16t64 \
         libjpeg-turbo8 \
         libwebp7 \
         libvorbis0a \
         libogg0 \
         libopus0 \
-        libflac8 \
-        libmpg123-0 \
+        libflac12t64 \
+        libmpg123-0t64 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL -o /tmp/godot.zip \
