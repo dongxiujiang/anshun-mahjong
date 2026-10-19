@@ -106,7 +106,12 @@ func set_enabled(want: bool) -> bool:
 		permission_pending = true
 		_last_permission_request = Time.get_ticks_msec()
 		var requested := OS.request_permission("android.permission.RECORD_AUDIO")
-		_status = "等待麦克风权限" if requested else "无法请求麦克风权限"
+		if requested:
+			# Already granted but not reported by get_granted_permissions().
+			permission_pending = false
+			_start_capture()
+			return enabled
+		_status = "等待麦克风权限"
 		status_changed.emit(false, _status)
 		return false
 	_start_capture()
