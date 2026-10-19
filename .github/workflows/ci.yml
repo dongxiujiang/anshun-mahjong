@@ -17,7 +17,7 @@ env:
 jobs:
   quick-check:
     name: Quick rules, scoring, audio and reconnect checks
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -35,6 +35,10 @@ jobs:
           curl -fsSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
           unzip -q /tmp/godot.zip -d /tmp/godot
           sudo install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+
+      - name: Install LiveKit Linux runtime dependency
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-0t64
 
       - name: Import project
         shell: bash

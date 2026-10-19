@@ -1,6 +1,6 @@
 # Mahjong online room server: Python directory + one headless Godot per room.
 # Build context is the repository root. See server/docker.md.
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ARG GODOT_VERSION=4.7.2
 
@@ -26,9 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxi6 \
         libxrandr2 \
         libxkbcommon0 \
-        libasound2 \
+        libasound2t64 \
         libpulse0 \
-        libpipewire-0.3-0 \
+        libpipewire-0.3-0t64 \
         libdbus-1-3 \
         libudev1 \
         libzstd1 \

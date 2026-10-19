@@ -57,7 +57,7 @@ env:
 jobs:
   build:
     name: Build Windows and Android
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       RELEASE_KIND: ${{ inputs.release_kind || 'full' }}
@@ -138,7 +138,7 @@ jobs:
 
       - name: Install LiveKit Linux runtime dependency
         shell: bash
-        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-0
+        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-0t64
 
       - name: Configure Godot Android export
         shell: bash
