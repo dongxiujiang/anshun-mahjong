@@ -57,25 +57,6 @@ Content-Type: application/json
 
 错误格式为 `{"error":"错误说明"}`；输入无效 400，同号已存在 409，房间数达到限制 503，游戏进程启动失败 500。房间号为 4～8 位 ASCII 数字字符串，保留前导零。
 
-## LiveKit 语音令牌
-
-1.3.0 起，联机语音使用独立 LiveKit 服务；房间进程只同步游戏状态。
-
-```http
-GET /livekit-token?room=001234&identity=seat1&name=玩家
-```
-
-成功返回 `url` 和短时 JWT；客户端用它加入 `wss://<域名>/livekit`。服务器必须在 `.env` 配置：
-
-```dotenv
-LIVEKIT_URL=wss://mj.dongxiu.fun/livekit
-LIVEKIT_API_KEY=...
-LIVEKIT_API_SECRET=...
-LIVEKIT_KEYS=...
-```
-
-LiveKit Server、TURN、Nginx 和完整操作步骤见 [../docs/livekit_voice.md](../docs/livekit_voice.md)。
-
 ## 验证
 
 ```sh

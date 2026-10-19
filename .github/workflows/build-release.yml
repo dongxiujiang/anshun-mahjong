@@ -193,6 +193,11 @@ jobs:
           ANDROID_KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
         run: python tools/release/configure_ci_export.py --signing
 
+      - name: Install Android Gradle build template
+        if: ${{ env.RELEASE_KIND == 'full' }}
+        shell: bash
+        run: godot --headless --path . --install-android-build-template > build/ci/android-template.log 2>&1
+
       - name: Export full Windows and Android packages
         if: ${{ env.RELEASE_KIND == 'full' }}
         shell: bash
