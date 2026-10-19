@@ -7,14 +7,17 @@ extends Node
 signal status_changed(enabled: bool, message: String)
 signal speaker_changed(seat: int, enabled: bool)
 
-const SAMPLE_RATE := 16000
-const FRAME_COUNT := 320          # 20 ms
+const SAMPLE_RATE := 24000
+const FRAME_COUNT := 480          # 20 ms
 const HEADER_BYTES := 6
 const PACKET_BYTES := HEADER_BYTES + FRAME_COUNT * 2
 const MAX_PACKET_BYTES := 1024
 const CAPTURE_BUS := "VoiceCapture"
 const OUTPUT_BUS := "Voice"
-const SILENCE_PEAK := 0.003
+const SILENCE_PEAK := 0.002
+const JITTER_PREBUFFER_MS := 60
+const JITTER_GAP_MS := 80
+const SILENCE_HOLD_PACKETS := 4
 
 var owner_node: Node
 var _config: Node
@@ -27,8 +30,12 @@ var _mic_player: AudioStreamPlayer
 var _capture: AudioEffectCapture
 var _mono := PackedFloat32Array()
 var _resample_pos := 0.0
+var _filter_state := 0.0
+var _filter_alpha := 0.5
+var _silence_hold := 0
 var _sequence := 0
 var _last_rx := {}
+var _rx := {}
 var _status := ""
 var _mic_gain := 1.0
 var _remote_volume := 0.8
@@ -47,10 +54,15 @@ func setup(owner: Node, allow_audio: bool) -> void:
 			_config.voice_chat_settings_changed.connect(_on_settings_changed)
 	if audio_available:
 		_setup_audio()
-	set_process(false)
+		set_process(true)
+	else:
+		set_process(false)
 
 func _setup_audio() -> void:
 	_input_rate = maxf(8000.0, float(AudioServer.get_mix_rate()))
+	# Drop the microphone's upper band before decimating to 16 kHz. Without this
+	# first-order low-pass, sibilants fold back as harsh aliasing.
+	_filter_alpha = 1.0 - exp(-TAU * 10000.0 / _input_rate)
 	_ensure_capture_bus()
 	for seat in 4:
 		var generator := AudioStreamGenerator.new()
@@ -152,7 +164,6 @@ func _start_capture() -> void:
 func _disable() -> void:
 	enabled = false
 	permission_pending = false
-	set_process(false)
 	if _mic_player != null:
 		_mic_player.stop()
 		_mic_player.queue_free()
@@ -169,6 +180,7 @@ func _exit_tree() -> void:
 	shutdown()
 
 func shutdown() -> void:
+	set_process(false)
 	_disable()
 	if _config != null and _config.voice_chat_settings_changed.is_connected(_on_settings_changed):
 		_config.voice_chat_settings_changed.disconnect(_on_settings_changed)
@@ -190,6 +202,8 @@ func set_speaker_enabled(seat: int, value: bool) -> void:
 	if seat < 0 or seat > 3:
 		return
 	_speaker_enabled[seat] = value
+	if not value:
+		_rx.erase(seat)
 	_apply_speaker_volume(seat)
 	speaker_changed.emit(seat, value)
 
@@ -222,6 +236,7 @@ func _on_settings_changed() -> void:
 	set_remote_volume(float(_config.voice_chat_remote_volume))
 
 func _process(_delta: float) -> void:
+	_drain_playback()
 	poll_permission()
 	if not enabled or _capture == null:
 		return
@@ -229,7 +244,9 @@ func _process(_delta: float) -> void:
 	if frames > 0:
 		var buffer := _capture.get_buffer(frames)
 		for sample in buffer:
-			_mono.append((sample.x + sample.y) * 0.5)
+			var mixed := (sample.x + sample.y) * 0.5
+			_filter_state += _filter_alpha * (mixed - _filter_state)
+			_mono.append(_filter_state)
 		if _mono.size() > int(_input_rate * 2.0):
 			var drop := _mono.size() - int(_input_rate)
 			_mono = _mono.slice(drop)
@@ -261,7 +278,11 @@ func _emit(samples: PackedFloat32Array) -> void:
 	for value in samples:
 		peak = maxf(peak, absf(value * gain))
 	if peak < SILENCE_PEAK:
-		return
+		if _silence_hold <= 0:
+			return
+		_silence_hold -= 1
+	else:
+		_silence_hold = SILENCE_HOLD_PACKETS
 	var packet := PackedByteArray()
 	packet.resize(PACKET_BYTES)
 	packet[0] = 1
@@ -269,7 +290,12 @@ func _emit(samples: PackedFloat32Array) -> void:
 	packet.encode_u32(2, _sequence & 0xffffffff)
 	_sequence = (_sequence + 1) & 0xffffffff
 	for index in FRAME_COUNT:
-		packet.encode_s16(HEADER_BYTES + index * 2, int(clampf(samples[index] * gain, -1.0, 1.0) * 32767.0))
+		var value := samples[index] * gain
+		# Soft-knee limiting keeps loud syllables from hard clipping while
+		# retaining normal speech gain.
+		if absf(value) > 0.9:
+			value = signf(value) * (0.9 + 0.1 * tanh((absf(value) - 0.9) / 0.1))
+		packet.encode_s16(HEADER_BYTES + index * 2, int(clampf(value, -1.0, 1.0) * 32767.0))
 	if owner_node != null and owner_node.has_method("send_local_voice"):
 		owner_node.send_local_voice(packet)
 
@@ -292,12 +318,54 @@ func play_packet(packet: PackedByteArray) -> void:
 	if playback == null or not speaker_enabled(seat):
 		return
 	var sequence := packet_sequence(packet)
-	var last := int(_last_rx.get(seat, -1))
-	if last >= 0 and sequence <= last:
+	var now := Time.get_ticks_msec()
+	var state: Dictionary = _rx.get(seat, {})
+	if state.is_empty():
+		# Prebuffer three 20 ms packets before starting this seat. This absorbs
+		# ordinary Wi-Fi/4G jitter instead of letting the generator underrun.
+		state = {"next": sequence, "started": now, "last": now, "packets": {}}
+		_rx[seat] = state
+	if sequence < int(state.next):
 		return
-	_last_rx[seat] = sequence
-	if playback.get_frames_available() < FRAME_COUNT:
+	if state.packets.size() >= 200:
 		return
+	state.packets[sequence] = packet
+	state.last = now
+	_last_rx[seat] = maxi(sequence, int(_last_rx.get(seat, -1)))
+
+func _drain_playback() -> void:
+	if _playbacks.is_empty() or _rx.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	for seat in _rx.keys():
+		var state: Dictionary = _rx[seat]
+		if now - int(state.started) < JITTER_PREBUFFER_MS:
+			continue
+		var playback: AudioStreamGeneratorPlayback = _playbacks.get(seat)
+		if playback == null or not speaker_enabled(seat):
+			continue
+		var packets: Dictionary = state.packets
+		var next := int(state.next)
+		while playback.get_frames_available() >= FRAME_COUNT:
+			if not packets.has(next):
+				if packets.is_empty():
+					break
+				# A lost packet should not stall the whole voice stream forever.
+				# Skip the gap once the receive tail has been quiet for a moment.
+				if now - int(state.last) < JITTER_GAP_MS:
+					break
+				var keys := packets.keys()
+				keys.sort()
+				next = int(keys[0])
+				state.next = next
+			var packet: PackedByteArray = packets[next]
+			packets.erase(next)
+			_push_playback(playback, packet)
+			next += 1
+			state.next = next
+		_rx[seat] = state
+
+func _push_playback(playback: AudioStreamGeneratorPlayback, packet: PackedByteArray) -> void:
 	var output := PackedVector2Array()
 	output.resize(FRAME_COUNT)
 	for index in FRAME_COUNT:
