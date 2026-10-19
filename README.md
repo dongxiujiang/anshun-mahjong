@@ -8,6 +8,7 @@
 - 联机：局域网自动搜索房间，也支持连接云端房间服务；先选座、换座和准备，人不够由默认准备的 AI 补位，全部准备后开局。
 - 更新：主菜单和联机大厅都可「检查更新」。新完整 APK 默认使用自建 HTTPS 更新源，主清单和回退清单都在 `https://mj.dongxiu.fun/updates/`；1.1.9 及更早版本仍需先安装一次新完整包。
 - 联机语音：1.3.0 起使用自建 **LiveKit / WebRTC**（Opus、回声消除、降噪、AGC、抖动缓冲），不再通过 ENet 转发 PCM。Android 仅支持 arm64，完整安装包需重新安装；部署与操作见 [LiveKit 语音手册](docs/livekit_voice.md)。
+- 1.3.0 完整包：Android APK `https://mj.dongxiu.fun/updates/anshun-mahjong.apk`；Windows 必须下载包含 `libgodot-livekit`、`livekit_ffi`、`livekit` 三个 DLL 的 ZIP `https://mj.dongxiu.fun/updates/anshun-mahjong-windows-x64-1.3.0.zip`。单独一个 EXE 不能加载 LiveKit 语音。
 
 联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 

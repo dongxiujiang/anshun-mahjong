@@ -35,6 +35,12 @@ Godot 客户端
 
 Android 导出必须只勾选 **arm64-v8a**。1.3.0 的客户端是完整 APK，不能通过 100KB 热补丁升级，因为需要携带 LiveKit 原生库。
 
+Windows 的 Godot 导出会生成主 EXE，并把 `libgodot-livekit.windows.x86_64.dll`、`livekit_ffi.dll`、`livekit.dll` 放在同目录；发布包必须把四个文件一起打包成 ZIP。只发布 EXE 会导致语音扩展加载失败。当前下载：
+
+```text
+https://mj.dongxiu.fun/updates/anshun-mahjong-windows-x64-1.3.0.zip
+```
+
 ## 3. 服务器要求
 
 - 已有 `mj.dongxiu.fun` 的 HTTPS 证书；
@@ -152,7 +158,7 @@ identity 固定为 `seat0`～`seat3`，与游戏座位对应；昵称只用于�
 
 ## 7. 客户端操作
 
-1. 更新到 1.3.0 完整 APK/EXE；
+1. 更新到 1.3.0 完整 APK / Windows ZIP；
 2. 进入联机牌桌并完成发牌；
 3. 右上角点“麦克风 关”开启麦克风；
 4. 首次 Android 会请求录音权限；
