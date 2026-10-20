@@ -39,6 +39,7 @@ var remote_volume_slider: HSlider
 var mic_gain_percent: Label
 var remote_volume_percent: Label
 var continue_button: Button
+var debug_button: Button
 var exit_room_button: Button
 var replay_exporter: Node
 
@@ -123,6 +124,9 @@ func _ready() -> void:
 	voice_selector.item_selected.connect(func(seat: int): AudioManager.set_preview_voice_seat(seat, persist_changes))
 	panel.add_child(voice_selector)
 	preview_button = _button("试听语音", Vector2(220, 604 if table_mode else 422), Vector2(172, 62), _preview_voice)
+	debug_button = _button("关闭debug" if GameConfig.debug_enabled else "开启debug",
+		Vector2(36, 500 if table_mode else 320), Vector2(300, 64), _toggle_debug)
+	debug_button.name = "DebugToggleButton"
 	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 682) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
 	continue_button.name = "ContinueGameButton"
 	if table_mode:
@@ -296,6 +300,11 @@ func _on_slider(value: float, channel: String) -> void:
 
 func _preview_voice() -> void:
 	AudioManager.preview_voice(voice_selector.selected)
+
+func _toggle_debug() -> void:
+	GameConfig.set_debug_enabled(not GameConfig.debug_enabled, persist_changes)
+	if debug_button != null:
+		debug_button.text = "关闭debug" if GameConfig.debug_enabled else "开启debug"
 
 func _set_speed(speed_key: String) -> void:
 	if not table_mode: GameConfig.set_ai_speed(speed_key, persist_changes)

@@ -38,6 +38,7 @@ var _return_vote_panel: Panel
 var _return_vote_message: Label
 var _return_vote_token := -1
 var _return_vote_status: Label
+var _resume_generation := 0
 
 func _ready() -> void:
 	AudioManager.begin_table(self)
@@ -607,18 +608,39 @@ func _on_input_focus_changed() -> void:
 	if is_node_ready(): _update_interactivity()
 
 func _notification(what: int) -> void:
+	if GameConfig.debug_enabled and what in [NOTIFICATION_APPLICATION_FOCUS_OUT,
+		NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_APPLICATION_PAUSED,
+		NOTIFICATION_APPLICATION_RESUMED]:
+		print("[debug] GameTable notification=", what, " turn=", human_seat,
+			" selecting=", _selecting, " locked=", _table_actions != null and _table_actions.input_locked())
 	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_FOCUS_IN,
 		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_RESUMED]:
 		_on_input_focus_changed()
 	if what == NOTIFICATION_APPLICATION_RESUMED and not _quitting and round != null:
 		# Android can lose the pressed-touch/UI prompt while backgrounded.
-		# Re-arm the current authoritative prompt after returning to foreground.
+		# Re-arm the current authoritative prompt after returning to foreground,
+		# then safely skip any animation that did not resume within a short
+		# grace period (Tweens may be frozen while the process is stopped).
 		call_deferred("_on_net_prompt", human_seat)
+		_resume_generation += 1
+		_arm_resume_animation_recovery(_resume_generation)
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if _sound_settings != null and _sound_settings.is_open():
 			_sound_settings.close()
 		else:
 			_confirm_quit()
+
+func _arm_resume_animation_recovery(generation: int) -> void:
+	await get_tree().create_timer(0.45).timeout
+	if generation != _resume_generation or _quitting or round == null:
+		return
+	if _awaiting_rejoin_snapshot:
+		return
+	if _table_animation_controller.input_locked():
+		_table_animation_controller.cancel()
+		_refresh()
+		_on_net_prompt(human_seat)
+		_update_interactivity()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):

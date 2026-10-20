@@ -49,6 +49,7 @@ const SUITES: Array[String] = [
 	"res://tests/resume_dialog.gd",
 	"res://tests/table_interaction.gd",
 	"res://tests/focus_return_input.gd",
+	"res://tests/background_lifecycle.gd",
 	"res://tests/discard_identity.gd",
 	"res://tests/center_dashboard.gd",
 	"res://tests/table_controls_perf.gd",

@@ -86,6 +86,8 @@ var settlement_speed := "standard"
 signal voice_chat_settings_changed
 var voice_chat_mic_gain := 1.0
 var voice_chat_remote_volume := 0.8
+signal debug_changed
+var debug_enabled := false
 # 开局采用共同节奏，权威端按时钟解锁；客户端动画不推进游戏逻辑。
 const OPENING_DICE_SECONDS := 1.2
 const OPENING_DICE_HOLD_SECONDS := 0.5
@@ -128,6 +130,7 @@ func load_settings(path: String = "") -> void:
 		if value is String and PREFERENCE_CHOICES[key].has(value): set(key, value)
 	voice_chat_mic_gain = clampf(float(config.get_value("voice_chat", "mic_gain", voice_chat_mic_gain)), 0.0, 2.0)
 	voice_chat_remote_volume = clampf(float(config.get_value("voice_chat", "remote_volume", voice_chat_remote_volume)), 0.0, 2.0)
+	debug_enabled = bool(config.get_value("debug", "enabled", debug_enabled))
 
 func save_settings(path: String = "") -> Error:
 	if path == "" and not persist_settings: return OK
@@ -137,7 +140,13 @@ func save_settings(path: String = "") -> Error:
 	for key in PREFERENCE_CHOICES: config.set_value("game", key, get(key))
 	config.set_value("voice_chat", "mic_gain", voice_chat_mic_gain)
 	config.set_value("voice_chat", "remote_volume", voice_chat_remote_volume)
+	config.set_value("debug", "enabled", debug_enabled)
 	return SETTINGS_STORE.write_config(config, target)
+
+func set_debug_enabled(value: bool, persist: bool = true) -> void:
+	debug_enabled = value
+	debug_changed.emit()
+	if persist: _save_preference(true)
 
 func set_voice_chat_mic_gain(value: float, persist: bool = true) -> void:
 	voice_chat_mic_gain = clampf(value, 0.0, 2.0)
