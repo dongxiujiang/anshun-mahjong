@@ -77,7 +77,15 @@ func _connect_voice_ui() -> void:
 		net.game_started.connect(_refresh_voice_button)
 	if net.has_signal("host_game_started") and not net.host_game_started.is_connected(_refresh_voice_button):
 		net.host_game_started.connect(_refresh_voice_button)
+	if net.has_signal("returned_to_lobby") and not net.returned_to_lobby.is_connected(_on_returned_to_lobby):
+		net.returned_to_lobby.connect(_on_returned_to_lobby)
 	_refresh_voice_button()
+
+func _on_returned_to_lobby() -> void:
+	if _quitting:
+		return
+	_quitting = true
+	get_tree().change_scene_to_file("res://scenes/Lobby.tscn")
 
 func _toggle_voice_chat() -> void:
 	var net = _net_node()

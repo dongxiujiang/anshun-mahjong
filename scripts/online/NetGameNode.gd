@@ -8,6 +8,7 @@ signal state_updated
 signal prompted(seat)
 signal host_game_started
 signal game_started
+signal returned_to_lobby
 signal connection_error(message)
 signal reconnecting(attempt, maximum)
 signal session_invalidated
@@ -538,6 +539,53 @@ func is_room_owner() -> bool:
 func next_round() -> void:
 	# 每个玩家仅提交自己的准备，开局始终由服务器倒计时控制。
 	set_ready(true)
+
+## Return the whole room to seat selection after a settled round. This is
+## synchronized: any resident can request it and the host resets the room.
+func request_return_to_lobby() -> void:
+	if game == null or game.phase != RoundState.Phase.SETTLED:
+		return
+	if host_mode:
+		_reset_room_to_lobby()
+	elif _client_joined:
+		rpc_id(1, "return_to_lobby_request")
+
+@rpc("any_peer", "call_remote", "reliable")
+func return_to_lobby_request() -> void:
+	if not host_mode: return
+	var peer := multiplayer.get_remote_sender_id()
+	if not _members.has(peer): return
+	_reset_room_to_lobby()
+
+func _reset_room_to_lobby() -> void:
+	if not host_mode or not _started or game == null or game.phase != RoundState.Phase.SETTLED:
+		return
+	_started = false
+	_countdown = -1.0
+	_ready_round = -1
+	_swap.clear()
+	round_number = 0
+	for peer in _members:
+		_members[peer].ready = false
+	for seat in 4:
+		_ctrl_hint[seat] = "human" if int(_seat_peer.get(seat, -1)) > 0 else AUTO
+	var next_game := RoundState.new()
+	if _ai_service != null: next_game.ai_service = _ai_service
+	game = next_game
+	_publish_lobby()
+	if multiplayer.multiplayer_peer != null:
+		rpc("receive_returned_to_lobby")
+	returned_to_lobby.emit()
+
+@rpc("authority", "call_remote", "reliable")
+func receive_returned_to_lobby() -> void:
+	_started = false
+	_countdown = -1.0
+	_ready_round = -1
+	round_number = 0
+	var next_game := RoundState.new()
+	game = next_game
+	returned_to_lobby.emit()
 
 func _prepare_round_ready() -> void:
 	if game.phase != RoundState.Phase.SETTLED or _ready_round == round_number: return

@@ -140,6 +140,15 @@ func _ready() -> void:
 	resized.connect(_layout)
 	_layout()
 	_set_mode(bool(Network.lobby_preferences.online))
+	# Returning from a settled table keeps the live room connection. Rebind
+	# its signals and show the existing seat-selection room instead of the
+	# create/join browser.
+	var live_net := Network.net_node
+	if Network.mode != "" and live_net != null and live_net.my_seat >= 0:
+		online = bool(Network.lobby_preferences.online)
+		_bind_net()
+		_show_waiting()
+		return
 	if Network.resume_on_lobby:
 		Network.resume_on_lobby = false
 		_resume_saved_room.call_deferred()

@@ -169,15 +169,27 @@ func _ready() -> void:
 		exit_confirmation = Panel.new()
 		exit_confirmation.name = "ExitConfirmation"
 		exit_confirmation.size = TABLE_PANEL_SIZE
-		exit_confirmation.add_theme_stylebox_override("panel", style)
+		var dim := StyleBoxFlat.new()
+		dim.bg_color = Color(0, 0, 0, 0.62)
+		exit_confirmation.add_theme_stylebox_override("panel", dim)
 		panel.add_child(exit_confirmation)
-		var question := _label("确定退出当前房间？\n退出后返回主菜单", Vector2(100, 176), Vector2(920, 110), 32)
+		# Compact confirm dialog: the old version reused the full 1180x820
+		# settings panel, leaving two buttons floating in a huge empty sheet.
+		var dialog := Panel.new()
+		dialog.name = "ExitDialog"
+		dialog.size = Vector2(720, 330)
+		dialog.position = (TABLE_PANEL_SIZE - dialog.size) * 0.5
+		dialog.add_theme_stylebox_override("panel", style)
+		exit_confirmation.add_child(dialog)
+		var question := _label("确定退出当前房间？\n退出后返回主菜单", Vector2(40, 42), Vector2(640, 100), 30)
 		question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		question.reparent(exit_confirmation, false)
-		confirm_exit_button = _button("退出房间", Vector2(224, 386), Vector2(288, 126), func(): exit_confirmed.emit())
-		confirm_exit_button.reparent(exit_confirmation, false)
-		cancel_exit_button = _button("继续游戏", Vector2(608, 386), Vector2(288, 126), func(): exit_confirmation.hide())
-		cancel_exit_button.reparent(exit_confirmation, false)
+		question.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		question.reparent(dialog, false)
+		confirm_exit_button = _button("退出房间", Vector2(48, 176), Vector2(288, 126), func(): exit_confirmed.emit())
+		confirm_exit_button.reparent(dialog, false)
+		var return_label := "返回座位" if table_mode else "继续游戏"
+		cancel_exit_button = _button(return_label, Vector2(384, 176), Vector2(288, 126), func(): exit_confirmation.hide())
+		cancel_exit_button.reparent(dialog, false)
 		exit_confirmation.hide()
 	AudioManager.settings_changed.connect(_sync)
 	GameConfig.voice_chat_settings_changed.connect(_sync_voice_settings)

@@ -9,6 +9,7 @@ var _post_next_button: Button:
 	get: return _next_round_button
 var _next_round_status: Label
 var _next_round_hint: Label
+var _return_seat_button: Button
 
 func build() -> void:
 	_post_controls = table._box(table.surface)
@@ -22,8 +23,17 @@ func build() -> void:
 	_next_round_status.name = "NextRoundReadiness"
 	_next_round_hint = table._label(_post_controls, "", Vector2(464, 42), Vector2(560, 32), 24, UI.MUTED)
 	_next_round_hint.name = "NextRoundCountdown"
+	_return_seat_button = table._button("返回座位", _return_to_seat, Vector2(220, 64))
+	_return_seat_button.name = "ReturnToSeatButton"
+	_return_seat_button.position = Vector2(0, -72)
+	_post_controls.add_child(_return_seat_button)
 	refresh_layout()
 	_post_controls.hide()
+
+func _return_to_seat() -> void:
+	var network = table._net_node()
+	if network != null and network.has_method("request_return_to_lobby"):
+		network.request_return_to_lobby()
 
 func refresh_layout() -> void:
 	if not is_instance_valid(_post_controls): return
@@ -32,6 +42,8 @@ func refresh_layout() -> void:
 	_post_controls.position = Vector2((table._design_size().x - _post_controls.size.x) / 2.0, table._design_size().y - _post_controls.size.y - 8.0)
 	_next_round_status.visible = online
 	_next_round_hint.visible = online
+	if is_instance_valid(_return_seat_button):
+		_return_seat_button.visible = online
 
 func show_post_settlement_controls() -> void:
 	if not is_instance_valid(_post_controls) or table.round == null or table.round.phase != RoundState.Phase.SETTLED: return
