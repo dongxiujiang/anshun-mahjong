@@ -7,8 +7,7 @@
 - 单机：1 名真人（座位0，首局为庄）+ 3 个 AI；之后按本局结果换庄。
 - 联机：局域网自动搜索房间，也支持连接云端房间服务；先选座、换座和准备，人不够由默认准备的 AI 补位，全部准备后开局。
 - 更新：主菜单和联机大厅都可「检查更新」。新完整 APK 默认使用自建 HTTPS 更新源，主清单和回退清单都在 `https://mj.dongxiu.fun/updates/`；1.1.9 及更早版本仍需先安装一次新完整包。
-- 联机语音：1.3.0 起使用自建 **LiveKit / WebRTC**（Opus、回声消除、降噪、AGC、抖动缓冲），不再通过 ENet 转发 PCM。Android 仅支持 arm64，完整安装包需重新安装；部署与操作见 [LiveKit 语音手册](docs/livekit_voice.md)。
-- 1.3.0 完整包：Android APK `https://mj.dongxiu.fun/updates/anshun-mahjong.apk`；Windows 必须下载包含 `libgodot-livekit`、`livekit_ffi`、`livekit` 三个 DLL 的 ZIP `https://mj.dongxiu.fun/updates/anshun-mahjong-windows-x64-1.3.0.zip`。单独一个 EXE 不能加载 LiveKit 语音。
+- 联机语音：正在从 LiveKit 迁移到腾讯云 GME；Android 使用 GME arm64，Windows 暂时保留 PCM。需要服务器 `GME_APP_ID`/`GME_APP_KEY`，详见 [GME 语音接入手册](docs/gme_voice.md)。
 
 联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 
@@ -39,7 +38,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 - **结算卡片**：从上到下为你、上家、对家、下家。每家第一行显示累计分数、自己的「本局分」，以及从该玩家自己视角与上家、对家、下家的三笔收付（正数收款，负数付款）。本局分是得分点合计，明杠基础4分仅向放杠者收，不混入通用本局分。明细显示叫牌状态、自摸等奖励及完整牌面：同类型、同单张分值的牌合并一组，普通鸡2、金鸡4、冲锋鸡4、冲锋金鸡8分别展示，翻鸡也按张数合计。所有杠集中放在最后，四张牌与基础杠分、杠内鸡分一并展示；暗杠、加杠四张都竖放。明杠来源是下家时第四张右横，上家时第一张左横，对家时三张竖牌上方居中横放第四张。明细多时独立换行和滚动。卡片右上角「看牌桌」与「查看结算」在同一位置切换。
 - 牌桌按四向围坐排布，Windows 与 Android 固定横屏：自己的手牌和摸牌使用 2.40 倍牌面（上版的 1.5 倍），自己的碰杠牌和鸡牌使用 1.60 倍，其他三家使用 1.35 倍，弃牌保持 1.10 倍；牌墙数据继续用于骰子和发牌，但牌桌不绘制牌墙。东西两家手牌与摸牌位整体水平居中，操作按钮放在摸牌位上方，报听、碰、杠、胡、自摸等选择按钮统一为 177×126（原按钮的 1.5 倍），字号为 42，与手牌留出 56 像素的空隙；手牌变短时按钮会向右避开自己的弃牌区，允许覆盖下家弃牌区。碰杠后仍会按空间向内换行。东西两家的弃牌容器扩大并隐藏滚动条，牌面尺寸不变。幺鸡、八筒各自全场首张打出的牌横放表示冲锋鸡；被碰杠后原弃牌区和记录移除，冲锋标记跟随到领取者的碰杠组。碰不标来源；明杠与结算采用相同的上/对/下家横牌排列；暗杠、加杠全部四竖。联机时自己的座位始终在下方。
 - 右上角可调 AI 出牌速度：**快 0.8 秒 / 中 1.3 秒 / 慢 2 秒**；碰/杠响应与出牌等待一致，单机和主机即时生效。
-- 主菜单「声音设置」或牌桌右上角「设置」可分别开关、调整背景音乐、出牌/动作语音和落桌音效。设置自动保存，下次运行继续使用。默认背景音乐12%、语音80%，音乐较轻，不盖过喊牌。联机牌桌的“麦克风音量/他人语音音量”也在同一声音列表中，使用 LiveKit 实时语音；所有联机玩家必须使用 1.3.0 及以上完整包。
+- 主菜单「声音设置」或牌桌右上角「设置」可分别开关、调整背景音乐、出牌/动作语音和落桌音效。设置自动保存，下次运行继续使用。默认背景音乐12%、语音80%，音乐较轻，不盖过喊牌。
 - 进入牌桌循环播放 Kevin MacLeod《Ripples》（57 BPM，舒缓拨弦风格，CC BY 4.0），已降低响度并在声音设置中署名。四家使用两男两女的不同普通话声音，绑定座位，换庄也保留原声音。每次实际出牌喊对应牌名（一条喊「幺鸡」），碰、明杠/暗杠/加杠、报听分别喊「碰」「杠」「报听」，自摸喊「自摸」，胡别人或抢杠喊「胡了」。无效动作和流局不喊胡；加杠从宣告到完成只喊一次，暗杠不喊具体牌名。喊牌时音乐自动降低音量，语音结束后恢复；返回大厅停止牌桌音频。声音设置可分别试听四套声音。素材随工程运行，PC/Android 均无需联网或安装语音引擎。
 
 ## 三、联机
@@ -60,17 +59,14 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 
 完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。
 
-生产环境由三部分组成：
+生产环境由两部分组成：
 
 ```text
-公网 TCP 443 → Nginx（宿主机）
-  ├─ /            → 127.0.0.1:18080 → app 容器（房间目录 + 游戏状态）
-  └─ /livekit/    → 127.0.0.1:7880  → livekit 容器（WebRTC 语音）
+公网 TCP 80/443 → Nginx（宿主机） → 127.0.0.1:18080 → app 容器
 公网 UDP 7600-7631 → app 容器（每个房间一个 Godot 进程）
-公网 UDP 7882 / TCP 7881 / TURN 3478,5349 / UDP 30000-30050 → livekit 容器
 ```
 
-`app` 镜像由 GitHub Actions 构建，服务器只拉镜像，不克隆项目。Nginx 负责 HTTPS；`caddy` 容器在这种模式下保持停止，避免抢 80/443。LiveKit 使用 `server/livekit.yaml`，语音令牌由 app 的 `/livekit-token` 接口签发。
+`app` 镜像由 GitHub Actions 构建，服务器只拉镜像，不克隆项目。Nginx 负责 HTTPS；`caddy` 容器在这种模式下保持停止，避免抢 80/443。
 
 #### 3.1.1 构建镜像
 
@@ -345,7 +341,7 @@ docker compose -f compose.prod.yaml up -d app --pull never
 
 1.0.0 正式横屏版本已使用提供的游戏图标重新打包，发布文件位于 `build/releases/v1.0.0/`：Windows 安装向导、免安装主程序、Android 正式签名 APK 和更新清单。热更新基线位于 `build/update_baselines/1.0.0-boot1/`。首次发布与以后的小/大版本更新教程见 [docs/publishing.md](docs/publishing.md)；双击根目录 `生成小版本更新.cmd` 可准备后续小补丁。正式 APK 与旧调试版签名不同，首次需卸载旧调试版；后续正式版保持同一签名。
 
-导出预设已写入 `export_presets.cfg`（Windows + Android，含包名 `com.anshun.mahjong`、仅 arm64-v8a、沉浸式全屏）。
+导出预设已写入 `export_presets.cfg`（Windows + Android，含包名 `com.anshun.mahjong`、arm64-v8a/armeabi-v7a、沉浸式全屏）。
 
 ## 六、工程结构
 

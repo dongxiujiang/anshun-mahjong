@@ -13,7 +13,8 @@ signal reconnecting(attempt, maximum)
 signal session_invalidated
 signal voice_status(enabled, message)
 
-const VOICE_CHAT := preload("res://scripts/online/LiveKitVoiceChat.gd")
+const VOICE_CHAT := preload("res://scripts/online/GMEVoiceChat.gd")
+const PCM_VOICE := preload("res://scripts/online/OnlineVoiceChat.gd")
 const AUTO := "auto"
 const START_DELAY := 3.0
 const NEXT_ROUND_DELAY := 1.0
@@ -661,8 +662,15 @@ func voice_chat_enabled() -> bool:
 	return voice_chat != null and bool(voice_chat.enabled)
 
 func send_local_voice(packet: PackedByteArray) -> void:
-	# LiveKit carries media directly over WebRTC; ENet is game-state only.
-	return
+	if voice_chat == null or not voice_chat.uses_network_pcm():
+		return
+	if not voice_chat_allowed() or packet.size() < 6 or packet.size() > 1024:
+		return
+	packet[1] = clampi(my_seat, 0, 3)
+	if host_mode:
+		_relay_voice(packet, 0)
+	elif multiplayer.multiplayer_peer != null:
+		voice_packet.rpc_id(1, packet)
 
 func _relay_voice(packet: PackedByteArray, except_peer: int) -> void:
 	if not host_mode:
@@ -673,9 +681,31 @@ func _relay_voice(packet: PackedByteArray, except_peer: int) -> void:
 		voice_packet.rpc_id(int(peer), packet)
 
 @rpc("any_peer", "call_remote", "unreliable")
-func voice_packet(_packet: PackedByteArray) -> void:
-	# Kept for protocol compatibility with 1.2.x peers; 1.3 uses LiveKit.
-	return
+func voice_packet(packet: PackedByteArray) -> void:
+	if voice_chat != null and not voice_chat.uses_network_pcm():
+		return
+	if game == null or game.phase == RoundState.Phase.IDLE or packet.size() < 6 or packet.size() > 1024:
+		return
+	if not PCM_VOICE.valid_packet(packet):
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if host_mode:
+		if not _peer_seat.has(sender):
+			return
+		var now := Time.get_ticks_msec()
+		if now - int(_voice_last_ms.get(sender, 0)) < 10:
+			return
+		_voice_last_ms[sender] = now
+		var copy := packet.duplicate()
+		copy[1] = int(_peer_seat[sender])
+		if not dedicated and voice_chat != null:
+			voice_chat.play_packet(copy)
+		_relay_voice(copy, sender)
+	else:
+		if sender != 1:
+			return
+		if voice_chat != null:
+			voice_chat.play_packet(packet)
 
 func _on_client_sync(state: Dictionary) -> void:
 	if not _client_joined:

@@ -71,6 +71,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Remove legacy LiveKit addon
+        shell: bash
+        run: rm -rf addons/godot-livekit
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -192,6 +196,11 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
         run: python tools/release/configure_ci_export.py --signing
+
+      - name: Install Android Gradle build template
+        if: ${{ env.RELEASE_KIND == 'full' }}
+        shell: bash
+        run: godot --headless --path . --install-android-build-template > build/ci/android-template.log 2>&1
 
       - name: Export full Windows and Android packages
         if: ${{ env.RELEASE_KIND == 'full' }}

@@ -23,6 +23,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Remove legacy LiveKit addon
+        shell: bash
+        run: rm -rf addons/godot-livekit
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

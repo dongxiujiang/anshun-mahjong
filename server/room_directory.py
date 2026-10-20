@@ -1,6 +1,7 @@
 """Room directory + real dedicated Godot rooms. Python 3.10+, no dependencies."""
 from __future__ import annotations
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -13,20 +14,16 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-# room_directory.py is both executed as a script and imported by the network
-# regression tools, whose sys.path starts at the repository root.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from livekit_token import make_token
+from gme_auth import make_auth_buffer
 
 NUMBER = re.compile(r"[0-9]{4,8}\Z")
+OPEN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 VERSION = "1"
 APP_VERSION = os.environ.get("APP_VERSION", "dev")
 BUILD_SHA = os.environ.get("BUILD_SHA", "")
-LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
-LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
-LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "wss://mj.dongxiu.fun/livekit")
-LIVEKIT_TOKEN_TTL = int(os.environ.get("LIVEKIT_TOKEN_TTL", "3600"))
-IDENTITY = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
+GME_APP_ID = os.environ.get("GME_APP_ID", "1400802279")
+GME_APP_KEY = os.environ.get("GME_APP_KEY", "")
 
 class RoomDirectory:
     def __init__(self, godot, project, public_host, first_port=7600, max_rooms=32):
@@ -136,26 +133,25 @@ class Handler(BaseHTTPRequestHandler):
                 "app_version": APP_VERSION,
                 "build": BUILD_SHA,
             })
-        if path == "/livekit-token":
-            if not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET:
-                return self._reply(503, {"error": "语音服务尚未配置"})
+        if path == "/gme-auth":
+            if not GME_APP_KEY:
+                return self._reply(503, {"error": "GME 语音密钥尚未配置"})
             query = parse_qs(urlsplit(self.path).query)
             room = str(query.get("room", [""])[0]).strip()
-            identity = str(query.get("identity", [""])[0]).strip()
-            name = str(query.get("name", [""])[0]).strip()[:32]
+            open_id = str(query.get("openid", [""])[0]).strip()
             if not NUMBER.fullmatch(room):
                 return self._reply(400, {"error": "房间号必须是 4～8 位数字"})
-            if not IDENTITY.fullmatch(identity):
+            if not OPEN_ID.fullmatch(open_id):
                 return self._reply(400, {"error": "语音身份无效"})
             if not self.server.directory.has_room(room):
                 return self._reply(404, {"error": "房间不存在或已关闭"})
             try:
-                token = make_token(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, room,
-                                   identity, name or identity, LIVEKIT_TOKEN_TTL)
+                auth = make_auth_buffer(int(GME_APP_ID), room, open_id, GME_APP_KEY)
             except (ValueError, TypeError) as error:
                 return self._reply(503, {"error": str(error)})
-            return self._reply(200, {"url": LIVEKIT_URL, "token": token,
-                                     "room": room, "identity": identity})
+            return self._reply(200, {"app_id": GME_APP_ID, "room": room,
+                                     "openid": open_id,
+                                     "auth": base64.b64encode(auth).decode("ascii")})
         if path != "/rooms":
             return self._reply(404, {"error": "接口不存在"})
         self._reply(200, {"rooms": self.server.directory.list()})

@@ -1,15 +1,6 @@
 {$DOMAIN} {
 	encode zstd gzip
-
-	# LiveKit WebSocket/RTC endpoint. The client connects to
-	# wss://DOMAIN/livekit and Caddy strips the prefix before proxying.
-	handle_path /livekit/* {
-		reverse_proxy livekit:7880
-	}
-
-	handle {
-		reverse_proxy app:8080
-	}
+	reverse_proxy app:8080
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
