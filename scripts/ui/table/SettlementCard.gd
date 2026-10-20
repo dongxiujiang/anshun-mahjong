@@ -19,13 +19,15 @@ func build() -> void:
 	_next_round_button.name = "NextRoundButton"
 	_next_round_button.add_theme_font_size_override("font_size", UI.NEXT_ROUND_FONT_SIZE)
 	_post_controls.add_child(_next_round_button)
-	_next_round_status = table._label(_post_controls, "", Vector2(464, 2), Vector2(560, 36), 28, UI.GOLD)
+	_next_round_status = table._label(_post_controls, "", Vector2(0, 0), Vector2(1040, 30), 28, UI.GOLD)
 	_next_round_status.name = "NextRoundReadiness"
-	_next_round_hint = table._label(_post_controls, "", Vector2(464, 42), Vector2(560, 32), 24, UI.MUTED)
+	_next_round_hint = table._label(_post_controls, "", Vector2(0, 28), Vector2(1040, 28), 24, UI.MUTED)
 	_next_round_hint.name = "NextRoundCountdown"
-	_return_seat_button = table._button("返回座位", _return_to_seat, Vector2(220, 64))
+	# Same size and style as the next-round button; in online mode it takes the
+	# left slot and the next-round button moves into the right slot.
+	_return_seat_button = table._button("返回座位", _return_to_seat, Vector2(440, 84), true)
 	_return_seat_button.name = "ReturnToSeatButton"
-	_return_seat_button.position = Vector2(0, -72)
+	_return_seat_button.add_theme_font_size_override("font_size", UI.READY_NEXT_ROUND_FONT_SIZE)
 	_post_controls.add_child(_return_seat_button)
 	refresh_layout()
 	_post_controls.hide()
@@ -38,12 +40,15 @@ func _return_to_seat() -> void:
 func refresh_layout() -> void:
 	if not is_instance_valid(_post_controls): return
 	var online: bool = table._net_mode() != ""
-	_post_controls.size = Vector2(1040 if online else 440, 84)
+	_post_controls.size = Vector2(1040 if online else 440, 150 if online else 84)
 	_post_controls.position = Vector2((table._design_size().x - _post_controls.size.x) / 2.0, table._design_size().y - _post_controls.size.y - 8.0)
 	_next_round_status.visible = online
 	_next_round_hint.visible = online
 	if is_instance_valid(_return_seat_button):
 		_return_seat_button.visible = online
+	_return_seat_button.position = Vector2(0, 58)
+	_next_round_button.position = Vector2(456, 58) if online else Vector2.ZERO
+	_next_round_button.size = Vector2(440, 84)
 
 func show_post_settlement_controls() -> void:
 	if not is_instance_valid(_post_controls) or table.round == null or table.round.phase != RoundState.Phase.SETTLED: return
