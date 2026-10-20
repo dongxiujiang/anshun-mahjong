@@ -212,6 +212,7 @@ jobs:
           SRC=/tmp/godot-android-template
           if [ -d "$SRC/android_source" ]; then SRC="$SRC/android_source"; fi
           cp -a "$SRC"/. android/build/
+          printf "4.7.2.stable" > android/build/.build_version
           test -f android/build/build.gradle
 
       - name: Export full Windows and Android packages
