@@ -105,6 +105,9 @@ func _build_voice_diag() -> void:
 func _on_voice_status(_enabled: bool, message: String) -> void:
 	if _voice_button != null and message != "":
 		_voice_button.tooltip_text = message
+	# Update the button before awaiting the diagnostic timer. Otherwise the
+	# coroutine suspends here and the button text stays "麦克风 关" for 10s.
+	_refresh_voice_button()
 	if _voice_diag_label != null and message != "":
 		_voice_diag_token += 1
 		var token := _voice_diag_token
@@ -113,7 +116,6 @@ func _on_voice_status(_enabled: bool, message: String) -> void:
 		await get_tree().create_timer(10.0).timeout
 		if token == _voice_diag_token:
 			_voice_diag_label.hide()
-	_refresh_voice_button()
 
 func _refresh_voice_button() -> void:
 	if _voice_button == null:
