@@ -134,6 +134,9 @@ func _listen_request() -> void:
 		var opts: Dictionary = table.round.legal_response_options(table.human_seat, int(response.get("disc_seat", -1)), str(response.get("tile", "")), int(response.get("stage", RoundState.ResponseStage.NONE)))
 		if not bool(opts.get("can_win", false)):
 			_auto_listen_pass(table.human_seat, _listen_serial)
+		else:
+			table._listen_paused = true
+			table._refresh_listen_button()
 	elif table.round.current_turn == table.human_seat and not table.round.awaiting:
 		_auto_listen_turn(table.human_seat, _listen_serial)
 

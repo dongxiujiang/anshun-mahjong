@@ -531,6 +531,9 @@ func _refresh_listen_button() -> void:
 func _toggle_listen() -> void:
 	_listen_active = not _listen_active
 	_listen_paused = false
+	if not _listen_active:
+		# Invalidate any in-flight auto-discard/pass coroutine.
+		_table_actions._listen_serial += 1
 	_refresh_listen_button()
 	if _listen_active:
 		_table_actions._listen_request()

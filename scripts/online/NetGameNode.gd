@@ -135,6 +135,8 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	return true
 
 func _notification(what: int) -> void:
+	if not is_inside_tree():
+		return
 	if what == NOTIFICATION_APPLICATION_RESUMED and host_mode and _started and game != null:
 		# Paused processes do not run AI timers. Nudge the host state machine
 		# immediately so a backgrounded host resumes instead of looking stuck.
