@@ -24,6 +24,7 @@ var _mic_gain := 1.0
 var _remote_volume := 0.8
 var _speaker_enabled := {0: true, 1: true, 2: true, 3: true}
 var _open_id := ""
+var _room_number := ""
 var _room_key := ""
 var _context = null
 var _audio = null
@@ -74,8 +75,13 @@ func connect_room(room_number: String, seat: int, _player_name: String) -> void:
 	if key == _room_key and (_context != null or _auth_http != null):
 		return
 	_room_key = key
-	_open_id = "seat%d" % seat
+	_room_number = room_number
+	# GME's Init/openId must be an INT64-shaped string, not "seat0".
+	_open_id = _make_open_id(room_number, seat)
 	_request_auth(room_number)
+
+static func _make_open_id(room_number: String, seat: int) -> String:
+	return "%s%d" % [room_number, seat]
 
 func _request_auth(room_number: String) -> void:
 	if _auth_http != null:
@@ -148,7 +154,7 @@ func _join_room(room_number: String, auth: PackedByteArray) -> void:
 		return
 	_enter_started_ms = Time.get_ticks_msec()
 	_enter_timeout_reported = false
-	_status = "GME Init=0 EnterRoom=0，等待 IsRoomEntered…"
+	_status = "GME Init=0 EnterRoom=0 openid=%s，等待 IsRoomEntered…" % _open_id
 	status_changed.emit(false, _status)
 
 func OnEvent(_event_type, _data) -> void:
@@ -272,7 +278,7 @@ func set_speaker_enabled(seat: int, value: bool) -> void:
 		return
 	_speaker_enabled[seat] = value
 	if _audio != null:
-		var open_id := "seat%d" % seat
+		var open_id := _make_open_id(_room_number, seat)
 		if value:
 			_audio.call("RemoveAudioBlackList", open_id)
 			_audio.call("SetSpeakerVolumeByOpenID", open_id, roundi(_remote_volume * 100.0))
