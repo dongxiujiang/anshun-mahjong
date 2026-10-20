@@ -25,9 +25,9 @@ func build() -> void:
 	_next_round_hint.name = "NextRoundCountdown"
 	# Same size and style as the next-round button; in online mode it takes the
 	# left slot and the next-round button moves into the right slot.
-	_return_seat_button = table._button("返回座位", _return_to_seat, Vector2(440, 84), true)
+	_return_seat_button = table._button("返回座位", _return_to_seat, UI.DISCARD_BUTTON_SIZE, true)
 	_return_seat_button.name = "ReturnToSeatButton"
-	_return_seat_button.add_theme_font_size_override("font_size", UI.READY_NEXT_ROUND_FONT_SIZE)
+	_return_seat_button.add_theme_font_size_override("font_size", 32)
 	_post_controls.add_child(_return_seat_button)
 	refresh_layout()
 	_post_controls.hide()
@@ -40,7 +40,7 @@ func _return_to_seat() -> void:
 func refresh_layout() -> void:
 	if not is_instance_valid(_post_controls): return
 	var online: bool = table._net_mode() != ""
-	_post_controls.size = Vector2(1040 if online else 440, 84)
+	_post_controls.size = Vector2(374 if online else UI.DISCARD_BUTTON_SIZE.x, UI.DISCARD_BUTTON_SIZE.y)
 	_post_controls.position = Vector2((table._design_size().x - _post_controls.size.x) / 2.0, table._design_size().y - _post_controls.size.y - 8.0)
 	# The readiness/countdown text lives inside the button now; keep the old
 	# labels as hidden compatibility fields for regression probes.
@@ -49,8 +49,9 @@ func refresh_layout() -> void:
 	if is_instance_valid(_return_seat_button):
 		_return_seat_button.visible = online
 	_return_seat_button.position = Vector2(0, 0)
-	_next_round_button.position = Vector2(456, 0) if online else Vector2.ZERO
-	_next_round_button.size = Vector2(440, 84)
+	_next_round_button.position = Vector2(197, 0) if online else Vector2.ZERO
+	_next_round_button.size = UI.DISCARD_BUTTON_SIZE
+	_next_round_button.add_theme_font_size_override("font_size", 32 if online else UI.NEXT_ROUND_FONT_SIZE)
 
 func show_post_settlement_controls() -> void:
 	if not is_instance_valid(_post_controls) or table.round == null or table.round.phase != RoundState.Phase.SETTLED: return

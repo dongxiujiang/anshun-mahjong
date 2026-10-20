@@ -33,7 +33,9 @@ var _opening_primed := false
 var _ai_service = null
 var _voice_diag_label: Label
 var _voice_diag_token := 0
-var _return_vote_dialog: ConfirmationDialog
+var _return_vote_overlay: Control
+var _return_vote_panel: Panel
+var _return_vote_message: Label
 var _return_vote_token := -1
 var _return_vote_status: Label
 
@@ -91,25 +93,49 @@ func _connect_voice_ui() -> void:
 		net.return_vote_updated.connect(_on_return_vote_updated)
 	_refresh_voice_button()
 
-func _ensure_return_vote_dialog() -> void:
-	if _return_vote_dialog != null:
+func _ensure_return_vote_ui() -> void:
+	if _return_vote_overlay != null:
 		return
-	_return_vote_dialog = ConfirmationDialog.new()
-	_return_vote_dialog.title = "返回座位"
-	_return_vote_dialog.ok_button_text = "同意"
-	_return_vote_dialog.cancel_button_text = "拒绝"
-	_return_vote_dialog.confirmed.connect(func():
-		var net = _net_node()
-		if net != null and net.has_method("answer_return_vote"): net.answer_return_vote(true))
-	_return_vote_dialog.canceled.connect(func():
-		var net = _net_node()
-		if net != null and net.has_method("answer_return_vote"): net.answer_return_vote(false))
-	add_child(_return_vote_dialog)
+	_return_vote_overlay = Control.new()
+	_return_vote_overlay.name = "ReturnRoomVote"
+	_return_vote_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_return_vote_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_return_vote_overlay.z_index = 400
+	add_child(_return_vote_overlay)
+	var shade := ColorRect.new()
+	shade.color = Color(0.01, 0.04, 0.03, 0.68)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_return_vote_overlay.add_child(shade)
+	_return_vote_panel = Panel.new()
+	_return_vote_panel.size = Vector2(820, 360)
+	_return_vote_panel.add_theme_stylebox_override("panel", _style(Color("#1e4234"), Color("#cbb279"), 24, 2))
+	_return_vote_overlay.add_child(_return_vote_panel)
+	var title := _label(_return_vote_panel, "返回房间", Vector2(52, 30), Vector2(716, 54), 40, UI.GOLD)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_return_vote_message = _label(_return_vote_panel, "", Vector2(52, 96), Vector2(716, 120), 28, UI.INK)
+	_return_vote_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_return_vote_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var agree := _button("同意", _answer_return_vote.bind(true), Vector2(300, 92), true)
+	agree.position = Vector2(80, 238)
+	agree.name = "ReturnVoteAgree"
+	_return_vote_panel.add_child(agree)
+	var reject := _button("拒绝", _answer_return_vote.bind(false), Vector2(300, 92))
+	reject.position = Vector2(440, 238)
+	reject.name = "ReturnVoteReject"
+	_return_vote_panel.add_child(reject)
+	_return_vote_overlay.hide()
+
+func _answer_return_vote(value: bool) -> void:
+	var net = _net_node()
+	if net != null and net.has_method("answer_return_vote"):
+		net.answer_return_vote(value)
+	if _return_vote_overlay != null:
+		_return_vote_overlay.hide()
 
 func _on_return_vote_updated(data: Dictionary) -> void:
-	_ensure_return_vote_dialog()
+	_ensure_return_vote_ui()
 	if not bool(data.get("active", false)):
-		_return_vote_dialog.hide()
+		_return_vote_overlay.hide()
 		_return_vote_status.hide()
 		_return_vote_token = -1
 		return
@@ -118,22 +144,21 @@ func _on_return_vote_updated(data: Dictionary) -> void:
 	var agree_count := 0
 	for seat_value in humans:
 		if bool(yes.get(int(seat_value), false)): agree_count += 1
-	_return_vote_status.text = "返回座位同意 %d/%d" % [agree_count, humans.size()]
+	_return_vote_status.text = "返回房间同意 %d/%d" % [agree_count, humans.size()]
 	_return_vote_status.show()
-	if human_seat not in humans:
-		_return_vote_dialog.hide()
-		return
-	if bool(yes.get(human_seat, false)):
-		_return_vote_dialog.hide()
+	if human_seat not in humans or bool(yes.get(human_seat, false)):
+		_return_vote_overlay.hide()
 		return
 	var initiator := int(data.get("initiator", -1))
 	var who := "其他玩家" if initiator < 0 or initiator == human_seat else _seat_name(initiator)
-	var token := int(data.get("initiator", -1)) * 10 + int(data.get("rejecter", -1))
-	if _return_vote_dialog.visible and _return_vote_token == token:
+	var token := initiator * 10 + int(data.get("rejecter", -1))
+	if _return_vote_overlay.visible and _return_vote_token == token:
 		return
 	_return_vote_token = token
-	_return_vote_dialog.dialog_text = "%s 发起返回房间座位。\n全部真人同意后，大家一起回到选座等待。" % who
-	_return_vote_dialog.popup_centered(Vector2i(760, 320))
+	_return_vote_message.text = "%s 发起返回房间。\n全部真人同意后，大家一起回到选座等待。" % who
+	var design := _design_size()
+	_return_vote_panel.position = (design - _return_vote_panel.size) * 0.5
+	_return_vote_overlay.show()
 
 func _on_returned_to_lobby() -> void:
 	if _quitting:
@@ -527,6 +552,8 @@ func _refresh_listen_button() -> void:
 	_listen_button.show()
 	_listen_button.modulate = Color("#ffe6a1") if _listen_active and not _listen_paused else Color.WHITE
 	_listen_button.tooltip_text = "取消听牌托管，恢复手动出牌" if _listen_active else "开启听牌托管"
+	if _table_actions != null:
+		_table_actions._layout_actions()
 
 func _toggle_listen() -> void:
 	_listen_active = not _listen_active

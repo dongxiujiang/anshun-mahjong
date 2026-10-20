@@ -66,13 +66,7 @@ func _build_static_ui() -> void:
 	voice_button.visible = false
 	surface.add_child(voice_button)
 	table._voice_button = voice_button
-	var listen_button: Button = table._button("听牌", table._toggle_listen, Vector2(128, UI.SETTINGS_BUTTON_SIZE.y))
-	listen_button.name = "ListenButton"
-	listen_button.add_theme_font_size_override("font_size", UI.SETTINGS_FONT_SIZE - 6)
-	listen_button.tooltip_text = "叫牌后自动托管摸打；能胡时暂停，由你选择"
-	listen_button.visible = false
-	surface.add_child(listen_button)
-	table._listen_button = listen_button
+	# 听牌按钮由 TableActions 创建，固定显示在胡牌/过按钮上方。
 	# 返回、声音和 AI 速度统一收进大号设置面板，避免右上角小按钮难以点击。
 	table._sound_settings.exit_requested.connect(table._confirm_quit)
 	table._sound_settings.exit_confirmed.connect(table._on_quit)
@@ -134,12 +128,7 @@ func _layout() -> void:
 		table._voice_button.visible = table._net_mode() != ""
 		table._voice_button.position = table._sound_button.position - Vector2(table._voice_button.size.x + 12.0, 0.0)
 		table._refresh_voice_button()
-	if table._listen_button != null:
-		var right_edge: float = float(table._sound_button.position.x)
-		if table._voice_button != null and table._voice_button.visible:
-			right_edge = table._voice_button.position.x
-		table._listen_button.position = Vector2(right_edge - table._listen_button.size.x - 12.0, UI.SETTINGS_TOP_GAP)
-		table._refresh_listen_button()
+	table._refresh_listen_button()
 	# Actions sit immediately above the local player's draw slot.
 	table._layout_actions()
 	status_label.position = Vector2(60, design.y - 54)

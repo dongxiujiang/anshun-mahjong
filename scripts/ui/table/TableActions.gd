@@ -31,6 +31,13 @@ func build() -> void:
 	action_bar.alignment = BoxContainer.ALIGNMENT_END
 	action_bar.add_theme_constant_override("separation", UI.ACTION_SEPARATION)
 	table.surface.add_child(action_bar)
+	var listen: Button = table._button("听牌", table._toggle_listen, UI.DISCARD_BUTTON_SIZE)
+	listen.name = "ListenButton"
+	listen.add_theme_font_size_override("font_size", UI.ACTION_FONT_SIZE)
+	listen.tooltip_text = "自动托管摸打；能胡时暂停，由你选择"
+	listen.visible = false
+	table.surface.add_child(listen)
+	table._listen_button = listen
 
 func _layout_actions() -> void:
 	if action_bar == null:
@@ -60,6 +67,13 @@ func _layout_actions() -> void:
 	if Rect2(Vector2(left, row_top), row_size).intersects(river):
 		row_top = minf(row_top, river.position.y - row_size.y - UI.ACTION_EDGE_GAP)
 	action_bar.position = Vector2(left, row_top)
+	if table._listen_button != null and table._listen_button.visible:
+		var anchor_x: float = left + row_size.x
+		for button in action_bar.get_children():
+			if str(button.text) == "胡":
+				anchor_x = left + button.position.x + button.size.x
+				break
+		table._listen_button.position = Vector2(anchor_x - table._listen_button.size.x, row_top - table._listen_button.size.y - 12.0)
 
 func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
 	# Cancellation is not a completed tap, even when the pointer is still over
