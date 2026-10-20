@@ -22,7 +22,7 @@ static func drain_audio(tree: SceneTree) -> bool:
 	var audio := tree.root.get_node_or_null("AudioManager")
 	if audio == null: return true
 	var playbacks: Array[WeakRef] = []
-	var players: Array = [audio.music_player, audio.voice_player, audio.effects_player, audio.settlement_player]
+	var players: Array = [audio.voice_player, audio.effects_player, audio.settlement_player].filter(func(p): return p != null)
 	for player in players:
 		if player != null and player.has_stream_playback():
 			playbacks.append(weakref(player.get_stream_playback()))

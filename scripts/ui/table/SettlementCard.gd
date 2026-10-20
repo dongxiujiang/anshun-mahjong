@@ -96,15 +96,19 @@ func _refresh_next_round_controls() -> void:
 		_next_round_hint.text = "等待房间同步…"
 		return
 	var ready_count := 0
+	var human_count := 0
 	for member in seats:
+		if bool(member.get("ai", false)): continue
+		human_count += 1
 		if bool(member.get("ready", false)): ready_count += 1
 	var seconds := int(state.get("countdown", -1))
 	var ready := bool(seats[table.human_seat].get("ready", false))
-	var all_ready := ready_count >= 4
-	# Countdown is only meaningful after all four seats are ready.
+	var all_ready := human_count > 0 and ready_count >= human_count
+	# Only human seats participate in the countdown/readiness display; AI
+	# seats are automatically ready.
 	if seconds >= 0 and all_ready:
 		_next_round_button.text = "%d 秒后开始" % seconds
 	else:
-		_next_round_button.text = "准备 %d/4" % ready_count
-	_next_round_status.text = "下一局准备  %d / 4" % ready_count
+		_next_round_button.text = "准备 %d/%d" % [ready_count, maxi(1, human_count)]
+	_next_round_status.text = "下一局准备  %d / %d" % [ready_count, maxi(1, human_count)]
 	_next_round_hint.text = "全部准备，%d 秒后自动开局" % seconds if seconds >= 0 and all_ready else "等待其他玩家准备" if ready else "准备后开始下一局"

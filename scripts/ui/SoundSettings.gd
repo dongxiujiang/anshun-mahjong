@@ -12,7 +12,8 @@ const PANEL_SIZE := Vector2(680, 560)
 const TABLE_PANEL_SIZE := Vector2(1120, 840)
 const SLIDER_HEIGHT := 56.0
 const SLIDER_KNOB := 48
-const TITLES := {"music": "背景音乐", "voice": "出牌 / 动作语音", "effects": "落桌 / 结算音效"}
+const UI_CHANNELS := ["voice", "effects"]
+const TITLES := {"voice": "出牌 / 动作语音", "effects": "落桌 / 结算音效"}
 var overlay: Control
 var panel: Panel
 var sliders := {}
@@ -69,16 +70,12 @@ func _ready() -> void:
 	overlay.add_child(panel)
 	_label("设置" if table_mode else "声音设置", Vector2(36, 24), Vector2(608, 42), 32)
 	_label("设置自动保存，重启和更新后保留", Vector2(36, 78), Vector2(608, 30), 20)
-	for index in AudioManager.CHANNELS.size():
-		var channel: String = AudioManager.CHANNELS[index]
+	for index in UI_CHANNELS.size():
+		var channel: String = UI_CHANNELS[index]
 		var y := 126.0 + index * 88.0
-		var toggle := CheckButton.new()
-		toggle.text = TITLES[channel]
-		toggle.position = Vector2(28, y)
-		toggle.size = Vector2(280, 62)
-		toggle.toggled.connect(_on_toggle.bind(channel))
-		panel.add_child(toggle)
-		switches[channel] = toggle
+		# Only the slider remains: playback is controlled by volume 0, with no
+		# separate enable switch.
+		_label(TITLES[channel], Vector2(28, y), Vector2(280, 62), 24)
 		var slider := HSlider.new()
 		slider.position = Vector2(324, y)
 		slider.size = Vector2(234, SLIDER_HEIGHT)
@@ -92,7 +89,7 @@ func _ready() -> void:
 		sliders[channel] = slider
 		percentages[channel] = _label("", Vector2(574, y + 12), Vector2(78, 42), 24)
 	if table_mode:
-		var mic_y := 126.0 + AudioManager.CHANNELS.size() * 88.0
+		var mic_y := 126.0 + UI_CHANNELS.size() * 88.0
 		_label("麦克风音量", Vector2(28, mic_y), Vector2(280, 62), 24)
 		mic_gain_slider = HSlider.new()
 		mic_gain_slider.position = Vector2(324, mic_y)
@@ -112,20 +109,12 @@ func _ready() -> void:
 		remote_volume_slider.size = Vector2(234, SLIDER_HEIGHT)
 		remote_volume_slider.custom_minimum_size = Vector2(234, SLIDER_HEIGHT)
 		remote_volume_slider.min_value = 0
-		remote_volume_slider.max_value = 100
+		remote_volume_slider.max_value = 200
 		remote_volume_slider.step = 1
 		_style_slider(remote_volume_slider)
 		remote_volume_slider.value_changed.connect(_on_remote_volume_changed)
 		panel.add_child(remote_volume_slider)
 		remote_volume_percent = _label("", Vector2(574, remote_y + 12), Vector2(78, 42), 24)
-	var credit := LinkButton.new()
-	credit.text = "音乐：Ripples · Kevin MacLeod · incompetech.com · CC BY 4.0"
-	credit.position = Vector2(36, 566 if table_mode else 382)
-	credit.size = Vector2(608, 28)
-	credit.add_theme_font_size_override("font_size", 16)
-	credit.tooltip_text = "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100691\nhttps://creativecommons.org/licenses/by/4.0/\n已调整音量、淡入淡出并转换为 WAV。"
-	credit.pressed.connect(func(): OS.shell_open("https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100691"))
-	panel.add_child(credit)
 	voice_selector = OptionButton.new()
 	voice_selector.position = Vector2(36, 604 if table_mode else 422)
 	voice_selector.size = Vector2(172, 62)
@@ -280,11 +269,10 @@ func _layout() -> void:
 
 func _sync() -> void:
 	voice_selector.select(AudioManager.preview_voice_seat)
-	for channel in AudioManager.CHANNELS:
+	for channel in sliders:
 		sliders[channel].set_value_no_signal(roundf(float(AudioManager.volumes[channel]) * 100.0))
-		switches[channel].set_pressed_no_signal(AudioManager.enabled[channel])
 		percentages[channel].text = "%d%%" % roundi(float(AudioManager.volumes[channel]) * 100.0)
-		preview_button.disabled = not AudioManager.enabled.voice or float(AudioManager.volumes.voice) <= 0.0
+	preview_button.disabled = float(AudioManager.volumes.voice) <= 0.0
 	_sync_voice_settings()
 
 func _sync_voice_settings() -> void:
@@ -302,9 +290,6 @@ func _on_mic_gain_changed(value: float) -> void:
 func _on_remote_volume_changed(value: float) -> void:
 	GameConfig.set_voice_chat_remote_volume(value / 100.0, persist_changes)
 	_sync_voice_settings()
-
-func _on_toggle(on: bool, channel: String) -> void:
-	AudioManager.set_enabled(channel, on, persist_changes)
 
 func _on_slider(value: float, channel: String) -> void:
 	AudioManager.set_volume(channel, value / 100.0, persist_changes)

@@ -490,7 +490,7 @@ func _run() -> void:
 	network.net_node.my_seat = 0
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(table)
-	root.get_node("AudioManager").music_player.stop()
+	var _music = root.get_node("AudioManager").music_player; if _music != null: _music.stop()
 	network.mode = ""
 	controller = table._table_animation_controller
 	await process_frame

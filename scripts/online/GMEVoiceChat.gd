@@ -41,6 +41,12 @@ var _enter_timeout_reported := false
 func setup(owner: Node, allow_audio: bool) -> void:
 	owner_node = owner
 	audio_available = allow_audio
+	var config := get_node_or_null("/root/GameConfig")
+	if config != null:
+		_mic_gain = clampf(float(config.voice_chat_mic_gain), 0.0, 2.0)
+		_remote_volume = clampf(float(config.voice_chat_remote_volume), 0.0, 2.0)
+		if not config.voice_chat_settings_changed.is_connected(_on_settings_changed):
+			config.voice_chat_settings_changed.connect(_on_settings_changed)
 	_use_gme = allow_audio and OS.has_feature("android") and Engine.has_singleton("JavaClassWrapper")
 	if _use_gme:
 		_java = Engine.get_singleton("JavaClassWrapper")
@@ -221,7 +227,10 @@ func _start_mic() -> void:
 	var mic_ret = int(_audio.call("EnableMic", true))
 	var speaker_ret = int(_audio.call("EnableSpeaker", true))
 	_audio.call("SetMicVolume", roundi(_mic_gain * 100.0))
-	_audio.call("SetSpeakerVolume", roundi(_remote_volume * 100.0))
+	# GME's per-openID speaker volume supports 0..200; the global speaker
+	# volume is left at 100 so remote gain can boost quietly recorded voices.
+	_audio.call("SetSpeakerVolume", 100)
+	_apply_remote_volumes()
 	if mic_ret != 0:
 		_status = "GME EnableMic 失败 code=%d speaker=%d" % [mic_ret, speaker_ret]
 		status_changed.emit(false, _status)
@@ -263,15 +272,30 @@ func _has_record_permission() -> bool:
 	var granted := OS.get_granted_permissions()
 	return granted.has("RECORD_AUDIO") or granted.has("android.permission.RECORD_AUDIO")
 
+func _on_settings_changed() -> void:
+	var config := get_node_or_null("/root/GameConfig")
+	if config == null: return
+	set_mic_gain(float(config.voice_chat_mic_gain))
+	set_remote_volume(float(config.voice_chat_remote_volume))
+
 func set_mic_gain(value: float) -> void:
 	_mic_gain = clampf(value, 0.0, 2.0)
 	if _audio != null:
 		_audio.call("SetMicVolume", roundi(_mic_gain * 100.0))
 
 func set_remote_volume(value: float) -> void:
-	_remote_volume = clampf(value, 0.0, 1.0)
+	_remote_volume = clampf(value, 0.0, 2.0)
 	if _audio != null:
-		_audio.call("SetSpeakerVolume", roundi(_remote_volume * 100.0))
+		_audio.call("SetSpeakerVolume", 100)
+		_apply_remote_volumes()
+
+func _apply_remote_volumes() -> void:
+	if _audio == null or _room_number == "":
+		return
+	for seat in 4:
+		if not speaker_enabled(seat):
+			continue
+		_audio.call("SetSpeakerVolumeByOpenID", _make_open_id(_room_number, seat), roundi(_remote_volume * 100.0))
 
 func set_speaker_enabled(seat: int, value: bool) -> void:
 	if seat < 0 or seat > 3:
@@ -302,6 +326,9 @@ func _exit_tree() -> void:
 
 func shutdown() -> void:
 	set_process(false)
+	var config = get_node_or_null("/root/GameConfig") if is_inside_tree() else null
+	if config != null and config.voice_chat_settings_changed.is_connected(_on_settings_changed):
+		config.voice_chat_settings_changed.disconnect(_on_settings_changed)
 	if _fallback != null:
 		_fallback.shutdown()
 		_fallback.queue_free()

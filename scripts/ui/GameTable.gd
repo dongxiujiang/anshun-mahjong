@@ -2,6 +2,8 @@ extends "res://scripts/ui/table/TableViewBridge.gd"
 
 signal quit_to_menu
 
+const RULES := preload("res://scripts/core/RuleEngine.gd")
+
 ## 牌局与联机事件协调器。视觉状态由 table/ 组件持有。
 ## TableViewBridge 保留既有联机和测试接口；视觉参数统一在 TableUiConfig。
 
@@ -17,6 +19,9 @@ var _audio_round: RoundState
 var _sound_button: Button
 var _settings_button: Button
 var _voice_button: Button
+var _listen_button: Button
+var _listen_active := false
+var _listen_paused := false
 var _settlement_round_id := 0
 var _settlement_session := ""
 var _settlement_round_number := -1
@@ -28,6 +33,9 @@ var _opening_primed := false
 var _ai_service = null
 var _voice_diag_label: Label
 var _voice_diag_token := 0
+var _return_vote_dialog: ConfirmationDialog
+var _return_vote_token := -1
+var _return_vote_status: Label
 
 func _ready() -> void:
 	AudioManager.begin_table(self)
@@ -79,7 +87,53 @@ func _connect_voice_ui() -> void:
 		net.host_game_started.connect(_refresh_voice_button)
 	if net.has_signal("returned_to_lobby") and not net.returned_to_lobby.is_connected(_on_returned_to_lobby):
 		net.returned_to_lobby.connect(_on_returned_to_lobby)
+	if net.has_signal("return_vote_updated") and not net.return_vote_updated.is_connected(_on_return_vote_updated):
+		net.return_vote_updated.connect(_on_return_vote_updated)
 	_refresh_voice_button()
+
+func _ensure_return_vote_dialog() -> void:
+	if _return_vote_dialog != null:
+		return
+	_return_vote_dialog = ConfirmationDialog.new()
+	_return_vote_dialog.title = "返回座位"
+	_return_vote_dialog.ok_button_text = "同意"
+	_return_vote_dialog.cancel_button_text = "拒绝"
+	_return_vote_dialog.confirmed.connect(func():
+		var net = _net_node()
+		if net != null and net.has_method("answer_return_vote"): net.answer_return_vote(true))
+	_return_vote_dialog.canceled.connect(func():
+		var net = _net_node()
+		if net != null and net.has_method("answer_return_vote"): net.answer_return_vote(false))
+	add_child(_return_vote_dialog)
+
+func _on_return_vote_updated(data: Dictionary) -> void:
+	_ensure_return_vote_dialog()
+	if not bool(data.get("active", false)):
+		_return_vote_dialog.hide()
+		_return_vote_status.hide()
+		_return_vote_token = -1
+		return
+	var humans: Array = data.get("humans", [])
+	var yes: Dictionary = data.get("yes", {})
+	var agree_count := 0
+	for seat_value in humans:
+		if bool(yes.get(int(seat_value), false)): agree_count += 1
+	_return_vote_status.text = "返回座位同意 %d/%d" % [agree_count, humans.size()]
+	_return_vote_status.show()
+	if human_seat not in humans:
+		_return_vote_dialog.hide()
+		return
+	if bool(yes.get(human_seat, false)):
+		_return_vote_dialog.hide()
+		return
+	var initiator := int(data.get("initiator", -1))
+	var who := "其他玩家" if initiator < 0 or initiator == human_seat else _seat_name(initiator)
+	var token := int(data.get("initiator", -1)) * 10 + int(data.get("rejecter", -1))
+	if _return_vote_dialog.visible and _return_vote_token == token:
+		return
+	_return_vote_token = token
+	_return_vote_dialog.dialog_text = "%s 发起返回房间座位。\n全部真人同意后，大家一起回到选座等待。" % who
+	_return_vote_dialog.popup_centered(Vector2i(760, 320))
 
 func _on_returned_to_lobby() -> void:
 	if _quitting:
@@ -109,6 +163,19 @@ func _build_voice_diag() -> void:
 	_voice_diag_label.z_index = 100
 	add_child(_voice_diag_label)
 	_voice_diag_label.hide()
+	_return_vote_status = Label.new()
+	_return_vote_status.name = "ReturnVoteStatus"
+	_return_vote_status.position = Vector2(24, 154)
+	_return_vote_status.size = Vector2(1040, 40)
+	_return_vote_status.add_theme_font_override("font", TileView._font())
+	_return_vote_status.add_theme_font_size_override("font_size", 24)
+	_return_vote_status.add_theme_color_override("font_color", Color("#ffe6a8"))
+	_return_vote_status.add_theme_color_override("font_outline_color", Color("#102018"))
+	_return_vote_status.add_theme_constant_override("outline_size", 4)
+	_return_vote_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_return_vote_status.z_index = 100
+	add_child(_return_vote_status)
+	_return_vote_status.hide()
 
 func _on_voice_status(_enabled: bool, message: String) -> void:
 	if _voice_button != null and message != "":
@@ -352,6 +419,7 @@ func _refresh() -> void:
 		_start_settlement_animation(immediate)
 	_settlement_animation_controller.apply_displays()
 	_refresh_next_round_controls()
+	_refresh_listen_button()
 
 func _sync_settlement_round() -> void:
 	# Clients and hosts reuse RoundState between rounds. Object identity alone
@@ -435,10 +503,37 @@ func _on_client_state_updated() -> void:
 	# its untouched opening before the hand refresh exposes the final deal.
 	_prime_opening_visuals()
 	_refresh()
+	_refresh_listen_button()
 
 func _on_net_lobby_updated() -> void:
 	_update_speed_buttons()
 	_refresh_next_round_controls()
+	var net = _net_node()
+	if net != null and net.lobby is Dictionary and net.lobby.has("return_vote"):
+		_on_return_vote_updated(net.lobby.get("return_vote", {}))
+
+func _refresh_listen_button() -> void:
+	if _listen_button == null:
+		return
+	var available := false
+	if round != null and round.phase == RoundState.Phase.PLAYING and human_seat >= 0 and human_seat < round.players.size():
+		var player: PlayerState = round.players[human_seat]
+		available = RULES.is_tenpai(player.concealed, player.melds)
+	if not available:
+		_listen_active = false
+		_listen_paused = false
+		_listen_button.hide()
+		return
+	_listen_button.show()
+	_listen_button.modulate = Color("#ffe6a1") if _listen_active and not _listen_paused else Color.WHITE
+	_listen_button.tooltip_text = "取消听牌托管，恢复手动出牌" if _listen_active else "开启听牌托管"
+
+func _toggle_listen() -> void:
+	_listen_active = not _listen_active
+	_listen_paused = false
+	_refresh_listen_button()
+	if _listen_active:
+		_table_actions._listen_request()
 
 func _on_net_prompt(seat: int) -> void:
 	if seat != human_seat or seat >= round.players.size():
@@ -456,8 +551,11 @@ func _on_net_prompt(seat: int) -> void:
 func _on_round_finished(_result: Dictionary) -> void:
 	_selecting = false
 	_response_disc = ""
+	_listen_active = false
+	_listen_paused = false
 	_clear_actions()
 	_refresh()
+	_refresh_listen_button()
 
 func _on_connection_error(message: String) -> void:
 	_selecting = false
@@ -482,6 +580,10 @@ func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_FOCUS_IN,
 		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_RESUMED]:
 		_on_input_focus_changed()
+	if what == NOTIFICATION_APPLICATION_RESUMED and not _quitting and round != null:
+		# Android can lose the pressed-touch/UI prompt while backgrounded.
+		# Re-arm the current authoritative prompt after returning to foreground.
+		call_deferred("_on_net_prompt", human_seat)
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if _sound_settings != null and _sound_settings.is_open():
 			_sound_settings.close()

@@ -127,7 +127,7 @@ func load_settings(path: String = "") -> void:
 		var value = config.get_value("game", key, get(key))
 		if value is String and PREFERENCE_CHOICES[key].has(value): set(key, value)
 	voice_chat_mic_gain = clampf(float(config.get_value("voice_chat", "mic_gain", voice_chat_mic_gain)), 0.0, 2.0)
-	voice_chat_remote_volume = clampf(float(config.get_value("voice_chat", "remote_volume", voice_chat_remote_volume)), 0.0, 1.0)
+	voice_chat_remote_volume = clampf(float(config.get_value("voice_chat", "remote_volume", voice_chat_remote_volume)), 0.0, 2.0)
 
 func save_settings(path: String = "") -> Error:
 	if path == "" and not persist_settings: return OK
@@ -145,7 +145,7 @@ func set_voice_chat_mic_gain(value: float, persist: bool = true) -> void:
 	_save_preference(persist)
 
 func set_voice_chat_remote_volume(value: float, persist: bool = true) -> void:
-	voice_chat_remote_volume = clampf(value, 0.0, 1.0)
+	voice_chat_remote_volume = clampf(value, 0.0, 2.0)
 	voice_chat_settings_changed.emit()
 	_save_preference(persist)
 

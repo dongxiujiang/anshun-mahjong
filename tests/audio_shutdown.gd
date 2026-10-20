@@ -6,7 +6,7 @@ func _initialize() -> void: call_deferred("_run")
 
 func _run() -> void:
 	var audio := root.get_node("AudioManager")
-	var players: Array = [audio.music_player, audio.voice_player, audio.effects_player, audio.settlement_player]
+	var players: Array = [audio.voice_player, audio.effects_player, audio.settlement_player].filter(func(p): return p != null)
 	# Exercise real streams and playback objects, including paused audio and a
 	# slowed/paused scene tree. Muting alone must not bypass the audio thread.
 	for pause_audio in [false, true]:

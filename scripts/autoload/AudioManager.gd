@@ -46,7 +46,9 @@ func _ready() -> void:
 			bus = AudioServer.bus_count - 1
 			AudioServer.set_bus_name(bus, BUSES[channel])
 			AudioServer.set_bus_send(bus, "Master")
-	music_player = _player("BackgroundMusic", "Music")
+	# Background music was removed by design; keep the player field null so
+	# older callers/tests remain source-compatible.
+	music_player = null
 	voice_player = _player("TileVoice", "Voice")
 	effects_player = _player("TileEffects", "Effects")
 	settlement_player = _player("SettlementEffects", "Effects")
@@ -54,7 +56,6 @@ func _ready() -> void:
 	if persist_settings: _load_settings()
 	_apply_settings()
 	# 提前加载，首次喊牌不在出牌时读取磁盘。
-	_stream("music/table")
 	_stream("effects/discard")
 	for cue in SETTLEMENT_CUES: _stream("effects/settlement_" + cue)
 	for suit in ["wan", "tiao", "tong"]:
@@ -108,20 +109,6 @@ func begin_table(owner: Node = null) -> void:
 	table_active = true
 	_table_owner = owner.get_instance_id() if owner != null else 0
 	reset_round()
-	if music_player.stream == null:
-		var source := _stream("music/table")
-		if source != null:
-			var loop := source.duplicate() as AudioStream
-			if loop is AudioStreamWAV:
-				loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
-				loop.loop_begin = 0
-				loop.loop_end = int(loop.get_length() * loop.mix_rate)
-			elif loop is AudioStreamOggVorbis or loop is AudioStreamMP3:
-				loop.loop = true
-			music_player.stream = loop
-	if music_player.stream != null and not music_player.playing:
-		music_player.play()
-	music_player.stream_paused = _application_paused
 
 func end_table(owner: Node = null) -> void:
 	if owner != null and owner.get_instance_id() != _table_owner:
@@ -129,7 +116,6 @@ func end_table(owner: Node = null) -> void:
 	table_active = false
 	_table_owner = 0
 	reset_round()
-	music_player.stop()
 
 func reset_round(session: String = "", event_id: int = 0) -> void:
 	_last_session = session
@@ -247,13 +233,9 @@ func _on_voice_finished() -> void:
 		_win_priority = false
 		_duck_music(false)
 
-func _duck_music(ducked: bool) -> void:
-	if _duck_tween != null and _duck_tween.is_valid():
-		_duck_tween.kill()
-	if not is_inside_tree():
-		return
-	_duck_tween = create_tween()
-	_duck_tween.tween_property(music_player, "volume_db", -11.0 if ducked else 0.0, 0.1 if ducked else 0.35)
+func _duck_music(_ducked: bool) -> void:
+	# Music was removed; voice ducking is intentionally a no-op.
+	return
 
 func set_volume(channel: String, value: float, persist: bool = true) -> void:
 	if channel not in CHANNELS:
@@ -307,6 +289,11 @@ func _load_settings(path: String = "") -> void:
 		volumes[channel] = clampf(float(volume), 0.0, 1.0) if (volume is float or volume is int) and is_finite(float(volume)) else DEFAULT_VOLUMES[channel]
 		var on = config.get_value(channel, "enabled", true)
 		enabled[channel] = on if on is bool else true
+	# There are no per-channel on/off switches anymore. Zero volume is the
+	# only mute control, so stale disabled flags from older versions must not
+	# silently keep voice/effects muted.
+	enabled["voice"] = true
+	enabled["effects"] = true
 	var seat = config.get_value("voice", "preview_seat", 0)
 	preview_voice_seat = seat if seat is int and seat >= 0 and seat < 4 else 0
 	# Loading is read-only: an older version's saved values always win over new
@@ -323,12 +310,8 @@ func preview_voice(seat: int = 0) -> void:
 		_queue_voice("tong8", true, seat)
 
 func _notification(what: int) -> void:
-	if music_player == null:
-		return
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		_application_paused = true
-		music_player.stream_paused = true
 		reset_round(_last_session, _last_event_id)
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
 		_application_paused = false
-		music_player.stream_paused = false
