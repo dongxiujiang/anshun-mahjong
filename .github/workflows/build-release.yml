@@ -204,16 +204,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TEMPLATES="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
-          test -f "$TEMPLATES/android_source.zip"
-          rm -rf /tmp/godot-android-template android
-          mkdir -p /tmp/godot-android-template android/build
-          unzip -q "$TEMPLATES/android_source.zip" -d /tmp/godot-android-template
-          SRC=/tmp/godot-android-template
-          if [ -d "$SRC/android_source" ]; then SRC="$SRC/android_source"; fi
-          cp -a "$SRC"/. android/build/
-          printf "4.7.2.stable" > android/build/.build_version
+          rm -rf android
+          godot --headless --path . --install-android-build-template --quit
           test -f android/build/build.gradle
+          test -f android/build/.build_version
 
       - name: Export full Windows and Android packages
         if: ${{ env.RELEASE_KIND == 'full' }}
