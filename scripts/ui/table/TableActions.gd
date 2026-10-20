@@ -2,12 +2,10 @@ extends "res://scripts/ui/table/TableComponent.gd"
 ## 管理选牌、合法操作按钮、报听和提交；不自行改变牌局规则。
 
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
-const RULES := preload("res://scripts/core/RuleEngine.gd")
 
 var action_bar: HBoxContainer
 var auto_ready_enabled := DisplayServer.get_name() != "headless"
 var _ready_auto_serial := 0
-var _listen_serial := 0
 var _selecting := false
 var _response_disc := ""
 var _selected_tile: TileView
@@ -31,13 +29,6 @@ func build() -> void:
 	action_bar.alignment = BoxContainer.ALIGNMENT_END
 	action_bar.add_theme_constant_override("separation", UI.ACTION_SEPARATION)
 	table.surface.add_child(action_bar)
-	var listen: Button = table._button("听牌", table._toggle_listen, UI.DISCARD_BUTTON_SIZE)
-	listen.name = "ListenButton"
-	listen.add_theme_font_size_override("font_size", UI.ACTION_FONT_SIZE)
-	listen.tooltip_text = "自动托管摸打；能胡时暂停，由你选择"
-	listen.visible = false
-	table.surface.add_child(listen)
-	table._listen_button = listen
 
 func _layout_actions() -> void:
 	if action_bar == null:
@@ -67,13 +58,6 @@ func _layout_actions() -> void:
 	if Rect2(Vector2(left, row_top), row_size).intersects(river):
 		row_top = minf(row_top, river.position.y - row_size.y - UI.ACTION_EDGE_GAP)
 	action_bar.position = Vector2(left, row_top)
-	if table._listen_button != null and table._listen_button.visible:
-		var anchor_x: float = left + row_size.x
-		for button in action_bar.get_children():
-			if str(button.text) == "胡":
-				anchor_x = left + button.position.x + button.size.x
-				break
-		table._listen_button.position = Vector2(anchor_x - table._listen_button.size.x, row_top - table._listen_button.size.y - 12.0)
 
 func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
 	# Cancellation is not a completed tap, even when the pointer is still over
@@ -134,64 +118,6 @@ func _on_require_turn(seat: int) -> void:
 	table._build_turn_options(table.round.players[seat])
 	if table.round.players[seat].ready:
 		_auto_ready_discard(seat, serial)
-	elif table._listen_active:
-		_auto_listen_turn(seat, _listen_serial)
-
-func _listen_request() -> void:
-	_listen_serial += 1
-	table._listen_paused = false
-	table._refresh_listen_button()
-	if table.round == null or table.round.phase != RoundState.Phase.PLAYING:
-		return
-	var response: Dictionary = table.round._awaiting_response
-	if not response.is_empty() and int(response.get("seat", -1)) == table.human_seat:
-		var opts: Dictionary = table.round.legal_response_options(table.human_seat, int(response.get("disc_seat", -1)), str(response.get("tile", "")), int(response.get("stage", RoundState.ResponseStage.NONE)))
-		if not bool(opts.get("can_win", false)):
-			_auto_listen_pass(table.human_seat, _listen_serial)
-		else:
-			table._listen_paused = true
-			table._refresh_listen_button()
-	elif table.round.current_turn == table.human_seat and not table.round.awaiting:
-		_auto_listen_turn(table.human_seat, _listen_serial)
-
-func _listen_discard(player: PlayerState, options: Dictionary) -> String:
-	for tile in options.get("discards", []):
-		var hand: Array = player.concealed.duplicate()
-		hand.erase(str(tile))
-		if RULES.is_tenpai(hand, player.melds):
-			return str(tile)
-	return str(options.discards[0]) if not options.get("discards", []).is_empty() else ""
-
-func _auto_listen_turn(seat: int, serial: int) -> void:
-	if table.round == null or table.round.phase != RoundState.Phase.PLAYING:
-		return
-	var options: Dictionary = table.round.legal_turn_options(seat)
-	if bool(options.get("self_win", false)):
-		table._listen_paused = true
-		table._refresh_listen_button()
-		return
-	var tile := _listen_discard(table.round.players[seat], options)
-	if tile == "":
-		return
-	var tree: SceneTree = table.get_tree()
-	await tree.create_timer(0.35).timeout
-	if serial != _listen_serial or not table._listen_active or not _selecting:
-		return
-	var deadline := Time.get_ticks_msec() + 1800
-	while input_locked() and Time.get_ticks_msec() < deadline:
-		await tree.process_frame
-	if serial != _listen_serial or not table._listen_active or not _selecting:
-		return
-	table._commit_turn({"discard": tile})
-
-func _auto_listen_pass(seat: int, serial: int) -> void:
-	var tree: SceneTree = table.get_tree()
-	await tree.create_timer(0.35).timeout
-	if serial != _listen_serial or not table._listen_active:
-		return
-	if input_locked() or _response_disc == "":
-		return
-	table._commit_response("pass")
 
 func _ready_auto_delay() -> float:
 	# Use the same fast/medium/slow wait as AI turns. In an online room the
@@ -315,10 +241,8 @@ func _commit_turn(decision: Dictionary) -> void:
 	if not _selecting or input_locked() or not table.round._valid_turn(table.human_seat, decision): return
 	_selecting = false
 	_declaring_ready = false
-	table._listen_paused = false
 	table._clear_actions()
 	table._update_interactivity()
-	table._refresh_listen_button()
 	table._emit_turn(decision)
 
 func _submit_discard(tile: String, discard_index: int = -1) -> void:
@@ -337,16 +261,6 @@ func _on_require_response(seat: int, discarded_seat: int, tile: String, options:
 	_declaring_ready = false
 	_response_disc = tile
 	table._clear_actions()
-	if table._listen_active:
-		if bool(options.get("can_win", false)):
-			table._listen_paused = true
-			table._refresh_listen_button()
-			table._add_action("胡", func(): table._commit_response("win"), true)
-			table._add_action("过", func(): table._commit_response("pass"))
-			table._update_interactivity()
-		else:
-			_auto_listen_pass(table.human_seat, _listen_serial)
-		return
 	if options.get("can_win", false):
 		table._add_action("胡", func(): table._commit_response("win"), true)
 	if options.get("can_pong", false):
@@ -362,9 +276,7 @@ func _commit_response(action: String) -> void:
 	if prompt.get("kind", "") != "response": return
 	var tile = _response_disc
 	_response_disc = ""
-	table._listen_paused = false
 	table._clear_actions()
-	table._refresh_listen_button()
 	table._emit_response(tile, {"action": action})
 
 func _add_action(text: String, callback: Callable, primary: bool = false, tooltip: String = "") -> Button:

@@ -66,7 +66,6 @@ func _build_static_ui() -> void:
 	voice_button.visible = false
 	surface.add_child(voice_button)
 	table._voice_button = voice_button
-	# 听牌按钮由 TableActions 创建，固定显示在胡牌/过按钮上方。
 	# 返回、声音和 AI 速度统一收进大号设置面板，避免右上角小按钮难以点击。
 	table._sound_settings.exit_requested.connect(table._confirm_quit)
 	table._sound_settings.exit_confirmed.connect(table._on_quit)
@@ -128,7 +127,6 @@ func _layout() -> void:
 		table._voice_button.visible = table._net_mode() != ""
 		table._voice_button.position = table._sound_button.position - Vector2(table._voice_button.size.x + 12.0, 0.0)
 		table._refresh_voice_button()
-	table._refresh_listen_button()
 	# Actions sit immediately above the local player's draw slot.
 	table._layout_actions()
 	status_label.position = Vector2(60, design.y - 54)
