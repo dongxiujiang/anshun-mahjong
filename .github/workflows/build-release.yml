@@ -200,7 +200,17 @@ jobs:
       - name: Install Android Gradle build template
         if: ${{ env.RELEASE_KIND == 'full' }}
         shell: bash
-        run: godot --headless --path . --install-android-build-template > build/ci/android-template.log 2>&1
+        run: |
+          set -euo pipefail
+          TEMPLATES="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          test -f "$TEMPLATES/android_source.zip"
+          rm -rf /tmp/godot-android-template android
+          mkdir -p /tmp/godot-android-template android
+          unzip -q "$TEMPLATES/android_source.zip" -d /tmp/godot-android-template
+          SRC=/tmp/godot-android-template
+          if [ -d "$SRC/android_source" ]; then SRC="$SRC/android_source"; fi
+          cp -a "$SRC"/. android/
+          test -f android/build.gradle
 
       - name: Export full Windows and Android packages
         if: ${{ env.RELEASE_KIND == 'full' }}
