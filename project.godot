@@ -16,7 +16,7 @@ config/name="安顺麻将·捉鸡"
 config/name_localized={
 "en": "Anshun Mahjong"
 }
-config/version="1.4.0"
+config/version="1.4.1"
 run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://res/icons/game_icon.png"
@@ -69,7 +69,7 @@ default_url="https://mj.dongxiu.fun"
 
 [updates]
 
-base_id="1.4.0-boot1"
+base_id="1.4.1-boot1"
 tag_prefix="V"
 manifest_asset="update-manifest.json"
 github_repository="dongxiujiang/anshun-mahjong"

@@ -134,7 +134,8 @@ func _join_room(room_number: String, auth: PackedByteArray) -> void:
 		return
 	_audio = _context.call("GetAudioCtrl")
 	_context.call("Poll")
-	var enter_ret = int(_context.call("EnterRoom", room_number, ROOM_TYPE, auth, auth.size()))
+	# GME Android 2.9.17 signature: EnterRoom(String, int, byte[]).
+	var enter_ret = int(_context.call("EnterRoom", room_number, ROOM_TYPE, auth))
 	if enter_ret != 0:
 		_fail("GME 进入房间失败（%d）" % enter_ret)
 		return
