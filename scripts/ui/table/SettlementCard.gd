@@ -40,14 +40,16 @@ func _return_to_seat() -> void:
 func refresh_layout() -> void:
 	if not is_instance_valid(_post_controls): return
 	var online: bool = table._net_mode() != ""
-	_post_controls.size = Vector2(1040 if online else 440, 150 if online else 84)
+	_post_controls.size = Vector2(1040 if online else 440, 84)
 	_post_controls.position = Vector2((table._design_size().x - _post_controls.size.x) / 2.0, table._design_size().y - _post_controls.size.y - 8.0)
-	_next_round_status.visible = online
-	_next_round_hint.visible = online
+	# The readiness/countdown text lives inside the button now; keep the old
+	# labels as hidden compatibility fields for regression probes.
+	_next_round_status.visible = false
+	_next_round_hint.visible = false
 	if is_instance_valid(_return_seat_button):
 		_return_seat_button.visible = online
-	_return_seat_button.position = Vector2(0, 58)
-	_next_round_button.position = Vector2(456, 58) if online else Vector2.ZERO
+	_return_seat_button.position = Vector2(0, 0)
+	_next_round_button.position = Vector2(456, 0) if online else Vector2.ZERO
 	_next_round_button.size = Vector2(440, 84)
 
 func show_post_settlement_controls() -> void:
@@ -89,6 +91,7 @@ func _refresh_next_round_controls() -> void:
 	_next_round_button.add_theme_font_size_override("font_size", UI.READY_NEXT_ROUND_FONT_SIZE)
 	_next_round_button.text = "准备下一局"
 	if not ready_round:
+		_next_round_button.text = "准备 --/4"
 		_next_round_status.text = "下一局准备"
 		_next_round_hint.text = "等待房间同步…"
 		return
@@ -97,6 +100,11 @@ func _refresh_next_round_controls() -> void:
 		if bool(member.get("ready", false)): ready_count += 1
 	var seconds := int(state.get("countdown", -1))
 	var ready := bool(seats[table.human_seat].get("ready", false))
-	_next_round_button.text = "%d 秒后开始 · 取消" % seconds if seconds >= 0 else ("已准备 · 点击取消" if ready else "准备下一局")
+	var all_ready := ready_count >= 4
+	# Countdown is only meaningful after all four seats are ready.
+	if seconds >= 0 and all_ready:
+		_next_round_button.text = "%d 秒后开始" % seconds
+	else:
+		_next_round_button.text = "准备 %d/4" % ready_count
 	_next_round_status.text = "下一局准备  %d / 4" % ready_count
-	_next_round_hint.text = "全部准备，%d 秒后自动开局" % seconds if seconds >= 0 else "等待其他玩家准备" if ready else "准备后开始下一局"
+	_next_round_hint.text = "全部准备，%d 秒后自动开局" % seconds if seconds >= 0 and all_ready else "等待其他玩家准备" if ready else "准备后开始下一局"

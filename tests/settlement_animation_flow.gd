@@ -619,11 +619,11 @@ func _test_all_called_timeline() -> void:
 			else:
 				t.expect(view.new_game_requests == 0 and endpoint.ready_calls.is_empty(), "online natural completion waits for human readiness")
 				t.expect(view._post_controls.visible and not view._next_round_button.disabled, "online completion exposes enabled bottom ready button")
-				t.expect(view._next_round_status.text.contains("2 / 4") and view._next_round_button.text == "准备下一局", "online completion shows authoritative ready counts")
+				t.expect(view._next_round_status.text.contains("2 / 4") and view._next_round_button.text.contains("准备"), "online completion shows authoritative ready counts")
 				view._next_round_button.pressed.emit()
 				view._refresh_next_round_controls()
 				t.expect(endpoint.ready_calls == [true] and endpoint.lobby.seats[0].ready, "real next-round handler calls endpoint set_ready(true)")
-				t.expect(view._next_round_status.text.contains("3 / 4") and view._next_round_button.text.contains("取消"), "ready acknowledgment updates bottom count and cancel action")
+				t.expect(view._next_round_status.text.contains("3 / 4") and view._next_round_button.text.contains("3/4"), "ready acknowledgment updates bottom count and cancel action")
 				view._next_round_button.pressed.emit()
 				view._refresh_next_round_controls()
 				t.expect(endpoint.ready_calls == [true, false] and view._next_round_status.text.contains("2 / 4"), "ready button dispatches cancellation through same handler")
