@@ -199,16 +199,6 @@ jobs:
           ANDROID_KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
         run: python tools/release/configure_ci_export.py --signing
 
-      - name: Install Android Gradle build template
-        if: ${{ env.RELEASE_KIND == 'full' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf android
-          godot --headless --path . --install-android-build-template --quit
-          test -f android/build/build.gradle
-          test -f android/build/.build_version
-
       - name: Export full Windows and Android packages
         if: ${{ env.RELEASE_KIND == 'full' }}
         shell: bash
@@ -216,7 +206,8 @@ jobs:
           set -euo pipefail
           mkdir -p build/windows build/android
           godot --headless --path . --export-release "Windows" build/windows/anshun-mahjong-windows-x64.exe > build/ci/windows-export.log 2>&1 || { cat build/ci/windows-export.log; exit 1; }
-          godot --headless --path . --export-release "Android" build/android/anshun-mahjong.apk > build/ci/android-export.log 2>&1 || { cat build/ci/android-export.log; exit 1; }
+          rm -rf android
+          godot --headless --path . --install-android-build-template --export-release "Android" build/android/anshun-mahjong.apk > build/ci/android-export.log 2>&1 || { cat build/ci/android-export.log; exit 1; }
           test -s build/windows/anshun-mahjong-windows-x64.exe
           test -s build/android/anshun-mahjong.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose build/android/anshun-mahjong.apk
