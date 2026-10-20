@@ -207,7 +207,11 @@ jobs:
           mkdir -p build/windows build/android
           godot --headless --path . --export-release "Windows" build/windows/anshun-mahjong-windows-x64.exe > build/ci/windows-export.log 2>&1 || { cat build/ci/windows-export.log; exit 1; }
           rm -rf android
-          godot --headless --path . --install-android-build-template --export-release "Android" build/android/anshun-mahjong.apk > build/ci/android-export.log 2>&1 || { cat build/ci/android-export.log; exit 1; }
+          godot --headless --path . --install-android-build-template --export-release "Android" /tmp/gme-template.apk > build/ci/android-template.log 2>&1 || { cat build/ci/android-template.log; exit 1; }
+          mkdir -p android/build/libs
+          cp addons/gme/gmesdk.aar android/build/libs/gmesdk.aar
+          printf "\ndependencies { implementation files(%s) }\n" "\"libs/gmesdk.aar\"" >> android/build/build.gradle
+          godot --headless --path . --export-release "Android" build/android/anshun-mahjong.apk > build/ci/android-export.log 2>&1 || { cat build/ci/android-export.log; exit 1; }
           test -s build/windows/anshun-mahjong-windows-x64.exe
           test -s build/android/anshun-mahjong.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose build/android/anshun-mahjong.apk
