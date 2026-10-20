@@ -6,6 +6,12 @@ extends RefCounted
 ## seat:meld_INDEX. tiles contains only currently visible logical occurrences.
 
 const TILE := preload("res://scripts/core/Tiles.gd")
+## Technical fallback lines ("本组暂无…") are diagnostics. They are hidden in
+## normal play and only enabled by the settings debug switch.
+static var debug_enabled := false
+
+static func set_debug_enabled(value: bool) -> void:
+	debug_enabled = value
 
 static func build(result: Dictionary, meta: Dictionary, players: Array, plan: Dictionary) -> Array:
 	var context: Dictionary = result.get("round_meta", meta)
@@ -41,8 +47,7 @@ static func build(result: Dictionary, meta: Dictionary, players: Array, plan: Di
 						_assign_item(item, occurrences, groups, gold)
 			_kongs(items, transfers, snapshot, groups, seat, is_draw, called, gold)
 		for group in groups.values():
-			if seat == burned: _note(group, "烧鸡：本局收入0，补付照算。")
-			elif not called[seat]: _note(group, "未叫牌：手中鸡不记正分；碰、杠中的鸡按规则补付。")
+			if seat == burned: _note(group, "烧鸡：烧鸡 0分")
 		if not called[seat]:
 			_debt(groups, occurrences, transfers, seat, "未叫牌出牌鸡", "discard", gold, is_draw)
 			_debt(groups, occurrences, transfers, seat, "未叫牌碰鸡", "pung_chicken", gold, is_draw)
@@ -282,15 +287,37 @@ static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, 
 		var exact := candidates.size() == 1 and not hidden
 		if exact:
 			var stage := str(group._base_stage) if category == "kong" else _stage(str(group.tiles[0]), gold)
-			if category == "discard" and group.tiles.size() == 1:
-				# A single discarded chicken is shown as its own tile value, not
-				# as the sum paid to every called player: "冲锋八筒-4分", not
-				# "-12分" followed by three payer rows. The stage total below
-				# still keeps the real ledger amount for the player's net score.
-				var label := ("冲锋" if bool(group.get("charge", false)) else "") + _tile_name(str(group.tiles[0]))
-				group["_simple"] = true
-				for row in rows:
-					_part(group, stage, label, -float(row.amount), 1, -float(row.amount), true)
+			if category == "discard" and not group.tiles.is_empty():
+				# A discarded chicken is shown as its per-called-player tile
+				# value, not as the total debt.  The first tile is the charge
+				# chicken and every later copy is ordinary, so two discarded
+				# 幺鸡 render as "冲锋幺鸡-4分 幺鸡-2分", not an ambiguous total.
+				var tile := str(group.tiles[0])
+				var count: int = group.tiles.size()
+				var charged := bool(group.get("charge", false))
+				var charge_count: int = 1 if charged else 0
+				var charge_unit := 8.0 if charged and tile in gold else (4.0 if charged else 0.0)
+				var ordinary_unit := 4.0 if tile in gold else 2.0
+				var ordinary_count: int = count - charge_count
+				var expected_per_payer: float = charge_unit + ordinary_unit * ordinary_count
+				var scaled: bool = expected_per_payer > 0.0 and not rows.is_empty()
+				var scale: float = 1.0
+				if scaled:
+					scale = float(rows[0].amount) / expected_per_payer
+					for row in rows:
+						if not is_equal_approx(float(row.amount), expected_per_payer * scale):
+							scaled = false
+							break
+				if scaled:
+					group["_simple"] = true
+					var tile_name := _tile_name(tile)
+					for row in rows:
+						if charged:
+							_part(group, stage, "冲锋" + tile_name, -charge_unit * scale, 1, -charge_unit * scale, true)
+						if ordinary_count > 0:
+							_part(group, stage, tile_name, -ordinary_unit * scale, ordinary_count, -ordinary_unit * scale, true)
+				else:
+					_combined(group, rows, "（%s%s）" % [reason, "，含已被胡走的出牌鸡" if hidden else ""])
 			elif category == "pung_chicken":
 				var label := "碰" + _tile_name(str(group.tiles[0]))
 				group["_simple"] = true
@@ -335,6 +362,8 @@ static func _part(group: Dictionary, stage: String, label: String, amount: float
 	group._parts[stage].append({"label": label, "amount": amount, "count": count, "unit": unit, "per_unit": per_unit})
 
 static func _note(group: Dictionary, message: String) -> void:
+	if message.begins_with("本组暂无") and not debug_enabled:
+		return
 	if message not in group._notes: group._notes.append(message)
 
 static func _finish_group(group: Dictionary) -> void:
@@ -357,8 +386,6 @@ static func _finish_group(group: Dictionary) -> void:
 		lines.append(caption)
 	if not bool(group.get("_simple", false)):
 		for note in group._notes: lines.append(str(note))
-	if group.stages.is_empty() and not bool(group.get("_hide_empty", false)) and not lines.any(func(line): return str(line).contains("不计分") or str(line).contains("暂无") or str(line).contains("收入0")):
-		lines.append("本组不计分。")
 	group.detail = "\n".join(lines)
 	for key in ["_notes", "_parts", "_robbed", "_kong", "_base_stage", "_title", "_simple", "_hide_empty", "charge"]: group.erase(key)
 

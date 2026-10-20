@@ -12,7 +12,6 @@ var hit_buttons: Dictionary = {}
 var selected_id := ""
 var stage_key := ""
 var completed := false
-var _hint: Label
 
 func _init(view: Control) -> void:
 	_table_ref = weakref(view)
@@ -22,6 +21,7 @@ func _init(view: Control) -> void:
 
 func configure(result: Dictionary, meta: Dictionary, players: Array, plan: Dictionary) -> void:
 	reset()
+	DETAILS.set_debug_enabled(GameConfig.debug_enabled)
 	groups = DETAILS.build(result, meta, players, plan)
 
 func _ready() -> void:
@@ -37,7 +37,6 @@ func reset() -> void:
 	labels.clear()
 	hit_buttons.clear()
 	groups.clear()
-	_hint = null
 	selected_id = ""
 	stage_key = ""
 	completed = false
@@ -82,7 +81,7 @@ func refresh() -> void:
 		var id := str(group.id)
 		var text := ""
 		var amount := 0.0
-		var key := "flip" if completed and selected_id == "@flip" else stage_key
+		var key := stage_key
 		if completed and selected_id == id:
 			text = str(group.detail)
 		elif key != "" and group.stages.has(key):
@@ -108,31 +107,10 @@ func refresh() -> void:
 		occupied.append(label.get_rect().grow(8.0))
 		if completed and not c.plan.is_draw and int(group.seat) != int(c.plan.burned) and bool(c.plan.called[int(group.seat)]):
 			for tile in tiles: tile.set_score_highlight(true)
-	if completed and is_instance_valid(c._flip_view):
-		clicks["flip"] = true
-		var button := _button("flip", "@flip")
-		var rect := _tile_rect(c._flip_view)
-		button.position = rect.position
-		button.size = rect.size
-		if selected_id == "@flip":
-			wanted["@flip"] = true
-			var names: Array[String] = []
-			for tile in c.plan.flip_tiles: names.append("%d%s" % [Tiles.rank(str(tile)), {"wan": "万", "tiao": "条", "tong": "筒"}.get(Tiles.suit(str(tile)), "")])
-			var label := _label("@flip", "翻鸡：" + "、".join(names), UI.GOLD)
-			_place(label, rect, table.human_seat, occupied)
 	for id in labels.keys():
 		if not wanted.has(id): _remove(labels, id)
 	for id in hit_buttons.keys():
 		if not clicks.has(id): _remove(hit_buttons, id)
-	if completed and (not groups.is_empty() or is_instance_valid(c._flip_view)):
-		if not is_instance_valid(_hint):
-			_hint = _make_label()
-			_hint.name = "SettlementScoreHint"
-			_hint.add_theme_font_size_override("font_size", 20)
-			_hint.add_theme_color_override("font_color", UI.MUTED)
-			_hint.text = "点鸡牌或碰杠查看分数 · 点空白处收起"
-			_hint.size = Vector2(510, 32)
-			_hint.position = Vector2(38, UI.DESIGN_SIZE.y - 40)
 
 func _tiles_for(group: Dictionary) -> Array[TileView]:
 	var c = table._settlement_animation_controller

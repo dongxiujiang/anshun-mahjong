@@ -117,7 +117,7 @@ func _prepare() -> bool:
 	table._update_interactivity()
 	_build_identities()
 	if plan.all_called_draw:
-		_notice = _text(layer, "四家叫牌 · 本局不计分 · 下局鸡分 ×2", 34, UI.GOLD)
+		_notice = _text(layer, "黄牌，下局鸡分 × 2", 34, UI.GOLD)
 		_notice.name = "AllCalledDrawNotice"
 		_notice.size = Vector2(1000, 70)
 		_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

@@ -29,6 +29,8 @@ var server_dialog: ConfirmationDialog
 var server_input: LineEdit
 var resume_button: Button
 var online := false
+var _room_name_manual := false
+var _syncing_room_name := false
 var _in_room := false
 var _connecting := false
 var _creating := false
@@ -70,14 +72,15 @@ func _ready() -> void:
 	_label(browser, "创建房间", Vector2(24, 16), Vector2(370, 48), 32)
 	_label(browser, "昵称", Vector2(24, 80), Vector2(370, 34), 24)
 	player_input = _field(browser, Vector2(24, 118), Vector2(374, 56), "你的昵称", GameConfig.player_name, 16)
-	player_input.text_changed.connect(func(value): GameConfig.set_player_name(value))
+	player_input.text_changed.connect(_on_player_name_changed)
 	_label(browser, "房间号 · 4～8 位数字", Vector2(24, 188), Vector2(374, 34), 24)
 	var previous_number := str(Network.lobby_preferences.number)
 	room_input = _field(browser, Vector2(24, 228), Vector2(374, 56), "输入房间号", previous_number if NetGameNode.valid_room_number(previous_number) else str(randi_range(100000, 999999)), 8)
 	room_input.text_changed.connect(func(_value): _save_lobby_preferences())
 	_label(browser, "房间名称", Vector2(24, 300), Vector2(374, 34), 24)
 	room_name_input = _field(browser, Vector2(24, 340), Vector2(374, 56), "朋友麻将局", str(Network.lobby_preferences.name), 24)
-	room_name_input.text_changed.connect(func(_value): _save_lobby_preferences())
+	room_name_input.text_changed.connect(_on_room_name_changed)
+	_initialize_room_name()
 	create_button = _button(browser, "创建房间", Vector2(24, 438), Vector2(374, 80), _create)
 	_panel(browser, Vector2(446, 0), Vector2(962, 530))
 	filter_input = _field(browser, Vector2(470, 20), Vector2(530, 60), "搜索房间号或名称", "", 32)
@@ -153,9 +156,40 @@ func _ready() -> void:
 		Network.resume_on_lobby = false
 		_resume_saved_room.call_deferred()
 
+func _initialize_room_name() -> void:
+	_room_name_manual = bool(Network.lobby_preferences.get("room_name_manual", false))
+	if not _room_name_manual:
+		_sync_room_name_from_nickname()
+		_save_lobby_preferences()
+
+func _on_player_name_changed(value: String) -> void:
+	GameConfig.set_player_name(value)
+	if not _room_name_manual:
+		_sync_room_name_from_nickname()
+	_save_lobby_preferences()
+
+func _on_room_name_changed(_value: String) -> void:
+	if _syncing_room_name:
+		return
+	_room_name_manual = true
+	_save_lobby_preferences()
+
+func _sync_room_name_from_nickname() -> void:
+	if room_name_input == null:
+		return
+	var nickname := GameConfig.player_name.strip_edges()
+	if nickname == "":
+		nickname = "玩家"
+	var automatic := nickname + "麻将局"
+	if room_name_input.text == automatic:
+		return
+	_syncing_room_name = true
+	room_name_input.text = automatic
+	_syncing_room_name = false
+
 func _save_lobby_preferences() -> void:
 	if room_input != null and room_name_input != null:
-		Network.save_lobby_preferences(online, room_input.text, room_name_input.text)
+		Network.save_lobby_preferences(online, room_input.text, room_name_input.text, _room_name_manual)
 
 func _resume_saved_room() -> void:
 	if _connecting or _creating or _in_room or not Network.has_saved_session(): return

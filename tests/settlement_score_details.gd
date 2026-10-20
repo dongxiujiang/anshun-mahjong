@@ -92,6 +92,8 @@ func _test_exposed_kong() -> void:
 	var group := _find(_build(f), "1:meld_0")
 	_amount(group, "other", 4, "win round exposed base remains other")
 	_amount(group, "chicken", 8, "kong chicken contribution separate from base")
+	t.expect(group.detail.contains("杠对家幺鸡4分") and group.detail.contains("幺鸡8分")
+		and not group.detail.contains("12分"), "called exposed chicken kong never aggregates base+chicken into 12")
 	t.expect(not group.stages.has("kong"), "exposed base not moved to own-kong phase")
 	t.expect(group.detail.contains("杠对家幺鸡4分"), "payer relative to owner seat1, not human/dealer")
 	t.expect(group.tiles.size() == 4, "whole kong node group")
@@ -206,6 +208,19 @@ func _test_uncalled_charge_short_label() -> void:
 	t.expect(group.detail == "冲锋八筒-4分", "click uses the same short tile line")
 	t.expect(is_equal_approx(float(group.stages.chicken.amount), -12.0), "short label keeps the real 12-point ledger total")
 
+func _test_uncalled_two_same_chickens() -> void:
+	var f := _fixture()
+	f.result.called = [true, false, true, true]
+	f.players[1].discards = ["tiao1", "tiao1"]
+	f.players[1].discard_ids = [0, 1]
+	f.meta.charge_chickens = {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}
+	for receiver in [0, 2, 3]:
+		_pay(f, 1, receiver, 6, "未叫牌出牌鸡")
+	var group := _find(_build(f), "1:chicken_tiao1")
+	t.expect(group.stages.chicken.text == "冲锋幺鸡-4分 幺鸡-2分", "uncalled charge+ordinary discard keeps both per-payer tile lines")
+	t.expect(group.detail == "冲锋幺鸡-4分 幺鸡-2分", "click keeps the same two per-payer tile lines")
+	t.expect(is_equal_approx(float(group.stages.chicken.amount), -18.0), "two tile lines still keep the real ledger total")
+
 func _test_uncalled_pong_chicken() -> void:
 	var f := _fixture()
 	f.result.called = [true, false, true, false]
@@ -243,7 +258,7 @@ func _test_burn_robbed_and_normal_pung() -> void:
 	var groups := _build(f)
 	for group in groups:
 		t.expect(group.stages.is_empty(), "burned seat never gets positive presentation income")
-		t.expect(group.detail.contains("收入0"), "burn explanation")
+		t.expect(group.detail.contains("烧鸡：烧鸡 0分"), "burn explanation")
 	f.meta.erase("burn_chicken_seat")
 	for payer in [0, 2, 3]: _pay(f, payer, 1, 4, "暗杠")
 	t.expect(_find(_build(f), "1:meld_0").stages.is_empty(), "robbed kong never displays base even with stale item")
@@ -304,6 +319,19 @@ func _test_missing_data() -> void:
 	f.players[0].just_drew = "tong8"
 	t.expect(not _build(f).any(func(candidate): return candidate.area == "draw"), "stale live hand cannot supply snapshot draw identity")
 
+func _test_debug_fallbacks_hidden() -> void:
+	var f := _fixture()
+	f.result.called = [true, false, true, true]
+	f.players[1].discards = ["tiao1", "tong8"]
+	f.players[1].discard_ids = [0, 1]
+	for receiver in [0, 2, 3]: _pay(f, 1, receiver, 2, "未叫牌出牌鸡")
+	DETAILS.set_debug_enabled(false)
+	var hidden_group := _find(_build(f), "1:chicken_tiao1")
+	t.expect(not hidden_group.detail.contains("本组暂无"), "debug off hides technical fallback lines")
+	DETAILS.set_debug_enabled(true)
+	var shown_group := _find(_build(f), "1:chicken_tiao1")
+	t.expect(shown_group.detail.contains("本组暂无独立收付明细"), "debug on exposes attribution diagnostics")
+
 func _test_requested_captions() -> void:
 	for tile in ["tong8", "tiao1"]:
 		var name := "八筒" if tile == "tong8" else "幺鸡"
@@ -350,6 +378,7 @@ func _test_requested_captions() -> void:
 		t.expect(group.stages.kong.amount == 12.0, "short kong caption never changes the real three-payer income")
 
 func _run() -> void:
+	DETAILS.set_debug_enabled(true)
 	_test_grouped_sources()
 	_test_gold_charge_and_multiplier()
 	_test_exposed_kong()
@@ -358,10 +387,13 @@ func _run() -> void:
 	_test_uncalled_debts()
 	_test_short_chicken_labels()
 	_test_uncalled_charge_short_label()
+	_test_uncalled_two_same_chickens()
 	_test_uncalled_pong_chicken()
 	_test_uncalled_kong_captions()
 	_test_burn_robbed_and_normal_pung()
 	_test_resolved_and_multiwinner_snapshot()
 	_test_missing_data()
+	_test_debug_fallbacks_hidden()
 	_test_requested_captions()
+	DETAILS.set_debug_enabled(false)
 	quit(t.finish("settlement_score_details"))

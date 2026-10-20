@@ -299,7 +299,7 @@ func _test_actions() -> void:
 	conservation(multi.last_result, multi.players.map(func(p): return p.score))
 
 func _test_passports() -> void:
-	for passport in ["none","ready","source_ready","exposed","concealed","added","big","seven","dragon","flush","own_dark","own_add","rob"]:
+	for passport in ["none","ready","source_ready","concealed","added","big","seven","dragon","flush","own_dark","own_add","rob"]:
 		var r := fixture()
 		r.players[1].concealed = waiting()
 		var lines: Array = [150]
@@ -311,8 +311,8 @@ func _test_passports() -> void:
 			"source_ready":
 				r.players[0].ready = true
 				lines = [142,159]
-			"exposed", "concealed", "added":
-				r.last_discard = {"seat":0,"tile":"wan9","after_kong":true,"kong_kind":{"exposed":RoundState.KongKind.EXPOSED,"concealed":RoundState.KongKind.CONCEALED,"added":RoundState.KongKind.ADD_KONG}[passport]}
+			"concealed", "added":
+				r.last_discard = {"seat":0,"tile":"wan9","after_kong":true,"kong_kind":{"concealed":RoundState.KongKind.CONCEALED,"added":RoundState.KongKind.ADD_KONG}[passport]}
 				lines = [143]
 				if passport == "concealed": lines.append(122)
 				if passport == "added": lines.append(132)
@@ -339,6 +339,11 @@ func _test_passports() -> void:
 			r.players[1].concealed.append(tile)
 			r.players[1].just_drew = tile
 			eq([67,150],"普通小牌可自摸",r.legal_turn_options(1).self_win,true,"scripts/core/LegalActions.gd:8")
+	# Exposed-kong discard is not a passport any more.
+	var exposed := fixture()
+	exposed.players[1].concealed = waiting()
+	exposed.last_discard = {"seat":0,"tile":"wan9","after_kong":true,"kong_kind":RoundState.KongKind.EXPOSED}
+	eq([143],"明杠后弃牌不开放普通胡",exposed.can_win_on_discard(1,0,"wan9",RoundState.ResponseStage.WIN),false,"scripts/core/LegalActions.gd:122")
 
 func _test_kong_flow() -> void:
 	for kind in ["exposed","concealed","added"]:
@@ -357,6 +362,7 @@ func _test_kong_flow() -> void:
 			r.submit_turn(0,{"discard":"wan7"})
 			eq([105],"明杠合法",r.legal_response_options(1,0,"wan7",RoundState.ResponseStage.MELD).can_kong,true,"scripts/core/LegalActions.gd:95")
 			r.submit_response(1,"wan7",{"action":"kong"})
+			eq([106],"明杠没有抢杠阶段",r._response_stage != RoundState.ResponseStage.ROB and r._pending_kong.is_empty(),true,"scripts/core/RoundState.gd:819")
 		else:
 			eq([68,115] if kind=="concealed" else [69,127,128],"杠选项",r.legal_turn_options(0)["kong_declares" if kind=="concealed" else "add_kong"].has("wan7"),true,"scripts/core/LegalActions.gd:15")
 			r.submit_turn(0,{"kong_declares" if kind=="concealed" else "add_kong":["wan7"]})
@@ -832,18 +838,24 @@ func _test_ui_and_absences() -> void:
 	eq([0],"拒绝后不扣13",invalid.players[0].score,200.0,"scripts/core/RoundState.gd:319")
 
 func _test_additional_boundaries() -> void:
-	for kind in ["source_ready","exposed"]:
-		var flow := fixture()
-		flow.players[0].concealed = ["wan9"]
-		flow.players[0].just_drew = "wan9"
-		flow.players[1].concealed = waiting()
-		if kind=="source_ready": flow.players[0].ready = true
-		else:
-			flow._kong_draw_turn = true
-			flow._kong_draw_kind = RoundState.KongKind.EXPOSED
-		begin("passport_flow_"+kind,flow,"0报听/明杠后打wan9；1普通等待wan9，应出现胡牌响应")
-		flow.submit_turn(0,{"discard":"wan9"})
-		eq([142,159] if kind=="source_ready" else [143],"普通赢家应收到胡牌窗口",flow._awaiting_response.get("seat",-1),1,"scripts/core/RoundState.gd:457; scripts/core/LegalActions.gd:121")
+	var flow := fixture()
+	flow.players[0].concealed = ["wan9"]
+	flow.players[0].just_drew = "wan9"
+	flow.players[1].concealed = waiting()
+	flow.players[0].ready = true
+	begin("passport_flow_source_ready",flow,"0报听后打wan9；1普通等待wan9，应出现胡牌响应")
+	flow.submit_turn(0,{"discard":"wan9"})
+	eq([142,159],"普通赢家应收到胡牌窗口",flow._awaiting_response.get("seat",-1),1,"scripts/core/RoundState.gd:457; scripts/core/LegalActions.gd:121")
+
+	var exposed_flow := fixture()
+	exposed_flow.players[0].concealed = ["wan9"]
+	exposed_flow.players[0].just_drew = "wan9"
+	exposed_flow.players[1].concealed = waiting()
+	exposed_flow._kong_draw_turn = true
+	exposed_flow._kong_draw_kind = RoundState.KongKind.EXPOSED
+	begin("passport_flow_exposed",exposed_flow,"明杠后打wan9；1普通等待，不应出现胡牌响应")
+	exposed_flow.submit_turn(0,{"discard":"wan9"})
+	eq([143],"明杠后普通等待不出现胡牌窗口",exposed_flow._awaiting_response.get("seat",-1),-1,"scripts/core/LegalActions.gd:122")
 	var r := fixture()
 	r.players[0].concealed = PLAIN.duplicate()
 	r.players[0].just_drew = "wan9"

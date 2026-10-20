@@ -14,7 +14,7 @@ static func turn_options(round, seat: int) -> Dictionary:
 			options.discards.append(tile)
 	if round._wall_count() > 0:
 		for tile in options.discards:
-			if Tiles.count(player.concealed, tile) >= 4: options.kong_declares.append(tile)
+			if can_declare_concealed_kong(player, tile): options.kong_declares.append(tile)
 		for meld in player.melds:
 			if meld.kind == "pung" and player.concealed.has(meld.tile) and not options.add_kong.has(meld.tile): options.add_kong.append(meld.tile)
 	if ready_window(player):
@@ -99,6 +99,17 @@ static func valid_response(options: Dictionary, decision: Dictionary) -> bool:
 	var action: Variant = decision.get("action", "pass")
 	return action is String and (action == "pass" or bool(options.get({"win": "can_win", "pong": "can_pong", "kong": "can_kong"}.get(action, "invalid"), false)))
 
+## 暗杠只有两个窗口：
+## 1. 开局四张，第一次弃牌之前；
+## 2. 本回合摸到第四张，这次弃牌之前。
+## 选择弃牌后，这个牌就永久失去本局暗杠资格。
+static func can_declare_concealed_kong(player: PlayerState, tile: String) -> bool:
+	if player == null or Tiles.count(player.concealed, tile) < 4:
+		return false
+	if not player.first_turn_done:
+		return true
+	return player.just_drew == tile
+
 static func has_self_kong(player: PlayerState) -> bool:
 	return player.melds.any(func(meld): return meld.kind == "add_kong" or (meld.kind == "kong" and meld.get("concealed", false)))
 
@@ -119,7 +130,9 @@ static func can_win_on_discard(round, seat: int, source: int, tile: String, stag
 	# §十一：本人报听、出牌者报听、任一种杠后弃牌均开放通行资格。
 	if stage == RoundState.ResponseStage.ROB or player.ready: return true
 	if source in range(round.players.size()) and round.players[source].ready: return true
-	if bool(round.last_discard.get("after_kong", false)): return true
+	# Only concealed/add-kong replacement discards open the ordinary-hand
+	# passport. An exposed kong is a normal meld; its discard does not.
+	if is_post_kong_discard(round.last_discard): return true
 	# 非杠后弃牌不再允许普通牌型放炮；大牌仍可胡，但按牌型逐家结算。
 	var combined := player.concealed.duplicate()
 	combined.append(tile)

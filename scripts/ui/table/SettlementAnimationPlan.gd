@@ -160,19 +160,19 @@ static func _identities(result: Dictionary, meta: Dictionary, players: Array, wi
 					continue
 				if kind == "ready": caption = "报听"
 				elif caption == "清龙对": caption = "清龙七对"
-				elif caption == "自摸": caption = "自摸基础分"
+				elif caption == "自摸基础分": caption = "自摸"
 				if caption == "": continue
 				var entry := _identity_with_amount(caption, item)
 				if kind == "pattern" or (kind == "bonus" and caption in ["干扣", "大干扣"]):
 					patterns.append(entry)
-				elif kind in ["ready", "win"] or (kind == "bonus" and caption == "自摸基础分"):
+				elif kind in ["ready", "win"] or (kind == "bonus" and caption in ["自摸基础分", "自摸"]):
 					# 报听自摸的普通自摸项仍单列；大牌型/干扣没有该项时不补造 4 分。
 					detail.append(entry)
 				elif kind == "bonus":
 					extras.append(entry)
 			detail.append_array(patterns)
 			detail.append_array(extras)
-			title = "胡牌 · " + origin
+			title = origin
 		identities.append({"title": title, "detail": " · ".join(detail), "winner": won, "called": called[seat]})
 	return identities
 

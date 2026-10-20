@@ -185,7 +185,7 @@ func _test_discard_win_restrictions() -> void:
 	var exposed_after_kong := fixture()
 	exposed_after_kong.players[1].concealed = thirteen.duplicate()
 	exposed_after_kong.last_discard = {"seat": 0, "tile": "wan9", "after_kong": true, "kong_kind": RoundState.KongKind.EXPOSED}
-	expect(exposed_after_kong.can_win_on_discard(1, 0, "wan9"), "§十一：明杠后也能胡，但不烧鸡")
+	expect(not exposed_after_kong.can_win_on_discard(1, 0, "wan9"), "明杠后弃牌不再开放普通胡通行资格")
 	exposed_after_kong._pending_responders = [1]
 	exposed_after_kong._response_stage = RoundState.ResponseStage.WIN
 	exposed_after_kong._process_response(1, 0, "wan9", {"action": "win"})

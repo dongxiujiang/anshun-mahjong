@@ -2,7 +2,6 @@ extends "res://scripts/ui/table/TableViewBridge.gd"
 
 signal quit_to_menu
 
-const RULES := preload("res://scripts/core/RuleEngine.gd")
 
 ## 牌局与联机事件协调器。视觉状态由 table/ 组件持有。
 ## TableViewBridge 保留既有联机和测试接口；视觉参数统一在 TableUiConfig。
@@ -19,9 +18,6 @@ var _audio_round: RoundState
 var _sound_button: Button
 var _settings_button: Button
 var _voice_button: Button
-var _listen_button: Button
-var _listen_active := false
-var _listen_paused := false
 var _settlement_round_id := 0
 var _settlement_session := ""
 var _settlement_round_number := -1
@@ -445,7 +441,6 @@ func _refresh() -> void:
 		_start_settlement_animation(immediate)
 	_settlement_animation_controller.apply_displays()
 	_refresh_next_round_controls()
-	_refresh_listen_button()
 
 func _sync_settlement_round() -> void:
 	# Clients and hosts reuse RoundState between rounds. Object identity alone
@@ -529,7 +524,6 @@ func _on_client_state_updated() -> void:
 	# its untouched opening before the hand refresh exposes the final deal.
 	_prime_opening_visuals()
 	_refresh()
-	_refresh_listen_button()
 
 func _on_net_lobby_updated() -> void:
 	_update_speed_buttons()
@@ -537,34 +531,6 @@ func _on_net_lobby_updated() -> void:
 	var net = _net_node()
 	if net != null and net.lobby is Dictionary and net.lobby.has("return_vote"):
 		_on_return_vote_updated(net.lobby.get("return_vote", {}))
-
-func _refresh_listen_button() -> void:
-	if _listen_button == null:
-		return
-	var available := false
-	if round != null and round.phase == RoundState.Phase.PLAYING and human_seat >= 0 and human_seat < round.players.size():
-		var player: PlayerState = round.players[human_seat]
-		available = RULES.is_tenpai(player.concealed, player.melds)
-	if not available:
-		_listen_active = false
-		_listen_paused = false
-		_listen_button.hide()
-		return
-	_listen_button.show()
-	_listen_button.modulate = Color("#ffe6a1") if _listen_active and not _listen_paused else Color.WHITE
-	_listen_button.tooltip_text = "取消听牌托管，恢复手动出牌" if _listen_active else "开启听牌托管"
-	if _table_actions != null:
-		_table_actions._layout_actions()
-
-func _toggle_listen() -> void:
-	_listen_active = not _listen_active
-	_listen_paused = false
-	if not _listen_active:
-		# Invalidate any in-flight auto-discard/pass coroutine.
-		_table_actions._listen_serial += 1
-	_refresh_listen_button()
-	if _listen_active:
-		_table_actions._listen_request()
 
 func _on_net_prompt(seat: int) -> void:
 	if seat != human_seat or seat >= round.players.size():
@@ -582,11 +548,8 @@ func _on_net_prompt(seat: int) -> void:
 func _on_round_finished(_result: Dictionary) -> void:
 	_selecting = false
 	_response_disc = ""
-	_listen_active = false
-	_listen_paused = false
 	_clear_actions()
 	_refresh()
-	_refresh_listen_button()
 
 func _on_connection_error(message: String) -> void:
 	_selecting = false
