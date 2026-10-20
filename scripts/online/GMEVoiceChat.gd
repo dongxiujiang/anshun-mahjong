@@ -34,6 +34,8 @@ var _in_room := false
 var _want_mic := false
 var _auth_http: HTTPRequest
 var _app_id := "1400802279"
+var _enter_started_ms := 0
+var _enter_timeout_reported := false
 
 func setup(owner: Node, allow_audio: bool) -> void:
 	owner_node = owner
@@ -93,8 +95,10 @@ func _on_auth_completed(result: int, code: int, _headers: PackedStringArray, bod
 		_auth_http.queue_free()
 		_auth_http = null
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
-		_fail("GME 鉴权失败（%d）" % code)
+		_fail("GME 鉴权失败 HTTP=%d result=%d" % [code, result])
 		return
+	_status = "GME 鉴权成功 HTTP=200"
+	status_changed.emit(false, _status)
 	var data = JSON.parse_string(body.get_string_from_utf8())
 	if not data is Dictionary or str(data.get("auth", "")) == "":
 		_fail("GME 鉴权数据无效")
@@ -130,16 +134,21 @@ func _join_room(room_number: String, auth: PackedByteArray) -> void:
 		_context.call("SetTMGDelegate", _delegate)
 	var init_ret = int(_context.call("Init", _app_id, _open_id))
 	if init_ret != 0:
-		_fail("GME Init 失败（%d）" % init_ret)
+		_fail("GME Init 失败 code=%d" % init_ret)
 		return
 	_audio = _context.call("GetAudioCtrl")
+	if _audio == null:
+		_fail("GME GetAudioCtrl 返回空")
+		return
 	_context.call("Poll")
 	# GME Android 2.9.17 signature: EnterRoom(String, int, byte[]).
 	var enter_ret = int(_context.call("EnterRoom", room_number, ROOM_TYPE, auth))
 	if enter_ret != 0:
-		_fail("GME 进入房间失败（%d）" % enter_ret)
+		_fail("GME EnterRoom 失败 code=%d" % enter_ret)
 		return
-	_status = "正在进入 GME 语音房间…"
+	_enter_started_ms = Time.get_ticks_msec()
+	_enter_timeout_reported = false
+	_status = "GME Init=0 EnterRoom=0，等待 IsRoomEntered…"
 	status_changed.emit(false, _status)
 
 func OnEvent(_event_type, _data) -> void:
@@ -158,10 +167,14 @@ func _process(_delta: float) -> void:
 			if _audio != null:
 				_audio.call("EnableSpeaker", true)
 				set_remote_volume(_remote_volume)
-			_status = "GME 语音已连接"
+			_status = "GME 语音已连接 IsRoomEntered=true"
 			status_changed.emit(enabled, _status)
 			if _want_mic:
 				_start_mic()
+		elif _enter_started_ms > 0 and not _enter_timeout_reported and Time.get_ticks_msec() - _enter_started_ms > 5000:
+			_enter_timeout_reported = true
+			_status = "GME 进房超时 IsRoomEntered=false"
+			status_changed.emit(false, _status)
 	elif _want_mic and not enabled:
 		_start_mic()
 
@@ -199,13 +212,17 @@ func set_enabled(want: bool) -> bool:
 func _start_mic() -> void:
 	if not _in_room or _audio == null or (not _want_mic and not enabled):
 		return
-	_audio.call("EnableMic", true)
-	_audio.call("EnableSpeaker", true)
+	var mic_ret = int(_audio.call("EnableMic", true))
+	var speaker_ret = int(_audio.call("EnableSpeaker", true))
 	_audio.call("SetMicVolume", roundi(_mic_gain * 100.0))
 	_audio.call("SetSpeakerVolume", roundi(_remote_volume * 100.0))
+	if mic_ret != 0:
+		_status = "GME EnableMic 失败 code=%d speaker=%d" % [mic_ret, speaker_ret]
+		status_changed.emit(false, _status)
+		return
 	enabled = true
 	_want_mic = false
-	_status = "麦克风已开启"
+	_status = "麦克风已开启 EnableMic=0 speaker=%d" % speaker_ret
 	status_changed.emit(true, _status)
 
 func _stop_mic() -> void:
@@ -228,6 +245,9 @@ func poll_permission() -> void:
 		permission_pending = false
 		if _in_room:
 			_start_mic()
+		else:
+			_status = "权限已授予，等待 GME 进房"
+			status_changed.emit(false, _status)
 	elif Time.get_ticks_msec() - _last_permission_request > 20000:
 		permission_pending = false
 		_status = "麦克风权限未授予"

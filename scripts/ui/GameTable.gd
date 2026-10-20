@@ -26,10 +26,13 @@ var _awaiting_rejoin_snapshot := false
 var _quitting := false
 var _opening_primed := false
 var _ai_service = null
+var _voice_diag_label: Label
+var _voice_diag_token := 0
 
 func _ready() -> void:
 	AudioManager.begin_table(self)
 	_build_static_ui()
+	_build_voice_diag()
 	_connect_voice_ui()
 	get_window().focus_exited.connect(_on_input_focus_changed)
 	get_window().focus_entered.connect(_on_input_focus_changed)
@@ -83,9 +86,33 @@ func _toggle_voice_chat() -> void:
 	net.toggle_voice_chat()
 	_refresh_voice_button()
 
+func _build_voice_diag() -> void:
+	_voice_diag_label = Label.new()
+	_voice_diag_label.name = "VoiceDiagnostic"
+	_voice_diag_label.position = Vector2(24, 92)
+	_voice_diag_label.size = Vector2(1040, 90)
+	_voice_diag_label.add_theme_font_override("font", TileView._font())
+	_voice_diag_label.add_theme_font_size_override("font_size", 22)
+	_voice_diag_label.add_theme_color_override("font_color", Color("#ffe6a8"))
+	_voice_diag_label.add_theme_color_override("font_outline_color", Color("#102018"))
+	_voice_diag_label.add_theme_constant_override("outline_size", 5)
+	_voice_diag_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_voice_diag_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_voice_diag_label.z_index = 100
+	add_child(_voice_diag_label)
+	_voice_diag_label.hide()
+
 func _on_voice_status(_enabled: bool, message: String) -> void:
 	if _voice_button != null and message != "":
 		_voice_button.tooltip_text = message
+	if _voice_diag_label != null and message != "":
+		_voice_diag_token += 1
+		var token := _voice_diag_token
+		_voice_diag_label.text = "语音：%s" % message
+		_voice_diag_label.show()
+		await get_tree().create_timer(10.0).timeout
+		if token == _voice_diag_token:
+			_voice_diag_label.hide()
 	_refresh_voice_button()
 
 func _refresh_voice_button() -> void:
