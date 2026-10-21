@@ -91,9 +91,9 @@ func build() -> void:
 		wind.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		wind_labels[seat] = wind
 		wind.hide()
-		var speaker: Button = table._button("喇叭", func(): table._toggle_remote_voice(seat), Vector2(64, 30))
+		var speaker: Button = table._button("喇叭", func(): table._toggle_remote_voice(seat), Vector2(92, 42))
 		speaker.name = "VoiceSpeaker%d" % seat
-		speaker.add_theme_font_size_override("font_size", 16)
+		speaker.add_theme_font_size_override("font_size", 20)
 		speaker.tooltip_text = "开关该玩家语音"
 		speaker.hide()
 		table.surface.add_child(speaker)
@@ -146,7 +146,7 @@ func _refresh_identity(seat: int) -> void:
 		var remote_human: bool = table._net_mode() != "" and seat != table.human_seat and player.is_human and table.round.phase != RoundState.Phase.SETTLED
 		speaker.visible = remote_human
 		if remote_human:
-			speaker.position = nickname.position + Vector2(nickname.size.x + 6.0, 0.0)
+			speaker.position = nickname.position + Vector2(nickname.size.x + 6.0, (nickname.size.y - speaker.size.y) / 2.0)
 			var speaker_on: bool = table._remote_voice_enabled(seat)
 			speaker.text = "喇叭" if speaker_on else "静音"
 			speaker.modulate = Color.WHITE if speaker_on else Color(0.62, 0.62, 0.62)

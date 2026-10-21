@@ -74,7 +74,10 @@ func _run() -> void:
 	t.expect(table._voice_button != null and not table._voice_button.visible, "offline table hides the microphone button")
 	t.expect(table._player_tile_areas.voice_speaker_buttons.size() == 4, "table creates four seat speaker slots")
 	for seat in 4:
-		t.expect(not table._player_tile_areas.voice_speaker_buttons[seat].visible, "offline/AI seat speaker stays hidden")
+		var speaker: Button = table._player_tile_areas.voice_speaker_buttons[seat]
+		t.expect(not speaker.visible, "offline/AI seat speaker stays hidden")
+		t.expect(speaker.custom_minimum_size.x >= 92 and speaker.custom_minimum_size.y >= 42,
+			"remote voice toggle stays large enough for touch")
 	t.expect(table._sound_settings.mic_gain_slider != null and table._sound_settings.remote_volume_slider != null, "table exposes microphone and remote-volume sliders")
 	table.queue_free()
 	await process_frame
