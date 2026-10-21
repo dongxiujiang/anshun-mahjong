@@ -353,7 +353,7 @@ func _test_kong_flow() -> void:
 		if kind=="added":
 			r.players[owner].concealed = ["wan7","tong2"]
 			r.players[owner].melds = [meld("wan7")]
-		r.players[owner].just_drew = "tong2"
+		r.players[owner].just_drew = "wan7" if kind=="added" else "tong2"
 		if kind=="exposed": r.players[0].concealed = ["wan7"]
 		begin("kong_flow_"+kind,r,"明杠:0打wan7后1杠; 暗杠/加杠:0宣告wan7; 补牌取牌尾")
 		var tail: String = r.wall._ring[r.wall._tail]

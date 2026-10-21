@@ -1,6 +1,6 @@
 extends SceneTree
 ## 暗杠只在“开局四张”或“本次摸到第四张”的弃牌前开放；
-## 选择弃牌后，本局不能再暗杠这张牌。明杠/加杠保持原规则。
+## 选择弃牌后，本局不能再暗杠这张牌；加杠同样只在本回合摸到第四张时开放。
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -34,11 +34,13 @@ func _run() -> void:
 	# 弃牌后窗口关闭。
 	p.just_drew = ""
 	ok = ok and not r.legal_turn_options(0).kong_declares.has("wan1")
-	# 加杠不受这个窗口限制。
+	# 加杠只在本回合摸到第四张时开放。
 	p.concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "wan7", "wan8", "wan9", "tiao1", "tiao2", "tiao3", "tiao4", "tong1"]
 	p.melds = [{"kind": "pung", "tile": "wan1"}]
 	p.first_turn_done = true
-	p.just_drew = "tong1"
+	p.just_drew = "wan1"
 	ok = ok and r.legal_turn_options(0).add_kong.has("wan1")
+	p.just_drew = "tong1"
+	ok = ok and not r.legal_turn_options(0).add_kong.has("wan1")
 	print("[concealed_kong_window] ", "passed" if ok else "FAILED")
 	quit(0 if ok else 1)

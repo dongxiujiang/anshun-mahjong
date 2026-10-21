@@ -93,7 +93,8 @@ func _test_claims() -> void:
 			check(ScoringEngine.chicken_profile(r, 1, tile).total == base * 2, "Flip doubles claimed ordinary chicken value")
 			if action == "pong":
 				r.players[1].concealed.append(tile)
-				check(r.submit_turn(1, {"add_kong": [tile]}), "Chicken pung can be upgraded")
+				r.players[1].just_drew = tile
+				check(r.submit_turn(1, {"add_kong": [tile]}), "Chicken pung can be upgraded on the drawn fourth tile")
 				check(r.players[1].melds[0].kind == "add_kong" and r.is_charge_meld(1, 0), "Added kong keeps charge identity")
 				check(ScoringEngine.chicken_profile(r, 1, "").total == 8.0, "Added charge chicken kong is worth two per tile")
 			var client := RoundState.new()

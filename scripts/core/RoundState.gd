@@ -826,6 +826,10 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		_state_after_kong_draw()
 		return
 	if action == "pong" and options.can_pong:
+		# Choosing pong when exposed kong was available forfeits add-kong for
+		# this tile for the rest of the round.
+		if options.can_kong and not player.add_kong_locked_tiles.has(tile):
+			player.add_kong_locked_tiles.append(tile)
 		var source_discard_id: int = _discard_id_for_tile(source, tile)
 		var hand_indices := _visual_hand_indices(player.concealed, tile, 2)
 		_remove_n(player.concealed, tile, 2)
@@ -915,7 +919,8 @@ func _do_concealed_kong(seat: int, tile: String, player: PlayerState) -> void:
 
 func _do_add_kong(seat: int, tile: String) -> bool:
 	var player: PlayerState = players[seat]
-	if player.ready or not player.concealed.has(tile) or _wall_count() < 1:
+	if player.ready or player.just_drew != tile or player.add_kong_locked_tiles.has(tile) \
+		or not player.concealed.has(tile) or _wall_count() < 1:
 		return false
 	for index in player.melds.size():
 		if player.melds[index].kind == "pung" and player.melds[index].tile == tile:

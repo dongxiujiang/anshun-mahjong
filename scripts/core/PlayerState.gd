@@ -20,6 +20,7 @@ var just_drew := ""           # 本轮摸到的牌（未打）
 var charge_chicken := false   # 当前是否持有任一种冲锋鸡（可由碰杠转入）。
 var passed_win_until_draw := false # 过胡后，到自己下一次摸牌前只能自摸。
 var passed_pong_tiles: Array[String] = [] # 过碰后，同一张牌在自己下次摸牌前不能再碰。
+var add_kong_locked_tiles: Array[String] = [] # 选择碰掉可明杠牌后，本局该牌不能再加杠。
 var forbidden_discard_tile := "" # 碰牌后不能立即打出刚碰的牌。
 
 func init_seat(s: int, human: bool, dealer: bool, nm: String) -> void:

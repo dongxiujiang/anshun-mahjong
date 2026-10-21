@@ -16,7 +16,13 @@ static func turn_options(round, seat: int) -> Dictionary:
 		for tile in options.discards:
 			if can_declare_concealed_kong(player, tile): options.kong_declares.append(tile)
 		for meld in player.melds:
-			if meld.kind == "pung" and player.concealed.has(meld.tile) and not options.add_kong.has(meld.tile): options.add_kong.append(meld.tile)
+			# 加杠只在本回合摸到第 4 张时开放；错过这次弃牌窗口后，
+			# 本局不能再用手里原有的第 4 张加杠。
+			if meld.kind == "pung" and player.just_drew == meld.tile \
+				and player.concealed.has(meld.tile) \
+				and not player.add_kong_locked_tiles.has(meld.tile) \
+				and not options.add_kong.has(meld.tile):
+				options.add_kong.append(meld.tile)
 	if ready_window(player):
 		for tile in options.discards:
 			var after := player.concealed.duplicate()

@@ -15,7 +15,7 @@ func _run() -> void:
 	var player: PlayerState = round.players[0]
 	player.concealed = ["tiao1", "tiao1", "tiao1", "tiao1", "wan1", "wan2", "wan3", "tong1", "tong2", "tong3", "wan9"]
 	player.melds = [{"kind": "pung", "tile": "wan9", "from_seat": 2}]
-	player.just_drew = "tiao1"
+	player.just_drew = "wan9"
 	var options := round.legal_turn_options(0)
 	t.expect(options.kong_declares == ["tiao1"] and options.add_kong == ["wan9"], "暗杠加杠统一清单")
 	for tile in options.discards: t.expect(round._valid_turn(0, {"discard": tile}), "允许的每张弃牌都通过校验")
@@ -27,7 +27,7 @@ func _run() -> void:
 	t.expect(not round.legal_turn_options(0).discards.is_empty(), "调用方不能污染缓存")
 	player.ready = true
 	options = round.legal_turn_options(0)
-	t.expect(options.discards == ["tiao1"] and options.kong_declares.is_empty() and options.add_kong.is_empty(), "报听只允许打刚摸的牌")
+	t.expect(options.discards == ["wan9"] and options.kong_declares.is_empty() and options.add_kong.is_empty(), "报听只允许打刚摸的牌")
 	t.expect(not round._valid_turn(0, {"discard": "wan1"}), "报听不能提交手中其他牌")
 	player.ready = false
 	round.wall.remaining = 0
