@@ -71,6 +71,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Remove legacy LiveKit addon
+        shell: bash
+        run: rm -rf addons/godot-livekit
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -193,19 +197,19 @@ jobs:
           ANDROID_KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
         run: python tools/release/configure_ci_export.py --signing
 
-      - name: Install Android Gradle build template
-        if: ${{ env.RELEASE_KIND == 'full' }}
-        shell: bash
-        run: godot --headless --path . --install-android-build-template > build/ci/android-template.log 2>&1
-
       - name: Export full Windows and Android packages
         if: ${{ env.RELEASE_KIND == 'full' }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/windows build/android
-          godot --headless --path . --export-release "Windows" build/windows/anshun-mahjong-windows-x64.exe > build/ci/windows-export.log 2>&1
-          godot --headless --path . --export-release "Android" build/android/anshun-mahjong.apk > build/ci/android-export.log 2>&1
+          godot --headless --path . --export-release "Windows" build/windows/anshun-mahjong-windows-x64.exe > build/ci/windows-export.log 2>&1 || { cat build/ci/windows-export.log; exit 1; }
+          rm -rf android
+          godot --headless --path . --install-android-build-template --export-release "Android" /tmp/gme-template.apk > build/ci/android-template.log 2>&1 || { cat build/ci/android-template.log; exit 1; }
+          mkdir -p android/build/libs
+          cp addons/gme/gmesdk.aar android/build/libs/gmesdk.aar
+          printf "\ndependencies { implementation files(%s) }\n" "\"libs/gmesdk.aar\"" >> android/build/build.gradle
+          godot --headless --path . --export-release "Android" build/android/anshun-mahjong.apk > build/ci/android-export.log 2>&1 || { cat build/ci/android-export.log; exit 1; }
           test -s build/windows/anshun-mahjong-windows-x64.exe
           test -s build/android/anshun-mahjong.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose build/android/anshun-mahjong.apk

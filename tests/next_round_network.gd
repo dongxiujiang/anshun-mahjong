@@ -45,7 +45,7 @@ func _run() -> void:
 	t.expect(settlement.boards.size() == board_count and table._settlement_card._post_controls.visible, "Every player sees the final tabletop settlement and bottom readiness controls")
 	t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Settlement uses non-blocking tabletop content and plain bottom controls")
 	t.expect(table._next_round_button.get_parent() == table._settlement_card._post_controls and not table._next_round_button.disabled, "Every player has an enabled bottom ready button")
-	t.expect(table._next_round_button.text == "准备下一局", "Guests get ready button instead of return to lobby")
+	t.expect(table._next_round_button.text.contains("准备"), "Guests get ready button instead of return to lobby")
 	t.expect(table._next_round_button.size.y >= 80, "All humans have a usable next-round touch button")
 	t.expect(not net.lobby.seats[net.my_seat].ready, "Own readiness resets at settlement")
 	for seat in settlement.boards:

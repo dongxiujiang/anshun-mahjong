@@ -92,6 +92,8 @@ func _test_exposed_kong() -> void:
 	var group := _find(_build(f), "1:meld_0")
 	_amount(group, "other", 4, "win round exposed base remains other")
 	_amount(group, "chicken", 8, "kong chicken contribution separate from base")
+	t.expect(group.detail.contains("杠对家幺鸡4分") and group.detail.contains("幺鸡8分")
+		and not group.detail.contains("12分"), "called exposed chicken kong never aggregates base+chicken into 12")
 	t.expect(not group.stages.has("kong"), "exposed base not moved to own-kong phase")
 	t.expect(group.detail.contains("杠对家幺鸡4分"), "payer relative to owner seat1, not human/dealer")
 	t.expect(group.tiles.size() == 4, "whole kong node group")
@@ -206,6 +208,26 @@ func _test_uncalled_charge_short_label() -> void:
 	t.expect(group.detail == "冲锋八筒-4分", "click uses the same short tile line")
 	t.expect(is_equal_approx(float(group.stages.chicken.amount), -12.0), "short label keeps the real 12-point ledger total")
 
+func _test_uncalled_two_same_chickens() -> void:
+	var f := _fixture()
+	f.result.called = [true, false, true, true]
+	f.players[1].discards = ["tiao1", "tiao1"]
+	f.players[1].discard_ids = [0, 1]
+	f.meta.charge_chickens = {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}
+	for receiver in [0, 2, 3]:
+		_pay(f, 1, receiver, 6, "未叫牌出牌鸡")
+	var group := _find(_build(f), "1:chicken_tiao1")
+	t.expect(group.stages.chicken.text == "冲锋幺鸡-4分 幺鸡-2分", "uncalled charge+ordinary discard keeps both per-payer tile lines")
+	t.expect(group.detail == "冲锋幺鸡-4分 幺鸡-2分", "click keeps the same two per-payer tile lines")
+	t.expect(is_equal_approx(float(group.stages.chicken.amount), -18.0), "two tile lines still keep the real ledger total")
+	f.players[1].discards.append("tiao1")
+	f.players[1].discard_ids.append(2)
+	f.result.transfers.clear()
+	for receiver in [0, 2, 3]: _pay(f, 1, receiver, 8, "未叫牌出牌鸡")
+	group = _find(_build(f), "1:chicken_tiao1")
+	t.expect(group.detail == "冲锋幺鸡-4分 幺鸡-2分", "multiple ordinary copies keep the per-tile debt caption")
+	_amount(group, "chicken", -24, "three discarded copies retain the full recorded debt")
+
 func _test_uncalled_pong_chicken() -> void:
 	var f := _fixture()
 	f.result.called = [true, false, true, false]
@@ -243,12 +265,19 @@ func _test_burn_robbed_and_normal_pung() -> void:
 	var groups := _build(f)
 	for group in groups:
 		t.expect(group.stages.is_empty(), "burned seat never gets positive presentation income")
-		t.expect(group.detail.contains("收入0"), "burn explanation")
+		t.expect(group.detail == ("被抢杠0分" if group.id == "1:meld_0" else "烧鸡0分"), "burn and robbed captions stay compact")
 	f.meta.erase("burn_chicken_seat")
 	for payer in [0, 2, 3]: _pay(f, payer, 1, 4, "暗杠")
 	t.expect(_find(_build(f), "1:meld_0").stages.is_empty(), "robbed kong never displays base even with stale item")
 	f.players[0].melds = [{"kind": "pung", "tile": "wan9", "from_seat": 2}]
 	t.expect(_find(_build(f), "0:meld_0").detail == "", "ordinary nonchicken pung has no detail text")
+	# A robbed added kong is retained as its original pung in real results.
+	f.meta.robbed_kong = true
+	f.meta.discard_seat = 1
+	f.meta.win_tile = "tiao1"
+	f.meta.burn_chicken_seat = 1
+	f.players[1].melds = [{"kind": "pung", "tile": "tiao1", "from_seat": 0}]
+	t.expect(_find(_build(f), "1:meld_0").detail == "被抢杠0分", "robbed added kong is recognized from round metadata on the retained pung")
 	# A burned uncalled player still pays recorded discarded-chicken debt.
 	f.meta.burn_chicken_seat = 1
 	f.result.called[1] = false
@@ -304,6 +333,19 @@ func _test_missing_data() -> void:
 	f.players[0].just_drew = "tong8"
 	t.expect(not _build(f).any(func(candidate): return candidate.area == "draw"), "stale live hand cannot supply snapshot draw identity")
 
+func _test_debug_fallbacks_hidden() -> void:
+	var f := _fixture()
+	f.result.called = [true, false, true, true]
+	f.players[1].discards = ["tiao1", "tong8"]
+	f.players[1].discard_ids = [0, 1]
+	for receiver in [0, 2, 3]: _pay(f, 1, receiver, 2, "未叫牌出牌鸡")
+	DETAILS.set_debug_enabled(false)
+	var hidden_group := _find(_build(f), "1:chicken_tiao1")
+	t.expect(not hidden_group.detail.contains("本组暂无"), "debug off hides technical fallback lines")
+	DETAILS.set_debug_enabled(true)
+	var shown_group := _find(_build(f), "1:chicken_tiao1")
+	t.expect(shown_group.detail.contains("本组暂无独立收付明细"), "debug on exposes attribution diagnostics")
+
 func _test_requested_captions() -> void:
 	for tile in ["tong8", "tiao1"]:
 		var name := "八筒" if tile == "tong8" else "幺鸡"
@@ -316,7 +358,7 @@ func _test_requested_captions() -> void:
 		f.players[0].melds = [{"kind": "pung", "tile": tile, "from_seat": 2}]
 		f.result.items[0] = [_item("chicken", "普通鸡", [tile, tile, tile], 2)]
 		group = _find(_build(f), "0:meld_0")
-		t.expect(group.stages.chicken.text == name + "6分" and group.detail == name + "6分", "chicken pung reports one group total")
+		t.expect(group.stages.chicken.text == "碰" + name + "6分" and group.detail == "碰" + name + "6分", "chicken pung reports one group total with 碰")
 		f.players[0].melds = []
 		f.players[0].discards = [tile, tile]
 		f.players[0].discard_ids = [1, 2]
@@ -349,7 +391,102 @@ func _test_requested_captions() -> void:
 		t.expect(group.detail == "杠2万4分" and group.stages.kong.text == group.detail, "kong caption reports per-payer base without formula")
 		t.expect(group.stages.kong.amount == 12.0, "short kong caption never changes the real three-payer income")
 
+func _test_kong_chicken_captions() -> void:
+	for tile in ["tiao1", "tong8"]:
+		var name := "幺鸡" if tile == "tiao1" else "八筒"
+		for is_draw in [false, true]:
+			for gold in [false, true]:
+				var f := _fixture()
+				f.result.called = [true, false, true, true]
+				f.meta.flip_tile = tile if gold else "wan5"
+				if is_draw:
+					f.meta.winner = -1
+					f.meta.winners = []
+				f.players[1].melds = [{"kind": "kong", "tile": tile, "from_seat": 0}]
+				var unit := 16.0 if gold and not is_draw else 8.0
+				for receiver in [0, 2, 3]: _pay(f, 1, receiver, unit, "未叫牌杠中鸡")
+				var before := var_to_bytes(f)
+				var group := _find(_build(f), "1:meld_0")
+				var stage := "kong" if is_draw else ("flip" if gold else "chicken")
+				_amount(group, stage, -unit * 3.0, "uncalled chicken kong keeps all real payments")
+				t.expect(group.detail == name + str(int(-unit)) + "分", "uncalled/draw chicken kong uses tile and one negative rate")
+				t.expect(var_to_bytes(f) == before, "short chicken kong captions never change the settlement")
+		for multiplier in [1, 2]:
+			var f := _fixture()
+			f.meta.winner = -1
+			f.meta.winners = []
+			f.meta.chicken_multiplier = multiplier
+			f.result.called = [true, true, false, false]
+			f.players[0].melds = [{"kind": "kong", "tile": tile, "from_seat": 1}]
+			var item := _kong(tile, "明杠", 1, [], 0, 8 * multiplier)
+			item.chicken_payers = [2, 3]
+			f.result.items[0] = [item]
+			for payer in [2, 3]: _pay(f, payer, 0, 8 * multiplier, "杠中鸡")
+			var group := _find(_build(f), "0:meld_0")
+			_amount(group, "kong", 16 * multiplier, "called draw chicken kong retains the two payments")
+			t.expect(group.detail == name + str(8 * multiplier) + "分", "called draw chicken kong shows one tile rate without flow text")
+
+func _test_multiple_kong_debts() -> void:
+	for is_draw in [false, true]:
+		for multiplier in [1, 2]:
+			var f := _fixture()
+			f.result.called = [true, false, true, true]
+			f.meta.chicken_multiplier = multiplier
+			f.meta.flip_tile = "tiao1"
+			if is_draw:
+				f.meta.winner = -1
+				f.meta.winners = []
+			for tile in ["tiao1", "tong8"]:
+				f.players[1].melds.append({"kind": "kong", "tile": tile, "from_seat": 0})
+				var chicken := 16 if tile == "tiao1" and not is_draw else 8
+				for receiver in [0, 2, 3]:
+					_pay(f, 1, receiver, 4 * multiplier, "未叫牌杠分")
+					_pay(f, 1, receiver, chicken * multiplier, "未叫牌杠中鸡")
+			for index in 2:
+				var name := "幺鸡" if index == 0 else "八筒"
+				var unit: int = (16 if index == 0 and not is_draw else 8) * multiplier
+				var group := _find(_build(f), "1:meld_%d" % index)
+				var chicken_stage := "kong" if is_draw else ("flip" if index == 0 else "chicken")
+				if not is_draw: _amount(group, chicken_stage, -unit * 3.0, "each kong gets only its recorded chicken debt")
+				t.expect(group.detail.contains(name + str(-unit) + "分"), "multiple chicken kongs keep separate short tile debts")
+				t.expect(group.detail.contains("杠上家" + name + str(-4 * multiplier) + "分"), "exposed debt direction follows the source, across all receivers")
+				t.expect(not group.detail.contains("向") and not group.detail.contains("本组暂无"), "complete multiple kong debts need no flow or fallback")
+
+func _test_draw_chicken_debts() -> void:
+	for is_draw in [false, true]:
+		for multiplier in [1, 2]:
+			var f := _fixture()
+			f.meta.chicken_multiplier = multiplier
+			f.result.called = [true, false, true, true]
+			f.players[1].discards = ["tiao1", "tong8"]
+			f.players[1].discard_ids = [0, 1]
+			f.players[1].melds = [{"kind": "pung", "tile": "tiao1", "from_seat": 0}]
+			f.result.items[1] = [{"kind": "penalty", "label": "未叫牌出牌鸡", "amount": -4.0 * multiplier},
+				{"kind": "penalty", "label": "未叫牌碰鸡", "amount": -6.0 * multiplier}]
+			if is_draw:
+				f.meta.winner = -1
+				f.meta.winners = []
+			for receiver in [0, 2, 3]:
+				if is_draw:
+					# Includes the owner's 4 discard points, 6 pung points,
+					# receiver's 2 discard points and the 4-point draw fee.
+					_pay(f, 1, receiver, 16 * multiplier, "荒牌包鸡")
+				else:
+					_pay(f, 1, receiver, 4 * multiplier, "未叫牌出牌鸡")
+					_pay(f, 1, receiver, 6 * multiplier, "未叫牌碰鸡")
+			var before := var_to_bytes(f)
+			var groups := _build(f)
+			for tile in ["tiao1", "tong8"]:
+				var group := _find(groups, "1:chicken_" + tile)
+				var name := "幺鸡" if tile == "tiao1" else "八筒"
+				t.expect(group.detail == name + str(-2 * multiplier) + "分", "discard debt and draw package show only the owner's short tile debt")
+				_amount(group, "other" if is_draw else "chicken", -6 * multiplier, "tile debt keeps its three actual payments")
+			var pung := _find(groups, "1:meld_0")
+			t.expect(pung.detail == "碰幺鸡" + str(-6 * multiplier) + "分", "draw package pung follows the same short debt caption")
+			t.expect(var_to_bytes(f) == before, "draw component display never changes package ledger amounts")
+
 func _run() -> void:
+	DETAILS.set_debug_enabled(true)
 	_test_grouped_sources()
 	_test_gold_charge_and_multiplier()
 	_test_exposed_kong()
@@ -358,10 +495,16 @@ func _run() -> void:
 	_test_uncalled_debts()
 	_test_short_chicken_labels()
 	_test_uncalled_charge_short_label()
+	_test_uncalled_two_same_chickens()
 	_test_uncalled_pong_chicken()
 	_test_uncalled_kong_captions()
 	_test_burn_robbed_and_normal_pung()
 	_test_resolved_and_multiwinner_snapshot()
 	_test_missing_data()
+	_test_debug_fallbacks_hidden()
 	_test_requested_captions()
+	_test_kong_chicken_captions()
+	_test_multiple_kong_debts()
+	_test_draw_chicken_debts()
+	DETAILS.set_debug_enabled(false)
 	quit(t.finish("settlement_score_details"))

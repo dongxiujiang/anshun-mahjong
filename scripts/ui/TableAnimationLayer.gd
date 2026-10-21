@@ -1,4 +1,4 @@
-﻿extends Control
+extends Control
 ## Presentation only; owns temporary nodes and interruptible cubic easing.
 signal finished(event_id: int)
 signal discard_landed
@@ -44,7 +44,8 @@ func play(event: Dictionary, target: Callable = Callable()) -> int:
 		"deal", "draw", "discard", "meld", "meld_reveal": _tiles(event)
 		"sort_hand": _sort_hand(event)
 		"win": _win(event)
-		"ready": _badge("报听", event, _duration(0.24))
+		# 报听只保留动作/语音节奏，不在分数旁弹出文字。
+		"ready": _active.tween_interval(_duration(0.24))
 		_: _active.tween_interval(0.001)
 	_active.tween_callback(func(): _finish(target, event_id))
 	return event_id

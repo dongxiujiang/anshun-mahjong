@@ -2,6 +2,7 @@ extends "res://scripts/ui/table/TableViewBridge.gd"
 
 signal quit_to_menu
 
+
 ## 牌局与联机事件协调器。视觉状态由 table/ 组件持有。
 ## TableViewBridge 保留既有联机和测试接口；视觉参数统一在 TableUiConfig。
 
@@ -26,10 +27,19 @@ var _awaiting_rejoin_snapshot := false
 var _quitting := false
 var _opening_primed := false
 var _ai_service = null
+var _voice_diag_label: Label
+var _voice_diag_token := 0
+var _return_vote_overlay: Control
+var _return_vote_panel: Panel
+var _return_vote_message: Label
+var _return_vote_token := -1
+var _return_vote_status: Label
+var _resume_generation := 0
 
 func _ready() -> void:
 	AudioManager.begin_table(self)
 	_build_static_ui()
+	_build_voice_diag()
 	_connect_voice_ui()
 	get_window().focus_exited.connect(_on_input_focus_changed)
 	get_window().focus_entered.connect(_on_input_focus_changed)
@@ -74,7 +84,84 @@ func _connect_voice_ui() -> void:
 		net.game_started.connect(_refresh_voice_button)
 	if net.has_signal("host_game_started") and not net.host_game_started.is_connected(_refresh_voice_button):
 		net.host_game_started.connect(_refresh_voice_button)
+	if net.has_signal("returned_to_lobby") and not net.returned_to_lobby.is_connected(_on_returned_to_lobby):
+		net.returned_to_lobby.connect(_on_returned_to_lobby)
+	if net.has_signal("return_vote_updated") and not net.return_vote_updated.is_connected(_on_return_vote_updated):
+		net.return_vote_updated.connect(_on_return_vote_updated)
 	_refresh_voice_button()
+
+func _ensure_return_vote_ui() -> void:
+	if _return_vote_overlay != null:
+		return
+	_return_vote_overlay = Control.new()
+	_return_vote_overlay.name = "ReturnRoomVote"
+	_return_vote_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_return_vote_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_return_vote_overlay.z_index = 400
+	add_child(_return_vote_overlay)
+	var shade := ColorRect.new()
+	shade.color = Color(0.01, 0.04, 0.03, 0.68)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_return_vote_overlay.add_child(shade)
+	_return_vote_panel = Panel.new()
+	_return_vote_panel.size = Vector2(820, 360)
+	_return_vote_panel.add_theme_stylebox_override("panel", _style(Color("#1e4234"), Color("#cbb279"), 24, 2))
+	_return_vote_overlay.add_child(_return_vote_panel)
+	var title := _label(_return_vote_panel, "返回房间", Vector2(52, 30), Vector2(716, 54), 40, UI.GOLD)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_return_vote_message = _label(_return_vote_panel, "", Vector2(52, 96), Vector2(716, 120), 28, UI.INK)
+	_return_vote_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_return_vote_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var agree := _button("同意", _answer_return_vote.bind(true), Vector2(300, 92), true)
+	agree.position = Vector2(80, 238)
+	agree.name = "ReturnVoteAgree"
+	_return_vote_panel.add_child(agree)
+	var reject := _button("拒绝", _answer_return_vote.bind(false), Vector2(300, 92))
+	reject.position = Vector2(440, 238)
+	reject.name = "ReturnVoteReject"
+	_return_vote_panel.add_child(reject)
+	_return_vote_overlay.hide()
+
+func _answer_return_vote(value: bool) -> void:
+	var net = _net_node()
+	if net != null and net.has_method("answer_return_vote"):
+		net.answer_return_vote(value)
+	if _return_vote_overlay != null:
+		_return_vote_overlay.hide()
+
+func _on_return_vote_updated(data: Dictionary) -> void:
+	_ensure_return_vote_ui()
+	if not bool(data.get("active", false)):
+		_return_vote_overlay.hide()
+		_return_vote_status.hide()
+		_return_vote_token = -1
+		return
+	var humans: Array = data.get("humans", [])
+	var yes: Dictionary = data.get("yes", {})
+	var agree_count := 0
+	for seat_value in humans:
+		if bool(yes.get(int(seat_value), false)): agree_count += 1
+	_return_vote_status.text = "返回房间同意 %d/%d" % [agree_count, humans.size()]
+	_return_vote_status.show()
+	if human_seat not in humans or bool(yes.get(human_seat, false)):
+		_return_vote_overlay.hide()
+		return
+	var initiator := int(data.get("initiator", -1))
+	var who := "其他玩家" if initiator < 0 or initiator == human_seat else _seat_name(initiator)
+	var token := initiator * 10 + int(data.get("rejecter", -1))
+	if _return_vote_overlay.visible and _return_vote_token == token:
+		return
+	_return_vote_token = token
+	_return_vote_message.text = "%s 发起返回房间。\n全部真人同意后，大家一起回到选座等待。" % who
+	var design := _design_size()
+	_return_vote_panel.position = (design - _return_vote_panel.size) * 0.5
+	_return_vote_overlay.show()
+
+func _on_returned_to_lobby() -> void:
+	if _quitting:
+		return
+	_quitting = true
+	get_tree().change_scene_to_file("res://scenes/Lobby.tscn")
 
 func _toggle_voice_chat() -> void:
 	var net = _net_node()
@@ -83,10 +170,49 @@ func _toggle_voice_chat() -> void:
 	net.toggle_voice_chat()
 	_refresh_voice_button()
 
+func _build_voice_diag() -> void:
+	_voice_diag_label = Label.new()
+	_voice_diag_label.name = "VoiceDiagnostic"
+	_voice_diag_label.position = Vector2(24, 92)
+	_voice_diag_label.size = Vector2(1040, 90)
+	_voice_diag_label.add_theme_font_override("font", TileView._font())
+	_voice_diag_label.add_theme_font_size_override("font_size", 22)
+	_voice_diag_label.add_theme_color_override("font_color", Color("#ffe6a8"))
+	_voice_diag_label.add_theme_color_override("font_outline_color", Color("#102018"))
+	_voice_diag_label.add_theme_constant_override("outline_size", 5)
+	_voice_diag_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_voice_diag_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_voice_diag_label.z_index = 100
+	add_child(_voice_diag_label)
+	_voice_diag_label.hide()
+	_return_vote_status = Label.new()
+	_return_vote_status.name = "ReturnVoteStatus"
+	_return_vote_status.position = Vector2(24, 154)
+	_return_vote_status.size = Vector2(1040, 40)
+	_return_vote_status.add_theme_font_override("font", TileView._font())
+	_return_vote_status.add_theme_font_size_override("font_size", 24)
+	_return_vote_status.add_theme_color_override("font_color", Color("#ffe6a8"))
+	_return_vote_status.add_theme_color_override("font_outline_color", Color("#102018"))
+	_return_vote_status.add_theme_constant_override("outline_size", 4)
+	_return_vote_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_return_vote_status.z_index = 100
+	add_child(_return_vote_status)
+	_return_vote_status.hide()
+
 func _on_voice_status(_enabled: bool, message: String) -> void:
 	if _voice_button != null and message != "":
 		_voice_button.tooltip_text = message
+	# Update the button before awaiting the diagnostic timer. Otherwise the
+	# coroutine suspends here and the button text stays "麦克风 关" for 10s.
 	_refresh_voice_button()
+	if _voice_diag_label != null and message != "":
+		_voice_diag_token += 1
+		var token := _voice_diag_token
+		_voice_diag_label.text = "语音：%s" % message
+		_voice_diag_label.show()
+		await get_tree().create_timer(10.0).timeout
+		if token == _voice_diag_token:
+			_voice_diag_label.hide()
 
 func _refresh_voice_button() -> void:
 	if _voice_button == null:
@@ -402,6 +528,9 @@ func _on_client_state_updated() -> void:
 func _on_net_lobby_updated() -> void:
 	_update_speed_buttons()
 	_refresh_next_round_controls()
+	var net = _net_node()
+	if net != null and net.lobby is Dictionary and net.lobby.has("return_vote"):
+		_on_return_vote_updated(net.lobby.get("return_vote", {}))
 
 func _on_net_prompt(seat: int) -> void:
 	if seat != human_seat or seat >= round.players.size():
@@ -442,14 +571,39 @@ func _on_input_focus_changed() -> void:
 	if is_node_ready(): _update_interactivity()
 
 func _notification(what: int) -> void:
+	if GameConfig.debug_enabled and what in [NOTIFICATION_APPLICATION_FOCUS_OUT,
+		NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_APPLICATION_PAUSED,
+		NOTIFICATION_APPLICATION_RESUMED]:
+		print("[debug] GameTable notification=", what, " turn=", human_seat,
+			" selecting=", _selecting, " locked=", _table_actions != null and _table_actions.input_locked())
 	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_FOCUS_IN,
 		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_RESUMED]:
 		_on_input_focus_changed()
+	if what == NOTIFICATION_APPLICATION_RESUMED and not _quitting and round != null:
+		# Android can lose the pressed-touch/UI prompt while backgrounded.
+		# Re-arm the current authoritative prompt after returning to foreground,
+		# then safely skip any animation that did not resume within a short
+		# grace period (Tweens may be frozen while the process is stopped).
+		call_deferred("_on_net_prompt", human_seat)
+		_resume_generation += 1
+		_arm_resume_animation_recovery(_resume_generation)
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if _sound_settings != null and _sound_settings.is_open():
 			_sound_settings.close()
 		else:
 			_confirm_quit()
+
+func _arm_resume_animation_recovery(generation: int) -> void:
+	await get_tree().create_timer(0.45).timeout
+	if generation != _resume_generation or _quitting or round == null:
+		return
+	if _awaiting_rejoin_snapshot:
+		return
+	if _table_animation_controller.input_locked():
+		_table_animation_controller.cancel()
+		_refresh()
+		_on_net_prompt(human_seat)
+		_update_interactivity()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):

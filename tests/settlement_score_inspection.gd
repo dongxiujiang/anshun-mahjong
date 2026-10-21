@@ -135,9 +135,7 @@ func _test_clicks() -> void:
 			t.expect(a.selected_id == group.id, "real viewport mouse click opens the tile group")
 			await _pointer_click(button, true)
 			t.expect(a.selected_id == "", "emulated touch tap closes the same group once")
-		a.hit_buttons.flip.pressed.emit()
-		t.expect(a.selected_id == "@flip" and a.labels.has("@flip"), "flip tile opens its scored range")
-		await _capture_score("06_flip_click_" + kind)
+		t.expect(not a.hit_buttons.has("flip"), "flip tile no longer opens text")
 		await _pointer_at(table.surface.get_global_transform_with_canvas() * Vector2(1140, 260), false)
 		t.expect(a.selected_id == "" and a.labels.is_empty(), "background click clears detail")
 		t.expect(_snapshot(r) == before and _sum(r.last_result.scores) == 800, "every click and resize is read-only")
@@ -190,6 +188,103 @@ func _test_hidden_draw_kong() -> void:
 	t.expect(a.labels[group.id].text.contains("4"), "hidden kong still exposes its recorded base payment")
 	t.expect(_snapshot(r) == before, "hidden kong explanation is read-only")
 
+func _kong_caption_fixture(is_draw: bool, called_owner: bool, multiplier: int, gold: String) -> RoundState:
+	var r := RoundState.new()
+	r.set_rng_seed(20261021)
+	r.build_players(0)
+	r.controllers = [null, null, null, null]
+	r.phase = RoundState.Phase.PLAYING
+	for seat in 4: r.players[seat].concealed = WAIT.duplicate()
+	r.players[1].concealed = ["wan1", "tong4", "tiao7"]
+	var owner := 2 if called_owner else 1
+	r.players[owner].concealed = (["wan1", "wan2", "wan3", "tong1", "tong2", "tong3", "wan9"] if called_owner
+		else ["wan1", "wan3", "wan5", "wan7", "tong1", "tong4", "tiao7"])
+	for tile in ["tiao1", "tong8"]:
+		r.players[owner].melds.append({"kind": "kong", "tile": tile, "from_seat": owner - 1})
+	r.round_meta.chicken_multiplier = multiplier
+	if is_draw:
+		r._penzu()
+	else:
+		r.players[0].concealed = WIN.duplicate()
+		r.players[0].just_drew = "wan9"
+		r.round_meta.winner = 0
+		r.round_meta.winners = [0]
+		r.round_meta.self_draw = false
+		r.round_meta.discard_seat = 3
+		r.round_meta.win_tile = "wan9"
+		r.wall = WallRing.new(TileSetFactory.create_deck())
+		r.wall.set_head(0)
+		r.wall._ring[0] = gold
+		r._finish()
+	return r
+
+func _test_requested_kong_clicks() -> void:
+	for is_draw in [false, true]:
+		for called_owner in [false, true]:
+			for gold in ["tiao1", "tong8"]:
+				var r := _kong_caption_fixture(is_draw, called_owner, 1, gold)
+				var before := _snapshot(r)
+				var owner := 2 if called_owner else 1
+				var expected: Array = []
+				_bind(r)
+				var a = table._settlement_animation_controller.score_annotations
+				for index in 2:
+					var group := _group("meld", owner, index)
+					var tile := "tiao1" if index == 0 else "tong8"
+					var name := "幺鸡" if index == 0 else "八筒"
+					var unit := 16 if not is_draw and tile == gold else 8
+					var chicken := name + str(unit if called_owner else -unit) + "分"
+					var base := "杠上家" + name + ("4分" if called_owner else "-4分")
+					var button: Button = a.hit_buttons[str(a._tiles_for(group)[0].get_instance_id())]
+					button.pressed.emit()
+					t.expect(a.labels[group.id].text.contains(chicken), "live click shows the requested signed chicken kong tile rate")
+					t.expect(a.labels[group.id].text.contains(base), "live click keeps only the exposed kong's source direction")
+					t.expect(not a.labels[group.id].text.contains("向") and not a.labels[group.id].text.contains("补付"), "live kong click omits payment flow wording")
+					expected.append(group.detail)
+					if is_draw and gold == "tiao1":
+						await _capture_score("08_draw_kong_%s_%d" % ["called" if called_owner else "uncalled", index])
+				var client := RoundState.new()
+				client.apply_sync(r.serialize_for_seat(3))
+				_bind(client, 3)
+				for index in 2:
+					t.expect(_group("meld", owner, index).detail == expected[index], "reconnected client keeps the same short kong captions")
+				t.expect(_snapshot(r) == before and _sum(r.last_result.scores) == 800, "requested kong caption clicks preserve scores and settlement")
+	var pung_round := _score_fixture("melds")
+	_bind(pung_round)
+	var pung := _group("meld", 0, 0)
+	var annotations = table._settlement_animation_controller.score_annotations
+	annotations.select_group(pung.id)
+	t.expect(annotations.labels[pung.id].text == "碰幺鸡6分", "called chicken pung click shows 碰幺鸡6分")
+
+func _test_requested_draw_package_clicks() -> void:
+	var r := RoundState.new()
+	r.set_rng_seed(20261021)
+	r.build_players(0)
+	r.controllers = [null, null, null, null]
+	r.phase = RoundState.Phase.PLAYING
+	for seat in 4: r.players[seat].concealed = WAIT.duplicate()
+	r.players[1].concealed = ["wan1", "tong4", "tiao7"]
+	r.players[1].discards = ["tiao1", "tong8"]
+	r.players[1].discard_ids = [0, 1]
+	r.players[1].melds = [{"kind": "pung", "tile": "tiao1", "from_seat": 0}]
+	r.players[0].discards = ["tong8"]
+	r.players[0].discard_ids = [0]
+	r.round_meta.chicken_multiplier = 2
+	r.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0},
+		"tong8": {"owner": 1, "location": "discard", "discard_id": 1}}
+	r._penzu()
+	var before := _snapshot(r)
+	_bind(r)
+	var a = table._settlement_animation_controller.score_annotations
+	for group in a.groups:
+		if int(group.seat) != 1: continue
+		a.select_group(group.id)
+		var expected := "碰幺鸡-12分" if group.area == "meld" else ("冲锋幺鸡-8分" if group.tiles[0] == "tiao1" else "冲锋八筒-8分")
+		if not t.expect(a.labels.has(group.id), "live draw package has a visible debt label for " + group.id): continue
+		t.expect(a.labels[group.id].text == expected, "live draw package caption: expected " + expected + ", got " + a.labels[group.id].text)
+		await _capture_score("09_draw_package_" + str(group.area) + "_" + str(group.tiles[0]))
+	t.expect(_snapshot(r) == before and _sum(r.last_result.scores) == 800, "draw package click leaves every real payment unchanged")
+
 func _test_reconnect_details() -> void:
 	var host := _score_fixture("melds")
 	for human in 4:
@@ -232,6 +327,8 @@ func _run() -> void:
 	await process_frame
 	await _test_stage_labels()
 	await _test_clicks()
+	await _test_requested_kong_clicks()
+	await _test_requested_draw_package_clicks()
 	_test_reconnect_details()
 	_test_hidden_draw_kong()
 	_bind(_fixture("ready_ron"))

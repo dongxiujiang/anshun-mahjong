@@ -12,7 +12,8 @@ const PANEL_SIZE := Vector2(680, 560)
 const TABLE_PANEL_SIZE := Vector2(1120, 840)
 const SLIDER_HEIGHT := 56.0
 const SLIDER_KNOB := 48
-const TITLES := {"music": "背景音乐", "voice": "出牌 / 动作语音", "effects": "落桌 / 结算音效"}
+const UI_CHANNELS := ["voice", "effects"]
+const TITLES := {"voice": "出牌 / 动作语音", "effects": "落桌 / 结算音效"}
 var overlay: Control
 var panel: Panel
 var sliders := {}
@@ -38,6 +39,7 @@ var remote_volume_slider: HSlider
 var mic_gain_percent: Label
 var remote_volume_percent: Label
 var continue_button: Button
+var debug_button: Button
 var exit_room_button: Button
 var replay_exporter: Node
 
@@ -69,16 +71,12 @@ func _ready() -> void:
 	overlay.add_child(panel)
 	_label("设置" if table_mode else "声音设置", Vector2(36, 24), Vector2(608, 42), 32)
 	_label("设置自动保存，重启和更新后保留", Vector2(36, 78), Vector2(608, 30), 20)
-	for index in AudioManager.CHANNELS.size():
-		var channel: String = AudioManager.CHANNELS[index]
+	for index in UI_CHANNELS.size():
+		var channel: String = UI_CHANNELS[index]
 		var y := 126.0 + index * 88.0
-		var toggle := CheckButton.new()
-		toggle.text = TITLES[channel]
-		toggle.position = Vector2(28, y)
-		toggle.size = Vector2(280, 62)
-		toggle.toggled.connect(_on_toggle.bind(channel))
-		panel.add_child(toggle)
-		switches[channel] = toggle
+		# Only the slider remains: playback is controlled by volume 0, with no
+		# separate enable switch.
+		_label(TITLES[channel], Vector2(28, y), Vector2(280, 62), 24)
 		var slider := HSlider.new()
 		slider.position = Vector2(324, y)
 		slider.size = Vector2(234, SLIDER_HEIGHT)
@@ -92,7 +90,7 @@ func _ready() -> void:
 		sliders[channel] = slider
 		percentages[channel] = _label("", Vector2(574, y + 12), Vector2(78, 42), 24)
 	if table_mode:
-		var mic_y := 126.0 + AudioManager.CHANNELS.size() * 88.0
+		var mic_y := 126.0 + UI_CHANNELS.size() * 88.0
 		_label("麦克风音量", Vector2(28, mic_y), Vector2(280, 62), 24)
 		mic_gain_slider = HSlider.new()
 		mic_gain_slider.position = Vector2(324, mic_y)
@@ -112,20 +110,12 @@ func _ready() -> void:
 		remote_volume_slider.size = Vector2(234, SLIDER_HEIGHT)
 		remote_volume_slider.custom_minimum_size = Vector2(234, SLIDER_HEIGHT)
 		remote_volume_slider.min_value = 0
-		remote_volume_slider.max_value = 100
+		remote_volume_slider.max_value = 200
 		remote_volume_slider.step = 1
 		_style_slider(remote_volume_slider)
 		remote_volume_slider.value_changed.connect(_on_remote_volume_changed)
 		panel.add_child(remote_volume_slider)
 		remote_volume_percent = _label("", Vector2(574, remote_y + 12), Vector2(78, 42), 24)
-	var credit := LinkButton.new()
-	credit.text = "音乐：Ripples · Kevin MacLeod · incompetech.com · CC BY 4.0"
-	credit.position = Vector2(36, 566 if table_mode else 382)
-	credit.size = Vector2(608, 28)
-	credit.add_theme_font_size_override("font_size", 16)
-	credit.tooltip_text = "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100691\nhttps://creativecommons.org/licenses/by/4.0/\n已调整音量、淡入淡出并转换为 WAV。"
-	credit.pressed.connect(func(): OS.shell_open("https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100691"))
-	panel.add_child(credit)
 	voice_selector = OptionButton.new()
 	voice_selector.position = Vector2(36, 604 if table_mode else 422)
 	voice_selector.size = Vector2(172, 62)
@@ -134,6 +124,9 @@ func _ready() -> void:
 	voice_selector.item_selected.connect(func(seat: int): AudioManager.set_preview_voice_seat(seat, persist_changes))
 	panel.add_child(voice_selector)
 	preview_button = _button("试听语音", Vector2(220, 604 if table_mode else 422), Vector2(172, 62), _preview_voice)
+	debug_button = _button("关闭debug" if GameConfig.debug_enabled else "开启debug",
+		Vector2(36, 500 if table_mode else 320), Vector2(300, 64), _toggle_debug)
+	debug_button.name = "DebugToggleButton"
 	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 682) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
 	continue_button.name = "ContinueGameButton"
 	if table_mode:
@@ -169,15 +162,27 @@ func _ready() -> void:
 		exit_confirmation = Panel.new()
 		exit_confirmation.name = "ExitConfirmation"
 		exit_confirmation.size = TABLE_PANEL_SIZE
-		exit_confirmation.add_theme_stylebox_override("panel", style)
+		var dim := StyleBoxFlat.new()
+		dim.bg_color = Color(0, 0, 0, 0.62)
+		exit_confirmation.add_theme_stylebox_override("panel", dim)
 		panel.add_child(exit_confirmation)
-		var question := _label("确定退出当前房间？\n退出后返回主菜单", Vector2(100, 176), Vector2(920, 110), 32)
+		# Compact confirm dialog: the old version reused the full 1180x820
+		# settings panel, leaving two buttons floating in a huge empty sheet.
+		var dialog := Panel.new()
+		dialog.name = "ExitDialog"
+		dialog.size = Vector2(720, 330)
+		dialog.position = (TABLE_PANEL_SIZE - dialog.size) * 0.5
+		dialog.add_theme_stylebox_override("panel", style)
+		exit_confirmation.add_child(dialog)
+		var question := _label("确定退出当前房间？\n退出后返回主菜单", Vector2(40, 42), Vector2(640, 100), 30)
 		question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		question.reparent(exit_confirmation, false)
-		confirm_exit_button = _button("退出房间", Vector2(224, 386), Vector2(288, 126), func(): exit_confirmed.emit())
-		confirm_exit_button.reparent(exit_confirmation, false)
-		cancel_exit_button = _button("继续游戏", Vector2(608, 386), Vector2(288, 126), func(): exit_confirmation.hide())
-		cancel_exit_button.reparent(exit_confirmation, false)
+		question.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		question.reparent(dialog, false)
+		confirm_exit_button = _button("退出房间", Vector2(48, 176), Vector2(288, 126), func(): exit_confirmed.emit())
+		confirm_exit_button.reparent(dialog, false)
+		var return_label := "返回座位" if table_mode else "继续游戏"
+		cancel_exit_button = _button(return_label, Vector2(384, 176), Vector2(288, 126), func(): exit_confirmation.hide())
+		cancel_exit_button.reparent(dialog, false)
 		exit_confirmation.hide()
 	AudioManager.settings_changed.connect(_sync)
 	GameConfig.voice_chat_settings_changed.connect(_sync_voice_settings)
@@ -268,11 +273,10 @@ func _layout() -> void:
 
 func _sync() -> void:
 	voice_selector.select(AudioManager.preview_voice_seat)
-	for channel in AudioManager.CHANNELS:
+	for channel in sliders:
 		sliders[channel].set_value_no_signal(roundf(float(AudioManager.volumes[channel]) * 100.0))
-		switches[channel].set_pressed_no_signal(AudioManager.enabled[channel])
 		percentages[channel].text = "%d%%" % roundi(float(AudioManager.volumes[channel]) * 100.0)
-		preview_button.disabled = not AudioManager.enabled.voice or float(AudioManager.volumes.voice) <= 0.0
+	preview_button.disabled = float(AudioManager.volumes.voice) <= 0.0
 	_sync_voice_settings()
 
 func _sync_voice_settings() -> void:
@@ -291,14 +295,16 @@ func _on_remote_volume_changed(value: float) -> void:
 	GameConfig.set_voice_chat_remote_volume(value / 100.0, persist_changes)
 	_sync_voice_settings()
 
-func _on_toggle(on: bool, channel: String) -> void:
-	AudioManager.set_enabled(channel, on, persist_changes)
-
 func _on_slider(value: float, channel: String) -> void:
 	AudioManager.set_volume(channel, value / 100.0, persist_changes)
 
 func _preview_voice() -> void:
 	AudioManager.preview_voice(voice_selector.selected)
+
+func _toggle_debug() -> void:
+	GameConfig.set_debug_enabled(not GameConfig.debug_enabled, persist_changes)
+	if debug_button != null:
+		debug_button.text = "关闭debug" if GameConfig.debug_enabled else "开启debug"
 
 func _set_speed(speed_key: String) -> void:
 	if not table_mode: GameConfig.set_ai_speed(speed_key, persist_changes)

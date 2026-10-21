@@ -49,7 +49,7 @@ func setup(owner: Node, allow_audio: bool) -> void:
 	_config = get_node_or_null("/root/GameConfig")
 	if _config != null:
 		_mic_gain = clampf(float(_config.voice_chat_mic_gain), 0.0, 2.0)
-		_remote_volume = clampf(float(_config.voice_chat_remote_volume), 0.0, 1.0)
+		_remote_volume = clampf(float(_config.voice_chat_remote_volume), 0.0, 2.0)
 		if audio_available and not _config.voice_chat_settings_changed.is_connected(_on_settings_changed):
 			_config.voice_chat_settings_changed.connect(_on_settings_changed)
 	if audio_available:
@@ -194,7 +194,7 @@ func set_mic_gain(value: float) -> void:
 	_mic_gain = clampf(value, 0.0, 2.0)
 
 func set_remote_volume(value: float) -> void:
-	_remote_volume = clampf(value, 0.0, 1.0)
+	_remote_volume = clampf(value, 0.0, 2.0)
 	for seat in 4:
 		_apply_speaker_volume(seat)
 

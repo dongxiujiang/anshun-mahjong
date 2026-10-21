@@ -9,6 +9,7 @@ const SUITES: Array[String] = [
 	"res://tests/lan_join_perf.gd",
 	"res://tests/smoke_lobby.gd",
 	"res://tests/smoke_lobby_flow.gd",
+	"res://tests/lobby_room_name.gd",
 	"res://tests/smoke_update.gd",
 	"res://tests/update_download_routes.gd",
 	"res://tests/smoke_hot_update.gd",
@@ -49,6 +50,8 @@ const SUITES: Array[String] = [
 	"res://tests/resume_dialog.gd",
 	"res://tests/table_interaction.gd",
 	"res://tests/focus_return_input.gd",
+	"res://tests/background_lifecycle.gd",
+	"res://tests/concealed_kong_window.gd",
 	"res://tests/discard_identity.gd",
 	"res://tests/center_dashboard.gd",
 	"res://tests/table_controls_perf.gd",
@@ -58,6 +61,7 @@ const SUITES: Array[String] = [
 	"res://tests/smoke_ui.gd",
 	"res://tests/smoke_audio.gd",
 	"res://tests/voice_chat.gd",
+	"res://tests/gme_voice_chat.gd",
 	"res://tests/audio_shutdown.gd",
 ]
 

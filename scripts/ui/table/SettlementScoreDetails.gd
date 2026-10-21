@@ -6,6 +6,13 @@ extends RefCounted
 ## seat:meld_INDEX. tiles contains only currently visible logical occurrences.
 
 const TILE := preload("res://scripts/core/Tiles.gd")
+const CFG := preload("res://scripts/autoload/GameConfig.gd")
+## Technical fallback lines ("本组暂无…") are diagnostics. They are hidden in
+## normal play and only enabled by the settings debug switch.
+static var debug_enabled := false
+
+static func set_debug_enabled(value: bool) -> void:
+	debug_enabled = value
 
 static func build(result: Dictionary, meta: Dictionary, players: Array, plan: Dictionary) -> Array:
 	var context: Dictionary = result.get("round_meta", meta)
@@ -25,6 +32,7 @@ static func build(result: Dictionary, meta: Dictionary, players: Array, plan: Di
 	var snapshots: Array = result.get("players", players)
 	var all_items: Array = result.get("items", [])
 	var transfers: Array = result.get("transfers", [])
+	var multiplier := clampi(int(context.get("chicken_multiplier", 1)), 1, CFG.MAX_CHICKEN_MULTIPLIER)
 	var output: Array = []
 	for seat in mini(4, snapshots.size()):
 		var snapshot = snapshots[seat]
@@ -41,17 +49,13 @@ static func build(result: Dictionary, meta: Dictionary, players: Array, plan: Di
 						_assign_item(item, occurrences, groups, gold)
 			_kongs(items, transfers, snapshot, groups, seat, is_draw, called, gold)
 		for group in groups.values():
-			if seat == burned: _note(group, "烧鸡：本局收入0，补付照算。")
-			elif not called[seat]: _note(group, "未叫牌：手中鸡不记正分；碰、杠中的鸡按规则补付。")
+			if seat == burned and not group._robbed: _note(group, "烧鸡0分")
 		if not called[seat]:
-			_debt(groups, occurrences, transfers, seat, "未叫牌出牌鸡", "discard", gold, is_draw)
-			_debt(groups, occurrences, transfers, seat, "未叫牌碰鸡", "pung_chicken", gold, is_draw)
-			_debt(groups, occurrences, transfers, seat, "未叫牌杠分", "kong", gold, is_draw)
-			_debt(groups, occurrences, transfers, seat, "未叫牌杠中鸡", "kong_chicken", gold, is_draw)
-		if is_draw:
-			for group in groups.values():
-				if group.area != "chicken": continue
-				_combined(group, _rows(transfers, seat, "荒牌包鸡", false), "（含双方出牌鸡及荒牌补付）")
+			var debt_rows := _draw_debt_rows(result, transfers, seat) if is_draw else transfers
+			_debt(groups, occurrences, debt_rows, seat, "未叫牌出牌鸡", "discard", gold, is_draw, multiplier)
+			_debt(groups, occurrences, debt_rows, seat, "未叫牌碰鸡", "pung_chicken", gold, is_draw, multiplier)
+			_debt(groups, occurrences, transfers, seat, "未叫牌杠分", "kong", gold, is_draw, multiplier)
+			_debt(groups, occurrences, transfers, seat, "未叫牌杠中鸡", "kong_chicken", gold, is_draw, multiplier)
 		for group in groups.values():
 			if is_draw and group._parts.has("chicken"):
 				var target := "kong" if group.area == "meld" else "other"
@@ -81,7 +85,7 @@ static func _group(groups: Dictionary, seat: int, key: String, area: String, mel
 		var tiles: Array[String] = []
 		groups[key] = {"id": "%d:%s" % [seat, key], "seat": seat, "area": area,
 			"meld_index": meld_index, "tiles": tiles, "stages": {}, "detail": "", "_notes": [], "_parts": {},
-			"_robbed": false, "_kong": false, "_base_stage": "kong", "_title": "", "charge": false}
+			"_robbed": false, "_kong": false, "_base_stage": "kong", "_title": "", "_from_seat": -1, "charge": false}
 	return groups[key]
 
 static func _source(pool: Array, groups: Dictionary, seat: int, key: String, area: String, tile: String, charge: int = 0, meld_index: int = -1) -> void:
@@ -117,10 +121,12 @@ static func _sources(snapshot, visual, seat: int, meta: Dictionary, winners: Arr
 		var key := "meld_%d" % index
 		var group := _group(groups, seat, key, "meld", index)
 		group._kong = kind != "pung"
-		group._robbed = bool(meld.get("robbed", false))
+		group._robbed = bool(meld.get("robbed", false)) or (bool(meta.get("robbed_kong", false))
+			and int(meta.get("discard_seat", -1)) == seat and str(meta.get("win_tile", "")) == str(meld.get("tile", "")))
+		group._from_seat = int(meld.get("from_seat", -1))
 		group._base_stage = "other" if not is_draw and kind == "kong" and not bool(meld.get("concealed", false)) else "kong"
 		group._title = "碰牌" if kind == "pung" else _kong_label(meld)
-		if group._robbed: _note(group, "被抢杠，本组不收杠分。")
+		if group._robbed: _note(group, "被抢杠0分")
 		if kind == "pung" and (is_draw or (not TILE.is_chicken(str(meld.get("tile", ""))) and str(meld.get("tile", "")) not in related)):
 			# A non-scoring pong has nothing to explain; leave its detail blank
 			# instead of adding a "not scored" sentence to every ordinary pung.
@@ -177,7 +183,9 @@ static func _assign_item(item: Dictionary, pool: Array, groups: Dictionary, gold
 		for source in matches:
 			source.used = true
 			if source.key == "": continue
+			if groups[source.key]._robbed: continue
 			var caption := "翻鸡" if kind == "flip" else ("冲锋" if kind == "charge" else "") + _tile_name(tile)
+			if kind != "flip" and source.area == "meld": caption = "碰" + caption
 			_part(groups[source.key], _stage(tile, gold), caption, unit, 1, unit)
 
 static func _kong_label(meld: Dictionary) -> String:
@@ -247,8 +255,7 @@ static func _kongs(items: Array, transfers: Array, snapshot, groups: Dictionary,
 		var tile := str(meld.get("tile", ""))
 		if is_draw:
 			for row in _kong_rows(item, items, transfers, seat, "杠中鸡", "chicken_amount", "chicken_payers", true, called):
-				_part(group, "chicken", "杠中鸡补付", float(row.amount), 1, float(row.amount))
-				_note(group, _flow(row, seat) + "（杠中鸡）")
+				_part(group, "chicken", _tile_name(tile), float(row.amount), 1, float(row.amount), true)
 		else:
 			if chicken > 0.0 and is_finite(chicken):
 				_part(group, _stage(tile, gold), _tile_name(tile), chicken, group.tiles.size(), chicken / group.tiles.size())
@@ -266,7 +273,51 @@ static func _rows(transfers: Array, seat: int, reason: String, incoming: bool) -
 		if (incoming and receiver == seat) or (not incoming and (payer == seat or receiver == seat)): out.append(row)
 	return out
 
-static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, reason: String, category: String, gold: Array, is_draw: bool = false) -> void:
+static func _draw_debt_rows(result: Dictionary, transfers: Array, seat: int) -> Array:
+	# 荒牌流水包含双方出牌鸡、未叫者碰鸡及基础4分。只取已记录的
+	# 本人欠鸡分用于牌组展示，不能把整笔包鸡款标在某一张鸡上。
+	var all_items: Array = result.get("items", [])
+	var items: Array = all_items[seat] if seat < all_items.size() else []
+	var discard := 0.0
+	var pung := 0.0
+	for item in items:
+		match str(item.get("label", "")):
+			"未叫牌出牌鸡": discard = -float(item.get("own_amount", item.get("amount", 0.0)))
+			"未叫牌碰鸡": pung = -float(item.get("own_amount", item.get("amount", 0.0)))
+	if is_zero_approx(discard):
+		var points: Array = result.get("discard_points", [])
+		if seat < points.size(): discard = float(points[seat])
+	var out := transfers.duplicate()
+	for row in _rows(transfers, seat, "荒牌包鸡", false):
+		if int(row.from) != seat or not is_finite(discard + pung) or float(row.amount) < discard + pung: continue
+		for component in [["未叫牌出牌鸡", discard], ["未叫牌碰鸡", pung]]:
+			if float(component[1]) > 0.0:
+				out.append({"from": seat, "to": int(row.to), "amount": float(component[1]), "reason": str(component[0])})
+	return out
+
+static func _chicken_debt_value(group: Dictionary, gold: Array, category: String) -> float:
+	var unit := 4.0 if str(group.tiles[0]) in gold else 2.0
+	return 3.0 * unit if category == "pung_chicken" else unit * (group.tiles.size() + int(bool(group.get("charge", false))))
+
+static func _kong_debt_rows(candidates: Array, group: Dictionary, rows: Array, category: String, gold: Array, multiplier: int) -> Array:
+	var by_receiver: Dictionary = {}
+	for row in rows:
+		var receiver := int(row.to)
+		if not by_receiver.has(receiver): by_receiver[receiver] = []
+		by_receiver[receiver].append(row)
+	var out: Array = []
+	for payments in by_receiver.values():
+		# 杠欠款逐组、逐家按副露顺序记账。只有完整对应时才归到牌组，
+		# 缺行或合并后的流水仍保留诊断，不能按杠数量平分。
+		if payments.size() != candidates.size(): continue
+		var valid := true
+		for index in candidates.size():
+			var value := 4.0 if category == "kong" else (16.0 if str(candidates[index].tiles[0]) in gold else 8.0)
+			if not is_equal_approx(float(payments[index].amount), value * multiplier): valid = false
+		if valid: out.append(payments[candidates.find(group)])
+	return out
+
+static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, reason: String, category: String, gold: Array, is_draw: bool = false, multiplier: int = 1) -> void:
 	var candidates: Array = []
 	for group in groups.values():
 		if category == "discard" and group.area == "chicken":
@@ -280,21 +331,57 @@ static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, 
 	var hidden := category == "discard" and pool.any(func(source): return source.key == "")
 	for group in candidates:
 		var exact := candidates.size() == 1 and not hidden
+		var group_rows := rows
+		if candidates.size() > 1 and category in ["kong", "kong_chicken"]:
+			group_rows = _kong_debt_rows(candidates, group, rows, category, gold, multiplier)
+			exact = not group_rows.is_empty()
+		elif candidates.size() > 1 and not hidden:
+			var expected := 0.0
+			for candidate in candidates: expected += _chicken_debt_value(candidate, gold, category) * multiplier
+			exact = not rows.is_empty() and rows.all(func(row): return is_equal_approx(float(row.amount), expected))
+			if exact:
+				group_rows = []
+				for row in rows:
+					var component: Dictionary = row.duplicate()
+					component.amount = _chicken_debt_value(group, gold, category) * multiplier
+					group_rows.append(component)
 		if exact:
 			var stage := str(group._base_stage) if category == "kong" else _stage(str(group.tiles[0]), gold)
-			if category == "discard" and group.tiles.size() == 1:
-				# A single discarded chicken is shown as its own tile value, not
-				# as the sum paid to every called player: "冲锋八筒-4分", not
-				# "-12分" followed by three payer rows. The stage total below
-				# still keeps the real ledger amount for the player's net score.
-				var label := ("冲锋" if bool(group.get("charge", false)) else "") + _tile_name(str(group.tiles[0]))
-				group["_simple"] = true
-				for row in rows:
-					_part(group, stage, label, -float(row.amount), 1, -float(row.amount), true)
+			if category == "discard" and not group.tiles.is_empty():
+				# A discarded chicken is shown as its per-called-player tile
+				# value, not as the total debt.  The first tile is the charge
+				# chicken and every later copy is ordinary, so two discarded
+				# 幺鸡 render as "冲锋幺鸡-4分 幺鸡-2分", not an ambiguous total.
+				var tile := str(group.tiles[0])
+				var count: int = group.tiles.size()
+				var charged := bool(group.get("charge", false))
+				var charge_count: int = 1 if charged else 0
+				var charge_unit := 8.0 if charged and tile in gold else (4.0 if charged else 0.0)
+				var ordinary_unit := 4.0 if tile in gold else 2.0
+				var ordinary_count: int = count - charge_count
+				var expected_per_payer: float = charge_unit + ordinary_unit * ordinary_count
+				var scaled: bool = expected_per_payer > 0.0 and not group_rows.is_empty()
+				var scale: float = 1.0
+				if scaled:
+					scale = float(group_rows[0].amount) / expected_per_payer
+					for row in group_rows:
+						if not is_equal_approx(float(row.amount), expected_per_payer * scale):
+							scaled = false
+							break
+				if scaled:
+					group["_simple"] = true
+					var tile_name := _tile_name(tile)
+					for row in group_rows:
+						if charged:
+							_part(group, stage, "冲锋" + tile_name, -charge_unit * scale, 1, -charge_unit * scale, true)
+						if ordinary_count > 0:
+							_part(group, stage, tile_name, -ordinary_unit * scale * ordinary_count, ordinary_count, -ordinary_unit * scale, true)
+				else:
+					_combined(group, rows, "（%s%s）" % [reason, "，含已被胡走的出牌鸡" if hidden else ""])
 			elif category == "pung_chicken":
 				var label := "碰" + _tile_name(str(group.tiles[0]))
 				group["_simple"] = true
-				for row in rows:
+				for row in group_rows:
 					_part(group, stage, label, -float(row.amount), 1, -float(row.amount), true)
 			else:
 				var kong_name := ""
@@ -302,15 +389,15 @@ static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, 
 					var hidden_kong := is_draw and str(group.get("_title", "")) == "暗杠"
 					kong_name = "杠" + ("" if hidden_kong else _tile_name(str(group.tiles[0])))
 					group["_simple"] = true
-				for row in rows:
+				for row in group_rows:
 					if category == "kong" and kong_name != "":
 						var caption := kong_name
 						if str(group.get("_title", "")) == "明杠":
-							caption = "杠" + _direction(int(row.to), seat) + _tile_name(str(group.tiles[0]))
+							var source := int(group._from_seat)
+							caption = "杠" + _direction(source if source in range(4) else int(row.to), seat) + _tile_name(str(group.tiles[0]))
 						_part(group, stage, caption, -float(row.amount), 1, -float(row.amount), true)
 					else:
-						_part(group, stage, reason, -float(row.amount), 1, -float(row.amount))
-						_note(group, _flow(row, seat) + "（%s）" % reason)
+						_part(group, stage, _tile_name(str(group.tiles[0])), -float(row.amount), 1, -float(row.amount), true)
 		if not exact:
 			_combined(group, rows, "（%s%s）" % [reason, "，含已被胡走的出牌鸡" if hidden else ""])
 
@@ -335,6 +422,8 @@ static func _part(group: Dictionary, stage: String, label: String, amount: float
 	group._parts[stage].append({"label": label, "amount": amount, "count": count, "unit": unit, "per_unit": per_unit})
 
 static func _note(group: Dictionary, message: String) -> void:
+	if message.begins_with("本组暂无") and not debug_enabled:
+		return
 	if message not in group._notes: group._notes.append(message)
 
 static func _finish_group(group: Dictionary) -> void:
@@ -357,10 +446,8 @@ static func _finish_group(group: Dictionary) -> void:
 		lines.append(caption)
 	if not bool(group.get("_simple", false)):
 		for note in group._notes: lines.append(str(note))
-	if group.stages.is_empty() and not bool(group.get("_hide_empty", false)) and not lines.any(func(line): return str(line).contains("不计分") or str(line).contains("暂无") or str(line).contains("收入0")):
-		lines.append("本组不计分。")
 	group.detail = "\n".join(lines)
-	for key in ["_notes", "_parts", "_robbed", "_kong", "_base_stage", "_title", "_simple", "_hide_empty", "charge"]: group.erase(key)
+	for key in ["_notes", "_parts", "_robbed", "_kong", "_base_stage", "_title", "_from_seat", "_simple", "_hide_empty", "charge"]: group.erase(key)
 
 static func _flow(row: Dictionary, seat: int) -> String:
 	var incoming := int(row.to) == seat

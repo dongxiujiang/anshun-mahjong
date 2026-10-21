@@ -24,6 +24,7 @@ var _mic_gain := 1.0
 var _remote_volume := 0.8
 var _speaker_enabled := {0: true, 1: true, 2: true, 3: true}
 var _open_id := ""
+var _room_number := ""
 var _room_key := ""
 var _context = null
 var _audio = null
@@ -34,10 +35,18 @@ var _in_room := false
 var _want_mic := false
 var _auth_http: HTTPRequest
 var _app_id := "1400802279"
+var _enter_started_ms := 0
+var _enter_timeout_reported := false
 
 func setup(owner: Node, allow_audio: bool) -> void:
 	owner_node = owner
 	audio_available = allow_audio
+	var config := get_node_or_null("/root/GameConfig")
+	if config != null:
+		_mic_gain = clampf(float(config.voice_chat_mic_gain), 0.0, 2.0)
+		_remote_volume = clampf(float(config.voice_chat_remote_volume), 0.0, 2.0)
+		if not config.voice_chat_settings_changed.is_connected(_on_settings_changed):
+			config.voice_chat_settings_changed.connect(_on_settings_changed)
 	_use_gme = allow_audio and OS.has_feature("android") and Engine.has_singleton("JavaClassWrapper")
 	if _use_gme:
 		_java = Engine.get_singleton("JavaClassWrapper")
@@ -72,8 +81,13 @@ func connect_room(room_number: String, seat: int, _player_name: String) -> void:
 	if key == _room_key and (_context != null or _auth_http != null):
 		return
 	_room_key = key
-	_open_id = "seat%d" % seat
+	_room_number = room_number
+	# GME's Init/openId must be an INT64-shaped string, not "seat0".
+	_open_id = _make_open_id(room_number, seat)
 	_request_auth(room_number)
+
+static func _make_open_id(room_number: String, seat: int) -> String:
+	return "%s%d" % [room_number, seat]
 
 func _request_auth(room_number: String) -> void:
 	if _auth_http != null:
@@ -93,8 +107,10 @@ func _on_auth_completed(result: int, code: int, _headers: PackedStringArray, bod
 		_auth_http.queue_free()
 		_auth_http = null
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
-		_fail("GME 鉴权失败（%d）" % code)
+		_fail("GME 鉴权失败 HTTP=%d result=%d" % [code, result])
 		return
+	_status = "GME 鉴权成功 HTTP=200"
+	status_changed.emit(false, _status)
 	var data = JSON.parse_string(body.get_string_from_utf8())
 	if not data is Dictionary or str(data.get("auth", "")) == "":
 		_fail("GME 鉴权数据无效")
@@ -130,15 +146,21 @@ func _join_room(room_number: String, auth: PackedByteArray) -> void:
 		_context.call("SetTMGDelegate", _delegate)
 	var init_ret = int(_context.call("Init", _app_id, _open_id))
 	if init_ret != 0:
-		_fail("GME Init 失败（%d）" % init_ret)
+		_fail("GME Init 失败 code=%d" % init_ret)
 		return
 	_audio = _context.call("GetAudioCtrl")
-	_context.call("Poll")
-	var enter_ret = int(_context.call("EnterRoom", room_number, ROOM_TYPE, auth, auth.size()))
-	if enter_ret != 0:
-		_fail("GME 进入房间失败（%d）" % enter_ret)
+	if _audio == null:
+		_fail("GME GetAudioCtrl 返回空")
 		return
-	_status = "正在进入 GME 语音房间…"
+	_context.call("Poll")
+	# GME Android 2.9.17 signature: EnterRoom(String, int, byte[]).
+	var enter_ret = int(_context.call("EnterRoom", room_number, ROOM_TYPE, auth))
+	if enter_ret != 0:
+		_fail("GME EnterRoom 失败 code=%d" % enter_ret)
+		return
+	_enter_started_ms = Time.get_ticks_msec()
+	_enter_timeout_reported = false
+	_status = "GME Init=0 EnterRoom=0 openid=%s，等待 IsRoomEntered…" % _open_id
 	status_changed.emit(false, _status)
 
 func OnEvent(_event_type, _data) -> void:
@@ -157,10 +179,14 @@ func _process(_delta: float) -> void:
 			if _audio != null:
 				_audio.call("EnableSpeaker", true)
 				set_remote_volume(_remote_volume)
-			_status = "GME 语音已连接"
+			_status = "GME 语音已连接 IsRoomEntered=true"
 			status_changed.emit(enabled, _status)
 			if _want_mic:
 				_start_mic()
+		elif _enter_started_ms > 0 and not _enter_timeout_reported and Time.get_ticks_msec() - _enter_started_ms > 5000:
+			_enter_timeout_reported = true
+			_status = "GME 进房超时 IsRoomEntered=false"
+			status_changed.emit(false, _status)
 	elif _want_mic and not enabled:
 		_start_mic()
 
@@ -198,13 +224,20 @@ func set_enabled(want: bool) -> bool:
 func _start_mic() -> void:
 	if not _in_room or _audio == null or (not _want_mic and not enabled):
 		return
-	_audio.call("EnableMic", true)
-	_audio.call("EnableSpeaker", true)
+	var mic_ret = int(_audio.call("EnableMic", true))
+	var speaker_ret = int(_audio.call("EnableSpeaker", true))
 	_audio.call("SetMicVolume", roundi(_mic_gain * 100.0))
-	_audio.call("SetSpeakerVolume", roundi(_remote_volume * 100.0))
+	# GME's per-openID speaker volume supports 0..200; the global speaker
+	# volume is left at 100 so remote gain can boost quietly recorded voices.
+	_audio.call("SetSpeakerVolume", 100)
+	_apply_remote_volumes()
+	if mic_ret != 0:
+		_status = "GME EnableMic 失败 code=%d speaker=%d" % [mic_ret, speaker_ret]
+		status_changed.emit(false, _status)
+		return
 	enabled = true
 	_want_mic = false
-	_status = "麦克风已开启"
+	_status = "麦克风已开启 EnableMic=0 speaker=%d" % speaker_ret
 	status_changed.emit(true, _status)
 
 func _stop_mic() -> void:
@@ -227,6 +260,9 @@ func poll_permission() -> void:
 		permission_pending = false
 		if _in_room:
 			_start_mic()
+		else:
+			_status = "权限已授予，等待 GME 进房"
+			status_changed.emit(false, _status)
 	elif Time.get_ticks_msec() - _last_permission_request > 20000:
 		permission_pending = false
 		_status = "麦克风权限未授予"
@@ -236,22 +272,37 @@ func _has_record_permission() -> bool:
 	var granted := OS.get_granted_permissions()
 	return granted.has("RECORD_AUDIO") or granted.has("android.permission.RECORD_AUDIO")
 
+func _on_settings_changed() -> void:
+	var config := get_node_or_null("/root/GameConfig")
+	if config == null: return
+	set_mic_gain(float(config.voice_chat_mic_gain))
+	set_remote_volume(float(config.voice_chat_remote_volume))
+
 func set_mic_gain(value: float) -> void:
 	_mic_gain = clampf(value, 0.0, 2.0)
 	if _audio != null:
 		_audio.call("SetMicVolume", roundi(_mic_gain * 100.0))
 
 func set_remote_volume(value: float) -> void:
-	_remote_volume = clampf(value, 0.0, 1.0)
+	_remote_volume = clampf(value, 0.0, 2.0)
 	if _audio != null:
-		_audio.call("SetSpeakerVolume", roundi(_remote_volume * 100.0))
+		_audio.call("SetSpeakerVolume", 100)
+		_apply_remote_volumes()
+
+func _apply_remote_volumes() -> void:
+	if _audio == null or _room_number == "":
+		return
+	for seat in 4:
+		if not speaker_enabled(seat):
+			continue
+		_audio.call("SetSpeakerVolumeByOpenID", _make_open_id(_room_number, seat), roundi(_remote_volume * 100.0))
 
 func set_speaker_enabled(seat: int, value: bool) -> void:
 	if seat < 0 or seat > 3:
 		return
 	_speaker_enabled[seat] = value
 	if _audio != null:
-		var open_id := "seat%d" % seat
+		var open_id := _make_open_id(_room_number, seat)
 		if value:
 			_audio.call("RemoveAudioBlackList", open_id)
 			_audio.call("SetSpeakerVolumeByOpenID", open_id, roundi(_remote_volume * 100.0))
@@ -275,6 +326,9 @@ func _exit_tree() -> void:
 
 func shutdown() -> void:
 	set_process(false)
+	var config = get_node_or_null("/root/GameConfig") if is_inside_tree() else null
+	if config != null and config.voice_chat_settings_changed.is_connected(_on_settings_changed):
+		config.voice_chat_settings_changed.disconnect(_on_settings_changed)
 	if _fallback != null:
 		_fallback.shutdown()
 		_fallback.queue_free()

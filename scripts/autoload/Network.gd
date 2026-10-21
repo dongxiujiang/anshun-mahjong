@@ -14,7 +14,7 @@ const SESSIONS := preload("res://scripts/core/NetworkSessionStore.gd")
 var settings_path := "user://network.cfg"
 var persist_settings := DisplayServer.get_name() != "headless"
 var saved_session: Dictionary = {}
-var lobby_preferences := {"online": false, "number": "", "name": "朋友麻将局"}
+var lobby_preferences := {"online": false, "number": "", "name": "朋友麻将局", "room_name_manual": false}
 var resume_on_lobby := false
 var resume_prompt_shown := false
 
@@ -43,8 +43,9 @@ func load_settings() -> void:
 		var value = config.get_value("lobby", key, lobby_preferences[key])
 		if typeof(value) == typeof(lobby_preferences[key]): lobby_preferences[key] = value
 
-func save_lobby_preferences(online: bool, number: String, title: String) -> void:
-	lobby_preferences = {"online": online, "number": number.left(8), "name": title.left(24)}
+func save_lobby_preferences(online: bool, number: String, title: String, room_name_manual: bool = false) -> void:
+	lobby_preferences = {"online": online, "number": number.left(8), "name": title.left(24),
+		"room_name_manual": room_name_manual}
 	if not persist_settings: return
 	var config := STORE.read_config(settings_path)
 	for key in lobby_preferences: config.set_value("lobby", key, lobby_preferences[key])

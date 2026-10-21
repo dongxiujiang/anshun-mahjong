@@ -9,6 +9,7 @@ var _post_next_button: Button:
 	get: return _next_round_button
 var _next_round_status: Label
 var _next_round_hint: Label
+var _return_seat_button: Button
 
 func build() -> void:
 	_post_controls = table._box(table.surface)
@@ -18,20 +19,39 @@ func build() -> void:
 	_next_round_button.name = "NextRoundButton"
 	_next_round_button.add_theme_font_size_override("font_size", UI.NEXT_ROUND_FONT_SIZE)
 	_post_controls.add_child(_next_round_button)
-	_next_round_status = table._label(_post_controls, "", Vector2(464, 2), Vector2(560, 36), 28, UI.GOLD)
+	_next_round_status = table._label(_post_controls, "", Vector2(0, 0), Vector2(1040, 30), 28, UI.GOLD)
 	_next_round_status.name = "NextRoundReadiness"
-	_next_round_hint = table._label(_post_controls, "", Vector2(464, 42), Vector2(560, 32), 24, UI.MUTED)
+	_next_round_hint = table._label(_post_controls, "", Vector2(0, 28), Vector2(1040, 28), 24, UI.MUTED)
 	_next_round_hint.name = "NextRoundCountdown"
+	# Same size and style as the next-round button; in online mode it takes the
+	# left slot and the next-round button moves into the right slot.
+	_return_seat_button = table._button("返回座位", _return_to_seat, UI.DISCARD_BUTTON_SIZE, true)
+	_return_seat_button.name = "ReturnToSeatButton"
+	_return_seat_button.add_theme_font_size_override("font_size", 32)
+	_post_controls.add_child(_return_seat_button)
 	refresh_layout()
 	_post_controls.hide()
+
+func _return_to_seat() -> void:
+	var network = table._net_node()
+	if network != null and network.has_method("request_return_to_lobby"):
+		network.request_return_to_lobby()
 
 func refresh_layout() -> void:
 	if not is_instance_valid(_post_controls): return
 	var online: bool = table._net_mode() != ""
-	_post_controls.size = Vector2(1040 if online else 440, 84)
+	_post_controls.size = Vector2(374 if online else UI.DISCARD_BUTTON_SIZE.x, UI.DISCARD_BUTTON_SIZE.y)
 	_post_controls.position = Vector2((table._design_size().x - _post_controls.size.x) / 2.0, table._design_size().y - _post_controls.size.y - 8.0)
-	_next_round_status.visible = online
-	_next_round_hint.visible = online
+	# The readiness/countdown text lives inside the button now; keep the old
+	# labels as hidden compatibility fields for regression probes.
+	_next_round_status.visible = false
+	_next_round_hint.visible = false
+	if is_instance_valid(_return_seat_button):
+		_return_seat_button.visible = online
+	_return_seat_button.position = Vector2(0, 0)
+	_next_round_button.position = Vector2(197, 0) if online else Vector2.ZERO
+	_next_round_button.size = UI.DISCARD_BUTTON_SIZE
+	_next_round_button.add_theme_font_size_override("font_size", 32 if online else UI.NEXT_ROUND_FONT_SIZE)
 
 func show_post_settlement_controls() -> void:
 	if not is_instance_valid(_post_controls) or table.round == null or table.round.phase != RoundState.Phase.SETTLED: return
@@ -72,14 +92,24 @@ func _refresh_next_round_controls() -> void:
 	_next_round_button.add_theme_font_size_override("font_size", UI.READY_NEXT_ROUND_FONT_SIZE)
 	_next_round_button.text = "准备下一局"
 	if not ready_round:
+		_next_round_button.text = "准备 --/4"
 		_next_round_status.text = "下一局准备"
 		_next_round_hint.text = "等待房间同步…"
 		return
 	var ready_count := 0
+	var human_count := 0
 	for member in seats:
+		if bool(member.get("ai", false)): continue
+		human_count += 1
 		if bool(member.get("ready", false)): ready_count += 1
 	var seconds := int(state.get("countdown", -1))
 	var ready := bool(seats[table.human_seat].get("ready", false))
-	_next_round_button.text = "%d 秒后开始 · 取消" % seconds if seconds >= 0 else ("已准备 · 点击取消" if ready else "准备下一局")
-	_next_round_status.text = "下一局准备  %d / 4" % ready_count
-	_next_round_hint.text = "全部准备，%d 秒后自动开局" % seconds if seconds >= 0 else "等待其他玩家准备" if ready else "准备后开始下一局"
+	var all_ready := human_count > 0 and ready_count >= human_count
+	# Only human seats participate in the countdown/readiness display; AI
+	# seats are automatically ready.
+	if seconds >= 0 and all_ready:
+		_next_round_button.text = "%d 秒后开始" % seconds
+	else:
+		_next_round_button.text = "准备 %d/%d" % [ready_count, maxi(1, human_count)]
+	_next_round_status.text = "下一局准备  %d / %d" % [ready_count, maxi(1, human_count)]
+	_next_round_hint.text = "全部准备，%d 秒后自动开局" % seconds if seconds >= 0 and all_ready else "等待其他玩家准备" if ready else "准备后开始下一局"

@@ -55,7 +55,7 @@ func _test_assets() -> void:
 				t.expect(a != null and b != null and a.data != b.data, "四个玩家对应不同声音素材：" + word)
 	var music: AudioStream = audio._stream("music/table")
 	var effect: AudioStream = audio._stream("effects/discard")
-	t.expect(music != null and music.get_length() > 20.0, "循环音乐可加载")
+	t.expect(music == null, "背景音乐已移除")
 	t.expect(effect != null and effect.get_length() > 0.1, "落桌音效可加载")
 	for cue in audio.SETTLEMENT_CUES:
 		var stream: AudioStreamWAV = audio._stream("effects/settlement_" + cue)
@@ -210,12 +210,11 @@ func _test_sync() -> void:
 func _test_playback() -> void:
 	# 前面的规则计算耗时不应计入刚开始的音轨和渐变。
 	await process_frame
-	for channel in audio.CHANNELS:
+	for channel in ["voice", "effects"]:
 		audio.set_enabled(channel, true, false)
 		audio.set_volume(channel, 0.5, false)
 	audio.begin_table()
-	t.expect(audio.music_player.playing and audio.music_player.stream.loop_mode == AudioStreamWAV.LOOP_FORWARD, "入桌自动播放循环音乐")
-	t.expect(audio.music_player.stream.loop_end > 400000, "循环覆盖完整音乐")
+	t.expect(audio.music_player == null, "入桌不再创建背景音乐")
 	played.clear()
 	var event := {"session": "test-a", "id": 1, "action": "discard", "seat": 0, "tile": "tiao1"}
 	audio.play_event(event)
@@ -232,41 +231,29 @@ func _test_playback() -> void:
 	t.expect(audio.voice_player.stream == audio._stream("voice/seat1/tong8"), "下一局清除上局优先状态并保持座位声音")
 	# 首次图形初始化可能超过短语长度；单独测压低渐变时固定语音为播放中。
 	audio.voice_player.stream_paused = true
-	await audio._duck_tween.finished
-	t.expect(audio.music_player.volume_db < -9.0, "喊牌期间自动压低背景音乐：%.1fdB" % audio.music_player.volume_db)
 	audio.voice_player.stream_paused = false
-	audio.set_enabled("voice", false, false)
-	t.expect(not audio.voice_player.playing and AudioServer.is_bus_mute(AudioServer.get_bus_index("Voice")), "关闭语音立即停止声音")
-	t.expect(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "关闭语音不影响音乐开关")
 	audio.set_volume("effects", 0, false)
 	t.expect(not audio.effects_player.playing and AudioServer.is_bus_mute(AudioServer.get_bus_index("Effects")), "音效音量为零立即静音")
-	audio.set_volume("music", 0.31, false)
-	t.expect(is_equal_approx(db_to_linear(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Music"))), 0.31), "独立音量实时应用到总线")
-	await audio._duck_tween.finished
-	t.expect(is_zero_approx(audio.music_player.volume_db), "关语音后恢复背景音乐")
-	audio.set_enabled("voice", true, false)
 	audio.set_volume("voice", 0, false)
 	audio.preview_voice()
 	t.expect(not audio.voice_player.playing, "语音音量零时试听也静音")
 	audio.set_volume("voice", 0.5, false)
 	audio._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
-	t.expect(audio.music_player.stream_paused and not audio.voice_player.playing, "安卓切到后台暂停音乐并清空语音")
+	t.expect(not audio.voice_player.playing, "安卓切到后台清空语音")
 	var count := played.size()
 	audio.play_event({"session": "test-b", "id": 2, "action": "discard", "seat": 1, "tile": "wan3"})
 	t.expect(not audio.voice_player.playing and played.size() == count, "后台期间不喊牌")
 	audio._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	audio.play_event({"session": "test-b", "id": 2, "action": "discard", "seat": 1, "tile": "wan3"})
-	t.expect(not audio.music_player.stream_paused and not audio.voice_player.playing, "恢复前台继续音乐、不补喊后台牌名")
+	t.expect(not audio.voice_player.playing, "恢复前台不补喊后台牌名")
 	audio.play_event({"session": "test-b", "id": 3, "action": "hu", "seat": 1, "tile": "wan3"})
 	await audio.voice_player.finished
-	await audio._duck_tween.finished
-	t.expect(not audio.voice_player.playing and is_zero_approx(audio.music_player.volume_db), "真实语音播放完毕后自动恢复音乐")
+	t.expect(not audio.voice_player.playing, "真实语音播放完毕")
 	for index in 3:
 		var action: String = ["pong", "kong", "ready"][index]
 		audio.play_event({"session": "test-b", "id": index + 4, "action": action, "seat": index, "tile": ""})
 		t.expect(audio.voice_player.playing and audio.voice_player.stream == audio._stream(_voice_key(index, action)), "真实播放动作语音：" + action)
 		await audio.voice_player.finished
-		await audio._duck_tween.finished
 	audio.play_event({"session": "test-b", "id": 7, "action": "discard", "seat": 0, "tile": "wan1"})
 	for index in 3:
 		audio.play_event({"session": "test-b", "id": index + 8, "action": ["pong", "kong", "ready"][index], "seat": index, "tile": ""})
@@ -278,7 +265,6 @@ func _test_playback() -> void:
 		await audio.voice_player.finished
 		t.expect(audio._playing_voice_seat == seat and audio.voice_player.stream == audio._stream(_voice_key(seat, ["pong", "kong", "ready"][seat])), "队列按原动作座位继续播放")
 	await audio.voice_player.finished
-	await audio._duck_tween.finished
 	for seat in 4:
 		for action in ["discard", "pong", "kong", "ready", "hu", "zimo"]:
 			audio.reset_round()
@@ -295,10 +281,10 @@ func _test_playback() -> void:
 	audio.stop_settlement_cue(older)
 	t.expect(audio.settlement_player.playing, "旧牌桌清理不能停止当前牌桌音效")
 	audio.end_table(older)
-	t.expect(audio.table_active and audio.music_player.playing, "旧牌桌释放不停止新牌桌音乐")
+	t.expect(audio.table_active, "旧牌桌释放不结束新牌桌")
 	audio.end_table(newer)
 	t.expect(not audio.settlement_player.playing and not audio.play_settlement_cue("coins", newer), "离桌停止结算音效且不能再次播放")
-	t.expect(not audio.music_player.playing and not audio.voice_player.playing and not audio.effects_player.playing, "离桌停止所有音轨")
+	t.expect(not audio.voice_player.playing and not audio.effects_player.playing, "离桌停止语音和音效")
 	count = played.size()
 	audio.play_event(event)
 	t.expect(played.size() == count, "离桌后不响应上局音频事件")
@@ -314,7 +300,7 @@ func _test_persistence() -> void:
 	audio.set_enabled("voice", true, false)
 	audio._load_settings(TEMP)
 	audio._apply_settings()
-	t.expect(is_equal_approx(float(audio.volumes.music), 0.37) and not audio.enabled.voice, "设置重载后保留音量和开关")
+	t.expect(is_equal_approx(float(audio.volumes.music), 0.37) and audio.enabled.voice, "设置重载后保留音量，语音始终由音量控制")
 	var legacy := ConfigFile.new()
 	legacy.set_value("music", "volume", 0.28)
 	legacy.set_value("voice", "volume", 0.9)
@@ -352,13 +338,10 @@ func _test_ui() -> void:
 	var sound = table._sound_settings
 	sound.persist_changes = false
 	table.surface.get_node("SoundButton").pressed.emit()
-	t.expect(sound.is_open() and audio.table_active, "牌桌入口可以打开设置且音乐继续")
-	for channel in audio.CHANNELS:
+	t.expect(sound.is_open() and audio.table_active, "牌桌入口可以打开设置")
+	for channel in ["voice", "effects"]:
 		sound.sliders[channel].value = 42
 		t.expect(is_equal_approx(float(audio.volumes[channel]), 0.42) and sound.percentages[channel].text == "42%", "滑块即时调整音量和百分比")
-		sound.switches[channel].button_pressed = false
-		t.expect(not audio.enabled[channel], "开关即时关闭对应通道")
-		sound.switches[channel].button_pressed = true
 	t.expect(not sound.preview_button.disabled, "语音开启后允许试听")
 	for seat in 4:
 		sound.voice_selector.select(seat)
@@ -405,7 +388,6 @@ func _test_ui() -> void:
 	table._refresh()
 	table._refresh()
 	t.expect(played.size() == 4, "UI刷新不能重复出牌声音")
-	var position: float = audio.music_player.get_playback_position()
 	table.round.players[0].concealed.append("tiao5")
 	table.round.players[0].just_drew = "tiao5"
 	table.round._do_self_win(0)
@@ -418,7 +400,6 @@ func _test_ui() -> void:
 	table._refresh_next_round_controls()
 	t.expect(table._settlement_animation_controller.is_completed() and table._settlement_card._post_controls.visible, "胡牌后直接显示桌面结算和下一局按钮")
 	t.expect(played.size() == settled_events, "结算刷新与下一局准备控件不重复播放声音")
-	t.expect(audio.music_player.playing and audio.music_player.get_playback_position() >= position, "桌面结算及刷新期间音乐持续播放")
 	table.queue_free()
 	await process_frame
-	t.expect(not audio.table_active and not audio.music_player.playing, "删除牌桌时停止音乐")
+	t.expect(not audio.table_active, "删除牌桌时结束音频会话")

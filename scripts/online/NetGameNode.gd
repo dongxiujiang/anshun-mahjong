@@ -8,6 +8,8 @@ signal state_updated
 signal prompted(seat)
 signal host_game_started
 signal game_started
+signal returned_to_lobby
+signal return_vote_updated(data)
 signal connection_error(message)
 signal reconnecting(attempt, maximum)
 signal session_invalidated
@@ -19,8 +21,10 @@ const AUTO := "auto"
 const START_DELAY := 3.0
 const NEXT_ROUND_DELAY := 1.0
 # Keep restart recovery separate from how long other players wait to start a round.
-const RESUME_GRACE_MS := 300000
+const RESUME_GRACE_MS := 30000
 const READY_GRACE_MS := 30000
+const BACKGROUND_AI_DELAY_MS := 30000
+const BACKGROUND_VOTE_DELAY_MS := 5000
 var host_mode := false
 var dedicated := false
 var my_seat := -1
@@ -57,6 +61,12 @@ var _resume_requested := false
 var _pending_snapshot: Dictionary = {}
 var _client_joined := false
 var _orphaned: Dictionary = {}
+var _background_until: Dictionary = {}
+var _background_vote_pending: Dictionary = {}
+var _return_vote_active := false
+var _return_vote_yes: Dictionary = {}
+var _return_vote_initiator := -1
+var _return_vote_rejecter := -1
 var _state_queued := false
 var _state_revision := 0
 var _received_revision := -1
@@ -124,6 +134,48 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	if not dedicated: room_ready.emit(my_seat)
 	return true
 
+func _notification(what: int) -> void:
+	if not is_inside_tree():
+		return
+	if what == NOTIFICATION_APPLICATION_RESUMED and host_mode and _started and game != null:
+		# Paused processes do not run AI timers. Nudge the host state machine
+		# immediately so a backgrounded host resumes instead of looking stuck.
+		game.poll_ai()
+		_host_broadcast()
+	# Android/desktop background: tell the authority immediately so its 30s
+	# reconnect window can start before ENet itself times out.
+	if host_mode or not _client_joined or multiplayer.multiplayer_peer == null:
+		return
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		rpc_id(1, "lobby_action", "background", {"value": true})
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		rpc_id(1, "lobby_action", "background", {"value": false})
+		if _reconnecting:
+			_reconnect_wait = 0.0
+
+func _apply_background(peer: int, backgrounded: bool) -> void:
+	if not host_mode: return
+	var seat := int(_peer_seat.get(peer, -1))
+	if seat < 0: return
+	if backgrounded:
+		_background_until[seat] = Time.get_ticks_msec() + BACKGROUND_AI_DELAY_MS
+		_ctrl_hint[seat] = "wait"
+		if _return_vote_active and not bool(_return_vote_yes.get(seat, false)):
+			_background_vote_pending[seat] = Time.get_ticks_msec() + BACKGROUND_VOTE_DELAY_MS
+	else:
+		_background_until.erase(seat)
+		_background_vote_pending.erase(seat)
+		if not _orphaned.has(seat):
+			_ctrl_hint[seat] = "remote"
+			for member_peer in _peer_seat.keys():
+				if int(_peer_seat[member_peer]) == seat and _members.has(member_peer):
+					_members[member_peer].ready = false
+			if _started and game != null:
+				game.restore_human_control(seat)
+	_publish_lobby()
+	if _started: _host_broadcast()
+	if _return_vote_active: _publish_return_vote()
+
 func _ready() -> void:
 	voice_chat = VOICE_CHAT.new()
 	voice_chat.name = "VoiceChat"
@@ -144,12 +196,31 @@ func _process(delta: float) -> void:
 	for seat in _orphaned.keys():
 		if Time.get_ticks_msec() >= int(_orphaned[seat].get("until", 0)):
 			_orphaned.erase(seat)
+			if _started:
+				_install_ai_for_seat(int(seat))
 			_check_start()
 			_publish_lobby()
+			if _started: _host_broadcast()
 		elif int(_orphaned[seat].get("ready_until", 0)) > 0 and Time.get_ticks_msec() >= int(_orphaned[seat].ready_until):
 			_orphaned[seat].ready_until = 0
 			_check_start()
 			_publish_lobby()
+	for seat in _background_until.keys():
+		if Time.get_ticks_msec() >= int(_background_until[seat]):
+			_background_until.erase(seat)
+			if _started:
+				_install_ai_for_seat(int(seat))
+			if _return_vote_active:
+				_check_return_vote()
+				_publish_return_vote()
+			_publish_lobby()
+			if _started: _host_broadcast()
+	for seat in _background_vote_pending.keys():
+		if Time.get_ticks_msec() >= int(_background_vote_pending[seat]):
+			_background_vote_pending.erase(seat)
+			_return_vote_yes[int(seat)] = true
+			_check_return_vote()
+			_publish_return_vote()
 	for peer in _pending_peers.keys():
 		if Time.get_ticks_msec() - int(_pending_peers[peer]) > 10000:
 			_pending_peers.erase(peer)
@@ -221,6 +292,8 @@ func request_join(number: String, player_name: String, token: String = "", resum
 		return
 	_pending_peers.erase(peer)
 	_orphaned.erase(seat)
+	_background_until.erase(seat)
+	_background_vote_pending.erase(seat)
 	_seat_peer[seat] = peer
 	_peer_seat[peer] = seat
 	_ctrl_hint[seat] = "remote"
@@ -239,6 +312,7 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	rpc_id(peer, "seat_assign", seat)
 	_check_start()
 	_publish_lobby()
+	if _return_vote_active: _publish_return_vote()
 	if _started: _host_broadcast()
 
 func _reject(peer: int, message: String) -> void:
@@ -257,11 +331,29 @@ func _on_peer_disconnected(peer: int) -> void:
 	if str(member.get("resume_token", "")) != "":
 		_orphaned[seat] = {"token": member.resume_token, "until": Time.get_ticks_msec() + RESUME_GRACE_MS,
 			"ready_until": Time.get_ticks_msec() + READY_GRACE_MS, "member": member}
+	else:
+		# A client that explicitly leaves has no reconnect reservation; do not
+		# leave a permanently controller-less seat during an active game.
+		_peer_seat.erase(peer)
+		_sent_audio.erase(peer)
+		_members.erase(peer)
+		_seat_peer[seat] = -1
+		if _started: _install_ai_for_seat(seat)
+		_publish_lobby()
+		if _started: _host_broadcast()
+		return
 	_peer_seat.erase(peer)
 	_sent_audio.erase(peer)
 	_members.erase(peer)
 	_seat_peer[seat] = -1
-	_ctrl_hint[seat] = AUTO
+	# Keep the seat human-controlled while the reconnect reservation is alive.
+	# No AI action is scheduled until the 30s grace expires.
+	_ctrl_hint[seat] = "wait"
+	_background_until.erase(seat)
+	_background_vote_pending.erase(seat)
+	if _return_vote_active and _return_vote_yes.has(seat) and not bool(_return_vote_yes.get(seat, false)):
+		_background_vote_pending[seat] = Time.get_ticks_msec() + BACKGROUND_VOTE_DELAY_MS
+		_publish_return_vote()
 	if _owner_peer == peer:
 		_owner_peer = int(_peer_seat.keys()[0]) if not _peer_seat.is_empty() else 0
 	if not _started:
@@ -269,17 +361,26 @@ func _on_peer_disconnected(peer: int) -> void:
 		_swap.clear()
 		_publish_lobby()
 		return
-	var actor := AiPlayer.new("AI%d" % seat)
-	game.controllers[seat] = actor
-	if game.awaiting:
-		if game._awaiting_response.get("seat", -1) == seat:
-			var request: Dictionary = game._awaiting_response
-			game.submit_response(seat, request.tile, actor.decide_response(game, seat, request.disc_seat, request.tile, request.options))
-		elif game._awaiting_response.is_empty() and game.current_turn == seat:
-			game.submit_turn(seat, actor.decide_turn(game, seat))
 	_check_start()
 	_publish_lobby()
 	_host_broadcast()
+
+func _install_ai_for_seat(seat: int) -> void:
+	if game == null or seat < 0 or seat > 3:
+		return
+	_ctrl_hint[seat] = AUTO
+	if _background_until.has(seat) or _seat_peer.get(seat, -1) > 0:
+		for peer in _peer_seat.keys():
+			if int(_peer_seat[peer]) == seat and _members.has(peer):
+				_members[peer].ready = true
+	var actor := AiPlayer.new("AI%d" % seat)
+	game.controllers[seat] = actor
+	if game.awaiting:
+		if int(game._awaiting_response.get("seat", -1)) == seat:
+			var request: Dictionary = game._awaiting_response
+			game.submit_response(seat, str(request.get("tile", "")), actor.decide_response(game, seat, int(request.get("disc_seat", -1)), str(request.get("tile", "")), request.get("options", {})))
+		elif game._awaiting_response.is_empty() and game.current_turn == seat:
+			game.submit_turn(seat, actor.decide_turn(game, seat))
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_leave() -> void:
@@ -296,6 +397,7 @@ func has_reconnect_reservations() -> bool:
 	return false
 
 func _waiting_for_reconnect(seat: int) -> bool:
+	if _background_until.has(seat): return true
 	return _orphaned.has(seat) and Time.get_ticks_msec() < int(_orphaned[seat].get("ready_until", 0))
 
 func _invalidate_ready() -> void:
@@ -327,11 +429,12 @@ func _publish_lobby() -> void:
 	for seat in 4:
 		var peer := int(_seat_peer.get(seat, -1))
 		var member: Dictionary = _members.get(peer, {})
-		var ai := peer < 1 and (_host_ai_fill or _started)
-		var disconnected := _orphaned.has(seat)
+		var ctrl_auto: bool = str(_ctrl_hint.get(seat, AUTO)) == AUTO
+		var ai: bool = ctrl_auto and ((peer < 1 and (_host_ai_fill or _started)) or peer > 0)
+		var disconnected := _orphaned.has(seat) or _background_until.has(seat)
 		if disconnected: member = _orphaned[seat].member
 		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": (not _waiting_for_reconnect(seat) and ai) if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
-	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate()}
+	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "return_vote": _return_vote_data()}
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer): rpc_id(peer, "lobby_sync", lobby)
 	lobby_updated.emit()
@@ -390,6 +493,12 @@ func lobby_action(action: String, data: Dictionary) -> void:
 
 func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 	if not _members.has(peer): return
+	if action == "background":
+		_apply_background(peer, bool(data.get("value", false)))
+		return
+	if action == "return_vote":
+		_apply_return_vote_answer(peer, bool(data.get("agree", false)))
+		return
 	if action == "ai_speed":
 		var speed_key := str(data.get("value", ""))
 		if peer != _owner_peer or speed_key not in ["fast", "medium", "slow"]: return
@@ -538,6 +647,146 @@ func is_room_owner() -> bool:
 func next_round() -> void:
 	# 每个玩家仅提交自己的准备，开局始终由服务器倒计时控制。
 	set_ready(true)
+
+## Return to seat selection requires every connected human seat to agree.
+## AI seats never vote; disconnected/background humans auto-agree after 5s.
+func request_return_to_lobby() -> void:
+	if game == null or game.phase != RoundState.Phase.SETTLED:
+		return
+	if host_mode:
+		_start_return_vote(_local_seat())
+	elif _client_joined:
+		rpc_id(1, "return_to_lobby_request")
+
+func _local_seat() -> int:
+	if host_mode: return my_seat
+	return my_seat
+
+func _human_seats() -> Array:
+	var out: Array = []
+	for seat in 4:
+		if _ctrl_hint.get(seat, AUTO) == AUTO:
+			continue
+		var peer := int(_seat_peer.get(seat, -1))
+		if peer > 0 or _orphaned.has(seat) or _background_until.has(seat):
+			out.append(seat)
+	return out
+
+func _start_return_vote(initiator: int) -> void:
+	if not host_mode or game == null or game.phase != RoundState.Phase.SETTLED:
+		return
+	if _return_vote_active:
+		_publish_return_vote()
+		return
+	var humans := _human_seats()
+	if initiator not in humans:
+		initiator = int(humans[0]) if not humans.is_empty() else -1
+	if initiator < 0: return
+	_return_vote_active = true
+	_return_vote_initiator = initiator
+	# Keep earlier agreements. Only seats that left the room are dropped.
+	for seat in _return_vote_yes.keys():
+		if int(seat) not in humans: _return_vote_yes.erase(seat)
+	for seat in humans:
+		if not _return_vote_yes.has(int(seat)): _return_vote_yes[int(seat)] = false
+	# The initiator counts as yes, except a player who just rejected and then
+	# initiates again: they must explicitly agree first.
+	if initiator != _return_vote_rejecter:
+		_return_vote_yes[initiator] = true
+	_background_vote_pending.clear()
+	for seat in humans:
+		if _orphaned.has(seat) or _background_until.has(seat):
+			_background_vote_pending[int(seat)] = Time.get_ticks_msec() + BACKGROUND_VOTE_DELAY_MS
+	_publish_return_vote()
+	_check_return_vote()
+
+@rpc("any_peer", "call_remote", "reliable")
+func return_to_lobby_request() -> void:
+	if not host_mode: return
+	var peer := multiplayer.get_remote_sender_id()
+	var seat := int(_peer_seat.get(peer, -1))
+	if seat < 0: return
+	_start_return_vote(seat)
+
+func answer_return_vote(agree: bool) -> void:
+	if host_mode:
+		_apply_return_vote_answer(_local_peer(), agree)
+	elif _client_joined:
+		rpc_id(1, "lobby_action", "return_vote", {"agree": agree})
+
+func _apply_return_vote_answer(peer: int, agree: bool) -> void:
+	if not host_mode or not _return_vote_active: return
+	var seat := int(_peer_seat.get(peer, -1))
+	if seat < 0 or not _return_vote_yes.has(seat): return
+	if agree:
+		_return_vote_yes[seat] = true
+		_background_vote_pending.erase(seat)
+		_publish_return_vote()
+		_check_return_vote()
+	else:
+		_return_vote_active = false
+		_return_vote_yes[seat] = false
+		_return_vote_rejecter = seat
+		_background_vote_pending.erase(seat)
+		_publish_return_vote()
+
+func _check_return_vote() -> void:
+	if not host_mode or not _return_vote_active: return
+	var humans := _human_seats()
+	if humans.is_empty(): return
+	for seat in humans:
+		if not bool(_return_vote_yes.get(int(seat), false)): return
+	_reset_room_to_lobby()
+
+func _return_vote_data() -> Dictionary:
+	var humans := _human_seats()
+	var yes: Dictionary = {}
+	for seat in humans:
+		yes[int(seat)] = bool(_return_vote_yes.get(int(seat), false))
+	return {"active": _return_vote_active, "humans": humans, "yes": yes,
+		"initiator": _return_vote_initiator, "rejecter": _return_vote_rejecter}
+
+func _publish_return_vote() -> void:
+	var data := _return_vote_data()
+	return_vote_updated.emit(data)
+	# Votes travel in the normal lobby snapshot so older/newer clients keep the
+	# same RPC checksum; no extra RPC method is introduced.
+	_publish_lobby()
+
+func _reset_room_to_lobby() -> void:
+	if not host_mode or not _started or game == null or game.phase != RoundState.Phase.SETTLED:
+		return
+	_started = false
+	_countdown = -1.0
+	_ready_round = -1
+	_return_vote_active = false
+	_return_vote_yes.clear()
+	_return_vote_initiator = -1
+	_return_vote_rejecter = -1
+	_background_vote_pending.clear()
+	_swap.clear()
+	round_number = 0
+	for peer in _members:
+		_members[peer].ready = false
+	for seat in 4:
+		_ctrl_hint[seat] = "human" if int(_seat_peer.get(seat, -1)) > 0 else AUTO
+	var next_game := RoundState.new()
+	if _ai_service != null: next_game.ai_service = _ai_service
+	game = next_game
+	_publish_lobby()
+	if multiplayer.multiplayer_peer != null:
+		rpc("receive_returned_to_lobby")
+	returned_to_lobby.emit()
+
+@rpc("authority", "call_remote", "reliable")
+func receive_returned_to_lobby() -> void:
+	_started = false
+	_countdown = -1.0
+	_ready_round = -1
+	round_number = 0
+	var next_game := RoundState.new()
+	game = next_game
+	returned_to_lobby.emit()
 
 func _prepare_round_ready() -> void:
 	if game.phase != RoundState.Phase.SETTLED or _ready_round == round_number: return
