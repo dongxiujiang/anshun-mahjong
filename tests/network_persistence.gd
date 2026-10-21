@@ -35,7 +35,7 @@ func _run() -> void:
 	t.expect(SESSIONS.write_session(network.settings_path, session) == OK, "Confirmed session saved")
 	network.load_settings()
 	t.expect(network.saved_session == session, "All reconnection fields survive loading")
-	t.expect(network.lobby_preferences == {"online": true, "number": "001234", "name": "朋友房间"}, "Mode, room number and room title persist")
+	t.expect(network.lobby_preferences.get("online", false) and network.lobby_preferences.get("number", "") == "001234" and network.lobby_preferences.get("name", "") == "朋友房间" and not network.lobby_preferences.get("room_name_manual", true), "Mode, room number and room title persist")
 	directory.configure("https://example.com/changed")
 	t.expect(SESSIONS.read_session(network.settings_path) == session, "Editing directory URL preserves reconnection identity")
 	network.save_lobby_preferences(false, "765432", "新的房间")

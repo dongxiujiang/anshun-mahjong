@@ -70,7 +70,7 @@ func _test_defaults_and_recovery() -> void:
 	digest = FileAccess.get_sha256(audio_path)
 	var audio = _audio(audio_path)
 	t.expect(is_equal_approx(audio.volumes.music, 0.28), "legacy music preference is not replaced by a new default")
-	t.expect(is_equal_approx(audio.volumes.voice, 0.9) and not audio.enabled.voice, "legacy voice volume and mute survive upgrade")
+	t.expect(is_equal_approx(audio.volumes.voice, 0.9) and audio.enabled.voice, "legacy voice volume survives upgrade and obsolete mute flag is ignored")
 	t.expect(is_equal_approx(audio.volumes.effects, 0.65) and audio.enabled.effects, "invalid audio fields use safe individual defaults")
 	t.expect(audio.preview_voice_seat == 0, "invalid preview selection falls back")
 	t.expect(FileAccess.get_sha256(audio_path) == digest, "startup reads old audio settings without modifying the file")
@@ -92,25 +92,24 @@ func _test_controls() -> void:
 		settings.get(pair[0] + "_speed_buttons")[pair[1]].pressed.emit()
 		var key: String = pair[0] + ("_speed" if pair[0] == "settlement" else "_animation_speed")
 		t.expect(STORE.read_config(config.settings_path).get_value("game", key) == pair[1], "UI choice saved immediately while panel is still open: " + key)
-	settings.sliders.music.value = 37
-	settings.switches.voice.button_pressed = false
+	settings.sliders.voice.value = 37
 	settings.voice_selector.item_selected.emit(3)
 	var saved := STORE.read_config(audio.settings_path)
-	t.expect(is_equal_approx(saved.get_value("music", "volume"), 0.37), "volume slider saves immediately")
-	t.expect(not saved.get_value("voice", "enabled"), "sound switch saves immediately")
+	t.expect(is_equal_approx(saved.get_value("voice", "volume"), 0.37), "volume slider saves immediately")
+	t.expect(saved.get_value("voice", "enabled") == true, "obsolete voice mute flag is ignored when saving")
 	t.expect(saved.get_value("voice", "preview_seat") == 3, "last preview voice is remembered without changing players' voices")
 	settings.free()
 	settings = load("res://scripts/ui/SoundSettings.gd").new()
 	settings.table_mode = true
 	root.add_child(settings)
-	t.expect(settings.voice_selector.selected == 3 and settings.sliders.music.value == 37, "reopened settings reflect saved choices")
+	t.expect(settings.voice_selector.selected == 3 and settings.sliders.voice.value == 37, "reopened settings reflect saved choices")
 	var game_hash := FileAccess.get_sha256(config.settings_path)
 	var audio_hash := FileAccess.get_sha256(audio.settings_path)
 	settings.persist_changes = false
 	settings.draw_speed_buttons.instant.pressed.emit()
 	settings.discard_speed_buttons.instant.pressed.emit()
 	settings.settlement_speed_buttons.instant.pressed.emit()
-	settings.sliders.music.value = 19
+	settings.sliders.voice.value = 19
 	settings.voice_selector.item_selected.emit(1)
 	settings.close()
 	t.expect(FileAccess.get_sha256(config.settings_path) == game_hash and FileAccess.get_sha256(audio.settings_path) == audio_hash, "preview/test controls cannot overwrite saved preferences")
@@ -137,7 +136,8 @@ func _child(mode: String) -> void:
 		for key in CHOICES: t.expect(config.get(key) == CHOICES[key], mode + " restores " + key + " at startup")
 		for channel in audio.CHANNELS:
 			t.expect(is_equal_approx(audio.volumes[channel], {"music": 0.28, "voice": 0.9, "effects": 0.43}[channel]), mode + " restores volume " + channel)
-			t.expect(audio.enabled[channel] == (channel == "effects"), mode + " restores switch " + channel)
+			var expected_enabled: bool = channel in ["voice", "effects"]
+			t.expect(audio.enabled[channel] == expected_enabled, mode + " ignores obsolete switch " + channel)
 		t.expect(audio.preview_voice_seat == 2, mode + " restores last preview voice")
 	config.free()
 	audio.free()
