@@ -66,6 +66,18 @@ func _build_static_ui() -> void:
 	voice_button.visible = false
 	surface.add_child(voice_button)
 	table._voice_button = voice_button
+	var ai_strength: Button = table._button("AI 弱", table._cycle_ai_strength, Vector2(132, UI.SETTINGS_BUTTON_SIZE.y))
+	ai_strength.name = "AIStrengthButton"
+	ai_strength.add_theme_font_size_override("font_size", 20)
+	ai_strength.tooltip_text = "AI强度：弱（中/强后续接入）"
+	surface.add_child(ai_strength)
+	table._ai_strength_button = ai_strength
+	var ai_teach: Button = table._button("AI教打", table.request_ai_teach, Vector2(132, UI.SETTINGS_BUTTON_SIZE.y))
+	ai_teach.name = "AITeachButton"
+	ai_teach.add_theme_font_size_override("font_size", 20)
+	ai_teach.tooltip_text = "分析当前已知信息并推荐出牌"
+	surface.add_child(ai_teach)
+	table._ai_teach_button = ai_teach
 	# 返回、声音和 AI 速度统一收进大号设置面板，避免右上角小按钮难以点击。
 	table._sound_settings.exit_requested.connect(table._confirm_quit)
 	table._sound_settings.exit_confirmed.connect(table._on_quit)
@@ -123,9 +135,13 @@ func _layout() -> void:
 	table._sound_button.position = Vector2(design.x - UI.SETTINGS_BUTTON_SIZE.x - UI.SETTINGS_EDGE_GAP, UI.SETTINGS_TOP_GAP)
 	table._sound_button.custom_minimum_size = UI.SETTINGS_BUTTON_SIZE
 	table._sound_button.size = table._sound_button.custom_minimum_size
+	if table._ai_teach_button != null:
+		table._ai_teach_button.position = table._sound_button.position - Vector2(table._ai_teach_button.size.x + 10.0, 0.0)
+		table._ai_strength_button.position = table._ai_teach_button.position - Vector2(table._ai_strength_button.size.x + 10.0, 0.0)
 	if table._voice_button != null:
 		table._voice_button.visible = table._net_mode() != ""
-		table._voice_button.position = table._sound_button.position - Vector2(table._voice_button.size.x + 12.0, 0.0)
+		var anchor: Button = table._ai_strength_button if table._ai_strength_button != null else table._sound_button
+		table._voice_button.position = anchor.position - Vector2(table._voice_button.size.x + 10.0, 0.0)
 		table._refresh_voice_button()
 	# Actions sit immediately above the local player's draw slot.
 	table._layout_actions()

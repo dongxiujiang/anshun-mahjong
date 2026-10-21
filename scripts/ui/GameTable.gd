@@ -18,6 +18,11 @@ var _audio_round: RoundState
 var _sound_button: Button
 var _settings_button: Button
 var _voice_button: Button
+var _ai_strength_button: Button
+var _ai_teach_button: Button
+var _ai_teach_panel: Panel
+var _ai_teach_label: Label
+var _ai_teach_token := 0
 var _settlement_round_id := 0
 var _settlement_session := ""
 var _settlement_round_number := -1
@@ -182,9 +187,65 @@ func _build_table_overlays() -> void:
 	_return_vote_status.z_index = 100
 	add_child(_return_vote_status)
 	_return_vote_status.hide()
+	_ai_teach_panel = Panel.new()
+	_ai_teach_panel.name = "AITeachMessage"
+	_ai_teach_panel.size = Vector2(1200, 88)
+	_ai_teach_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ai_teach_panel.z_index = 90
+	_ai_teach_panel.add_theme_stylebox_override("panel", _style(Color("#102018ee"), UI.GOLD, 12, 2))
+	_table_layout.surface.add_child(_ai_teach_panel)
+	_ai_teach_label = Label.new()
+	_ai_teach_label.position = Vector2(20, 8)
+	_ai_teach_label.size = Vector2(1160, 72)
+	_ai_teach_label.add_theme_font_override("font", TileView._font())
+	_ai_teach_label.add_theme_font_size_override("font_size", 24)
+	_ai_teach_label.add_theme_color_override("font_color", UI.INK)
+	_ai_teach_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_ai_teach_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ai_teach_panel.add_child(_ai_teach_label)
+	_ai_teach_panel.hide()
 
 func _on_voice_status(_enabled: bool, _message: String) -> void:
 	_refresh_voice_button()
+
+func _cycle_ai_strength() -> void:
+	var keys: Array = GameConfig.AI_STRENGTHS.keys()
+	var index: int = maxi(0, keys.find(GameConfig.ai_strength))
+	var next: String = str(keys[(index + 1) % keys.size()])
+	GameConfig.set_ai_strength(next)
+	_refresh_ai_strength_button()
+
+func _refresh_ai_strength_button() -> void:
+	if _ai_strength_button == null:
+		return
+	_ai_strength_button.text = "AI " + str(GameConfig.AI_STRENGTHS.get(GameConfig.ai_strength, "弱"))
+	_ai_strength_button.tooltip_text = "AI强度：%s（中/强策略后续接入）" % str(GameConfig.AI_STRENGTHS.get(GameConfig.ai_strength, "弱"))
+
+func request_ai_teach() -> void:
+	if round == null or round.players.size() != 4:
+		_show_ai_teach("AI教打：当前没有牌局")
+		return
+	var result: Dictionary = AiTeaching.recommend(round, human_seat)
+	var message := str(result.get("message", "AI教打：暂无建议"))
+	_show_ai_teach(message)
+	var tile := str(result.get("tile", ""))
+	if tile != "":
+		_player_tile_areas.highlight_ai_teach(tile)
+
+func _show_ai_teach(message: String) -> void:
+	if _ai_teach_panel == null:
+		return
+	var metrics: Dictionary = _seat_metrics(human_seat)
+	var hand_y: float = _table_center().y + float(metrics.hand_y)
+	_ai_teach_panel.position = Vector2(_table_center().x - _ai_teach_panel.size.x / 2.0,
+		maxf(90.0, hand_y - 190.0))
+	_ai_teach_label.text = message
+	_ai_teach_panel.show()
+	_ai_teach_token += 1
+	var token := _ai_teach_token
+	await get_tree().create_timer(12.0).timeout
+	if token == _ai_teach_token:
+		_ai_teach_panel.hide()
 
 func _refresh_voice_button() -> void:
 	if _voice_button == null:
@@ -439,6 +500,7 @@ func _refresh_center() -> void:
 	round_label.text = "第 %02d 局    ·    %s" % [maxi(1, number), "单机对局" if _net_mode() == "" else "联机对局"]
 	_table_layout.refresh_turn_indicator()
 	_update_speed_buttons()
+	_refresh_ai_strength_button()
 
 func _set_ai_speed(speed_key: String) -> void:
 	var persist := _sound_settings == null or _sound_settings.persist_changes

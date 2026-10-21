@@ -74,6 +74,9 @@ const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
 # Claims use the same wait as an ordinary AI discard; the speed buttons control
 # both. Pass and win responses remain immediate.
 var ai_speed := "medium"
+# AI 强度入口先保留三档；当前仅弱档，后续再接中/强策略。
+const AI_STRENGTHS := {"weak": "弱", "medium": "中", "strong": "强"}
+var ai_strength := "weak"
 const ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0}
 const TILE_ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0, "slow": 1.8}
 var draw_animation_speed := "fast"
@@ -108,6 +111,7 @@ const SETTINGS_STORE := preload("res://scripts/core/UserSettingsStore.gd")
 const SETTINGS_PATH := "user://game_settings.cfg"
 const PREFERENCE_CHOICES := {
 	"ai_speed": AI_SPEED_DELAYS,
+	"ai_strength": AI_STRENGTHS,
 	"animation_speed": ANIMATION_SPEEDS,
 	"draw_animation_speed": TILE_ANIMATION_SPEEDS,
 	"discard_animation_speed": TILE_ANIMATION_SPEEDS,
@@ -169,6 +173,11 @@ func _save_preference(persist: bool) -> void:
 func set_ai_speed(value: String, persist: bool = true) -> void:
 	if AI_SPEED_DELAYS.has(value):
 		ai_speed = value
+		_save_preference(persist)
+
+func set_ai_strength(value: String, persist: bool = true) -> void:
+	if AI_STRENGTHS.has(value):
+		ai_strength = value
 		_save_preference(persist)
 
 func ai_delay_seconds() -> float:

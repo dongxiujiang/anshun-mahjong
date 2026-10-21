@@ -142,7 +142,10 @@ func _refresh_identity(seat: int) -> void:
 		var remote_human: bool = table._net_mode() != "" and seat != table.human_seat and player.is_human and table.round.phase != RoundState.Phase.SETTLED
 		speaker.visible = remote_human
 		if remote_human:
-			speaker.position = nickname.position + Vector2(nickname.size.x + 6.0, (nickname.size.y - speaker.size.y) / 2.0)
+			# Keep the remote mute control beside the score instead of the
+			# nickname, so it does not hang over the discard river.
+			speaker.position = label.position + Vector2(
+				(label.size.x - speaker.size.x) / 2.0, label.size.y + 4.0)
 			var speaker_on: bool = table._remote_voice_enabled(seat)
 			speaker.text = "喇叭" if speaker_on else "静音"
 			speaker.modulate = Color.WHITE if speaker_on else Color(0.62, 0.62, 0.62)
@@ -171,6 +174,26 @@ func _hand_key(seat: int) -> PackedByteArray:
 	return var_to_bytes([table.human_seat, table._design_size(), table.round.audio_session,
 		player.concealed, player.just_drew, _settlement_reveals_hands(), table._hand_layout(seat),
 		controller.opening_active(), controller.dealt_count(seat), controller.holds_draw_slot(seat)])
+
+func highlight_ai_teach(tile: String) -> void:
+	clear_ai_teach_highlight()
+	if tile == "" or table.round == null:
+		return
+	for box in [hand_box.get(table.human_seat), draw_box.get(table.human_seat)]:
+		if box == null:
+			continue
+		for child in box.get_children():
+			if child is TileView and child.face_up and child.tile == tile:
+				child.set_highlight(true)
+				child.set_meta("ai_teach", true)
+				return
+
+func clear_ai_teach_highlight() -> void:
+	for box in hand_box.values() + draw_box.values():
+		for child in box.get_children():
+			if child is TileView and bool(child.get_meta("ai_teach", false)):
+				child.set_highlight(false)
+				child.set_meta("ai_teach", false)
 
 func cache_current_hand(seat: int) -> void:
 	_seat_visual_keys[seat] = _hand_key(seat)
@@ -349,7 +372,11 @@ func _prepare_exposed_layouts() -> void:
 	# groups may now use that free space but must never cover the center panel.
 	for control in center_labels.values() + name_labels.values() + dealer_badges.values() + [table.center_info, table._remaining_label]:
 		if control.visible: occupied.append(Rect2(control.position, control.size).grow(6.0))
-	occupied.append(Rect2(table._settings_button.position + table._settings_button.touch_rect().position, table._settings_button.touch_rect().size).grow(6.0))
+	occupied.append(Rect2(table._settings_button.position + table._settings_button.touch_rect().position,
+		table._settings_button.touch_rect().size).grow(6.0))
+	for control in [table._ai_strength_button, table._ai_teach_button, table._voice_button]:
+		if control != null and control.visible:
+			occupied.append(Rect2(control.position, control.size).grow(6.0))
 	occupied.append(table._table_layout.center_rect().grow(UI.TURN_LIGHT_SPREAD + 6.0))
 	for seat in 4:
 		var hand_unit: float = table._hand_tile_unit(seat)
