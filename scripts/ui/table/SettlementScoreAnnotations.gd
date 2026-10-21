@@ -97,10 +97,6 @@ func refresh() -> void:
 				button.position = rect.position
 				button.size = rect.size
 		if text == "": continue
-		if c.plan.is_draw and group.area == "meld" and tiles.all(func(tile): return not tile.face_up):
-			# Settlement knows the amount, but a draw does not turn this meld up.
-			# Keep the identity private in the explanation as well as on the tiles.
-			if completed: text += "\n未翻开"
 		wanted[id] = true
 		var label := _label(id, text, UI.SCORE_LOSS if amount < 0 else UI.GOLD)
 		_place(label, _bounds(tiles), int(group.seat), occupied)

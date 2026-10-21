@@ -237,8 +237,9 @@ static func _kongs(items: Array, transfers: Array, snapshot, groups: Dictionary,
 			continue
 		var label := _kong_label(meld)
 		var base_rows := _kong_rows(item, items, transfers, seat, ("查叫" if is_draw else "") + label, "base_amount", "payers", is_draw, called)
-		var hidden_kong := is_draw and bool(meld.get("concealed", false))
-		var kong_name := "杠" + ("" if hidden_kong else _tile_name(str(meld.get("tile", ""))))
+		# Settlement always reveals every meld, including a draw, so the kong
+		# caption always names its tile.
+		var kong_name := "杠" + _tile_name(str(meld.get("tile", "")))
 		for row in base_rows:
 			# Direction is present only for an exposed kong, where the payer is
 			# unique. Own kongs are paid by all three, so their compact line is
@@ -375,7 +376,13 @@ static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, 
 						if charged:
 							_part(group, stage, "冲锋" + tile_name, -charge_unit * scale, 1, -charge_unit * scale, true)
 						if ordinary_count > 0:
-							_part(group, stage, tile_name, -ordinary_unit * scale * ordinary_count, ordinary_count, -ordinary_unit * scale, true)
+							# 同种普通鸡多张时，显示每个叫牌玩家应付的合计单注，
+							# 例如两张普通幺鸡显示“幺鸡-4分”，而不是漏掉一张的
+							# “幺鸡-2分”。冲锋+普通仍分开显示。
+							var ordinary_line_count := ordinary_count if not charged else 1
+							var ordinary_line_unit := -ordinary_unit * scale * ordinary_line_count
+							var ordinary_amount := -ordinary_unit * scale * ordinary_count
+							_part(group, stage, tile_name, ordinary_amount, 1, ordinary_line_unit, true)
 				else:
 					_combined(group, rows, "（%s%s）" % [reason, "，含已被胡走的出牌鸡" if hidden else ""])
 			elif category == "pung_chicken":

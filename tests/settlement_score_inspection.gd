@@ -183,10 +183,11 @@ func _test_hidden_draw_kong() -> void:
 	var a = table._settlement_animation_controller.score_annotations
 	var group := _group("meld", 1, 0)
 	a.select_group(group.id)
-	for tile in a._tiles_for(group): t.expect(not tile.face_up, "unrevealed draw kong stays face down")
-	t.expect(a.labels[group.id].text.contains("未翻开") and not a.labels[group.id].text.contains("5筒"), "draw inspection cannot disclose hidden kong value")
-	t.expect(a.labels[group.id].text.contains("4"), "hidden kong still exposes its recorded base payment")
-	t.expect(_snapshot(r) == before, "hidden kong explanation is read-only")
+	for tile in a._tiles_for(group): t.expect(tile.face_up, "settlement reveals the draw kong by default")
+	t.expect(a.labels[group.id].text.contains("5筒") and not a.labels[group.id].text.contains("未翻开"),
+		"draw inspection exposes the revealed kong value")
+	t.expect(a.labels[group.id].text.contains("4"), "revealed kong still exposes its recorded base payment")
+	t.expect(_snapshot(r) == before, "revealed kong explanation is read-only")
 
 func _kong_caption_fixture(is_draw: bool, called_owner: bool, multiplier: int, gold: String) -> RoundState:
 	var r := RoundState.new()

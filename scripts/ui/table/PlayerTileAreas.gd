@@ -163,13 +163,11 @@ func _settlement_reveals_hands() -> bool:
 
 func _meld_revealed(seat: int, index: int) -> bool:
 	if table._table_animation_controller.holds_meld_reveal(seat, index): return false
-	if table.round.phase != RoundState.Phase.SETTLED or _settlement_reveals_hands():
-		return table.round.is_meld_revealed(seat, index)
-	# Core settlement reveals melds for scoring. A draw keeps the same physical
-	# concealment as play, including a kong still awaiting its second discard.
-	var player: PlayerState = table.round.players[seat]
-	var meld: Dictionary = player.melds[index]
-	return not bool(meld.get("concealed", false)) or player.discard_count >= int(meld.get("after_discard", 0)) + 2
+	# Settlement is a final snapshot: both win and draw reveal every kong/meld
+	# group immediately, regardless of the two-discard in-play reveal delay.
+	if table.round.phase == RoundState.Phase.SETTLED:
+		return true
+	return table.round.is_meld_revealed(seat, index)
 
 func _hand_key(seat: int) -> PackedByteArray:
 	var player: PlayerState = table.round.players[seat]

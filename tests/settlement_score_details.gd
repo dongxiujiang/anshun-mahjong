@@ -228,6 +228,29 @@ func _test_uncalled_two_same_chickens() -> void:
 	t.expect(group.detail == "冲锋幺鸡-4分 幺鸡-2分", "multiple ordinary copies keep the per-tile debt caption")
 	_amount(group, "chicken", -24, "three discarded copies retain the full recorded debt")
 
+func _test_uncalled_ordinary_chickens() -> void:
+	for tile in ["tiao1", "tong8"]:
+		var f := _fixture()
+		f.result.called = [true, false, true, true]
+		f.players[1].discards = [tile, tile]
+		f.players[1].discard_ids = [0, 1]
+		for receiver in [0, 2, 3]:
+			_pay(f, 1, receiver, 4, "未叫牌出牌鸡")
+		var group := _find(_build(f), "1:chicken_" + tile)
+		var expected := "幺鸡-4分" if tile == "tiao1" else "八筒-4分"
+		t.expect(group.stages.chicken.text == expected, "two ordinary same chickens show the per-called-player total")
+		t.expect(is_equal_approx(float(group.stages.chicken.amount), -12.0), "two ordinary chicken debt keeps the real total")
+	var mixed := _fixture()
+	mixed.result.called = [true, false, true, true]
+	mixed.players[1].discards = ["tiao1", "tong8"]
+	mixed.players[1].discard_ids = [0, 1]
+	for receiver in [0, 2, 3]:
+		_pay(mixed, 1, receiver, 4, "未叫牌出牌鸡")
+	t.expect(_find(_build(mixed), "1:chicken_tiao1").stages.chicken.text == "幺鸡-2分",
+		"mixed ordinary chickens keep separate tiao1 line")
+	t.expect(_find(_build(mixed), "1:chicken_tong8").stages.chicken.text == "八筒-2分",
+		"mixed ordinary chickens keep separate tong8 line")
+
 func _test_uncalled_pong_chicken() -> void:
 	var f := _fixture()
 	f.result.called = [true, false, true, false]
@@ -496,6 +519,7 @@ func _run() -> void:
 	_test_short_chicken_labels()
 	_test_uncalled_charge_short_label()
 	_test_uncalled_two_same_chickens()
+	_test_uncalled_ordinary_chickens()
 	_test_uncalled_pong_chicken()
 	_test_uncalled_kong_captions()
 	_test_burn_robbed_and_normal_pung()
