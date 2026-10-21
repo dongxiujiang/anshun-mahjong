@@ -75,7 +75,7 @@ X-Room-Token: <该座位当前 resume_token>
 
 服务端只给**当前房间成员**签发：`openid` 必须是 `房间号+座位号`，`X-Room-Token` 必须匹配该座位当前成员凭证，否则返回 403。返回短时 AuthBuffer（base64），客户端用 AppID、OpenID、RoomID 和该 AuthBuffer 进入 GME 房间。AppKey 不得进入客户端。完整接入步骤见 [../docs/gme_voice.md](../docs/gme_voice.md)。
 
-建房接口默认同一来源每分钟最多成功创建 3 个房间，可用 `MAX_CREATES_PER_MINUTE` 调整；超限返回 429。
+建房接口默认同一来源每分钟最多成功创建 3 个房间，可用 `MAX_CREATES_PER_MINUTE` 调整；超限返回 429。只有来自 `TRUSTED_PROXIES`（默认 `127.0.0.1/32,::1/128`）的请求才会读取 `X-Forwarded-For`，直连请求始终使用 TCP 对端地址，避免伪造来源绕过配额。生产环境应关闭后端 HTTP 端口的公网访问，只允许代理访问。
 
 ## 验证
 

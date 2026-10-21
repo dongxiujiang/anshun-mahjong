@@ -195,7 +195,10 @@ func _process(delta: float) -> void:
 		return
 	for seat in _orphaned.keys():
 		if Time.get_ticks_msec() >= int(_orphaned[seat].get("until", 0)):
+			var was_owner := bool(_orphaned[seat].get("owner", false))
 			_orphaned.erase(seat)
+			if was_owner:
+				_transfer_owner_from(_owner_peer)
 			if _started:
 				_install_ai_for_seat(int(seat))
 			_check_start()
@@ -252,11 +255,13 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	var seat := -1
 	var resumed := false
 	var saved: Dictionary = {}
+	var was_owner := false
 	for orphan_seat in _orphaned:
 		var orphan: Dictionary = _orphaned[orphan_seat]
 		if Time.get_ticks_msec() < int(orphan.get("until", 0)) and resume_token != "" and resume_token == str(orphan.get("token", "")):
 			seat = int(orphan_seat)
 			resumed = true
+			was_owner = bool(orphan.get("owner", false))
 			saved = orphan.get("member", {}).duplicate(true)
 			break
 	# A restarted process can arrive before ENet detects the old process's death.
@@ -300,6 +305,9 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	var member_name := player_name.strip_edges().left(16) if player_name.strip_edges() != "" else "玩家"
 	_members[peer] = saved if resumed else {"name": member_name, "ready": false, "wants_dealer": false, "resume_token": resume_token.left(128)}
 	_members[peer]["resume_token"] = resume_token.left(128)
+	if was_owner:
+		# A reconnecting owner gets a new ENet peer id; bind ownership to it.
+		_owner_peer = peer
 	if _owner_peer == 0:
 		_owner_peer = peer
 		_owner_token = ""
@@ -322,6 +330,13 @@ func _reject(peer: int, message: String) -> void:
 	if is_inside_tree() and multiplayer.multiplayer_peer != null and peer in multiplayer.get_peers():
 		multiplayer.multiplayer_peer.disconnect_peer(peer)
 
+func _transfer_owner_from(peer: int) -> void:
+	if _owner_peer != peer:
+		return
+	var remaining := _peer_seat.keys()
+	remaining.sort()
+	_owner_peer = int(remaining[0]) if not remaining.is_empty() else 0
+
 func _on_peer_disconnected(peer: int) -> void:
 	_pending_peers.erase(peer)
 	if not host_mode or not _peer_seat.has(peer): return
@@ -331,7 +346,8 @@ func _on_peer_disconnected(peer: int) -> void:
 	var retained: bool = str(member.get("resume_token", "")) != ""
 	if retained:
 		_orphaned[seat] = {"token": member.resume_token, "until": Time.get_ticks_msec() + RESUME_GRACE_MS,
-			"ready_until": Time.get_ticks_msec() + READY_GRACE_MS, "member": member}
+			"ready_until": Time.get_ticks_msec() + READY_GRACE_MS, "owner": _owner_peer == peer,
+			"member": member}
 	else:
 		# Explicit leave: no reconnect reservation and no controller-less seat.
 		_orphaned.erase(seat)
@@ -354,9 +370,7 @@ func _on_peer_disconnected(peer: int) -> void:
 	# Explicit owner departure must transfer ownership. A reconnectable owner
 	# keeps the seat reservation and may reclaim its room.
 	if not retained and _owner_peer == peer:
-		var remaining := _peer_seat.keys()
-		remaining.sort()
-		_owner_peer = int(remaining[0]) if not remaining.is_empty() else 0
+		_transfer_owner_from(peer)
 	if not _started:
 		_countdown = -1.0
 		_swap.clear()

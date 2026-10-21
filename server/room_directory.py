@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hmac
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,44 @@ OPEN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 VERSION = "1"
 APP_VERSION = os.environ.get("APP_VERSION", "dev")
 BUILD_SHA = os.environ.get("BUILD_SHA", "")
+
+
+def _trusted_networks():
+    raw = os.environ.get("TRUSTED_PROXIES", "127.0.0.1/32,::1/128")
+    networks = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(item, strict=False))
+        except ValueError:
+            continue
+    return networks
+
+
+TRUSTED_PROXIES = _trusted_networks()
+
+
+def client_identity(peer, forwarded, trusted=None):
+    """Use the socket peer unless it is a configured proxy, then walk the
+    forwarded chain from the right and return the first non-proxy address."""
+    trusted = TRUSTED_PROXIES if trusted is None else trusted
+
+    def is_trusted(value):
+        try:
+            address = ipaddress.ip_address(value)
+        except ValueError:
+            return False
+        return any(address in network for network in trusted)
+
+    if not is_trusted(peer):
+        return peer
+    chain = [part.strip() for part in str(forwarded).split(",") if part.strip()]
+    for value in reversed(chain):
+        if not is_trusted(value):
+            return value
+    return peer
 GME_APP_ID = os.environ.get("GME_APP_ID", "1400802279")
 GME_APP_KEY = os.environ.get("GME_APP_KEY", "")
 
@@ -212,8 +251,8 @@ class Handler(BaseHTTPRequestHandler):
         if urlsplit(self.path).path != "/rooms":
             return self._reply(404, {"error": "接口不存在"})
         self.connection.settimeout(10)
-        client_id = (self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-                     or self.client_address[0])
+        client_id = client_identity(self.client_address[0],
+                                    self.headers.get("X-Forwarded-For", ""))
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > 4096: raise ValueError("请求大小无效")

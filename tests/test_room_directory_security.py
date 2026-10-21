@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import sys
 import tempfile
@@ -7,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "server"))
-from room_directory import RoomDirectory
+from room_directory import RoomDirectory, client_identity
 
 
 class _Process:
@@ -22,6 +23,13 @@ class RoomDirectorySecurityTests(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def test_forwarded_header_ignored_for_direct_clients(self):
+        trusted = [ipaddress.ip_network("127.0.0.1/32")]
+        self.assertEqual(client_identity("8.8.8.8", "1.2.3.4", trusted), "8.8.8.8")
+        self.assertEqual(client_identity("127.0.0.1", "1.2.3.4", trusted), "1.2.3.4")
+        self.assertEqual(client_identity("127.0.0.1", "spoof, 1.2.3.4", trusted), "1.2.3.4")
+        self.assertEqual(client_identity("127.0.0.1", "spoof, 127.0.0.1", trusted), "spoof")
 
     def test_create_rate_limit(self):
         self.assertTrue(self.directory.allow_create("a"))
