@@ -5,6 +5,7 @@ const MOTION := preload("res://scripts/ui/UiMotion.gd")
 signal exit_requested
 signal exit_confirmed
 signal ai_speed_selected(speed_key: String)
+signal ai_strength_selected(strength_key: String)
 signal replay_export_requested
 ## 主菜单和牌桌共用的声音面板，独立于旋转、缩放的牌桌。
 
@@ -23,6 +24,7 @@ var preview_button: Button
 var voice_selector: OptionButton
 var persist_changes := true
 var speed_buttons := {}
+var ai_strength_buttons := {}
 var draw_speed_buttons := {}
 var discard_speed_buttons := {}
 var settlement_speed_buttons := {}
@@ -147,7 +149,14 @@ func _ready() -> void:
 			var settlement_key: String = item[1]
 			var speed_button := _button(item[0], Vector2(716 + settlement_speed_buttons.size() * 94, 408), Vector2(86, 64), func(): _set_settlement_speed(settlement_key))
 			settlement_speed_buttons[settlement_key] = speed_button
-		_label("四项速度独立调整", Vector2(716, 478), Vector2(368, 30), 20)
+		_label("AI强度", Vector2(716, 488), Vector2(368, 30), 20)
+		for item in [["弱", "weak"], ["中", "medium"], ["强", "strong"]]:
+			var strength_key: String = item[1]
+			var strength_button := _button(item[0], Vector2(716 + ai_strength_buttons.size() * 126, 524),
+				Vector2(116, 60), func(): _set_ai_strength(strength_key))
+			strength_button.tooltip_text = "中、强 AI 策略后续接入"
+			ai_strength_buttons[strength_key] = strength_button
+		_label("四项速度独立调整", Vector2(716, 610), Vector2(368, 30), 20)
 		exit_room_button = _button("退出房间", Vector2(716, 682), Vector2(368, 80), func(): exit_requested.emit())
 		exit_room_button.name = "ExitRoomButton"
 		replay_export_button = _button("保存本局记录", Vector2(36, 682), Vector2(296, 80), func(): replay_export_requested.emit())
@@ -310,6 +319,11 @@ func _set_speed(speed_key: String) -> void:
 	if not table_mode: GameConfig.set_ai_speed(speed_key, persist_changes)
 	ai_speed_selected.emit(speed_key)
 
+func _set_ai_strength(strength_key: String) -> void:
+	GameConfig.set_ai_strength(strength_key, persist_changes)
+	_update_speed_buttons()
+	ai_strength_selected.emit(strength_key)
+
 func _set_tile_speed(action: String, speed_key: String) -> void:
 	if action == "draw": GameConfig.set_draw_animation_speed(speed_key, persist_changes)
 	else: GameConfig.set_discard_animation_speed(speed_key, persist_changes)
@@ -326,6 +340,8 @@ func _update_speed_buttons() -> void:
 		selected = str(network.net_node.lobby.get("ai_speed", "fast"))
 	for speed_key in speed_buttons:
 		speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == selected else Color.WHITE
+	for strength_key in ai_strength_buttons:
+		ai_strength_buttons[strength_key].modulate = Color("#f4df9f") if strength_key == GameConfig.ai_strength else Color.WHITE
 	for speed_key in draw_speed_buttons:
 		draw_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.draw_animation_speed else Color.WHITE
 	for speed_key in discard_speed_buttons:

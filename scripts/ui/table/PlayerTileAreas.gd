@@ -374,7 +374,7 @@ func _prepare_exposed_layouts() -> void:
 		if control.visible: occupied.append(Rect2(control.position, control.size).grow(6.0))
 	occupied.append(Rect2(table._settings_button.position + table._settings_button.touch_rect().position,
 		table._settings_button.touch_rect().size).grow(6.0))
-	for control in [table._ai_strength_button, table._ai_teach_button, table._voice_button]:
+	for control in [table._ai_teach_button, table._voice_button]:
 		if control != null and control.visible:
 			occupied.append(Rect2(control.position, control.size).grow(6.0))
 	occupied.append(table._table_layout.center_rect().grow(UI.TURN_LIGHT_SPREAD + 6.0))

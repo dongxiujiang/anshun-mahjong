@@ -18,7 +18,6 @@ var _audio_round: RoundState
 var _sound_button: Button
 var _settings_button: Button
 var _voice_button: Button
-var _ai_strength_button: Button
 var _ai_teach_button: Button
 var _ai_teach_panel: Panel
 var _ai_teach_label: Label
@@ -207,19 +206,6 @@ func _build_table_overlays() -> void:
 
 func _on_voice_status(_enabled: bool, _message: String) -> void:
 	_refresh_voice_button()
-
-func _cycle_ai_strength() -> void:
-	var keys: Array = GameConfig.AI_STRENGTHS.keys()
-	var index: int = maxi(0, keys.find(GameConfig.ai_strength))
-	var next: String = str(keys[(index + 1) % keys.size()])
-	GameConfig.set_ai_strength(next)
-	_refresh_ai_strength_button()
-
-func _refresh_ai_strength_button() -> void:
-	if _ai_strength_button == null:
-		return
-	_ai_strength_button.text = "AI " + str(GameConfig.AI_STRENGTHS.get(GameConfig.ai_strength, "弱"))
-	_ai_strength_button.tooltip_text = "AI强度：%s（中/强策略后续接入）" % str(GameConfig.AI_STRENGTHS.get(GameConfig.ai_strength, "弱"))
 
 func request_ai_teach() -> void:
 	if round == null or round.players.size() != 4:
@@ -500,7 +486,6 @@ func _refresh_center() -> void:
 	round_label.text = "第 %02d 局    ·    %s" % [maxi(1, number), "单机对局" if _net_mode() == "" else "联机对局"]
 	_table_layout.refresh_turn_indicator()
 	_update_speed_buttons()
-	_refresh_ai_strength_button()
 
 func _set_ai_speed(speed_key: String) -> void:
 	var persist := _sound_settings == null or _sound_settings.persist_changes
