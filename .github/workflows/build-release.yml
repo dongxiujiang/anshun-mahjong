@@ -160,7 +160,6 @@ jobs:
           python -m unittest discover -s tests -p 'test_ci_export.py' 2>&1 | tee build/ci/configure_tests.log
 
       - name: Run core tests
-        if: false
         shell: bash
         env:
           AI_ROUNDS: "50"
@@ -175,7 +174,6 @@ jobs:
             --simulation-timeout 600
 
       - name: Run real network and reconnect regression
-        if: false
         shell: bash
         run: |
           set -euo pipefail
