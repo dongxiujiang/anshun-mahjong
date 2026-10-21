@@ -1,17 +1,17 @@
 class_name WallRing
 extends RefCounted
-## 逻辑环形牌墙按座位+1连接：2→3→0→1→2。
-## 牌头沿索引递增取牌；杠从牌尾反向补。物理显示位置不决定逻辑方向。
+## 逻辑环形牌墙按顺时针跨墙：下家(1)→庄家(0)→上家(3)→对家(2)。
+## 牌头沿索引递增取牌；杠从牌尾反向补。
 
 const N := 108
 const SEG := {
-	0: {"start": 0,  "len": 28, "seat": 2},  # 对家/上
-	1: {"start": 28, "len": 26, "seat": 3},  # 上家/左
-	2: {"start": 54, "len": 28, "seat": 0},  # 庄家/下
-	3: {"start": 82, "len": 26, "seat": 1},  # 下家/右
+	0: {"start": 0,  "len": 26, "seat": 1},  # 下家/右
+	1: {"start": 26, "len": 28, "seat": 0},  # 庄家/下
+	2: {"start": 54, "len": 26, "seat": 3},  # 上家/左
+	3: {"start": 80, "len": 28, "seat": 2},  # 对家/上
 }
 
-var _ring: Array = []       # 108 张牌字符串，按逆时针逻辑次序
+var _ring: Array = []       # 108 张牌字符串，按顺时针逻辑次序
 var _drawn: Array[bool] = []
 var _head := 0
 var _tail := 0

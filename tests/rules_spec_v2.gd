@@ -170,7 +170,7 @@ func _test_deck_wall_deal() -> void:
 	var wall := WallRing.new(ring)
 	wall.set_head(107)
 	eq([47,48], "牌头第一张", wall.draw_head(), "107", "scripts/core/WallRing.gd:75")
-	eq([47,48], "牌头环绕", wall.draw_head(), "0", "scripts/core/WallRing.gd:75")
+	eq([47,48], "牌头顺时针环绕", wall.draw_head(), "0", "scripts/core/WallRing.gd:75")
 	eq([29,49], "牌尾第一张", wall.draw_tail(), "106", "scripts/core/WallRing.gd:86")
 	eq([49], "牌尾第二张", wall.draw_tail(), "105", "scripts/core/WallRing.gd:86")
 	var full_segments: Array = []
@@ -181,7 +181,8 @@ func _test_deck_wall_deal() -> void:
 		var idx := int(logical.draw_head())
 		for seg in WallRing.SEG.values():
 			if idx == seg.start: full_segments.append(seg.seat)
-	eq([27,48], "跨墙座位按加1取牌", full_segments, [2,3,0,1], "scripts/core/WallRing.gd:10; scripts/core/WallRing.gd:75")
+	# 牌头按顺时针跨墙：下家(1) 之后接庄家(0)，再到上家(3)、对家(2)。
+	eq([27,48], "跨墙座位按顺时针取牌", full_segments, [1,0,3,2], "scripts/core/WallRing.gd:10; scripts/core/WallRing.gd:75")
 	for dealer in 4:
 		var r := fixture()
 		r.next_dealer_seat = dealer

@@ -282,7 +282,6 @@ func _check_layout() -> void:
 			_expect(button.custom_minimum_size == table.DISCARD_BUTTON_SIZE, "Every turn and response action must keep the enlarged touch target")
 	var tiles: Array = []
 	for seat in 4:
-		_expect(not table.wall_box[seat].visible and table.wall_box[seat].get_child_count() == 0, "Wall visuals must be removed without removing wall logic")
 		var river: ScrollContainer = table.discard_scroll[seat]
 		var river_metrics: Dictionary = table._seat_metrics(seat)
 		_expect(river.position == river_metrics.river_position and river.size == river_metrics.river_size, "River size and placement must match the current orientation")
@@ -318,9 +317,6 @@ func _check_layout() -> void:
 					if label == table.action_bar and box in table.discard_box[seat] and table._relative_seat(seat) == 1:
 						continue
 					_expect(not rect.grow(-0.5).intersects(_control_rect(label).grow(-0.5)), "Tiles must not cover scores or controls: %s %s / %s %s" % [tile.get_path(), rect, label.get_path(), _control_rect(label)])
-				for wall_seat in 4:
-					for wall_tile in table.wall_box[wall_seat].get_children():
-						_expect(not rect.grow(-0.5).intersects(_tile_rect(wall_tile).grow(-0.5)), "Face tiles must not overlap the wall")
 				tiles.append(rect)
 		_expect(is_equal_approx(table.hand_box[seat].get_parent().rotation, table.ROTATIONS[table._relative_seat(seat)]))
 		var discarded := 0

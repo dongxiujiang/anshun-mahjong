@@ -11,7 +11,6 @@ var discard_scroll := {}
 var chicken_box := {}
 var center_labels := {}
 var net_labels := {}
-var wall_box := {}
 var seat_roots := {}
 var wind_labels := {}
 var avatars := {}
@@ -40,8 +39,6 @@ func build() -> void:
 		meld_box[seat].name = "Meld%d" % seat
 		chicken_box[seat] = table._box(station)
 		chicken_box[seat].name = "Chicken%d" % seat
-		wall_box[seat] = table._box(station)
-		wall_box[seat].name = "Wall%d" % seat
 		discard_box[seat] = []
 		var river = ScrollContainer.new()
 		river.name = "River%d" % seat
@@ -51,7 +48,6 @@ func build() -> void:
 		# Keep the larger river usable on touch screens without drawing a scrollbar
 		# over the tiles.  The wheel/touch scrolling behavior remains available.
 		river.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
-		wall_box[seat].hide()
 		station.add_child(river)
 		discard_scroll[seat] = river
 		var river_content: Control = table._box(river)
@@ -515,18 +511,4 @@ static func _scroll_river_after_layout(tree: SceneTree, river_id: int) -> void:
 	if is_instance_valid(river) and river.is_inside_tree():
 		river.scroll_vertical = int(river.get_v_scroll_bar().max_value)
 
-func _wall_stacks(seat: int) -> Array:
-	if table.round.wall != null:
-		return table.round.wall.wall_stack_counts(seat)
-	if table.round.wall_stacks.has(seat):
-		return table.round.wall_stacks[seat]
-	var fallback: Array = []
-	var remaining = table._wall_remain(seat)
-	for index in (14 if posmod(seat - table.round.dealer_seat, 2) == 0 else 13):
-		fallback.append(clampi(remaining - index * 2, 0, 2))
-	return fallback
 
-func _refresh_walls() -> void:
-	for seat in 4:
-		table._clear_box(wall_box[seat])
-		wall_box[seat].hide()

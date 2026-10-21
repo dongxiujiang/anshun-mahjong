@@ -39,9 +39,6 @@ func _run() -> void:
 		for i in 3:
 			var db = table.discard_box[s][i]
 			print("[shot] seat=%d disc%d pos=%s n=%d" % [s, i + 1, str(db.position), db.get_child_count()])
-		if table.wall_box.has(s):
-			var b = table.wall_box[s]
-			print("[shot] wall seat=%d children=%d remain=%d" % [s, b.get_child_count(), table._wall_remain(s)])
 	var img: Image = get_viewport().get_texture().get_image()
 	var out := "user://shot_table.png"
 	img.save_png(out)

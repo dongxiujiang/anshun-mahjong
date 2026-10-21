@@ -1,6 +1,6 @@
 class_name WallBuilder
 ## 把一副洗好的 108 张牌布局成牌墙环（与 WallRing.SEG 边界一致）。
-## 分段张数：对家28(seg0) 上家26(seg1) 庄家28(seg2) 下家26(seg3)。
+## 顺时针分段：下家26(seg0) 庄家28(seg1) 上家26(seg2) 对家28(seg3)。
 
 static func build_ring(shuffled_deck: Array, dealer_seat: int = 0) -> Dictionary:
 	var ring: Array = []

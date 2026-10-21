@@ -206,7 +206,7 @@ func _test_discard_win_restrictions() -> void:
 	expect(rob.can_win_on_discard(1, 0, "wan9", RoundState.ResponseStage.ROB), "Robbed added kong permits discard win")
 
 func _test_wall_and_patterns() -> void:
-	var expected := [2, 86, 6, 36, 10, 94]
+	var expected := [82, 4, 86, 62, 90, 12]
 	for die in range(1, 7):
 		expect(WallRing.compute_break(die) == expected[die - 1], "Dice break must skip specified stacks")
 	var wall := WallRing.new(TileSetFactory.create_deck())

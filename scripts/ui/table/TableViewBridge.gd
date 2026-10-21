@@ -77,9 +77,6 @@ var center_labels: Dictionary:
 var net_labels: Dictionary:
 	get: return _player_tile_areas.net_labels
 	set(value): _player_tile_areas.net_labels = value
-var wall_box: Dictionary:
-	get: return _player_tile_areas.wall_box
-	set(value): _player_tile_areas.wall_box = value
 var seat_roots: Dictionary:
 	get: return _player_tile_areas.seat_roots
 	set(value): _player_tile_areas.seat_roots = value
@@ -276,12 +273,6 @@ func _refresh_discards(seat: int) -> void:
 
 func _scroll_to_latest(river: ScrollContainer) -> void:
 	_player_tile_areas._scroll_to_latest(river)
-
-func _wall_stacks(seat: int) -> Array:
-	return _player_tile_areas._wall_stacks(seat)
-
-func _refresh_walls() -> void:
-	_player_tile_areas._refresh_walls()
 
 func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
 	_table_actions._on_human_tile_gui(event, tile)
