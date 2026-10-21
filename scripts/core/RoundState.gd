@@ -475,7 +475,11 @@ func _ai_timeout(pending: Dictionary) -> void:
 		_process_response(seat, int(pending.get("source", -1)), str(pending.get("tile", "")), {"action": "pass"})
 
 func restore_human_control(seat: int) -> void:
-	cancel_ai()
+	# Only the restored seat's pending task belongs to this player. Another
+	# seat's AI may be thinking while a different player reconnects; cancelling
+	# it would leave that AI seat without a task forever.
+	if int(_ai_pending.get("seat", -1)) == seat:
+		cancel_ai()
 	controllers[seat] = null
 	if phase != Phase.PLAYING or awaiting:
 		return

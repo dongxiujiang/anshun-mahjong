@@ -328,37 +328,39 @@ func _on_peer_disconnected(peer: int) -> void:
 	var seat: int = _peer_seat[peer]
 	var member: Dictionary = _members.get(peer, {}).duplicate(true)
 	member["round_number"] = round_number
-	if str(member.get("resume_token", "")) != "":
+	var retained: bool = str(member.get("resume_token", "")) != ""
+	if retained:
 		_orphaned[seat] = {"token": member.resume_token, "until": Time.get_ticks_msec() + RESUME_GRACE_MS,
 			"ready_until": Time.get_ticks_msec() + READY_GRACE_MS, "member": member}
 	else:
-		# A client that explicitly leaves has no reconnect reservation; do not
-		# leave a permanently controller-less seat during an active game.
-		_peer_seat.erase(peer)
-		_sent_audio.erase(peer)
-		_members.erase(peer)
-		_seat_peer[seat] = -1
-		if _started: _install_ai_for_seat(seat)
-		_publish_lobby()
-		if _started: _host_broadcast()
-		return
+		# Explicit leave: no reconnect reservation and no controller-less seat.
+		_orphaned.erase(seat)
+	# Common departure cleanup for both reconnectable and explicit leave.
 	_peer_seat.erase(peer)
 	_sent_audio.erase(peer)
 	_members.erase(peer)
 	_seat_peer[seat] = -1
-	# Keep the seat human-controlled while the reconnect reservation is alive.
-	# No AI action is scheduled until the 30s grace expires.
-	_ctrl_hint[seat] = "wait"
 	_background_until.erase(seat)
 	_background_vote_pending.erase(seat)
+	if retained:
+		# Keep the seat human-controlled while the reconnect reservation is alive.
+		# No AI action is scheduled until the 30s grace expires.
+		_ctrl_hint[seat] = "wait"
+	else:
+		if _started: _install_ai_for_seat(seat)
 	if _return_vote_active and _return_vote_yes.has(seat) and not bool(_return_vote_yes.get(seat, false)):
 		_background_vote_pending[seat] = Time.get_ticks_msec() + BACKGROUND_VOTE_DELAY_MS
 		_publish_return_vote()
-	if _owner_peer == peer:
-		_owner_peer = int(_peer_seat.keys()[0]) if not _peer_seat.is_empty() else 0
+	# Explicit owner departure must transfer ownership. A reconnectable owner
+	# keeps the seat reservation and may reclaim its room.
+	if not retained and _owner_peer == peer:
+		var remaining := _peer_seat.keys()
+		remaining.sort()
+		_owner_peer = int(remaining[0]) if not remaining.is_empty() else 0
 	if not _started:
 		_countdown = -1.0
 		_swap.clear()
+		_check_start()
 		_publish_lobby()
 		return
 	_check_start()
@@ -432,7 +434,9 @@ func _publish_lobby() -> void:
 		var ctrl_auto: bool = str(_ctrl_hint.get(seat, AUTO)) == AUTO
 		var ai: bool = ctrl_auto and ((peer < 1 and (_host_ai_fill or _started)) or peer > 0)
 		var disconnected := _orphaned.has(seat) or _background_until.has(seat)
-		if disconnected: member = _orphaned[seat].member
+		# Backgrounded peers are still connected and remain in _members; only
+		# disconnected seats have an orphan record with the retained member.
+		if _orphaned.has(seat): member = _orphaned[seat].member
 		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": (not _waiting_for_reconnect(seat) and ai) if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
 	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "return_vote": _return_vote_data()}
 	for peer in _peer_seat:
@@ -894,7 +898,8 @@ func _sync_voice_room() -> void:
 	if not voice_chat_allowed() or my_seat < 0 or room_number.length() < 4:
 		return
 	var display_name := str(get_node("/root/GameConfig").player_name).strip_edges()
-	voice_chat.connect_room(room_number, my_seat, display_name if display_name != "" else "玩家")
+	var member_token := _resume_token if _resume_token != "" else _owner_token
+	voice_chat.connect_room(room_number, my_seat, display_name if display_name != "" else "玩家", member_token)
 
 func voice_chat_allowed() -> bool:
 	# Clients do not set the host-only _started flag until their first snapshot.

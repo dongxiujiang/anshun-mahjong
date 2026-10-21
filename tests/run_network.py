@@ -142,7 +142,7 @@ def run(godot, lan_interface=False, section="all"):
         guest = launch(godot, "online_guest", "res://tests/online_room.tscn", [f"--directory={base}"])
         cloud_clients.append(guest)
         finish(guest, "online_guest", 115)
-        finish(cloud_client, "online_room", 15)
+        finish(cloud_client, "online_room", 55)
         directory.rooms["654321"]["process"].terminate()
         directory.rooms["654321"]["process"].wait(timeout=5)
         code, data = request(base)

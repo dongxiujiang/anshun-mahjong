@@ -107,5 +107,6 @@ func _run() -> void:
 	t.expect(net.game.players.map(func(player): return player.score) == scores, "Online score preserved")
 	if room_owner:
 		# Guest disconnect is handed to AI; no network UI gets stuck.
-		t.expect(await _wait_until(func(): return bool(net.lobby.seats[0].ai)), "Cloud disconnect becomes AI")
+		t.expect(await _wait_until(func(): return bool(net.lobby.seats[0].disconnected)), "Cloud disconnect reserves the seat")
+		t.expect(await _wait_until(func(): return bool(net.lobby.seats[0].ai), 40.0), "Cloud AI takes over after the 30s grace")
 	get_tree().quit(t.finish("online_room"))

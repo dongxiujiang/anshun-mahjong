@@ -93,6 +93,21 @@ func _run() -> void:
 	t.expect(takeover.ai_cancelled >= 1, "takeover records cancellation")
 	service3.stop()
 
+	var other_seat := _round()
+	var service4 = SERVICE.new()
+	other_seat.ai_service = service4
+	other_seat.ai_delay_seconds = 0.0
+	other_seat._ask_turn_actor()
+	other_seat.restore_human_control(1)
+	t.expect(not other_seat._ai_pending.is_empty() and int(other_seat._ai_pending.seat) == 0,
+		"restoring another seat keeps the thinking AI task")
+	for _index in 600:
+		await process_frame
+		other_seat.poll_ai()
+		if other_seat.players[0].discards.has("tiao9"): break
+	t.expect(other_seat.players[0].discards.has("tiao9"), "other-seat reconnect does not strand the AI turn")
+	service4.stop()
+
 	var timeout_round := _round()
 	timeout_round.ai_service = NeverService.new()
 	timeout_round.ai_delay_seconds = 0.0

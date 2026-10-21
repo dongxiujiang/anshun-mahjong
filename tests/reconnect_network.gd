@@ -76,7 +76,9 @@ func _host_test() -> void:
 		quit(t.finish("reconnect_network_host"))
 		return
 	t.expect(net.game.submit_turn(0, {"discard": safe_tile}), "Host advances to disconnected guest")
-	t.expect(net.game.current_turn == seat and not net.game.awaiting, "Substitute turn is waiting on delay")
+	t.expect(net.game.current_turn == seat and net.game.awaiting, "Reserved seat waits for its human reconnect")
+	t.expect(net._ctrl_hint.get(seat) == "wait" and net.game._ai_pending.is_empty(),
+		"No AI task is installed before the reconnect grace expires")
 	if not await _wait_until(func(): return net.ack_text.begins_with("{"), "Guest reclaims pending AI turn"): return
 	received = JSON.parse_string(net.ack_text)
 	var prompt: int = net.game.prompt_id

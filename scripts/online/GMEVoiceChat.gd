@@ -26,6 +26,7 @@ var _speaker_enabled := {0: true, 1: true, 2: true, 3: true}
 var _open_id := ""
 var _room_number := ""
 var _room_key := ""
+var _member_token := ""
 var _context = null
 var _audio = null
 var _activity = null
@@ -74,9 +75,10 @@ func can_toggle() -> bool:
 		return _fallback.can_toggle()
 	return audio_available and owner_node != null and owner_node.has_method("voice_chat_allowed") and owner_node.voice_chat_allowed()
 
-func connect_room(room_number: String, seat: int, _player_name: String) -> void:
+func connect_room(room_number: String, seat: int, _player_name: String, member_token: String = "") -> void:
 	if not _use_gme or seat < 0 or room_number.length() < 4:
 		return
+	_member_token = member_token
 	var key := "%s/%d" % [room_number, seat]
 	if key == _room_key and (_context != null or _auth_http != null):
 		return
@@ -98,7 +100,8 @@ func _request_auth(room_number: String) -> void:
 	_auth_http.request_completed.connect(_on_auth_completed.bind(room_number))
 	var base := str(ProjectSettings.get_setting("network/gme_auth_url", AUTH_URL_DEFAULT))
 	var query := "?room=%s&openid=%s" % [room_number.uri_encode(), _open_id.uri_encode()]
-	var error := _auth_http.request(base + query)
+	var headers := PackedStringArray(["X-Room-Token: " + _member_token])
+	var error := _auth_http.request(base + query, headers, HTTPClient.METHOD_GET)
 	if error != OK:
 		_fail("GME 鉴权请求失败")
 
@@ -301,6 +304,10 @@ func set_speaker_enabled(seat: int, value: bool) -> void:
 	if seat < 0 or seat > 3:
 		return
 	_speaker_enabled[seat] = value
+	# Windows/Linux use the PCM fallback; its mute state must follow the UI even
+	# when no Android GME audio object exists.
+	if _fallback != null:
+		_fallback.set_speaker_enabled(seat, value)
 	if _audio != null:
 		var open_id := _make_open_id(_room_number, seat)
 		if value:
@@ -308,7 +315,8 @@ func set_speaker_enabled(seat: int, value: bool) -> void:
 			_audio.call("SetSpeakerVolumeByOpenID", open_id, roundi(_remote_volume * 100.0))
 		else:
 			_audio.call("AddAudioBlackList", open_id)
-	speaker_changed.emit(seat, value)
+	if _fallback == null:
+		speaker_changed.emit(seat, value)
 
 func speaker_enabled(seat: int) -> bool:
 	return bool(_speaker_enabled.get(seat, true))

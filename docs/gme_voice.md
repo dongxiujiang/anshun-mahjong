@@ -19,13 +19,14 @@ GME_APP_KEY=<腾讯云 GME 控制台的鉴权密钥>
 服务器需要提供：
 
 ```http
-GET /gme-auth?room=123456&openid=seat1
+GET /gme-auth?room=123456&openid=1234561
+X-Room-Token: <该座位当前 resume_token>
 ```
 
-成功返回短时 AuthBuffer：
+`openid` 必须是 `房间号+座位号`；`X-Room-Token` 必须是该座位当前房间成员凭证，否则返回 403。成功返回短时 AuthBuffer：
 
 ```json
-{"app_id":"1400802279","room":"123456","openid":"seat1","auth":"base64..."}
+{"app_id":"1400802279","room":"123456","openid":"1234561","auth":"base64..."}
 ```
 
 ## 3. Android SDK 文件

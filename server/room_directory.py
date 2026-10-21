@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse
 import base64
+import hmac
 import json
 import os
 from pathlib import Path
@@ -33,6 +34,8 @@ class RoomDirectory:
         self.runtime.mkdir(parents=True, exist_ok=True)
         self.rooms = {}
         self.lock = threading.RLock()
+        self.create_attempts = {}
+        self.max_creates_per_minute = int(os.environ.get("MAX_CREATES_PER_MINUTE", "3"))
 
     def _cleanup(self):
         for number, room in list(self.rooms.items()):
@@ -62,7 +65,51 @@ class RoomDirectory:
             room = self.rooms.get(number)
             return room is not None and self._view(room) is not None
 
-    def create(self, number, name):
+    def allow_create(self, client_id):
+        """Bound each source's room churn without changing the global limit."""
+        now = time.monotonic()
+        with self.lock:
+            attempts = [stamp for stamp in self.create_attempts.get(client_id, [])
+                        if now - stamp < 60.0]
+            if len(attempts) >= max(1, self.max_creates_per_minute):
+                self.create_attempts[client_id] = attempts
+                return False
+            attempts.append(now)
+            self.create_attempts[client_id] = attempts
+            return True
+
+    def authenticate_member(self, number, open_id, token):
+        """Only a current room member's resume token may request GME auth."""
+        if not isinstance(token, str) or token == "" or not OPEN_ID.fullmatch(open_id):
+            return False
+        if not isinstance(number, str) or not NUMBER.fullmatch(number):
+            return False
+        if not open_id.startswith(number):
+            return False
+        seat_text = open_id[len(number):]
+        if seat_text not in ["0", "1", "2", "3"]:
+            return False
+        with self.lock:
+            self._cleanup()
+            room = self.rooms.get(number)
+            if room is None:
+                return False
+            try:
+                state = json.loads(room["status"].read_text(encoding="utf-8-sig"))
+                if time.time() - float(state["updated"]) > 15:
+                    return False
+                members = state.get("members", {})
+                expected = members.get(seat_text, "")
+                if isinstance(expected, str) and expected != "" and hmac.compare_digest(expected, token):
+                    return True
+                # A locally hosted room has no member record for its own seat 0.
+                host_token = state.get("host_token", "")
+                return seat_text == "0" and isinstance(host_token, str) and host_token != "" \
+                    and hmac.compare_digest(host_token, token)
+            except (OSError, ValueError, KeyError, TypeError):
+                return False
+
+    def create(self, number, name, client_id=""):
         if not isinstance(number, str) or not NUMBER.fullmatch(number):
             raise ValueError("房间号必须是 4～8 位数字")
         if not isinstance(name, str): raise ValueError("房间名称无效")
@@ -70,6 +117,8 @@ class RoomDirectory:
             self._cleanup()
             if number in self.rooms: raise FileExistsError("这个房间号已在使用")
             if len(self.rooms) >= self.max_rooms: raise OverflowError("服务器房间已满，请稍后重试")
+            if client_id and not self.allow_create(client_id):
+                raise PermissionError("创建房间过于频繁，请稍后重试")
             used = {room["port"] for room in self.rooms.values()}
             port = next(p for p in range(self.first_port, self.first_port + self.max_rooms) if p not in used)
             token = secrets.token_urlsafe(24)
@@ -139,12 +188,15 @@ class Handler(BaseHTTPRequestHandler):
             query = parse_qs(urlsplit(self.path).query)
             room = str(query.get("room", [""])[0]).strip()
             open_id = str(query.get("openid", [""])[0]).strip()
+            token = str(self.headers.get("X-Room-Token", "")).strip()
             if not NUMBER.fullmatch(room):
                 return self._reply(400, {"error": "房间号必须是 4～8 位数字"})
             if not OPEN_ID.fullmatch(open_id):
                 return self._reply(400, {"error": "语音身份无效"})
             if not self.server.directory.has_room(room):
                 return self._reply(404, {"error": "房间不存在或已关闭"})
+            if not self.server.directory.authenticate_member(room, open_id, token):
+                return self._reply(403, {"error": "语音身份不属于当前房间成员"})
             try:
                 auth = make_auth_buffer(int(GME_APP_ID), room, open_id, GME_APP_KEY)
             except (ValueError, TypeError) as error:
@@ -160,13 +212,16 @@ class Handler(BaseHTTPRequestHandler):
         if urlsplit(self.path).path != "/rooms":
             return self._reply(404, {"error": "接口不存在"})
         self.connection.settimeout(10)
+        client_id = (self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                     or self.client_address[0])
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > 4096: raise ValueError("请求大小无效")
             data = json.loads(self.rfile.read(length))
             if not isinstance(data, dict): raise ValueError("请求格式无效")
-            room = self.server.directory.create(data.get("number"), data.get("name", "在线麻将"))
+            room = self.server.directory.create(data.get("number"), data.get("name", "在线麻将"), client_id)
             self._reply(201, {"room": room})
+        except PermissionError as error: self._reply(429, {"error": str(error)})
         except FileExistsError as error: self._reply(409, {"error": str(error)})
         except OverflowError as error: self._reply(503, {"error": str(error)})
         except (ValueError, TypeError) as error: self._reply(400, {"error": str(error)})
