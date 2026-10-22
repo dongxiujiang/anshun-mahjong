@@ -20,7 +20,7 @@ func _run() -> void:
 		t.expect(client.phase == phase, "接收历史字符串后恢复阶段枚举")
 		t.expect(client.serialize() == wire, "接收方没有完整牌墙也能重新生成相同快照")
 	host.phase = RoundState.Phase.PLAYING
-	var stage_names := ["", "win", "meld", "rob"]
+	var stage_names := ["", "win", "kong", "meld", "rob"]
 	for stage in stage_names.size():
 		host._awaiting_response = {"seat": 1, "disc_seat": 0, "tile": "wan3", "stage": stage, "options": {"can_win": true}}
 		var wire := host.serialize()

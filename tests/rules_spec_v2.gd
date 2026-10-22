@@ -246,16 +246,27 @@ func _test_actions() -> void:
 	eq([88], "本人摸牌解除过胡", r.players[2].passed_win_until_draw, false, "scripts/core/RoundState.gd:273")
 	var pong := fixture()
 	pong.players[0].concealed = ["wan5"]
-	pong.players[2].concealed = ["wan5","wan5","wan5","tong2"]
+	pong.players[2].concealed = ["wan5","wan5","tong2"]
 	begin("pong", pong, "0打wan5 → 2碰 → 2尝试打wan5")
 	pong.submit_turn(0,{"discard":"wan5"})
 	eq([95], "至少两张可碰", pong.legal_response_options(2,0,"wan5",RoundState.ResponseStage.MELD).can_pong, true, "scripts/core/LegalActions.gd:94")
 	pong.submit_response(2,"wan5",{"action":"pong"})
-	eq([96], "移除手中两张", pong.players[2].concealed.count("wan5"), 1, "scripts/core/RoundState.gd:656")
+	eq([96], "移除手中两张", pong.players[2].concealed.count("wan5"), 0, "scripts/core/RoundState.gd:656")
 	eq([96], "组成一组碰", pong.players[2].melds.size(), 1, "scripts/core/RoundState.gd:657")
 	eq([97], "碰家继续出牌", pong.current_turn, 2, "scripts/core/RoundState.gd:661")
 	eq([98], "碰后禁打同值", pong.submit_turn(2,{"discard":"wan5"}), false, "scripts/core/LegalActions.gd:13")
 	eq([101], "弃牌记录移除", pong.players[0].discards.has("wan5"), false, "scripts/core/RoundState.gd:828")
+	var priority := fixture()
+	priority.players[0].concealed = ["wan5"]
+	priority.players[1].concealed = ["wan5","wan5","tong2"]
+	priority.players[2].concealed = ["wan5","wan5","wan5","tong2"]
+	begin("meld_priority", priority, "0打wan5；1只能碰、2可以杠 → 先杠后碰")
+	priority.submit_turn(0,{"discard":"wan5"})
+	eq([96], "杠优先于碰", priority._response_stage, RoundState.ResponseStage.KONG, "scripts/core/RoundState.gd:710")
+	eq([96], "先询问杠家", priority._awaiting_response.get("seat",-1), 2, "scripts/core/RoundState.gd:727")
+	eq([96], "杠阶段拒绝碰", priority.submit_response(1,"wan5",{"action":"pong"}), false, "scripts/core/LegalActions.gd:104")
+	eq([96], "杠家完成明杠", priority.submit_response(2,"wan5",{"action":"kong"}), true, "scripts/core/RoundState.gd:816")
+	eq([96], "杠后形成杠组", priority.players[2].melds[0].kind, "kong", "scripts/core/RoundState.gd:820")
 	var lock := fixture()
 	lock.players[0].concealed = ["wan5"]
 	lock.players[2].concealed = ["wan5","wan5","tong2"]

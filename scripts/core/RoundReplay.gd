@@ -12,7 +12,11 @@ func begin(round) -> void:
 	if playback: return
 	record = {"schema": 1, "version": str(ProjectSettings.get_setting("application/config/version", "")),
 		"id": round.audio_session, "started_at": Time.get_datetime_string_from_system(true),
-		"initial": round.serialize(), "wall": _wall_state(round.wall), "actions": [], "requests": [], "final": {}}
+		"initial": round.serialize(), "wall": _wall_state(round.wall),
+		# The next-dealer tie and any later random choice must continue from the
+		# exact RNG position of the original round.
+		"rng_state": str(round._rng.state),
+		"actions": [], "requests": [], "final": {}}
 	# 报听标志不在网络协议内，需要单独保存供离线重放。
 	record.announced_ready = round.players.map(func(player): return player.announced_ready)
 	last_path = ""
@@ -121,6 +125,8 @@ static func replay(data: Dictionary) -> Dictionary:
 	round.wall._head = int(wall_data.head)
 	round.wall._tail = int(wall_data.tail)
 	round.wall.remaining = int(wall_data.remaining)
+	if data.has("rng_state"):
+		round._rng.state = int(str(data.get("rng_state", "0")))
 	for seat in 4: round.players[seat].announced_ready = bool(data.get("announced_ready", [false, false, false, false])[seat])
 	round._begin_turn()
 	for index in data.actions.size():

@@ -240,7 +240,7 @@ func test_no_draw_discard_and_settlement() -> void:
 		t.expect(table.hand_box[seat].get_children().all(func(tile): return tile.face_up), "settlement reveals all hands including the held discarder seat%d" % seat)
 
 func test_live_claim() -> void:
-	fixture(["tiao1","tiao1","tiao1"]+BASE.slice(3))
+	fixture(["tiao1","tiao1"]+BASE.slice(2))
 	table.round.players[1].concealed = ["tiao1"] + BASE.slice(1) + ["tong7"]
 	table.round.players[1].just_drew = "tong7"
 	table.round.current_turn = 1

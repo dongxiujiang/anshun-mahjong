@@ -30,10 +30,11 @@ static func _phase_from_name(name: String) -> int:
 	return Phase.IDLE
 
 ## Player response stage state (win/meld/rob); string form preserved at the network boundary.
-enum ResponseStage { NONE, WIN, MELD, ROB }
+enum ResponseStage { NONE, WIN, KONG, MELD, ROB }
 const RESPONSE_STAGE_NAMES := {
 	ResponseStage.NONE: "",
 	ResponseStage.WIN: "win",
+	ResponseStage.KONG: "kong",
 	ResponseStage.MELD: "meld",
 	ResponseStage.ROB: "rob",
 }
@@ -707,6 +708,19 @@ func _ask_next_responder(source: int, tile: String) -> void:
 				_response_stage = ResponseStage.NONE
 				_finish_discard_wins(source, tile)
 				return
+			# 胡优先于杠/碰：先单独开放一轮杠响应，杠家全部过牌后
+			# 才进入碰牌阶段，避免先轮到的碰家抢走后面玩家的杠。
+			var kong_available := false
+			for candidate in _seat_order(source):
+				if legal_response_options(candidate, source, tile, ResponseStage.KONG).can_kong:
+					kong_available = true
+					break
+			_response_stage = ResponseStage.KONG if kong_available else ResponseStage.MELD
+			_pending_responders = _seat_order(source)
+			_ask_next_responder(source, tile)
+		elif _response_stage == ResponseStage.KONG:
+			# 所有杠响应结束；重新开放碰/杠窗口，让刚才选择过牌的
+			# 玩家仍可按普通规则碰牌。
 			_response_stage = ResponseStage.MELD
 			_pending_responders = _seat_order(source)
 			_ask_next_responder(source, tile)

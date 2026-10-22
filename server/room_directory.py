@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse
 import base64
+import hashlib
 import hmac
 import ipaddress
 import json
@@ -62,6 +63,28 @@ def client_identity(peer, forwarded, trusted=None):
         if not is_trusted(value):
             return value
     return peer
+
+def token_digest(token):
+    return "sha256:" + hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+def authenticate_stored_token(stored, token):
+    if not isinstance(stored, str) or not stored or not isinstance(token, str) or not token:
+        return False
+    if stored.startswith("sha256:"):
+        return hmac.compare_digest(stored, token_digest(token))
+    # Backward compatibility with status files from older room processes.
+    return hmac.compare_digest(stored, token)
+
+def rate_limit_key(client_id):
+    """Aggregate IPv6 clients by /64 so address rotation cannot bypass quotas."""
+    try:
+        address = ipaddress.ip_address(str(client_id))
+    except ValueError:
+        return str(client_id)
+    if address.version == 6:
+        return str(ipaddress.ip_network(f"{address}/64", strict=False))
+    return str(address)
+
 GME_APP_ID = os.environ.get("GME_APP_ID", "1400802279")
 GME_APP_KEY = os.environ.get("GME_APP_KEY", "")
 
@@ -75,13 +98,44 @@ class RoomDirectory:
         self.lock = threading.RLock()
         self.create_attempts = {}
         self.max_creates_per_minute = int(os.environ.get("MAX_CREATES_PER_MINUTE", "3"))
+        self.max_log_bytes = 5 * 1024 * 1024
+        self._maintenance_stop = threading.Event()
+        self._maintenance_thread = None
+
+    def start_maintenance(self, interval=10.0):
+        """Reap dead rooms even when no HTTP request happens to call _cleanup."""
+        if self._maintenance_thread is not None:
+            return
+        def loop():
+            while not self._maintenance_stop.wait(interval):
+                try:
+                    with self.lock:
+                        self._cleanup()
+                except Exception:
+                    # Maintenance must never take down the directory process.
+                    pass
+        self._maintenance_thread = threading.Thread(target=loop, name="room-maintenance", daemon=True)
+        self._maintenance_thread.start()
+
+    def _open_room_log(self, number):
+        path = self.runtime / f"{number}.log"
+        try:
+            if path.exists() and path.stat().st_size >= self.max_log_bytes:
+                rotated = self.runtime / f"{number}.log.1"
+                rotated.unlink(missing_ok=True)
+                path.replace(rotated)
+        except OSError:
+            pass
+        return path.open("ab")
 
     def _cleanup(self):
         for number, room in list(self.rooms.items()):
-            if room["process"].poll() is not None:
-                room["log"].close()
+            process = room.get("process")
+            if process is not None and process.poll() is not None:
+                if room.get("log") is not None:
+                    room["log"].close()
                 room["status"].unlink(missing_ok=True)
-                del self.rooms[number]
+                self.rooms.pop(number, None)
 
     def _view(self, room):
         try:
@@ -107,14 +161,15 @@ class RoomDirectory:
     def allow_create(self, client_id):
         """Bound each source's room churn without changing the global limit."""
         now = time.monotonic()
+        key = rate_limit_key(client_id)
         with self.lock:
-            attempts = [stamp for stamp in self.create_attempts.get(client_id, [])
+            attempts = [stamp for stamp in self.create_attempts.get(key, [])
                         if now - stamp < 60.0]
             if len(attempts) >= max(1, self.max_creates_per_minute):
-                self.create_attempts[client_id] = attempts
+                self.create_attempts[key] = attempts
                 return False
             attempts.append(now)
-            self.create_attempts[client_id] = attempts
+            self.create_attempts[key] = attempts
             return True
 
     def authenticate_member(self, number, open_id, token):
@@ -139,12 +194,11 @@ class RoomDirectory:
                     return False
                 members = state.get("members", {})
                 expected = members.get(seat_text, "")
-                if isinstance(expected, str) and expected != "" and hmac.compare_digest(expected, token):
+                if authenticate_stored_token(expected, token):
                     return True
                 # A locally hosted room has no member record for its own seat 0.
                 host_token = state.get("host_token", "")
-                return seat_text == "0" and isinstance(host_token, str) and host_token != "" \
-                    and hmac.compare_digest(host_token, token)
+                return seat_text == "0" and authenticate_stored_token(host_token, token)
             except (OSError, ValueError, KeyError, TypeError):
                 return False
 
@@ -152,6 +206,9 @@ class RoomDirectory:
         if not isinstance(number, str) or not NUMBER.fullmatch(number):
             raise ValueError("房间号必须是 4～8 位数字")
         if not isinstance(name, str): raise ValueError("房间名称无效")
+        # Reserve the number and port under the lock, but never hold the global
+        # directory lock while starting/waiting for a Godot process. A slow or
+        # failed room must not block listing, GME auth, or other room creates.
         with self.lock:
             self._cleanup()
             if number in self.rooms: raise FileExistsError("这个房间号已在使用")
@@ -159,22 +216,28 @@ class RoomDirectory:
             if client_id and not self.allow_create(client_id):
                 raise PermissionError("创建房间过于频繁，请稍后重试")
             used = {room["port"] for room in self.rooms.values()}
-            port = next(p for p in range(self.first_port, self.first_port + self.max_rooms) if p not in used)
+            try:
+                port = next(p for p in range(self.first_port, self.first_port + self.max_rooms) if p not in used)
+            except StopIteration:
+                raise OverflowError("服务器房间端口已满，请稍后重试") from None
             token = secrets.token_urlsafe(24)
             status = self.runtime / f"{number}-{secrets.token_hex(6)}.json"
-            log = (self.runtime / f"{number}.log").open("ab")
+            # process/log are filled after the process starts. The reservation
+            # must be visible so another request cannot take the same number or
+            # port, while _cleanup/_view skip entries that are not ready yet.
+            room = {"port": port, "status": status, "process": None, "log": None}
+            self.rooms[number] = room
+        log = None
+        try:
+            log = self._open_room_log(number)
             args = [self.godot, "--headless", "--path", str(self.project),
                     "--script", "res://server/RoomServer.gd", "--",
                     f"--room-number={number}", f"--room-name={name.strip()[:24] or '在线麻将'}",
                     f"--room-port={port}", f"--status-file={status}", f"--owner-token={token}"]
-            try:
-                process = subprocess.Popen(args, stdout=log, stderr=log,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-            except OSError:
-                log.close()
-                raise RuntimeError("无法启动游戏服务器，请检查 Godot 路径") from None
-            room = {"port": port, "status": status, "process": process, "log": log}
-            self.rooms[number] = room
+            process = subprocess.Popen(args, stdout=log, stderr=log,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            room["process"] = process
+            room["log"] = log
             deadline = time.monotonic() + 12
             while time.monotonic() < deadline and process.poll() is None:
                 view = self._view(room)
@@ -182,20 +245,42 @@ class RoomDirectory:
                     return {**view, "owner_token": token}
                 time.sleep(0.1)
             if process.poll() is None: process.terminate()
-            process.wait(timeout=5)
-            self._cleanup()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
             raise RuntimeError("房间启动失败，请检查服务器日志")
+        except OSError as exc:
+            raise RuntimeError("无法启动游戏服务器，请检查 Godot 路径") from exc
+        finally:
+            # A successful room stays in self.rooms. On every failure remove the
+            # reservation so the port/number can be reused immediately.
+            if room.get("process") is None or room["process"].poll() is not None:
+                with self.lock:
+                    if self.rooms.get(number) is room:
+                        self.rooms.pop(number, None)
+                if log is not None:
+                    log.close()
 
     def close(self):
+        self._maintenance_stop.set()
+        if self._maintenance_thread is not None:
+            self._maintenance_thread.join(timeout=2)
+            self._maintenance_thread = None
         with self.lock:
             for room in self.rooms.values():
-                if room["process"].poll() is None: room["process"].terminate()
+                process = room.get("process")
+                if process is not None and process.poll() is None: process.terminate()
             for room in self.rooms.values():
-                try: room["process"].wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    room["process"].kill()
-                    room["process"].wait()
-                room["log"].close()
+                process = room.get("process")
+                if process is not None:
+                    try: process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                if room.get("log") is not None:
+                    room["log"].close()
                 room["status"].unlink(missing_ok=True)
             self.rooms.clear()
 
@@ -281,6 +366,7 @@ def main():
     if not 1 <= args.max_rooms <= 128 or not 1 <= args.first_port <= 65536 - args.max_rooms:
         parser.error("Invalid game port range or room limit")
     directory = RoomDirectory(args.godot, args.project, args.public_host, args.first_port, args.max_rooms)
+    directory.start_maintenance()
     server = ThreadingHTTPServer((args.bind, args.http_port), Handler)
     server.daemon_threads = True
     server.directory = directory

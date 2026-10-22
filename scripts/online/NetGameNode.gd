@@ -22,6 +22,10 @@ const START_DELAY := 3.0
 const NEXT_ROUND_DELAY := 1.0
 # Keep restart recovery separate from how long other players wait to start a round.
 const RESUME_GRACE_MS := 30000
+const HEARTBEAT_INTERVAL_MS := 5000
+const HEARTBEAT_TIMEOUT_MS := 15000
+# 3: server-issued resume token + compressed state frames.
+const PROTOCOL_VERSION := 3
 const READY_GRACE_MS := 30000
 const BACKGROUND_AI_DELAY_MS := 30000
 const BACKGROUND_VOTE_DELAY_MS := 5000
@@ -75,6 +79,13 @@ var voice_chat = null
 var _ai_service = null
 var _voice_last_ms := {}
 var _sent_audio := {}
+var _heartbeat_seq := 0
+var _last_ping_ms := 0
+var _last_pong_ms := 0
+var _peer_protocol := {}
+var _last_sent_state := {}
+var _client_sync_cache := {}
+var _last_resync_request := {}
 var state_metrics := {"sent": 0, "coalesced": 0, "bytes": 0, "full_bytes": 0}
 var measure_state_traffic := false
 var ack_flag := false
@@ -149,6 +160,10 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		rpc_id(1, "lobby_action", "background", {"value": true})
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		# A long Android/desktop pause stops _process; do not count the paused
+		# interval as heartbeat loss. The next ping verifies the server again.
+		_last_pong_ms = Time.get_ticks_msec()
+		_last_ping_ms = 0
 		rpc_id(1, "lobby_action", "background", {"value": false})
 		if _reconnecting:
 			_reconnect_wait = 0.0
@@ -192,6 +207,8 @@ func _process(delta: float) -> void:
 		if _reconnecting:
 			_reconnect_wait -= delta
 			if _reconnect_wait <= 0.0: _reconnect_step()
+		else:
+			_poll_heartbeat()
 		return
 	for seat in _orphaned.keys():
 		if Time.get_ticks_msec() >= int(_orphaned[seat].get("until", 0)):
@@ -245,7 +262,7 @@ func _on_peer_connected(peer: int) -> void:
 	_pending_peers[peer] = Time.get_ticks_msec()
 
 @rpc("any_peer", "call_remote", "reliable")
-func request_join(number: String, player_name: String, token: String = "", resume_token: String = "", resume_only: bool = false) -> void:
+func request_join(number: String, player_name: String, token: String = "", resume_token: String = "", resume_only: bool = false, client_protocol: int = 0) -> void:
 	if not host_mode: return
 	var peer := multiplayer.get_remote_sender_id()
 	if not _pending_peers.has(peer): return
@@ -274,6 +291,8 @@ func request_join(number: String, player_name: String, token: String = "", resum
 			_peer_seat.erase(previous)
 			_members.erase(previous)
 			_sent_audio.erase(previous)
+			_peer_protocol.erase(previous)
+			_last_sent_state.erase(previous)
 			if _owner_peer == previous: _owner_peer = peer
 			multiplayer.multiplayer_peer.disconnect_peer(previous)
 			resumed = true
@@ -299,12 +318,22 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	_orphaned.erase(seat)
 	_background_until.erase(seat)
 	_background_vote_pending.erase(seat)
+	_peer_protocol[peer] = client_protocol
+	_last_sent_state.erase(peer)
 	_seat_peer[seat] = peer
 	_peer_seat[peer] = seat
 	_ctrl_hint[seat] = "remote"
 	var member_name := player_name.strip_edges().left(16) if player_name.strip_edges() != "" else "玩家"
-	_members[peer] = saved if resumed else {"name": member_name, "ready": false, "wants_dealer": false, "resume_token": resume_token.left(128)}
-	_members[peer]["resume_token"] = resume_token.left(128)
+	# Modern clients get an authority-issued token. Old clients keep the token
+	# they generated, so a rolling server update does not break existing users.
+	var modern := client_protocol >= PROTOCOL_VERSION
+	var assigned_token := str(saved.get("resume_token", "")) if resumed else ""
+	if assigned_token == "":
+		assigned_token = resume_token.left(128) if not modern else ""
+	if assigned_token == "":
+		assigned_token = Crypto.new().generate_random_bytes(32).hex_encode()
+	_members[peer] = saved if resumed else {"name": member_name, "ready": false, "wants_dealer": false}
+	_members[peer]["resume_token"] = assigned_token
 	if was_owner:
 		# A reconnecting owner gets a new ENet peer id; bind ownership to it.
 		_owner_peer = peer
@@ -317,7 +346,10 @@ func request_join(number: String, player_name: String, token: String = "", resum
 		if resumed and int(saved.get("round_number", round_number)) != round_number: _members[peer].ready = false
 		_apply_member_names()
 		game.restore_human_control(seat)
-	rpc_id(peer, "seat_assign", seat)
+	if modern:
+		rpc_id(peer, "seat_assign", seat, assigned_token)
+	else:
+		rpc_id(peer, "seat_assign", seat)
 	_check_start()
 	_publish_lobby()
 	if _return_vote_active: _publish_return_vote()
@@ -354,6 +386,8 @@ func _on_peer_disconnected(peer: int) -> void:
 	# Common departure cleanup for both reconnectable and explicit leave.
 	_peer_seat.erase(peer)
 	_sent_audio.erase(peer)
+	_peer_protocol.erase(peer)
+	_last_sent_state.erase(peer)
 	_members.erase(peer)
 	_seat_peer[seat] = -1
 	_background_until.erase(seat)
@@ -655,9 +689,99 @@ func _flush_host_state() -> void:
 			var last_id := int(sent.get("id", 0)) if sent.get("session", "") == game.audio_session else 0
 			state.audio_events = state.audio_events.filter(func(event): return int(event.id) > last_id)
 			_sent_audio[peer] = {"session": game.audio_session, "id": game.audio_event_id}
-			state_metrics.sent += 1
-			if measure_state_traffic: state_metrics.bytes += var_to_bytes(state).size()
-			rpc_id(peer, "sync", state)
+			_send_state_frame(peer, state)
+			_last_sent_state[peer] = state.duplicate(true)
+
+func _send_state_frame(peer: int, state: Dictionary) -> void:
+	var raw := var_to_bytes(state)
+	var packed := raw.compress(FileAccess.COMPRESSION_DEFLATE)
+	state_metrics.sent += 1
+	var modern := int(_peer_protocol.get(peer, 0)) >= PROTOCOL_VERSION
+	if modern:
+		var previous: Dictionary = _last_sent_state.get(peer, {})
+		if not previous.is_empty() and int(previous.get("revision", -1)) < int(state.revision):
+			var ops: Array = []
+			_build_state_delta(previous, state, [], ops)
+			if not ops.is_empty():
+				var delta := {"base": int(previous.revision), "revision": int(state.revision),
+					"round_number": round_number, "ops": ops}
+				var delta_raw := var_to_bytes(delta)
+				var delta_packed := delta_raw.compress(FileAccess.COMPRESSION_DEFLATE)
+				if mini(delta_raw.size(), delta_packed.size()) < mini(raw.size(), packed.size()):
+					if measure_state_traffic: state_metrics.bytes += mini(delta_raw.size(), delta_packed.size())
+					if delta_packed.size() < delta_raw.size():
+						rpc_id(peer, "sync_delta_packed", delta_packed)
+					else:
+						rpc_id(peer, "sync_delta", delta)
+					return
+	if measure_state_traffic: state_metrics.bytes += mini(raw.size(), packed.size())
+	if modern and packed.size() < raw.size():
+		rpc_id(peer, "sync_packed", packed)
+	else:
+		rpc_id(peer, "sync", state)
+
+func _build_state_delta(old_value: Variant, new_value: Variant, path: Array, ops: Array) -> void:
+	if typeof(old_value) != typeof(new_value):
+		ops.append(["s", path, new_value])
+		return
+	if old_value is Dictionary:
+		for key in old_value.keys():
+			if not new_value.has(key): ops.append(["r", path + [key]])
+		for key in new_value.keys():
+			if not old_value.has(key): ops.append(["s", path + [key], new_value[key]])
+			elif old_value[key] != new_value[key]: _build_state_delta(old_value[key], new_value[key], path + [key], ops)
+		return
+	if old_value is Array:
+		if old_value.size() != new_value.size():
+			var prefix := true
+			for index in mini(old_value.size(), new_value.size()):
+				if old_value[index] != new_value[index]: prefix = false
+			if prefix and new_value.size() > old_value.size():
+				for index in range(old_value.size(), new_value.size()):
+					ops.append(["a", path, new_value[index]])
+			else:
+				ops.append(["s", path, new_value])
+			return
+		for index in old_value.size():
+			if old_value[index] != new_value[index]:
+				_build_state_delta(old_value[index], new_value[index], path + [index], ops)
+		return
+	if old_value != new_value:
+		ops.append(["s", path, new_value])
+
+func _apply_state_delta(state: Dictionary, ops: Array) -> bool:
+	for op in ops:
+		if not op is Array or op.size() < 2 or not op[1] is Array: return false
+		var path: Array = op[1]
+		var kind := str(op[0])
+		var parent: Variant = state
+		var descend := path.size() if kind == "a" else maxi(0, path.size() - 1)
+		for index in range(descend):
+			var key: Variant = path[index]
+			if parent is Dictionary:
+				if not parent.has(key): return false
+				parent = parent[key]
+			elif parent is Array:
+				if int(key) < 0 or int(key) >= parent.size(): return false
+				parent = parent[int(key)]
+			else:
+				return false
+		if kind == "a":
+			if not parent is Array or op.size() < 3: return false
+			parent.append(op[2])
+		elif kind == "r":
+			if path.is_empty(): return false
+			if parent is Dictionary: parent.erase(path[-1])
+			elif parent is Array: parent.remove_at(int(path[-1]))
+			else: return false
+		elif kind == "s":
+			if path.is_empty() or op.size() < 3: return false
+			if parent is Dictionary: parent[path[-1]] = op[2]
+			elif parent is Array and int(path[-1]) < parent.size(): parent[int(path[-1])] = op[2]
+			else: return false
+		else:
+			return false
+	return true
 
 func is_room_owner() -> bool:
 	return int(lobby.get("owner", -1)) == _local_peer()
@@ -846,7 +970,8 @@ func client(ip: String, port: int = 0, number: String = "", player_name: String 
 	_server_ip = ip
 	_server_port = port if port > 0 else 7500
 	if resume_token != "": _resume_token = resume_token
-	if _resume_token == "": _resume_token = Crypto.new().generate_random_bytes(32).hex_encode()
+	# A fresh client starts without a token. The authority issues one in
+	# seat_assign after it has actually reserved a seat.
 	_resume_requested = resume_only
 	_resume_sync_pending = resume_only
 	host_mode = false
@@ -871,7 +996,9 @@ func _open_client_peer() -> bool:
 	return true
 
 func _on_client_connected() -> void:
-	rpc_id(1, "request_join", _join_number, _join_name, _join_token, _resume_token, _resume_requested)
+	_last_ping_ms = 0
+	_last_pong_ms = Time.get_ticks_msec()
+	rpc_id(1, "request_join", _join_number, _join_name, _join_token, _resume_token, _resume_requested, PROTOCOL_VERSION)
 
 func _on_client_failed() -> void:
 	_begin_reconnect("连接失败")
@@ -887,11 +1014,27 @@ func _begin_reconnect(_reason: String) -> void:
 	_reconnecting = true
 	_resume_requested = true
 	_client_joined = false
+	_client_sync_cache.clear()
 	_pending_snapshot.clear()
 	_resume_sync_pending = game != null and game.phase != RoundState.Phase.IDLE
 	_reconnect_attempt = 0
 	_reconnect_wait = 0.2
 	reconnecting.emit(0, 5)
+
+func _poll_heartbeat() -> void:
+	if not _client_joined or multiplayer.multiplayer_peer == null:
+		return
+	var now := Time.get_ticks_msec()
+	if _last_pong_ms == 0:
+		_last_pong_ms = now
+		return
+	if now - _last_pong_ms > HEARTBEAT_TIMEOUT_MS:
+		_begin_reconnect("连接心跳超时")
+		return
+	if now - _last_ping_ms >= HEARTBEAT_INTERVAL_MS:
+		_last_ping_ms = now
+		_heartbeat_seq += 1
+		heartbeat_ping.rpc_id(1, _heartbeat_seq)
 
 func _reconnect_step() -> void:
 	if host_mode or not _reconnecting: return
@@ -949,6 +1092,19 @@ func _relay_voice(packet: PackedByteArray, except_peer: int) -> void:
 		voice_packet.rpc_id(int(peer), packet)
 
 @rpc("any_peer", "call_remote", "unreliable")
+func heartbeat_ping(seq: int) -> void:
+	if not host_mode:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if _peer_seat.has(sender):
+		heartbeat_pong.rpc_id(sender, seq)
+
+@rpc("authority", "call_remote", "unreliable")
+func heartbeat_pong(_seq: int) -> void:
+	if not host_mode:
+		_last_pong_ms = Time.get_ticks_msec()
+
+@rpc("any_peer", "call_remote", "unreliable")
 func voice_packet(packet: PackedByteArray) -> void:
 	if voice_chat != null and not voice_chat.uses_network_pcm():
 		return
@@ -985,6 +1141,7 @@ func _on_client_sync(state: Dictionary) -> void:
 	_received_revision = revision
 	var first := game.phase == RoundState.Phase.IDLE
 	round_number = int(state.get("round_number", 1))
+	_client_sync_cache = state.duplicate(true)
 	game.apply_sync(state)
 	_resume_sync_pending = false
 	_sync_voice_room()
@@ -993,8 +1150,13 @@ func _on_client_sync(state: Dictionary) -> void:
 	if game.awaiting and (game.current_turn == my_seat or game._awaiting_response.get("seat", -1) == my_seat): prompted.emit(my_seat)
 
 @rpc("authority", "call_remote", "reliable")
-func seat_assign(seat: int) -> void:
+func seat_assign(seat: int, issued_token: String = "") -> void:
 	_client_joined = true
+	_client_sync_cache.clear()
+	if issued_token != "":
+		_resume_token = issued_token
+	_last_ping_ms = 0
+	_last_pong_ms = Time.get_ticks_msec()
 	_reconnecting = false
 	_reconnect_attempt = 0
 	my_seat = seat
@@ -1056,6 +1218,59 @@ func your_response(seat: int, disc_seat: int, tile: String, opts: Dictionary) ->
 @rpc("authority", "call_remote", "reliable", 1)
 func sync(state: Dictionary) -> void:
 	_on_client_sync(state)
+
+@rpc("authority", "call_remote", "reliable", 1)
+func sync_packed(payload: PackedByteArray) -> void:
+	if payload.is_empty() or payload.size() > 2 * 1024 * 1024:
+		return
+	var raw := payload.decompress_dynamic(4 * 1024 * 1024, FileAccess.COMPRESSION_DEFLATE)
+	if raw.is_empty():
+		return
+	var state: Variant = bytes_to_var(raw)
+	if state is Dictionary:
+		_on_client_sync(state)
+
+@rpc("authority", "call_remote", "reliable", 1)
+func sync_delta(delta: Dictionary) -> void:
+	_apply_sync_delta(delta)
+
+@rpc("authority", "call_remote", "reliable", 1)
+func sync_delta_packed(payload: PackedByteArray) -> void:
+	if payload.is_empty() or payload.size() > 2 * 1024 * 1024:
+		return
+	var raw := payload.decompress_dynamic(8 * 1024 * 1024, FileAccess.COMPRESSION_DEFLATE)
+	if raw.is_empty():
+		return
+	var delta: Variant = bytes_to_var(raw)
+	if delta is Dictionary:
+		_apply_sync_delta(delta)
+
+func _apply_sync_delta(delta: Dictionary) -> void:
+	var base := int(delta.get("base", -1))
+	if _client_sync_cache.is_empty() or int(_client_sync_cache.get("revision", -1)) != base:
+		var now := Time.get_ticks_msec()
+		if now - int(_last_resync_request.get("at", 0)) > 1000:
+			_last_resync_request["at"] = now
+			request_full_state.rpc_id(1)
+		return
+	var ops = delta.get("ops", [])
+	if not ops is Array:
+		return
+	var state: Dictionary = _client_sync_cache.duplicate(true)
+	if not _apply_state_delta(state, ops):
+		return
+	state["revision"] = int(delta.get("revision", -1))
+	state["round_number"] = int(delta.get("round_number", 1))
+	_on_client_sync(state)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_full_state() -> void:
+	if not host_mode:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if _peer_seat.has(sender):
+		_last_sent_state.erase(sender)
+		_host_broadcast()
 
 func submit_client_turn(dict: Dictionary) -> void:
 	if _reconnecting or _resume_sync_pending or not _client_joined or multiplayer.multiplayer_peer == null: return

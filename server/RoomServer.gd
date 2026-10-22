@@ -36,6 +36,13 @@ func _process(delta: float) -> bool:
 		_write_status()
 	return false
 
+func _token_digest(token: String) -> String:
+	if token == "": return ""
+	var context := HashingContext.new()
+	context.start(HashingContext.HASH_SHA256)
+	context.update(token.to_utf8_buffer())
+	return "sha256:" + context.finish().hex_encode()
+
 func _write_status() -> void:
 	if _status_path == "": return
 	var file := FileAccess.open(_status_path + ".tmp", FileAccess.WRITE)
@@ -45,7 +52,7 @@ func _write_status() -> void:
 		var seat := int(_net._peer_seat.get(peer, -1))
 		var token := str(_net._members[peer].get("resume_token", ""))
 		if seat >= 0 and token != "":
-			members[str(seat)] = token
-	file.store_string(JSON.stringify({"number": _net.room_number, "name": _net.room_name, "players": _net._members.size(), "started": _net._started, "members": members, "host_token": _net._owner_token, "updated": Time.get_unix_time_from_system()}))
+			members[str(seat)] = _token_digest(token)
+	file.store_string(JSON.stringify({"number": _net.room_number, "name": _net.room_name, "players": _net._members.size(), "started": _net._started, "members": members, "host_token": _token_digest(_net._owner_token), "updated": Time.get_unix_time_from_system()}))
 	file.close()
 	DirAccess.rename_absolute(_status_path + ".tmp", _status_path)

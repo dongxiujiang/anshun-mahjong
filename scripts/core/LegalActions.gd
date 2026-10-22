@@ -98,7 +98,8 @@ static func response_options(round, seat: int, source: int, tile: String, stage:
 	var player: PlayerState = round.players[seat]
 	options.can_win = can_win_on_discard(round, seat, source, tile, stage)
 	options.can_pong = stage == RoundState.ResponseStage.MELD and not player.ready and not player.passed_pong_tiles.has(tile) and Tiles.count(player.concealed, tile) >= 2
-	options.can_kong = stage == RoundState.ResponseStage.MELD and not player.ready and round._wall_count() > 0 and Tiles.count(player.concealed, tile) >= 3
+	options.can_kong = stage in [RoundState.ResponseStage.KONG, RoundState.ResponseStage.MELD] \
+		and not player.ready and round._wall_count() > 0 and Tiles.count(player.concealed, tile) >= 3
 	return options
 
 static func valid_response(options: Dictionary, decision: Dictionary) -> bool:
