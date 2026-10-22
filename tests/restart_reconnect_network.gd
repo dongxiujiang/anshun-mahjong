@@ -120,6 +120,9 @@ func _host() -> void:
 	await H.quit_cleanly(self, t.finish("restart_reconnect_host"))
 
 func _expired() -> void:
+	# Sessions written by 1.4.17 keep the token in the encrypted companion
+	# file. Remove it so this fixture tests the legacy plaintext migration path.
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(network.settings_path + ".session"))
 	DirAccess.copy_absolute(folder + "/stale.cfg", network.settings_path)
 	network.load_settings()
 	t.expect(network.has_saved_session(), "Expiry fixture has previous credential")
