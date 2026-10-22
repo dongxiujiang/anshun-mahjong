@@ -60,7 +60,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 
 ### 3.1 在线服务器 Docker 部署
 
-完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。
+完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。1.4.16 的实际发布与部署记录见 [docs/release_operation_1.4.16.md](docs/release_operation_1.4.16.md)。
 
 生产环境由两部分组成：
 
