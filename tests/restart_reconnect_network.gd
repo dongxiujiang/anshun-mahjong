@@ -86,6 +86,7 @@ func _run() -> void:
 	net.rpc_id(1, "ack", "resumed-settled")
 	# Preserve a stale identity only in the isolated test fixture for expiry rejection.
 	DirAccess.copy_absolute(network.settings_path, folder + "/stale.cfg")
+	DirAccess.copy_absolute(network.settings_path + ".session", folder + "/stale.session")
 	table.queue_free()
 	await process_frame
 	await network.leave_room()
@@ -121,8 +122,9 @@ func _host() -> void:
 
 func _expired() -> void:
 	# Sessions written by 1.4.17 keep the token in the encrypted companion
-	# file. Remove it so this fixture tests the legacy plaintext migration path.
+	# file; restore both halves of the captured stale identity.
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(network.settings_path + ".session"))
+	DirAccess.copy_absolute(folder + "/stale.session", network.settings_path + ".session")
 	DirAccess.copy_absolute(folder + "/stale.cfg", network.settings_path)
 	network.load_settings()
 	t.expect(network.has_saved_session(), "Expiry fixture has previous credential")
