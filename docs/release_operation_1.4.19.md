@@ -66,9 +66,44 @@ build/release-final-1.4.19/v1.4.19/update-manifest-fallback.json
 
 两份清单均通过内置公钥 RSA 校验。
 
-## 待发布步骤
+## 发布与部署
 
-- 推送 GitHub；
-- 创建 V1.4.19 Release 并上传四个文件；
-- 更新自建更新源；
-- 部署服务端镜像并复验健康检查。
+GitHub：
+
+```text
+标签：V1.4.19
+Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.4.19
+提交：3fece65003d6f01c14bcd9cb2685b4ace563e663
+```
+
+Release 附件：
+
+```text
+anshun-mahjong.apk
+anshun-mahjong-windows-x64.exe
+anshun-mahjong-android-1.4.19.pck
+anshun-mahjong-windows-1.4.19.pck
+update-manifest.json
+update-manifest-fallback.json
+checksums.json
+```
+
+自建更新源：
+
+```text
+https://mj.dongxiu.fun/updates/update-manifest.json
+https://mj.dongxiu.fun/updates/update-manifest-fallback.json
+https://mj.dongxiu.fun/updates/anshun-mahjong.apk
+https://mj.dongxiu.fun/updates/anshun-mahjong-windows-x64.exe
+```
+
+两份自建清单已使用离线 RSA 私钥重新签名，客户端内置公钥校验通过。
+
+服务端：
+
+```text
+ghcr.io/dongxiujiang/anshun-mahjong:sha-3fece65
+健康检查：{"ok":true,"app_version":"1.4.19","build":"3fece65"}
+```
+
+本地热更新引导测试通过：编译后 Autoload 补丁、未确认回滚、错误基线和损坏包、第二次补丁失败回滚、实际安装/重启/确认均通过。
