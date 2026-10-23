@@ -23,6 +23,7 @@ func _run() -> void:
 	#_test_ai_speed()
 	await _test_input()
 	_test_ready()
+	_test_ready_frame()
 	_test_kong()
 	_test_kong_choices()
 	await _test_response_actions()
@@ -145,6 +146,13 @@ func _test_ready() -> void:
 	_expect(table.draw_box[0].get_child(0).interactive)
 	for tile in table.hand_box[0].get_children():
 		_expect(not tile.interactive)
+
+func _test_ready_frame() -> void:
+	var frame: Panel = table.ready_frames[0]
+	_expect(frame != null and frame.visible, "Ready player gets a gold hand-area frame")
+	_expect(frame.size.x > 0.0 and frame.size.y > 0.0, "Ready frame encloses the hand and drawn tile")
+	for seat in range(1, 4):
+		_expect(not table.ready_frames[seat].visible, "Non-ready seats do not show the ready frame")
 
 func _test_kong() -> void:
 	_new_fixture()
@@ -633,11 +641,12 @@ func _test_concealed_kong_reveal() -> void:
 				table._refresh()
 				for owner in 4:
 					_expect(table.meld_box[owner].get_child_count() == 4, "Every concealed kong displays all four tiles")
+					var owner_can_read: bool = revealed or owner == viewer
 					for tile in table.meld_box[owner].get_children():
-						_expect(tile.face_up == revealed, "All four kong tiles, including the owner's view, flip after the following discard")
-						_expect(tile.tile == (kong_tiles[owner] if revealed else ""), "Face-down kong views contain no face or tooltip value")
+						_expect(tile.face_up == owner_can_read, "Owner reads the concealed kong; opponents wait for the public reveal")
+						_expect(tile.tile == (kong_tiles[owner] if owner_can_read else ""), "Face-down kong views contain no face or tooltip value")
 						_expect(is_zero_approx(tile.rotation), "Hidden and revealed concealed kongs both keep four upright tiles")
-						if not revealed:
+						if not owner_can_read:
 							_expect(tile.tooltip_text == "", "Hidden kong cannot leak its value through a tooltip")
 			table.round = host
 			table._refresh()

@@ -3,6 +3,7 @@ extends Node
 ## 房间与游戏由服务器权威处理，两端 RPC 节点路径固定。
 signal room_ready(seat)
 signal lobby_updated
+signal room_empty
 signal lobby_notice(message)
 signal state_updated
 signal prompted(seat)
@@ -490,6 +491,10 @@ func _on_peer_disconnected(peer: int) -> void:
 	# keeps the seat reservation and may reclaim its room.
 	if not retained and _owner_peer == peer:
 		_transfer_owner_from(peer)
+	# An explicit leave is final. If no connected human remains, the dedicated
+	# room server must close immediately instead of keeping an AI-only room.
+	if not retained and not has_connected_humans():
+		room_empty.emit()
 	if not _started:
 		_countdown = -1.0
 		_swap.clear()
@@ -587,6 +592,16 @@ func _publish_lobby() -> void:
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer): rpc_id(peer, "lobby_sync", lobby)
 	lobby_updated.emit()
+
+func has_connected_humans() -> bool:
+	# The local host (peer 1) is a human member only when this process is not
+	# the dedicated room server.
+	if not dedicated and _members.has(1):
+		return true
+	for peer in _members:
+		if int(peer) > 1 and _peer_connected(int(peer)):
+			return true
+	return false
 
 func _peer_connected(peer: int) -> bool:
 	if peer not in multiplayer.get_peers(): return false

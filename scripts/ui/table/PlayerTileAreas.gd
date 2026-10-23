@@ -16,6 +16,7 @@ var wind_labels := {}
 var avatars := {}
 var dealer_badges := {}
 var name_labels := {}
+var ready_frames := {}
 var voice_speaker_buttons := {}
 var _status_labels := {}
 var _exposed_layouts := {}
@@ -31,6 +32,19 @@ func build() -> void:
 		station.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		table.surface.add_child(station)
 		seat_roots[seat] = station
+		var ready_frame := Panel.new()
+		ready_frame.name = "ReadyFrame%d" % seat
+		ready_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var ready_style := StyleBoxFlat.new()
+		ready_style.bg_color = Color(0.08, 0.22, 0.16, 0.10)
+		ready_style.border_color = UI.GOLD
+		ready_style.set_border_width_all(3)
+		ready_style.set_corner_radius_all(18)
+		ready_style.shadow_color = Color(UI.GOLD, 0.22)
+		ready_style.shadow_size = 5
+		ready_frame.add_theme_stylebox_override("panel", ready_style)
+		station.add_child(ready_frame)
+		ready_frames[seat] = ready_frame
 		hand_box[seat] = table._box(station)
 		hand_box[seat].name = "Hand%d" % seat
 		draw_box[seat] = table._box(station)
@@ -166,6 +180,12 @@ func _meld_revealed(seat: int, index: int) -> bool:
 	# group immediately, regardless of the two-discard in-play reveal delay.
 	if table.round.phase == RoundState.Phase.SETTLED:
 		return true
+	# The owner can always read their own concealed kong. Opponents keep the
+	# face-down view until the normal delayed public reveal.
+	if seat == table.human_seat and index >= 0 and index < table.round.players[seat].melds.size():
+		var meld: Dictionary = table.round.players[seat].melds[index]
+		if meld.get("kind", "") == "kong" and bool(meld.get("concealed", false)) and not bool(meld.get("robbed", false)):
+			return true
 	return table.round.is_meld_revealed(seat, index)
 
 func _hand_key(seat: int) -> PackedByteArray:
@@ -292,6 +312,32 @@ func _refresh_seat(seat: int) -> void:
 		if drawn_index >= 0:
 			drawn.set_meta("concealed_index", drawn_index)
 	table._refresh_discards(seat)
+	_refresh_ready_frame(seat)
+
+func _refresh_ready_frame(seat: int) -> void:
+	var frame: Panel = ready_frames.get(seat)
+	if frame == null or seat >= table.round.players.size():
+		return
+	var player: PlayerState = table.round.players[seat]
+	if not player.ready:
+		frame.hide()
+		return
+	var bounds := Rect2()
+	var has_tile := false
+	for box in [hand_box.get(seat), draw_box.get(seat)]:
+		if box == null:
+			continue
+		for child in box.get_children():
+			if child is TileView and child.visible:
+				var rect := Rect2(box.position + child.position, child.size)
+				bounds = rect if not has_tile else bounds.merge(rect)
+				has_tile = true
+	if not has_tile:
+		frame.hide()
+		return
+	frame.position = bounds.position - Vector2(8, 8)
+	frame.size = bounds.size + Vector2(16, 16)
+	frame.show()
 
 func _refresh_exposed(seat: int) -> void:
 	var player: PlayerState = table.round.players[seat]

@@ -24,6 +24,9 @@ func _run() -> void:
 		return
 	_net.game.ai_delay_seconds = 1.0
 	_net.lobby_updated.connect(_write_status)
+	_net.room_empty.connect(func():
+		_write_status()
+		quit())
 	_write_status()
 
 func _process(delta: float) -> bool:

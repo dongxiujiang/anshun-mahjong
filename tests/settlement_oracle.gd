@@ -27,6 +27,13 @@ static func expected(round: RoundState) -> Dictionary:
 		var is_called: bool = winners.has(seat) or RuleEngine.is_tenpai(player.concealed, player.melds)
 		called.append(is_called)
 		var profile := _chicken_values(round, seat, related)
+		if seat == burned:
+			# The burned seat's own chicken score is zero, including its own
+			# discard/pong debt; it still pays the winner's chicken by comparison.
+			profile.debt = 0.0
+			profile.pung_debt = 0.0
+			profile.discarded = 0.0
+			profile.total = 0.0
 		discard_values[seat] = profile.discarded if is_called else profile.debt
 		pong_values[seat] = 0.0 if is_called else float(profile.pung_debt)
 		# 胡牌局中，叫牌者用完整鸡分比较；未叫牌者以已打出鸡和
@@ -73,6 +80,8 @@ static func expected(round: RoundState) -> Dictionary:
 						if payer != receiver and not called[payer]:
 							_credit(matrix, payer, receiver, chicken_fee + flip_fee, burned)
 		elif not has_winner and not called[receiver]:
+			if receiver == burned:
+				continue
 			# 流局时未叫牌杠牌者不收杠分，反而向每位叫牌者支付4分；
 			# 所有杠都向每个叫牌者反付（§十八一6）。
 			for meld in round.players[receiver].melds:

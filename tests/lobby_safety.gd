@@ -22,7 +22,11 @@ func _run() -> void:
 	net._peer_seat = {2: 1}
 	net._seat_peer = {0: -1, 1: 2, 2: -1, 3: -1}
 	net._ctrl_hint = {0: "auto", 1: "remote", 2: "auto", 3: "auto"}
+	var room_emptied := [false]
+	net.room_empty.connect(func(): room_emptied[0] = true)
 	net._on_peer_disconnected(2)
+	t.expect(room_emptied[0], "last connected human leaving requests immediate room close")
+	t.expect(not net.has_connected_humans(), "AI or disconnected seats do not count as real humans")
 	t.expect(net._ctrl_hint[1] == "auto", "explicit lobby leave hands the empty seat to AI")
 	t.expect(net._seat_peer[1] == -1, "explicit leave clears the peer binding")
 

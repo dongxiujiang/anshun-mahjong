@@ -56,6 +56,9 @@ const VISUAL_ANIMATIONS := UI.VISUAL_ANIMATIONS
 var hand_box: Dictionary:
 	get: return _player_tile_areas.hand_box
 	set(value): _player_tile_areas.hand_box = value
+var ready_frames: Dictionary:
+	get: return _player_tile_areas.ready_frames
+	set(value): _player_tile_areas.ready_frames = value
 var draw_box: Dictionary:
 	get: return _player_tile_areas.draw_box
 	set(value): _player_tile_areas.draw_box = value

@@ -1040,15 +1040,19 @@ func _test_confirmed_clarifications() -> void:
 	burn.players[0].discards = ["tiao1"]
 	burn.players[0].melds = [meld("tong8","kong",2,true)]
 	burn.players[1].concealed = PLAIN.duplicate()
+	burn.players[1].discards = ["tiao1"]
+	burn.players[1].melds = [meld("tong8","pung",2), meld("wan1","kong",2,true)]
 	burn.players[2].concealed = waiting()
 	burn.round_meta.burn_chicken_seat = 0
 	win_meta(burn,1,0)
-	begin("burn_preserves_debts",burn,"0未叫烧鸡但仍付普通出牌鸡2、暗杠4、杠中鸡8给1/2；收入0")
+	begin("burn_zero_own_but_pays_winner",burn,"0未叫烧鸡：自己的出牌鸡/杠/杠中鸡不计；仍付赢家的出牌鸡、碰中鸡和杠分")
 	result = settle(burn)
 	for receiver in [1,2]:
-		eq([210,263],"烧鸡向%d仍付出牌鸡2" % receiver,fee(result,0,receiver,"未叫牌出牌鸡"),2.0,"scripts/core/ChickenScoring.gd:5")
-		eq([210,263],"烧鸡向%d仍付杠4" % receiver,fee(result,0,receiver,"未叫牌杠分"),4.0,"scripts/core/ScoringEngine.gd:99")
-		eq([210,263],"烧鸡向%d仍付杠鸡8" % receiver,fee(result,0,receiver,"未叫牌杠中鸡"),8.0,"scripts/core/KongScoring.gd:6")
+		eq([210,263],"烧鸡自己的出牌鸡不付%d" % receiver,fee(result,0,receiver,"未叫牌出牌鸡"),0.0,"scripts/core/ChickenScoring.gd:5")
+		eq([210,263],"烧鸡自己的杠分不付%d" % receiver,fee(result,0,receiver,"未叫牌杠分"),0.0,"scripts/core/ScoringEngine.gd:99")
+		eq([210,263],"烧鸡自己的杠中鸡不付%d" % receiver,fee(result,0,receiver,"未叫牌杠中鸡"),0.0,"scripts/core/KongScoring.gd:6")
+	eq([210,263],"烧鸡仍付赢家出牌鸡2",fee(result,0,1,"鸡分差额"),8.0,"scripts/core/ChickenScoring.gd:5")
+	eq([210,263],"烧鸡仍付赢家暗杠4",fee(result,0,1,"暗杠"),4.0,"scripts/core/KongScoring.gd:6")
 	for payer in [1,2,3]: eq([210],"烧鸡无座%d收入" % payer,fee(result,payer,0,"*"),0.0,"scripts/core/PaymentLedger.gd:12")
 	begin("cancel_income_unit")
 	var deltas := [0.0,0.0,0.0,0.0]

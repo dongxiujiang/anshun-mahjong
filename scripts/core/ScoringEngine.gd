@@ -109,7 +109,7 @@ static func settle(round) -> Dictionary:
 static func _pay_uncalled_kong_income(round, called: Array, deltas: Array, transfers: Array) -> void:
 	# 未叫牌杠牌者本应得到的杠基础分改记为负分，向其他叫牌者支付。
 	for owner in 4:
-		if called[owner]:
+		if called[owner] or owner == int(round.round_meta.get("burn_chicken_seat", -1)):
 			continue
 		for meld in round.players[owner].melds:
 			if meld.get("robbed", false) or meld.get("kind", "") not in ["kong", "add_kong"]:

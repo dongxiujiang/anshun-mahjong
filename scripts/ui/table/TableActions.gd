@@ -69,6 +69,11 @@ func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
 		return
 	if not _selecting or not tile.interactive or input_locked():
 		return
+	if table.round != null and table.human_seat < table.round.players.size() \
+		and table.round.players[table.human_seat].ready and not bool(tile.get_meta("drawn", false)):
+		# After ready, only the newly drawn tile may be chosen for the automatic
+		# discard; the rest of the hand stays visually and physically locked.
+		return
 	var released := false
 	if event is InputEventScreenTouch:
 		if event.pressed:

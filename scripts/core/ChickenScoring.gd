@@ -59,12 +59,14 @@ static func chicken_profile(round, seat: int, flip: String) -> Dictionary:
 				flipped += float(item.get("amount", 0.0))
 			else:
 				held += float(item.get("amount", 0.0))
-	# 烧鸡只取消收入；未叫者的出牌鸡债务仍需支付。
-	var discard_debt := discarded
+	# 烧鸡只把自己的鸡分归零；赢家的出牌/碰中/杠中鸡仍由烧鸡者按
+	# 正常付款关系赔付。自己的出牌鸡和碰中鸡不再形成债务。
+	var discard_debt := 0.0 if burned else discarded
 	if burned:
 		discarded = 0.0
 		held = 0.0
 		flipped = 0.0
+		pung_debt = 0.0
 		list = []
 	return {"discard_debt": discard_debt, "pung_debt": pung_debt, "discarded": discarded, "held": held, "flipped": flipped, "total": (discarded + held + flipped), "burned": burned, "items": group_chicken_items(list), "raw_items": list}
 

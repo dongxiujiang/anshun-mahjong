@@ -54,7 +54,7 @@ static func pay(round, deltas: Array, transfers: Array, called: Array, items: Ar
 	# 未叫牌杠家手中的杠中鸡不计正分，但仍按每张普通鸡2分
 	# 向所有叫牌玩家逐家补付。明杠幺鸡因此为4×2=8分。
 	for owner in 4:
-		if called[owner]:
+		if called[owner] or owner == int(round.round_meta.get("burn_chicken_seat", -1)):
 			continue
 		for meld in round.players[owner].melds:
 			if meld.get("robbed", false) or meld.kind not in ["kong", "add_kong"]:
