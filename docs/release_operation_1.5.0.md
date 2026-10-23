@@ -67,6 +67,7 @@ SHA-256：9bdc0379306dae1f2e14a25a55ab4e0550d55d11ae5893b4fd2eb24bad361104
 
 ```text
 GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.5.0
-服务端镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-6b1bc54
+服务端镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-0f019aa
 自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
 ```
+
