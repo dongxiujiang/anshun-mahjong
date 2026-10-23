@@ -727,14 +727,16 @@ func start_net_game(seed_value: int = -1) -> bool:
 
 func _on_host_require_turn(seat: int) -> void:
 	if game != null and seat >= 0 and seat < 4 and game.controllers.size() > seat \
-		and game.controllers[seat] == null and int(_seat_peer.get(seat, -1)) < 1:
+		and game.controllers[seat] == null and int(_seat_peer.get(seat, -1)) < 1 \
+		and not _orphaned.has(seat) and _ctrl_hint.get(seat, AUTO) != "wait":
 		_install_ai_for_seat(seat)
 	# 提示随最新快照一起到达，避免先显示按钮却仍拿着旧 prompt_id。
 	_host_broadcast()
 
 func _on_host_require_response(seat: int, _disc_seat: int, _tile: String, _opts: Dictionary) -> void:
 	if game != null and seat >= 0 and seat < 4 and game.controllers.size() > seat \
-		and game.controllers[seat] == null and int(_seat_peer.get(seat, -1)) < 1:
+		and game.controllers[seat] == null and int(_seat_peer.get(seat, -1)) < 1 \
+		and not _orphaned.has(seat) and _ctrl_hint.get(seat, AUTO) != "wait":
 		_install_ai_for_seat(seat)
 	_host_broadcast()
 
