@@ -20,8 +20,12 @@ const PCM_VOICE := preload("res://scripts/online/OnlineVoiceChat.gd")
 const AUTO := "auto"
 const START_DELAY := 3.0
 const NEXT_ROUND_DELAY := 1.0
-# Keep restart recovery separate from how long other players wait to start a round.
+# Phase one keeps the table paused for a short background check. When it
+# expires the AI plays on the player's behalf, but the authenticated seat
+# reservation survives until the room closes, so the player can always
+# reclaim it with the resume token (see request_join).
 const RESUME_GRACE_MS := 30000
+const RESUME_RETENTION_MS := 30 * 60 * 1000
 const HEARTBEAT_INTERVAL_MS := 5000
 const HEARTBEAT_TIMEOUT_MS := 15000
 # 3: server-issued resume token + compressed state frames.
@@ -78,6 +82,7 @@ var ai_speed := "fast"
 var voice_chat = null
 var _ai_service = null
 var _voice_last_ms := {}
+var _peer_last_seen := {}
 var _sent_audio := {}
 var _heartbeat_seq := 0
 var _last_ping_ms := 0
@@ -155,13 +160,26 @@ func _notification(what: int) -> void:
 		# immediately so a backgrounded host resumes instead of looking stuck.
 		game.poll_ai()
 		_host_broadcast()
-	# Android/desktop background: tell the authority immediately so its 30s
-	# reconnect window can start before ENet itself times out.
-	if host_mode or not _client_joined or multiplayer.multiplayer_peer == null:
+	if host_mode:
 		return
 	if what == NOTIFICATION_APPLICATION_PAUSED:
-		rpc_id(1, "lobby_action", "background", {"value": true})
+		# Tell the authority immediately so its reconnect window can start
+		# before ENet itself times out.
+		if _client_joined and multiplayer.multiplayer_peer != null:
+			rpc_id(1, "lobby_action", "background", {"value": true})
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		if _resume_requested and not _client_joined and not _reconnecting:
+			# The five-attempt retry budget may have elapsed while Android
+			# kept the process frozen. Resume the same token flow on return
+			# instead of leaving the player stuck on the error dialog.
+			_reconnecting = true
+			_reconnect_attempt = 0
+			_reconnect_wait = 0.0
+			_last_pong_ms = Time.get_ticks_msec()
+			reconnecting.emit(0, 5)
+			return
+		if not _client_joined or multiplayer.multiplayer_peer == null:
+			return
 		# A long Android/desktop pause stops _process; do not count the paused
 		# interval as heartbeat loss. The next ping verifies the server again.
 		_last_pong_ms = Time.get_ticks_msec()
@@ -213,16 +231,36 @@ func _process(delta: float) -> void:
 			_poll_heartbeat()
 		return
 	for seat in _orphaned.keys():
-		if Time.get_ticks_msec() >= int(_orphaned[seat].get("until", 0)):
-			var was_owner := bool(_orphaned[seat].get("owner", false))
-			_orphaned.erase(seat)
-			if was_owner:
-				_transfer_owner_from(_owner_peer)
+		var orphan: Dictionary = _orphaned[seat]
+		if Time.get_ticks_msec() >= int(orphan.get("until", 0)) and not bool(orphan.get("replaced", false)):
+			var was_owner := bool(orphan.get("owner", false))
 			if _started:
+				# After the pause the AI plays on the player's behalf, but the
+				# reservation (and the resume token inside it) survives until
+				# the settlement screen closes: the player can reclaim the seat
+				# via request_join at any point in this round.
+				orphan["replaced"] = true
+				orphan["retain_until"] = Time.get_ticks_msec() + RESUME_RETENTION_MS
+				if was_owner:
+					_transfer_owner_from(_owner_peer)
 				_install_ai_for_seat(int(seat))
+				_check_start()
+				_publish_lobby()
+				_host_broadcast()
+			else:
+				# A lobby seat must free up at expiry; a reserved-but-unfilled
+				# seat would block both joining and the start countdown.
+				_orphaned.erase(seat)
+				if was_owner:
+					_transfer_owner_from(_owner_peer)
+				_check_start()
+				_publish_lobby()
+		elif bool(orphan.get("replaced", false)) and Time.get_ticks_msec() >= int(orphan.get("retain_until", 0)):
+			# Bound abandoned reservations so an empty room can eventually
+			# close instead of retaining a seat forever.
+			_orphaned.erase(seat)
 			_check_start()
 			_publish_lobby()
-			if _started: _host_broadcast()
 		elif int(_orphaned[seat].get("ready_until", 0)) > 0 and Time.get_ticks_msec() >= int(_orphaned[seat].ready_until):
 			_orphaned[seat].ready_until = 0
 			_check_start()
@@ -254,6 +292,17 @@ func _process(delta: float) -> void:
 			_return_vote_yes[int(seat)] = true
 			_check_return_vote()
 			_publish_return_vote()
+	for peer in _peer_last_seen.keys():
+		# Only protocol-3+ clients send application heartbeats; the host-side
+		# check turns a frozen Android process into a normal disconnect flow
+		# (grace -> AI substitute -> reclaimable reservation) deterministically.
+		if int(_peer_protocol.get(peer, 0)) < PROTOCOL_VERSION or int(peer) <= 1: continue
+		if not _peer_connected(int(peer)):
+			_peer_last_seen.erase(peer)
+			continue
+		if Time.get_ticks_msec() - int(_peer_last_seen[peer]) > HEARTBEAT_TIMEOUT_MS:
+			_peer_last_seen.erase(peer)
+			multiplayer.multiplayer_peer.disconnect_peer(int(peer))
 	for peer in _pending_peers.keys():
 		if Time.get_ticks_msec() - int(_pending_peers[peer]) > 10000:
 			_pending_peers.erase(peer)
@@ -291,7 +340,10 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	var was_owner := false
 	for orphan_seat in _orphaned:
 		var orphan: Dictionary = _orphaned[orphan_seat]
-		if Time.get_ticks_msec() < int(orphan.get("until", 0)) and resume_token != "" and resume_token == str(orphan.get("token", "")):
+		# Within the pause window the token resumes the paused seat; after the
+		# AI took over (replaced) the same token reclaims the seat at any time.
+		var reclaimable := bool(orphan.get("replaced", false)) or Time.get_ticks_msec() < int(orphan.get("until", 0))
+		if reclaimable and resume_token != "" and resume_token == str(orphan.get("token", "")):
 			seat = int(orphan_seat)
 			resumed = true
 			was_owner = bool(orphan.get("owner", false))
@@ -334,6 +386,7 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	_orphaned.erase(seat)
 	_background_until.erase(seat)
 	_background_vote_pending.erase(seat)
+	_peer_last_seen[peer] = Time.get_ticks_msec()
 	_peer_protocol[peer] = client_protocol
 	_last_sent_state.erase(peer)
 	if voice_chat != null and voice_chat.has_method("reset_seat"):
@@ -368,6 +421,11 @@ func request_join(number: String, player_name: String, token: String = "", resum
 		rpc_id(peer, "seat_assign", seat, assigned_token)
 	else:
 		rpc_id(peer, "seat_assign", seat)
+	if resumed:
+		# The returning client has no cached frame after a disconnect, so push
+		# one full snapshot (or the lobby) right after seat_assign.
+		if _started: _host_broadcast()
+		else: _publish_lobby()
 	_check_start()
 	_publish_lobby()
 	if _return_vote_active: _publish_return_vote()
@@ -411,6 +469,7 @@ func _on_peer_disconnected(peer: int) -> void:
 	_last_state_request.erase(peer)
 	_lobby_action_times.erase(peer)
 	_voice_last_ms.erase(peer)
+	_peer_last_seen.erase(peer)
 	_members.erase(peer)
 	_seat_peer[seat] = -1
 	_background_until.erase(seat)
@@ -477,7 +536,10 @@ func request_leave() -> void:
 
 func has_reconnect_reservations() -> bool:
 	for orphan in _orphaned.values():
-		if Time.get_ticks_msec() < int(orphan.get("until", 0)): return true
+		if bool(orphan.get("replaced", false)):
+			if Time.get_ticks_msec() < int(orphan.get("retain_until", 0)): return true
+		elif Time.get_ticks_msec() < int(orphan.get("until", 0)):
+			return true
 	return false
 
 func _waiting_for_reconnect(seat: int) -> bool:
@@ -514,7 +576,8 @@ func _publish_lobby() -> void:
 		var peer := int(_seat_peer.get(seat, -1))
 		var member: Dictionary = _members.get(peer, {})
 		var ctrl_auto: bool = str(_ctrl_hint.get(seat, AUTO)) == AUTO
-		var ai: bool = ctrl_auto and ((peer < 1 and (_host_ai_fill or _started)) or peer > 0)
+		var replaced := _orphaned.has(seat) and bool(_orphaned[seat].get("replaced", false))
+		var ai: bool = ctrl_auto and ((peer < 1 and (_host_ai_fill or _started)) or peer > 0 or replaced)
 		var disconnected := _orphaned.has(seat) or _background_until.has(seat)
 		# Backgrounded peers are still connected and remain in _members; only
 		# disconnected seats have an orphan record with the retained member.
@@ -1098,6 +1161,19 @@ func _begin_reconnect(_reason: String) -> void:
 	_reconnect_wait = 0.2
 	reconnecting.emit(0, 5)
 
+func retry_connection() -> bool:
+	if host_mode or _server_ip == "" or _resume_token == "":
+		return false
+	_reconnecting = true
+	_resume_requested = true
+	_client_joined = false
+	_reconnect_attempt = 0
+	_reconnect_wait = 0.0
+	_last_pong_ms = Time.get_ticks_msec()
+	reconnecting.emit(0, 5)
+	multiplayer.multiplayer_peer = null
+	return true
+
 func _poll_heartbeat() -> void:
 	if not _client_joined or multiplayer.multiplayer_peer == null:
 		return
@@ -1174,6 +1250,7 @@ func heartbeat_ping(seq: int) -> void:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	if _peer_seat.has(sender):
+		_peer_last_seen[sender] = Time.get_ticks_msec()
 		heartbeat_pong.rpc_id(sender, seq)
 
 @rpc("authority", "call_remote", "unreliable")

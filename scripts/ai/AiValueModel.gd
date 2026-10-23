@@ -173,6 +173,12 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 			# 牌型费：只由放炮者支付；其他两家不付牌型分。
 			if payer == source and points > 0.0:
 				total += points
+			# 自带暗杠/加杠的小牌放炮：普通小牌才加4。
+			if payer == source and has_self_kong(melds) and points <= 0.0 and not declared_ready \
+				and RuleEngine.special_pattern_key(pattern) == "" \
+				and not pattern.get("all_triplets", false) and not pattern.get("seven_pairs", false) \
+				and not pattern.get("dragon_seven_pairs", false) and not pattern.get("flush", false):
+				total += CFG.SCORE_KONG_SELF_RON
 			# 报听费：只有点炮者支付
 			if payer == source:
 				if declared_ready:

@@ -68,6 +68,16 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		if base_amount > 0.0:
 			items[winner].append(_item("win", base_label, base_amount, "由杠后放炮/被抢杠者单独支付"))
 			lines.append("%s：%s付 %.0f" % [base_label, _nm(source, int(meta.get("dealer_seat", 0))), base_amount])
+		# 赢家自带暗杠/加杠时，普通小牌胡别人弃牌额外收 4 分。
+		# 大对子、七对、清一色、报听及以上牌型不再加这笔小牌放炮分。
+		if not robbed_kong and source in range(4) and source != winner \
+			and ACTIONS.has_self_kong(player) and pattern_amount <= 0.0 and not player.ready \
+			and RuleEngine.special_pattern_key(pattern) == "" \
+			and not pattern.get("all_triplets", false) and not pattern.get("seven_pairs", false) \
+			and not pattern.get("dragon_seven_pairs", false) and not pattern.get("flush", false):
+			PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_KONG_SELF_RON, "自带杠小牌放炮")
+			items[winner].append(_item("win", "自带杠小牌放炮", CFG.SCORE_KONG_SELF_RON, "放炮者支付"))
+			lines.append("自带杠小牌放炮：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), CFG.SCORE_KONG_SELF_RON])
 
 		# 报听胡：点炮时只有点炮者支付；牌型分也只由放炮者支付。
 		# 其他两家只按幺鸡八筒、杠分、翻鸡分参与两两比较。

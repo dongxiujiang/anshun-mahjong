@@ -22,7 +22,7 @@ echo.
 echo 进度会实时显示，完整日志保存在：
 echo   build\local-build-release\[时间戳]
 echo.
-echo 规则澄清记录：tests\rules_clarifications_2026-10-18.md
+echo 规则说明：docs\当前游戏规则与玩法.txt
 echo 结算按单倍求和后统一应用倍率；规则文档保持只读。
 echo.
 echo 开始检查...
@@ -42,8 +42,7 @@ echo   build\local-build-release\[最新时间戳]
 echo.
 echo 重点日志文件：
 echo   - core_tests.log       （核心回归）
-echo   - build\rules_audit\report.md   （当前规则审计表与最小复现，项目目录下）
-echo   - build\rules_audit\results.json（逐条断言原始结果，项目目录下）
+echo   - docs\rules_update_validation.md（规则与结算核对说明）
 echo   - network_tests.log    （网络测试）
 echo   - reconnect_tests.log  （断线与重启重连）
 echo   - import.log           （Godot导入）

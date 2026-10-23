@@ -30,6 +30,19 @@ func _run() -> void:
 	settings.queue_free()
 	await process_frame
 
+	var overlay: Control = load("res://scripts/ui/ConnectionOverlay.gd").new()
+	root.add_child(overlay)
+	await process_frame
+	t.expect(overlay._panel.size == Vector2(760, 360), "connection card uses the shared dialog dimensions")
+	t.expect(overlay._title.get_theme_font_size("font_size") == 32, "connection title uses the shared title size")
+	t.expect(overlay._retry_button.get_theme_font_size("font_size") == 28, "connection actions use the shared button size")
+	overlay.show_reconnecting(2, 5)
+	t.expect(overlay.visible and not overlay._retry_button.visible and overlay._leave_button.text == "取消并返回大厅", "reconnect progress has one clear exit action")
+	overlay.show_error("测试断线")
+	t.expect(overlay.visible and overlay._retry_button.visible and overlay._leave_button.text == "返回大厅", "connection error offers retry and return")
+	overlay.queue_free()
+	await process_frame
+
 	var path := "res://build/ui_regression/network.cfg"
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir()))
 	var session := {"host": "127.0.0.1", "port": 7594, "number": "001234",

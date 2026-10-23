@@ -164,6 +164,12 @@ static func expected(round: RoundState) -> Dictionary:
 				# 分别向放炮者收取自己的牌型分，赢家之间不互付差额。
 				if pattern_fee > 0.0 and source in range(4) and source != target_seat:
 					_credit(matrix, source, target_seat, pattern_fee, burned)
+				var own_kong: bool = player.melds.any(func(meld): return meld.kind == "add_kong" or (meld.kind == "kong" and meld.get("concealed", false)))
+				if not robbed_kong and own_kong and pattern_fee <= 0.0 and not player.ready \
+					and not pattern.get("all_triplets", false) and not pattern.get("seven_pairs", false) \
+					and not pattern.get("dragon_seven_pairs", false) and not pattern.get("flush", false) \
+					and source in range(4) and source != target_seat:
+					_credit(matrix, source, target_seat, 4.0, burned)
 			if self_draw and int(meta.get("kong_draw_seat", -1)) == target_seat:
 				for payer in 4:
 					if payer != target_seat:

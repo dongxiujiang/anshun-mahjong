@@ -352,6 +352,28 @@ func _test_passports() -> void:
 	eq([143],"明杠后弃牌不开放普通胡",exposed.can_win_on_discard(1,0,"wan9",RoundState.ResponseStage.WIN),false,"scripts/core/LegalActions.gd:122")
 
 func _test_kong_flow() -> void:
+	for kind in ["concealed", "add_kong"]:
+		var own := fixture()
+		own.players[1].concealed = waiting().slice(3)
+		own.players[1].melds = [meld("tong7", "kong" if kind == "concealed" else "add_kong", 0, kind == "concealed")]
+		win_meta(own, 1, 0, "wan9")
+		begin("self_kong_ron_"+kind,own,"1自带暗/加杠，普通小牌胡0的wan9；放炮者另付4")
+		var own_result := finish_round(own)
+		eq([269], "自带杠小牌放炮4", fee(own_result, 0, 1, "自带杠小牌放炮"), 4.0, "scripts/core/WinScoring.gd:9")
+	var big := fixture()
+	big.players[1].concealed = ["wan1","wan1","wan1","wan2","wan2","wan2","wan3","wan3","wan3","wan9","wan9"]
+	big.players[1].melds = [meld("tong7", "kong", 0, true)]
+	win_meta(big, 1, 0, "wan9")
+	begin("self_kong_ron_big",big,"1自带暗杠但大对子胡；不加小牌放炮4")
+	eq([269], "大牌不自带杠小牌放炮", fee(finish_round(big), 0, 1, "自带杠小牌放炮"), 0.0, "scripts/core/WinScoring.gd:9")
+	var ready := fixture()
+	ready.players[1].concealed = waiting().slice(3)
+	ready.players[1].melds = [meld("tong7", "add_kong", 0, false)]
+	ready.players[1].ready = true
+	win_meta(ready, 1, 0, "wan9")
+	begin("self_kong_ron_ready",ready,"1自带加杠但报听胡；不再加小牌放炮4")
+	eq([269], "报听不自带杠小牌放炮", fee(finish_round(ready), 0, 1, "自带杠小牌放炮"), 0.0, "scripts/core/WinScoring.gd:9")
+
 	for kind in ["exposed","concealed","added"]:
 		var r := fixture()
 		var owner := 1 if kind=="exposed" else 0

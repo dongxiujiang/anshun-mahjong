@@ -2,6 +2,8 @@ extends "res://scripts/ui/table/TableViewBridge.gd"
 
 signal quit_to_menu
 
+const CONNECTION_OVERLAY := preload("res://scripts/ui/ConnectionOverlay.gd")
+
 
 ## 牌局与联机事件协调器。视觉状态由 table/ 组件持有。
 ## TableViewBridge 保留既有联机和测试接口；视觉参数统一在 TableUiConfig。
@@ -11,7 +13,7 @@ var human_seat := 0
 var net_submit_turn: Callable
 var net_submit_response: Callable
 var _round_number := 0
-var _connection_dialog: AcceptDialog
+var _connection_overlay: Control
 var _speed_buttons := {}
 var _sound_settings: SoundSettings
 var _audio_round: RoundState
@@ -42,6 +44,10 @@ func _ready() -> void:
 	AudioManager.begin_table(self)
 	_build_static_ui()
 	_build_table_overlays()
+	_connection_overlay = CONNECTION_OVERLAY.new()
+	add_child(_connection_overlay)
+	_connection_overlay.retry_requested.connect(_retry_connection)
+	_connection_overlay.leave_requested.connect(func(): _on_quit(true))
 	_connect_voice_ui()
 	get_window().focus_exited.connect(_on_input_focus_changed)
 	get_window().focus_entered.connect(_on_input_focus_changed)
@@ -392,6 +398,7 @@ func _setup_client_view() -> void:
 	_awaiting_rejoin_snapshot = round.phase == RoundState.Phase.IDLE
 	network.room_ready.connect(func(seat):
 		human_seat = seat
+		if _connection_overlay != null: _connection_overlay.close()
 		_refresh())
 	network.state_updated.connect(_on_client_state_updated)
 	network.prompted.connect(_on_net_prompt)
@@ -404,8 +411,8 @@ func _setup_client_view() -> void:
 		round._presentation.sync_initialized = false
 		_selecting = false
 		_clear_actions()
-		status_label.text = "连接中断，正在重连（%d/%d）…" % [attempt, maximum]
-		status_label.show())
+		status_label.hide()
+		if _connection_overlay != null: _connection_overlay.show_reconnecting(attempt, maximum))
 	network.lobby_updated.connect(_on_net_lobby_updated)
 	enable_net(network.submit_client_turn, network.submit_client_response)
 	if network.my_seat >= 0:
@@ -540,6 +547,8 @@ func _on_client_state_updated() -> void:
 	if _awaiting_rejoin_snapshot:
 		_settlement_immediate = round.phase == RoundState.Phase.SETTLED
 		_awaiting_rejoin_snapshot = false
+		if _connection_overlay != null: _connection_overlay.close()
+		status_label.hide()
 	_selecting = false
 	_response_disc = ""
 	_clear_actions()
@@ -579,14 +588,18 @@ func _on_round_finished(_result: Dictionary) -> void:
 func _on_connection_error(message: String) -> void:
 	_selecting = false
 	_clear_actions()
-	if _connection_dialog != null and is_instance_valid(_connection_dialog):
-		_connection_dialog.queue_free()
-	_connection_dialog = AcceptDialog.new()
-	_connection_dialog.dialog_text = message
-	_connection_dialog.title = "联机"
-	_connection_dialog.confirmed.connect(func(): _on_quit(false))
-	add_child(_connection_dialog)
-	_connection_dialog.popup_centered()
+	status_label.hide()
+	if _connection_overlay != null:
+		_connection_overlay.show_error(message)
+
+func _retry_connection() -> void:
+	var net = _net_node()
+	if net == null or not net.retry_connection():
+		if _connection_overlay != null:
+			_connection_overlay.show_error("当前没有可恢复的原房间，请返回大厅重新加入。")
+		return
+	if _connection_overlay != null:
+		_connection_overlay.show_reconnecting(0, 5)
 
 func _on_input_focus_changed() -> void:
 	# Windows may omit the release when Alt-Tab interrupts a click. With

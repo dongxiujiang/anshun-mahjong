@@ -75,6 +75,72 @@ func _run() -> void:
 	t.expect(rob.submit_response(1, "tong5", {"action": "pass"}), "Reconnected human chooses whether to rob kong")
 	rob.phase = RoundState.Phase.IDLE
 
+	# 断线→AI替打→凭token收回座位→结算后第二局作废（避免离线玩家卡住牌桌）。
+	var net := NetGameNode.new()
+	root.add_child(net)
+	net.host_mode = true
+	net._started = true
+	net.game = _fixture()
+	net.game.phase = RoundState.Phase.PLAYING
+	net.game.current_turn = 1
+	net.game.awaiting = false
+	net._owner_peer = 1
+	net._members[7] = {"name": "离线玩家", "ready": true, "wants_dealer": false, "resume_token": "token-xyz"}
+	net._peer_seat[7] = 1
+	net._seat_peer[1] = 7
+	net._peer_protocol[7] = NetGameNode.PROTOCOL_VERSION
+	net._ctrl_hint[1] = "remote"
+	net._on_peer_disconnected(7)
+	t.expect(net._orphaned.has(1) and net._ctrl_hint[1] == "wait", "Disconnect pauses the seat during the grace window")
+	net._orphaned[1]["until"] = 0
+	await process_frame
+	await process_frame
+	t.expect(bool(net._orphaned[1].get("replaced", false)) and net._orphaned.has(1), "Expired pause keeps the reclaimable reservation")
+	t.expect(net.game.controllers[1] is AiPlayer, "AI substitutes after the pause")
+	root.multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	net._pending_peers[0] = Time.get_ticks_msec()
+	net.request_join("", "回场玩家", "", "token-xyz", true, NetGameNode.PROTOCOL_VERSION)
+	t.expect(net._seat_peer[1] == 0 and net._orphaned.is_empty(), "Resume token reclaims the replaced seat")
+	t.expect(net.game.controllers[1] == null, "Reclaim removes the AI controller")
+	t.expect(net._members[0].resume_token == "token-xyz" and bool(net._members[0].ready), "Reclaimed member keeps the authority token")
+	t.expect(net._ctrl_hint[1] == "remote", "Reclaimed seat is human-controlled again")
+	# The full-snapshot push for the reclaimed peer is covered end-to-end by the
+	# multi-process network suites (an offline fake peer cannot receive frames).
+	await process_frame
+	# 第二个座位：凭证跨局一直保留，直到房间关闭。
+	net._members[8] = {"name": "第二位离线", "ready": true, "wants_dealer": false, "resume_token": "token-two"}
+	net._peer_seat[8] = 2
+	net._seat_peer[2] = 8
+	net._peer_protocol[8] = NetGameNode.PROTOCOL_VERSION
+	net._ctrl_hint[2] = "remote"
+	net._on_peer_disconnected(8)
+	net._orphaned[2]["until"] = 0
+	net._orphaned[2]["ready_until"] = 0
+	await process_frame
+	await process_frame
+	t.expect(bool(net._orphaned[2].get("replaced", false)), "Substituted seat keeps its credential through the settlement screen")
+	t.expect(net.has_reconnect_reservations(), "Replaced seat keeps the otherwise-empty room alive")
+	net.game.phase = RoundState.Phase.SETTLED
+	net._ready_round = net.round_number
+	net._start_next_round()
+	t.expect(net.round_number == 1 and net._orphaned.has(2) and bool(net._orphaned[2].get("replaced", false)), "Round 2 keeps the reclaimable credential")
+	# 回到大厅也保留凭证，让长时间切后台的玩家还能回到原座位。
+	net._members[9] = {"name": "第三位离线", "ready": true, "wants_dealer": false, "resume_token": "token-three"}
+	net._peer_seat[9] = 3
+	net._seat_peer[3] = 9
+	net._peer_protocol[9] = NetGameNode.PROTOCOL_VERSION
+	net._ctrl_hint[3] = "remote"
+	net._on_peer_disconnected(9)
+	net._orphaned[3]["until"] = 0
+	await process_frame
+	await process_frame
+	net.game.phase = RoundState.Phase.SETTLED
+	net._reset_room_to_lobby()
+	await process_frame
+	t.expect(not net._started and net._orphaned.has(3) and net._ctrl_hint[3] == "auto", "Lobby return keeps the credential while the AI fills the seat")
+	net.free()
+	await process_frame
+
 	var client := NetGameNode.new()
 	root.add_child(client)
 	client.game = _fixture()
@@ -95,4 +161,12 @@ func _run() -> void:
 	client._on_client_sync(state)
 	t.expect(not client._resume_sync_pending, "Applying current state restores input")
 	client.free()
+	var resumed := NetGameNode.new()
+	root.add_child(resumed)
+	resumed._resume_requested = true
+	resumed._reconnecting = false
+	resumed._client_joined = false
+	resumed._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	t.expect(resumed._reconnecting and resumed._reconnect_attempt == 0, "Resuming Android restarts an exhausted reconnect budget")
+	resumed.free()
 	quit(t.finish("reconnect_control"))
