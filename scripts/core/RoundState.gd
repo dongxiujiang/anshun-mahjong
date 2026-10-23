@@ -1090,8 +1090,15 @@ func _finish() -> void:
 	for seat in SEATS:
 		players[seat].score += scored.deltas[seat]
 		_last_total += scored.deltas[seat]
-	assert(is_zero_approx(_last_total), "Settlement must preserve the four players' total score")
+	if not is_zero_approx(_last_total):
+		# assert() is stripped from release builds; keep the invariant visible in
+		# production logs and expose the imbalance to callers instead of silently
+		# accepting a broken ledger.
+		push_error("Settlement must preserve the four players' total score: %.6f" % _last_total)
+		round_meta.ledger_error = _last_total
 	last_result = build_result()
+	if round_meta.has("ledger_error"):
+		last_result["ledger_error"] = _last_total
 	_recorder.finish(self)
 	if int(round_meta.winner) >= 0:
 		_emit_visual_event("win", {"seat": int(round_meta.winner), "winners": round_meta.get("winners", [int(round_meta.winner)]).duplicate(), "tile": str(round_meta.get("win_tile", "")), "self_draw": bool(round_meta.get("self_draw", false))})

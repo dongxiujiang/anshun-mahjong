@@ -259,7 +259,11 @@ func _remote_voice_enabled(seat: int) -> bool:
 	return chat != null and chat.has_method("speaker_enabled") and bool(chat.speaker_enabled(seat))
 
 func _process(_delta: float) -> void:
-	if round != null:
+	if round == null:
+		return
+	# Online authority and clients already poll in NetGameNode._process.
+	var network = get_node_or_null("/root/Network")
+	if network == null or network.net_node == null or str(network.mode) == "":
 		round.poll_ai()
 
 func _exit_tree() -> void:
@@ -349,7 +353,8 @@ func new_game() -> void:
 	round.state_update.connect(_refresh)
 	var controllers: Array = []
 	for seat in 4:
-		controllers.append(null if seat == human_seat else AiPlayer.new("AI%d" % seat))
+		var table_ai := AiPlayer.new("AI%d" % seat) if seat != human_seat else null
+		controllers.append(table_ai)
 	round.controllers = controllers
 	round.ai_delay_seconds = GameConfig.ai_delay_seconds()
 	round.ai_response_delay_seconds = GameConfig.ai_response_delay_seconds()

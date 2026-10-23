@@ -154,6 +154,8 @@ def main() -> None:
     parser.add_argument("--remote-dir", default="/var/www/mahjong/updates")
     parser.add_argument("--output", type=Path, default=None, help="本地暂存目录；默认 build/self-hosted/<domain>")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--godot", default="", help="Godot 可执行文件，用于签名清单")
+    parser.add_argument("--signing-key", type=Path, default=None, help="离线清单 RSA 私钥 PEM")
     args = parser.parse_args()
 
     release = args.release.resolve()
@@ -168,6 +170,15 @@ def main() -> None:
         fail(f"{release} 中没有 .pck/.apk/.exe 文件")
     rewritten = rewrite_urls(data, release, domain, assets)
     assets_list = stage(release, domain, output, rewritten, assets)
+    if args.signing_key is not None:
+        if not args.godot:
+            fail("--signing-key 需要同时提供 --godot")
+        if not args.signing_key.is_file():
+            fail(f"签名私钥不存在: {args.signing_key}")
+        for manifest in [output / MANIFEST_NAME, output / FALLBACK_NAME]:
+            run([args.godot, "--headless", "--path", str(PROJECT), "--script",
+                 "res://tools/update/sign_manifest.gd", "--", str(manifest),
+                 str(args.signing_key)], args.dry_run)
 
     print(f"本地暂存: {output}")
     print(f"清单: https://{domain}/updates/{MANIFEST_NAME}")

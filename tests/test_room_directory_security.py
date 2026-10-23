@@ -17,6 +17,12 @@ class _Process:
     def poll(self):
         return None
 
+    def terminate(self):
+        pass
+
+    def wait(self, timeout=None):
+        return 0
+
 
 class _DeadProcess:
     def poll(self):
@@ -40,6 +46,7 @@ class RoomDirectorySecurityTests(unittest.TestCase):
         self.directory = RoomDirectory("godot", self.tmp.name, "127.0.0.1", max_rooms=4)
 
     def tearDown(self):
+        self.directory.close()
         self.tmp.cleanup()
 
     def test_forwarded_header_ignored_for_direct_clients(self):
@@ -126,6 +133,11 @@ class RoomDirectorySecurityTests(unittest.TestCase):
         with restarted.lock:
             restarted._cleanup()
         self.assertNotIn("777777", restarted.rooms)
+
+    def test_gme_nonce_replay_rejected(self):
+        self.assertTrue(self.directory.consume_gme_nonce("0123456789abcdef"))
+        self.assertFalse(self.directory.consume_gme_nonce("0123456789abcdef"))
+        self.assertTrue(self.directory.consume_gme_nonce("fedcba9876543210"))
 
     def test_gme_auth_requires_member_token(self):
         status = Path(self.tmp.name) / "status.json"

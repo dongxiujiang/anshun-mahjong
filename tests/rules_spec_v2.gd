@@ -724,6 +724,15 @@ func _test_ledger_and_draws() -> void:
 	eq([297,300],"未叫2向叫0补双方8",result.pairwise[0][2],8.0,"scripts/core/PaymentLedger.gd:30")
 	eq([297,300],"未叫2向叫1补双方10",result.pairwise[1][2],10.0,"scripts/core/PaymentLedger.gd:30")
 	conservation(result)
+	var pong_unit := fixture()
+	begin("draw_pong_unit",pong_unit,"包牌先算双方碰中鸡: called=[真,真,假,假],出牌鸡=[2,4,6,0],碰鸡=[8,4,10,0]")
+	d = [0.0,0.0,0.0,0.0]
+	transfers = []
+	PAY.pay_uncalled(d,transfers,[true,true,false,false],[2.0,4.0,6.0,0.0],true,[8.0,4.0,10.0,0.0])
+	result = {"deltas":d,"transfers":transfers,"pairwise":PAY.pairwise_payments(transfers)}
+	eq([297,300],"包牌合并双方碰中鸡0",result.pairwise[0][2],30.0,"scripts/core/PaymentLedger.gd:30")
+	eq([297,300],"包牌合并双方碰中鸡1",result.pairwise[1][2],28.0,"scripts/core/PaymentLedger.gd:30")
+	conservation(result)
 	var draw_kong := fixture()
 	draw_kong.players[0].concealed = waiting().slice(3)
 	draw_kong.players[0].melds = [meld("tiao1","kong",1,true)]

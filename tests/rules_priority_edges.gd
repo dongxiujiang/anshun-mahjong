@@ -80,6 +80,20 @@ func _run() -> void:
 	forbidden.players[0].just_drew = "tiao7"
 	t.expect(not forbidden.legal_turn_options(0).discards.has("wan9"), "forbidden just-claimed tile is not legal")
 
+	var package: RoundState = _fixture()
+	package.players[0].concealed = _waiting_hand().slice(3)
+	package.players[0].melds = [{"kind": "pung", "tile": "tong8", "from_seat": 2, "after_discard": 0}]
+	package.players[2].discards = ["tiao1"]
+	package.players[2].discard_count = 1
+	t.expect(ScoringEngine.is_called(package, 0), "package fixture has a called player")
+	package._finish()
+	var package_paid := 0.0
+	for transfer in package.last_result.get("transfers", []):
+		if int(transfer.get("from", -1)) == 2 and int(transfer.get("to", -1)) == 0 \
+			and str(transfer.get("reason", "")) == "荒牌包鸡":
+			package_paid += float(transfer.get("amount", 0.0))
+	t.expect(is_equal_approx(package_paid, 12.0), "package includes called player's pong chicken")
+
 	var stable: RoundState = _fixture()
 	var before_prompt: int = stable.prompt_id
 	var before_hand: Array = stable.players[0].concealed.duplicate()

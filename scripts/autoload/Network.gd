@@ -117,8 +117,9 @@ func reset() -> void:
 	discovery.stop_search()
 	discovery.stop_advertise()
 	multiplayer.multiplayer_peer = null
-	remove_child(net_node)
-	net_node.queue_free()
+	if net_node != null:
+		remove_child(net_node)
+		net_node.queue_free()
 	_new_net_node()
 
 func is_host() -> bool:

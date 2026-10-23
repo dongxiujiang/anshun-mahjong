@@ -27,7 +27,7 @@ static func pay_win(deltas: Array, transfers: Array, winner: int, meta: Dictiona
 	else:
 		transfer(deltas, transfers, int(meta.get("discard_seat", -1)), winner, amount, reason)
 
-static func pay_uncalled(deltas: Array, transfers: Array, called: Array, discard_points: Array, add_huang_fee: bool = false, pong_points: Array = []) -> void:
+static func pay_uncalled(deltas: Array, transfers: Array, called: Array, discard_points: Array, add_huang_fee: bool = false, pong_debt_points: Array = []) -> void:
 	# 荒牌时每个未叫者还要向每个叫牌者补 4 分基础分。
 	for payer in 4:
 		if called[payer]:
@@ -35,8 +35,10 @@ static func pay_uncalled(deltas: Array, transfers: Array, called: Array, discard
 		for receiver in 4:
 			if called[receiver]:
 				var amount := float(discard_points[payer]) + float(discard_points[receiver])
-				if not pong_points.is_empty():
-					amount += float(pong_points[payer])
+				if not pong_debt_points.is_empty():
+					# 包牌先算双方各自的碰中鸡，再合并成这一笔补付。
+					# 与 compare_chickens 的 pong_points 不同：这里必须传含叫牌方的全量债务。
+					amount += float(pong_debt_points[payer]) + float(pong_debt_points[receiver])
 				if add_huang_fee:
 					amount += CFG.SCORE_SELF_DRAW
 				transfer(deltas, transfers, payer, receiver, amount, "荒牌包鸡")

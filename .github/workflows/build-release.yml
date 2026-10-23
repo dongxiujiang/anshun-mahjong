@@ -55,8 +55,37 @@ env:
   BASELINE_ID: "1.4.13-boot1"
 
 jobs:
+  hot-update-windows:
+    name: Hot update bootstrap (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Godot and export templates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -Uri "https://github.com/godotengine/godot/releases/download/${env:GODOT_RELEASE}/Godot_v${env:GODOT_RELEASE}_win64.exe.zip" -OutFile godot.zip
+          Expand-Archive godot.zip -DestinationPath godot
+          $godot = Get-ChildItem godot -Filter "*.exe" | Select-Object -First 1
+          "GODOT_EXE=$($godot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Invoke-WebRequest -Uri "https://github.com/godotengine/godot/releases/download/${env:GODOT_RELEASE}/Godot_v${env:GODOT_RELEASE}_export_templates.tpz" -OutFile templates.zip
+          Expand-Archive templates.zip -DestinationPath templates
+          $target = Join-Path $env:APPDATA "Godot/export_templates/${env:GODOT_VERSION}.stable"
+          New-Item -ItemType Directory -Force $target | Out-Null
+          Copy-Item "templates/templates/*" $target -Recurse -Force
+      - name: Run real exported PCK bootstrap test
+        shell: pwsh
+        run: python -X utf8 tests/run_hot_update.py --godot "$env:GODOT_EXE"
+
   build:
     name: Build Windows and Android
+    needs: hot-update-windows
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -67,6 +96,7 @@ jobs:
       PATCH_VERSION: ${{ inputs.patch_version || '' }}
       PUBLISH_RELEASE: ${{ inputs.publish_release || false }}
       RELEASE_NOTES: ${{ inputs.release_notes || 'GitHub Actions 自动生成的构建' }}
+      MANIFEST_SIGNING_KEY: ${{ secrets.MANIFEST_SIGNING_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -234,6 +264,22 @@ jobs:
             --godot "$(command -v godot)" \
             --output "build/update_baselines/$BASELINE_ID"
 
+      - name: Sign update manifest
+        if: ${{ env.MANIFEST_SIGNING_KEY != '' }}
+        shell: bash
+        env:
+          MANIFEST_SIGNING_KEY: ${{ secrets.MANIFEST_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/signing
+          printf '%s' "$MANIFEST_SIGNING_KEY" | base64 -d > build/signing/manifest_private.pem
+          for manifest in build/releases/V${RELEASE_VERSION}/update-manifest.json build/releases/v${RELEASE_VERSION}/update-manifest.json; do
+            if [ -f "$manifest" ]; then
+              godot --headless --path . --script res://tools/update/sign_manifest.gd -- "$manifest" build/signing/manifest_private.pem
+            fi
+          done
+          rm -f build/signing/manifest_private.pem
+
       - name: Upload full release artifact
         if: ${{ env.RELEASE_KIND == 'full' }}
         uses: actions/upload-artifact@v4
@@ -297,6 +343,20 @@ jobs:
             --repository "$GITHUB_REPOSITORY" \
             --output build/releases \
             --notes "GitHub Actions 自动生成的小版本补丁"
+
+      - name: Sign patch manifest
+        if: ${{ env.RELEASE_KIND == 'patch' && env.MANIFEST_SIGNING_KEY != '' }}
+        shell: bash
+        env:
+          MANIFEST_SIGNING_KEY: ${{ secrets.MANIFEST_SIGNING_KEY }}
+          PATCH_VERSION: ${{ env.PATCH_VERSION }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/signing
+          printf '%s' "$MANIFEST_SIGNING_KEY" | base64 -d > build/signing/manifest_private.pem
+          godot --headless --path . --script res://tools/update/sign_manifest.gd -- \
+            "build/releases/v${PATCH_VERSION}/update-manifest.json" build/signing/manifest_private.pem
+          rm -f build/signing/manifest_private.pem
 
       - name: Upload patch artifact
         if: ${{ env.RELEASE_KIND == 'patch' }}

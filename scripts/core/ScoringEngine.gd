@@ -16,6 +16,7 @@ static func settle(round) -> Dictionary:
 	var points := [0.0, 0.0, 0.0, 0.0]
 	var discard_points := [0.0, 0.0, 0.0, 0.0]
 	var pong_points := [0.0, 0.0, 0.0, 0.0]
+	var pong_debt_points := [0.0, 0.0, 0.0, 0.0]
 	var called_seats: Array = []
 	var multiplier := clampi(int(meta.get("chicken_multiplier", 1)), 1, CFG.MAX_CHICKEN_MULTIPLIER)
 	var lines: Array = []
@@ -35,7 +36,10 @@ static func settle(round) -> Dictionary:
 		points[seat] = float(profile.total) if called else -(discard_debt + pong_debt)
 		# 荒牌结算保留未叫者本人的出牌鸡值；另由荒牌补付逻辑加入基础4分。
 		discard_points[seat] = float(profile.discarded) if called else discard_debt
+		# compare_chickens uses the uncalled-only debt; the draw package
+		# (pay_uncalled) needs both sides' pong chickens.
 		pong_points[seat] = pong_debt if not called else 0.0
+		pong_debt_points[seat] = pong_debt
 		for item in profile.raw_items:
 			var source := str(item.get("source", ""))
 			if source == "kong":
@@ -69,7 +73,7 @@ static func settle(round) -> Dictionary:
 			lines.append("四家叫牌流局，本局不计分；下局鸡分 ×2")
 			items = [[], [], [], []]
 		else:
-			PAY.pay_uncalled(deltas, transfers, called_seats, discard_points, true, pong_points)
+			PAY.pay_uncalled(deltas, transfers, called_seats, discard_points, true, pong_debt_points)
 			for payer in 4:
 				if called_seats[payer]:
 					continue

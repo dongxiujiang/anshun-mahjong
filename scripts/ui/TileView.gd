@@ -1,4 +1,4 @@
-﻿class_name TileView
+class_name TileView
 extends Control
 ## 一张麻将牌视图：优先使用 res/tiles 素材，缺图时回退程序化绘制。
 ## 素材编号：1-9=筒, 11-19=条, 21-29=万。无牌背素材 → 程序化牌背。
@@ -52,9 +52,12 @@ func set_winning(on: bool) -> void:
 	if _win_tween != null: _win_tween.kill()
 	_win_glow = 0.8 if on else 0.0
 	if on and is_inside_tree() and DisplayServer.get_name() != "headless":
-		_win_tween = create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		# A finite pulse keeps the winning glow visible without repainting the
+		# table forever while the settlement screen stays open.
+		_win_tween = create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		_win_tween.tween_property(self, "_win_glow", 0.35, 0.7)
 		_win_tween.tween_property(self, "_win_glow", 0.85, 0.7)
+		_win_tween.tween_property(self, "_win_glow", 0.8, 0.2)
 
 ## 保持绘制尺寸不变，只扩展触控命中区域，避免相邻手牌被视觉放大后互相遮挡。
 func _has_point(point: Vector2) -> bool:

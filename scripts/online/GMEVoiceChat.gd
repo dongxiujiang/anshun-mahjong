@@ -102,7 +102,8 @@ func _request_auth(room_number: String) -> void:
 	add_child(_auth_http)
 	_auth_http.request_completed.connect(_on_auth_completed.bind(room_number))
 	var base := str(ProjectSettings.get_setting("network/gme_auth_url", AUTH_URL_DEFAULT))
-	var query := "?room=%s&openid=%s" % [room_number.uri_encode(), _open_id.uri_encode()]
+	var nonce := Crypto.new().generate_random_bytes(16).hex_encode()
+	var query := "?room=%s&openid=%s&nonce=%s" % [room_number.uri_encode(), _open_id.uri_encode(), nonce]
 	var headers := PackedStringArray(["X-Room-Token: " + _member_token])
 	var error := _auth_http.request(base + query, headers, HTTPClient.METHOD_GET)
 	if error != OK:

@@ -102,6 +102,7 @@ class RoomDirectory:
         self.rooms = self._recover_rooms()
         self.lock = threading.RLock()
         self.create_attempts = {}
+        self.gme_nonces = {}
         self.max_creates_per_minute = int(os.environ.get("MAX_CREATES_PER_MINUTE", "3"))
         self.max_log_bytes = 5 * 1024 * 1024
         self._maintenance_stop = threading.Event()
@@ -216,6 +217,19 @@ class RoomDirectory:
                 return False
             attempts.append(now)
             self.create_attempts[key] = attempts
+            return True
+
+    def consume_gme_nonce(self, nonce):
+        """One auth response per nonce; keeps a short replay window only."""
+        if not isinstance(nonce, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,80}", nonce):
+            return False
+        now = time.monotonic()
+        with self.lock:
+            self.gme_nonces = {key: when for key, when in self.gme_nonces.items()
+                               if now - when < 300.0}
+            if nonce in self.gme_nonces:
+                return False
+            self.gme_nonces[nonce] = now
             return True
 
     def authenticate_member(self, number, open_id, token):
@@ -363,6 +377,7 @@ class Handler(BaseHTTPRequestHandler):
             query = parse_qs(urlsplit(self.path).query)
             room = str(query.get("room", [""])[0]).strip()
             open_id = str(query.get("openid", [""])[0]).strip()
+            nonce = str(query.get("nonce", [""])[0]).strip()
             token = str(self.headers.get("X-Room-Token", "")).strip()
             if not NUMBER.fullmatch(room):
                 return self._reply(400, {"error": "房间号必须是 4～8 位数字"})
@@ -372,6 +387,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._reply(404, {"error": "房间不存在或已关闭"})
             if not self.server.directory.authenticate_member(room, open_id, token):
                 return self._reply(403, {"error": "语音身份不属于当前房间成员"})
+            if not self.server.directory.consume_gme_nonce(nonce):
+                return self._reply(409, {"error": "语音鉴权请求已失效，请重试"})
             try:
                 auth = make_auth_buffer(int(GME_APP_ID), room, open_id, GME_APP_KEY)
             except (ValueError, TypeError) as error:

@@ -162,6 +162,29 @@ static func valid_sha256(value: String) -> bool:
 		if not (character >= 48 and character <= 57 or character >= 97 and character <= 102): return false
 	return true
 
+static func verify_manifest_payload(payload_b64: String, signature_b64: String, public_key_b64: String) -> Dictionary:
+	# RSA-3072 PKCS#1 v1.5 over the exact UTF-8 signed payload. The private
+	# key stays offline; only this public key is embedded in the binary.
+	if payload_b64 == "" or signature_b64 == "" or public_key_b64 == "":
+		return {}
+	if payload_b64.length() % 4 != 0 or signature_b64.length() % 4 != 0 or public_key_b64.length() % 4 != 0:
+		return {}
+	var payload := Marshalls.base64_to_raw(payload_b64)
+	var signature := Marshalls.base64_to_raw(signature_b64)
+	var public_pem := Marshalls.base64_to_raw(public_key_b64).get_string_from_utf8()
+	if payload.is_empty() or signature.is_empty() or public_pem == "":
+		return {}
+	var key := CryptoKey.new()
+	if key.load_from_string(public_pem, true) != OK:
+		return {}
+	var hasher := HashingContext.new()
+	hasher.start(HashingContext.HASH_SHA256)
+	hasher.update(payload)
+	if not Crypto.new().verify(HashingContext.HASH_SHA256, hasher.finish(), signature, key):
+		return {}
+	var parsed = JSON.parse_string(payload.get_string_from_utf8())
+	return parsed if parsed is Dictionary else {}
+
 static func is_github_asset(url: String) -> bool:
 	# Do not forward API calls, credentials, signed query strings, or URLs from
 	# arbitrary origins to third-party services. Never recursively wrap a proxy.
@@ -269,7 +292,21 @@ func _metadata_done(result: int, code: int, _headers: PackedStringArray, body: P
 		elif not valid or not data is Dictionary:
 			_set_state("error", "更新信息格式有误，请稍后重试")
 		else:
-			if not _release_context.is_empty():
+			if _release_context.is_empty():
+				# The self-hosted manifest is not pinned by a GitHub API digest.
+				# Production templates must carry the offline RSA signature;
+				# editor/headless fixtures may use an unsigned local manifest.
+				if not OS.has_feature("template"):
+					apply_release(data, platform_key(), true)
+				else:
+					var public_key := str(ProjectSettings.get_setting("updates/manifest_public_key", ""))
+					var signed := verify_manifest_payload(str(data.get("signed_payload", "")),
+						str(data.get("signature", "")), public_key)
+					if signed.is_empty() or int(signed.get("schema", 0)) != 2:
+						_set_state("error", "更新清单签名无效，请稍后重试")
+					else:
+						apply_release(signed, platform_key(), false)
+			else:
 				var expected := _normalized_version(str(_release_context.tag_name))
 				if _normalized_version(str(data.get("version", ""))) != expected or int(data.get("schema", 0)) != 2:
 					_set_state("error", "发布标签与更新清单不一致")
@@ -277,8 +314,6 @@ func _metadata_done(result: int, code: int, _headers: PackedStringArray, body: P
 					if str(data.get("notes", "")) == "": data["notes"] = str(_release_context.get("body", ""))
 					data["release_url"] = str(_release_context.get("html_url", ""))
 					apply_release(data, platform_key(), not OS.has_feature("template"))
-			else:
-				apply_release(data, platform_key(), not OS.has_feature("template"))
 	if state in ["error", "no_release"] and _metadata_route + 1 < _metadata_routes.size():
 		_set_state("checking", "当前线路不可用，正在切换下载线路…")
 		if _request_next_metadata(): return

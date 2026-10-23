@@ -701,7 +701,8 @@ func start_net_game(seed_value: int = -1) -> bool:
 		var has_peer := int(_seat_peer.get(seat, -1)) > 0
 		var use_ai: bool = _ctrl_hint[seat] == AUTO or not has_peer
 		if use_ai: _ctrl_hint[seat] = AUTO
-		ctrls.append(AiPlayer.new("AI%d" % seat) if use_ai else null)
+		var ai_actor := AiPlayer.new("AI%d" % seat) if use_ai else null
+		ctrls.append(ai_actor)
 	game.controllers = ctrls
 	game.ai_delay_seconds = _ai_turn_delay()
 	game.ai_response_delay_seconds = _ai_response_delay()
