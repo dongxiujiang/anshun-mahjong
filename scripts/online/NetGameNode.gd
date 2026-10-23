@@ -87,7 +87,7 @@ var _last_sent_state := {}
 var _client_sync_cache := {}
 var _last_resync_request := {}
 var _last_state_request := {}
-var _last_lobby_action := {}
+var _lobby_action_times := {}
 var state_metrics := {"sent": 0, "coalesced": 0, "bytes": 0, "full_bytes": 0}
 var measure_state_traffic := false
 var ack_flag := false
@@ -409,7 +409,7 @@ func _on_peer_disconnected(peer: int) -> void:
 	_peer_protocol.erase(peer)
 	_last_sent_state.erase(peer)
 	_last_state_request.erase(peer)
-	_last_lobby_action.erase(peer)
+	_lobby_action_times.erase(peer)
 	_voice_last_ms.erase(peer)
 	_members.erase(peer)
 	_seat_peer[seat] = -1
@@ -579,11 +579,14 @@ func lobby_action(action: String, data: Dictionary) -> void:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	var now := Time.get_ticks_msec()
-	# Bound the lobby RPC surface per peer; ready/swap/background actions are
-	# user-paced and do not need to arrive hundreds of times per second.
-	if now - int(_last_lobby_action.get(sender, 0)) < 100:
+	# Burst-friendly bound: legitimate UI flows can send seat/ready/dealer
+	# actions in one frame, while a spammer is still capped per source.
+	var stamps: Array = _lobby_action_times.get(sender, [])
+	stamps = stamps.filter(func(stamp): return now - int(stamp) < 5000)
+	if stamps.size() >= 50:
 		return
-	_last_lobby_action[sender] = now
+	stamps.append(now)
+	_lobby_action_times[sender] = stamps
 	_apply_lobby_action(sender, action, data)
 
 func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:

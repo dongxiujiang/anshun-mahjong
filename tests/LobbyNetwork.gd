@@ -51,8 +51,9 @@ func _run() -> void:
 		t.expect(await _wait_until(func(): return net._started), "All ready automatically deal")
 		t.expect(net.game.dealer_seat == 0, "Only dealer applicant selected after swap")
 		print("[lobby_network] GAME_STARTED")
-		# Leave a window for the third process to verify late-join rejection.
-		await get_tree().create_timer(2.0).timeout
+		# Leave enough time for the third Godot process to start and attempt
+		# the late join; CI process startup can exceed the old two seconds.
+		await get_tree().create_timer(8.0).timeout
 	else:
 		# Validate actual LAN query/reply; no manually entered host address.
 		Network.discovery.search()
