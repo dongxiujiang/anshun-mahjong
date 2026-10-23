@@ -156,9 +156,9 @@ func _refresh_identity(seat: int) -> void:
 	badge.visible = player.is_dealer and table.round.phase != RoundState.Phase.SETTLED
 
 func _settlement_reveals_hands() -> bool:
-	if table.round.phase != RoundState.Phase.SETTLED: return false
-	var winners: Array = table.round.last_result.get("winners", table.round.round_meta.get("winners", []))
-	return not winners.is_empty() or int(table.round.round_meta.get("winner", -1)) >= 0
+	# The settlement screen is a final, complete snapshot: reveal every hand
+	# for winning rounds and exhaustive draws alike.
+	return table.round.phase == RoundState.Phase.SETTLED
 
 func _meld_revealed(seat: int, index: int) -> bool:
 	if table._table_animation_controller.holds_meld_reveal(seat, index): return false

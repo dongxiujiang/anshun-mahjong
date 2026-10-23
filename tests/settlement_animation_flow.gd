@@ -250,6 +250,10 @@ func _check_final(r: RoundState, context: String) -> void:
 	t.expect(c._tween == null or not c._tween.is_valid(), context + ": completion releases tween")
 	t.expect(c.current_pairs == r.last_result.pairwise, context + ": exact final payments")
 	t.expect(not c._skip_button.visible, context + ": skip hidden")
+	for seat in 4:
+		for node in table.hand_box[seat].get_children():
+			if node is TileView:
+				t.expect(node.face_up and node.tile != "hidden0", context + ": every hand is face-up at final settlement")
 	var all_called: bool = r.round_meta.get("all_called_draw", false)
 	if all_called:
 		t.expect(c.boards.is_empty() and c.payment_labels.is_empty(), "all-called draw has no payment animation")
@@ -265,7 +269,8 @@ func _check_final(r: RoundState, context: String) -> void:
 			t.expect(table.discard_scroll[seat].get_node("Tiles").visible, "all-called draw retains rivers")
 			if seat != table.human_seat:
 				for tile in table.hand_box[seat].get_children():
-					if tile is TileView: t.expect(not tile.face_up, "all-called draw does not reveal remote hand")
+					if tile is TileView:
+						t.expect(tile.face_up and tile.tile != "hidden0", "all-called draw reveals every hand")
 			continue
 		t.expect(table.net_labels[seat].text == _signed(r.last_result.deltas[seat]), context + ": exact final net")
 		var board: Control = c.boards[seat]
@@ -574,7 +579,7 @@ func _all_called_timeline(view) -> Tween:
 		t.expect(view.discard_scroll[seat].get_node("Tiles").visible, "all-called notice leaves rivers visible")
 		for node in _nodes(view.hand_box[seat]) + _nodes(view.draw_box[seat]):
 			if node is TileView:
-				t.expect(not node.score_highlight and (seat == view.human_seat or not node.face_up), "notice never highlights or reveals remote hands")
+				t.expect(not node.score_highlight and node.face_up and node.tile != "hidden0", "notice leaves every hand revealed without score highlighting")
 	return tween
 
 func _test_all_called_timeline() -> void:

@@ -9,7 +9,7 @@
 - 更新：主菜单和联机大厅都可「检查更新」。新完整 APK 默认使用自建 HTTPS 更新源，主清单和回退清单都在 `https://mj.dongxiu.fun/updates/`；1.1.9 及更早版本仍需先安装一次新完整包。
 - 联机语音：正在从 LiveKit 迁移到腾讯云 GME；Android 使用 GME arm64，Windows 暂时保留 PCM。需要服务器 `GME_APP_ID`/`GME_APP_KEY`，详见 [GME 语音接入手册](docs/gme_voice.md)。
 
-联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.4.19**，完整规则见 [当前游戏规则与玩法](docs/当前游戏规则与玩法.txt)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
+联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.5.0**，完整规则见 [当前游戏规则与玩法](docs/当前游戏规则与玩法.txt)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 
 应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Windows 和 Android 游戏内下载补丁，重启生效，不必重装；大版本更新完整 EXE/APK。首次使用热更新须安装包含 PatchBoot 的完整版本。自 1.4.19 起，自建更新清单必须携带离线 RSA 签名，客户端只信任内置公钥验证通过的 `signed_payload`；发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
 
@@ -35,7 +35,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 - 四家分数默认各 200，可为负；牌桌各玩家名字下显示当前累计分数，叫牌和本局记分明细放在局末结算卡片。单机可继续下一局，保留累计分数。
 - 牌桌中央只保留四家的累计分数：单机不显示东南西北或相对称呼；联机在分数上方显示玩家自己输入的姓名，AI 统一显示“人机”。四个分数相对中央正方形的上、右、下、左边水平/垂直居中，庄家标识紧贴自己的分数。当前出牌玩家对应的正方形外边缘会出现淡黄色散射光；等待碰杠胡、发牌、结算时熄灭。
 - **胡牌那张牌停在摸牌位**：自摸或胡别人打出的牌，那张牌都单独显示在右侧摸牌位，不并回手牌排序里，一眼能看出胡的是哪张。
-- **结算卡片**：从上到下为你、上家、对家、下家。每家第一行显示累计分数、自己的「本局分」，以及从该玩家自己视角与上家、对家、下家的三笔收付（正数收款，负数付款）。本局分是得分点合计，明杠基础4分仅向放杠者收，不混入通用本局分。明细显示叫牌状态、自摸等奖励及完整牌面：同类型、同单张分值的牌合并一组，普通鸡2、金鸡4、冲锋鸡4、冲锋金鸡8分别展示，翻鸡也按张数合计。所有杠集中放在最后，四张牌与基础杠分、杠内鸡分一并展示；暗杠、加杠四张都竖放。明杠来源是下家时第四张右横，上家时第一张左横，对家时三张竖牌上方居中横放第四张。明细多时独立换行和滚动。卡片右上角「看牌桌」与「查看结算」在同一位置切换。结算动画按“清零/重置 → 翻鸡展示 → 翻鸡计分 → 幺鸡八筒 → 暗杠/加杠 → 胡牌分项 → 两两收支滚动 → 最终分数”推进；结算卡默认不遮挡牌桌，玩家可手动打开结算页查看明细。
+- **结算卡片**：从上到下为你、上家、对家、下家。每家第一行显示累计分数、自己的「本局分」，以及从该玩家自己视角与上家、对家、下家的三笔收付（正数收款，负数付款）。本局分是得分点合计，明杠基础4分仅向放杠者收，不混入通用本局分。明细显示叫牌状态、自摸等奖励及完整牌面：同类型、同单张分值的牌合并一组，普通鸡2、金鸡4、冲锋鸡4、冲锋金鸡8分别展示，翻鸡也按张数合计。所有杠集中放在最后，四张牌与基础杠分、杠内鸡分一并展示；暗杠、加杠四张都竖放。明杠来源是下家时第四张右横，上家时第一张左横，对家时三张竖牌上方居中横放第四张。明细多时独立换行和滚动。卡片右上角「看牌桌」与「查看结算」在同一位置切换。结算动画按“清零/重置 → 翻鸡展示 → 翻鸡计分 → 幺鸡八筒 → 暗杠/加杠 → 胡牌分项 → 两两收支滚动 → 最终分数”推进；结算卡默认不遮挡牌桌，玩家可手动打开结算页查看明细。进入结算阶段后四家手牌全部翻开显示牌面，包括流局和四家叫牌流局。
 - 牌桌按四向围坐排布，Windows 与 Android 固定横屏：自己的手牌和摸牌使用 2.40 倍牌面（上版的 1.5 倍），自己的碰杠牌和鸡牌使用 1.60 倍，其他三家使用 1.35 倍，弃牌保持 1.10 倍；牌墙数据继续用于骰子和发牌，但牌桌不绘制牌墙。东西两家手牌与摸牌位整体水平居中，操作按钮放在摸牌位上方，报听、碰、杠、胡、自摸等选择按钮统一为 177×126（原按钮的 1.5 倍），字号为 42，与手牌留出 56 像素的空隙；手牌变短时按钮会向右避开自己的弃牌区，允许覆盖下家弃牌区。碰杠后仍会按空间向内换行。东西两家的弃牌容器扩大并隐藏滚动条，牌面尺寸不变。幺鸡、八筒各自全场首张打出的牌横放表示冲锋鸡；被碰杠后原弃牌区和记录移除，冲锋标记跟随到领取者的碰杠组。碰不标来源；明杠与结算采用相同的上/对/下家横牌排列；暗杠、加杠全部四竖。联机时自己的座位始终在下方。
 - 右上角可调 AI 出牌速度：**快 0.8 秒 / 中 1.3 秒 / 慢 2 秒**；碰/杠响应与出牌等待一致，单机和主机即时生效。
 - 设置面板新增 **AI强度**：弱 / 中 / 强三挡，当前默认弱；中、强策略后续接入。
@@ -60,7 +60,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 
 ### 3.1 在线服务器 Docker 部署
 
-完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。1.4.16 的实际发布与部署记录见 [docs/release_operation_1.4.16.md](docs/release_operation_1.4.16.md)，1.4.17 记录见 [docs/release_operation_1.4.17.md](docs/release_operation_1.4.17.md)，1.4.18 记录见 [docs/release_operation_1.4.18.md](docs/release_operation_1.4.18.md)，1.4.19 记录见 [docs/release_operation_1.4.19.md](docs/release_operation_1.4.19.md)。
+完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。1.4.16 的实际发布与部署记录见 [docs/release_operation_1.4.16.md](docs/release_operation_1.4.16.md)，1.4.17 记录见 [docs/release_operation_1.4.17.md](docs/release_operation_1.4.17.md)，1.4.18 记录见 [docs/release_operation_1.4.18.md](docs/release_operation_1.4.18.md)，1.4.19 记录见 [docs/release_operation_1.4.19.md](docs/release_operation_1.4.19.md)，1.5.0 记录见 [docs/release_operation_1.5.0.md](docs/release_operation_1.5.0.md)。
 
 生产环境由两部分组成：
 
@@ -577,3 +577,4 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 - `TableActions._on_human_tile_gui()` 在短按松手时提交一次出牌，滑动超过阈值不出牌；所有提交入口都检查开局锁。原生触控和模拟鼠标不能重复提交。
 - `SettlementCard` 的 `ReadinessFooter` 独立显示四人的昵称与准备状态、等待提示、大号准备/取消按钮。每个真人各自准备，人机默认准备；全部准备后仍由权威端等待 1 秒开始下一局。
 - `tests/table_interaction.gd` 加入常规和 CI 快速检查；`tests/capture_table_controls.gd` 需真实窗口，保存本轮牌桌、结算、准备和骰子截图到 `build/ui_review/table_controls/`。
+
