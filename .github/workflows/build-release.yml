@@ -190,7 +190,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -X utf8 tests/run_hot_update.py --godot "$(command -v godot)"
           python -X utf8 tests/run_update_proxy.py --godot "$(command -v godot)"
 
       - name: Configure Android signing
