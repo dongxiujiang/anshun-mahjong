@@ -17,6 +17,7 @@ var saved_session: Dictionary = {}
 var lobby_preferences := {"online": false, "number": "", "name": "朋友麻将局", "room_name_manual": false}
 var resume_on_lobby := false
 var resume_prompt_shown := false
+var room_generation := 0
 
 func _ready() -> void:
 	_new_net_node()
@@ -43,10 +44,10 @@ func load_settings() -> void:
 		var value = config.get_value("lobby", key, lobby_preferences[key])
 		if typeof(value) == typeof(lobby_preferences[key]): lobby_preferences[key] = value
 
-func save_lobby_preferences(online: bool, number: String, title: String, room_name_manual: bool = false) -> void:
+func save_lobby_preferences(online: bool, number: String, title: String, room_name_manual: bool = false, persist: bool = true) -> void:
 	lobby_preferences = {"online": online, "number": number.left(8), "name": title.left(24),
 		"room_name_manual": room_name_manual}
-	if not persist_settings: return
+	if not persist or not persist_settings: return
 	var config := STORE.read_config(settings_path)
 	for key in lobby_preferences: config.set_value("lobby", key, lobby_preferences[key])
 	if STORE.write_config(config, settings_path) != OK: push_warning("无法保存联机设置")
@@ -79,6 +80,7 @@ func resume_saved_session() -> bool:
 
 func leave_room() -> void:
 	var leaving_node := net_node
+	var generation := room_generation
 	clear_saved_session()
 	if mode == "client" and net_node._client_joined and not net_node._reconnecting and multiplayer.multiplayer_peer != null:
 		net_node.request_leave.rpc_id(1)
@@ -86,10 +88,15 @@ func leave_room() -> void:
 		net_node._client_joined = false
 		# Flush the reliable leave before closing ENet; window/app closure does not call this.
 		await get_tree().create_timer(0.15, true, false, true).timeout
+	# A new host/client may have been started while the leave packet flushed;
+	# never tear down that newer room.
+	if generation != room_generation:
+		return
 	if net_node == leaving_node: reset()
 
 ## 建主机：host_auto=主机自己是否自动代打(否则由本机UI操作)，ai_fill=空位补AI
 func start_host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000", title: String = "麻将房间") -> bool:
+	room_generation += 1
 	var ok := net_node.host(host_auto, ai_fill, port if port > 0 else def_port, number, title)
 	if ok:
 		mode = "host"
@@ -97,12 +104,14 @@ func start_host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = 
 	return ok
 
 func start_client(ip: String, port: int = 0, number: String = "", owner_token: String = "") -> bool:
+	room_generation += 1
 	if not net_node.client(ip, port if port > 0 else def_port, number, GameConfig.player_name, owner_token):
 		return false
 	mode = "client"
 	return true
 
 func reset() -> void:
+	room_generation += 1
 	if net_node != null and net_node.host_mode and net_node.game != null: net_node.game.export_replay()
 	mode = ""
 	discovery.stop_search()

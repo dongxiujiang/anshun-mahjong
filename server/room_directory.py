@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -82,6 +83,10 @@ def rate_limit_key(client_id):
     except ValueError:
         return str(client_id)
     if address.version == 6:
+        # A v4-mapped address (e.g. ::ffff:1.2.3.4) is one IPv4 client, not a
+        # /64 containing every IPv4 client.
+        if address.ipv4_mapped is not None:
+            return str(address.ipv4_mapped)
         return str(ipaddress.ip_network(f"{address}/64", strict=False))
     return str(address)
 
@@ -94,7 +99,7 @@ class RoomDirectory:
         self.first_port, self.max_rooms = first_port, max_rooms
         self.runtime = self.project / "build" / "room-server"
         self.runtime.mkdir(parents=True, exist_ok=True)
-        self.rooms = {}
+        self.rooms = self._recover_rooms()
         self.lock = threading.RLock()
         self.create_attempts = {}
         self.max_creates_per_minute = int(os.environ.get("MAX_CREATES_PER_MINUTE", "3"))
@@ -128,6 +133,28 @@ class RoomDirectory:
             pass
         return path.open("ab")
 
+    def _recover_rooms(self):
+        """Recover live child rooms after the directory process restarts.
+
+        The child status file now carries its UDP port, so list/auth/port
+        allocation can resume even though the Python process no longer owns a
+        Process handle. Stale recovered entries are pruned by _cleanup.
+        """
+        recovered = {}
+        for status in self.runtime.glob("*.json"):
+            try:
+                state = json.loads(status.read_text(encoding="utf-8-sig"))
+                if time.time() - float(state["updated"]) > 30: continue
+                number = state["number"]
+                port = int(state.get("port", 0))
+                if not isinstance(number, str) or not NUMBER.fullmatch(number): continue
+                if port < 1 or port > 65535: continue
+                recovered[number] = {"port": port, "status": status, "process": None,
+                                     "log": None, "recovered": True}
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+        return recovered
+
     def _cleanup(self):
         for number, room in list(self.rooms.items()):
             process = room.get("process")
@@ -136,6 +163,25 @@ class RoomDirectory:
                     room["log"].close()
                 room["status"].unlink(missing_ok=True)
                 self.rooms.pop(number, None)
+            elif process is None and room.get("recovered"):
+                try:
+                    state = json.loads(room["status"].read_text(encoding="utf-8-sig"))
+                    if time.time() - float(state["updated"]) <= 30: continue
+                except (OSError, ValueError, KeyError, TypeError):
+                    pass
+                room["status"].unlink(missing_ok=True)
+                self.rooms.pop(number, None)
+
+    @staticmethod
+    def _port_available(port):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.bind(("0.0.0.0", port))
+            return True
+        except OSError:
+            return False
+        finally:
+            sock.close()
 
     def _view(self, room):
         try:
@@ -217,7 +263,8 @@ class RoomDirectory:
                 raise PermissionError("创建房间过于频繁，请稍后重试")
             used = {room["port"] for room in self.rooms.values()}
             try:
-                port = next(p for p in range(self.first_port, self.first_port + self.max_rooms) if p not in used)
+                port = next(p for p in range(self.first_port, self.first_port + self.max_rooms)
+                            if p not in used and self._port_available(p))
             except StopIteration:
                 raise OverflowError("服务器房间端口已满，请稍后重试") from None
             token = secrets.token_urlsafe(24)
@@ -233,8 +280,12 @@ class RoomDirectory:
             args = [self.godot, "--headless", "--path", str(self.project),
                     "--script", "res://server/RoomServer.gd", "--",
                     f"--room-number={number}", f"--room-name={name.strip()[:24] or '在线麻将'}",
-                    f"--room-port={port}", f"--status-file={status}", f"--owner-token={token}"]
-            process = subprocess.Popen(args, stdout=log, stderr=log,
+                    f"--room-port={port}", f"--status-file={status}"]
+            # Keep the owner bearer token out of the process command line,
+            # where ps/procfs would expose it to other local users.
+            child_env = os.environ.copy()
+            child_env["MAHJONG_OWNER_TOKEN"] = token
+            process = subprocess.Popen(args, stdout=log, stderr=log, env=child_env,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
             room["process"] = process
             room["log"] = log

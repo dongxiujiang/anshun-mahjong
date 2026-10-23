@@ -188,7 +188,12 @@ func _complete() -> void:
 	_stage_key = ""
 	_clear_tile_highlights()
 	_clear_particles()
-	if not plan.all_called_draw:
+	if plan.all_called_draw:
+		# Reconnect/immediate/skip paths enter _complete directly; the all-called
+		# notice must not remain over the restored settled table.
+		_remove_visual(_notice)
+		_notice = null
+	else:
 		_rivers_hidden = true
 		_set_river_alpha(0.0)
 	if is_instance_valid(_flip_view):

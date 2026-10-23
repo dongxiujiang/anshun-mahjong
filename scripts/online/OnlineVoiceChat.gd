@@ -207,6 +207,11 @@ func set_speaker_enabled(seat: int, value: bool) -> void:
 	_apply_speaker_volume(seat)
 	speaker_changed.emit(seat, value)
 
+func reset_seat(seat: int) -> void:
+	# A new client/owner on a reused seat starts its packet sequence at zero.
+	if seat >= 0 and seat <= 3:
+		_rx.erase(seat)
+
 func speaker_enabled(seat: int) -> bool:
 	return bool(_speaker_enabled.get(seat, true))
 
@@ -323,6 +328,10 @@ func play_packet(packet: PackedByteArray) -> void:
 	if state.is_empty():
 		# Prebuffer three 20 ms packets before starting this seat. This absorbs
 		# ordinary Wi-Fi/4G jitter instead of letting the generator underrun.
+		state = {"next": sequence, "started": now, "last": now, "packets": {}}
+		_rx[seat] = state
+	elif sequence + 1000 < int(state.next):
+		# A restarted client reuses the seat but starts its sequence at zero.
 		state = {"next": sequence, "started": now, "last": now, "packets": {}}
 		_rx[seat] = state
 	if sequence < int(state.next):

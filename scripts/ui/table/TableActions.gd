@@ -2,6 +2,7 @@ extends "res://scripts/ui/table/TableComponent.gd"
 ## 管理选牌、合法操作按钮、报听和提交；不自行改变牌局规则。
 
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
+const LEGAL := preload("res://scripts/core/LegalActions.gd")
 
 var action_bar: HBoxContainer
 var auto_ready_enabled := DisplayServer.get_name() != "headless"
@@ -11,6 +12,7 @@ var _response_disc := ""
 var _selected_tile: TileView
 var _declaring_ready := false
 var _ready_discards: Array = []
+var _ready_button: Button
 var _last_tile_input_ms := -1000
 var _pressed_tile: TileView
 var _press_position := Vector2.ZERO
@@ -178,7 +180,7 @@ func _build_turn_options(player: PlayerState) -> void:
 	table._add_kong_choices("加杠", "add_kong", options.add_kong)
 	_ready_discards = options.ready_discards.duplicate()
 	if not _ready_discards.is_empty():
-		table._add_action("报听", table._toggle_ready)
+		_ready_button = table._add_action("报听", table._toggle_ready)
 
 func _add_kong_choices(title: String, decision_key: String, cards: Array) -> void:
 	if cards.is_empty():
@@ -208,8 +210,8 @@ func _toggle_ready() -> void:
 	for button in action_bar.get_children():
 		if button.get_meta("discard", false):
 			button.disabled = true
-		elif button.text == "报听" or button.text == "取消":
-			button.text = "取消" if _declaring_ready else "报听"
+	if is_instance_valid(_ready_button):
+		_ready_button.text = "取消" if _declaring_ready else "报听"
 	table._update_interactivity()
 	table._refresh_status()
 
@@ -217,6 +219,8 @@ func _update_interactivity() -> void:
 	if not _selecting or input_locked(): _reset_press()
 	if table.round == null or table.human_seat >= table.round.players.size():
 		return
+	if _selecting and str(table.round.allowed_actions(table.human_seat).get("kind", "")) != "turn":
+		_selecting = false
 	var player: PlayerState = table.round.players[table.human_seat]
 	var legal_discards: Array = table.round.legal_turn_options(table.human_seat).discards if _selecting else []
 	for box in [table.hand_box[table.human_seat], table.draw_box[table.human_seat]]:
@@ -238,7 +242,7 @@ func _safe_discard() -> String:
 	return player.just_drew if player.just_drew != "" else (player.concealed[0] if not player.concealed.is_empty() else "")
 
 func _commit_turn(decision: Dictionary) -> void:
-	if not _selecting or input_locked() or not table.round._valid_turn(table.human_seat, decision): return
+	if not _selecting or input_locked() or not LEGAL.validate_turn_submission(table.round, table.human_seat, decision): return
 	_selecting = false
 	_declaring_ready = false
 	table._clear_actions()
@@ -291,6 +295,7 @@ func _add_action(text: String, callback: Callable, primary: bool = false, toolti
 
 func _clear_actions() -> void:
 	_reset_press()
+	_ready_button = null
 	if action_bar != null:
 		table._clear_box(action_bar)
 		table._layout_actions()

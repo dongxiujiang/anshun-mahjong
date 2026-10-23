@@ -86,6 +86,8 @@ var _peer_protocol := {}
 var _last_sent_state := {}
 var _client_sync_cache := {}
 var _last_resync_request := {}
+var _last_state_request := {}
+var _last_lobby_action := {}
 var state_metrics := {"sent": 0, "coalesced": 0, "bytes": 0, "full_bytes": 0}
 var measure_state_traffic := false
 var ack_flag := false
@@ -228,8 +230,17 @@ func _process(delta: float) -> void:
 	for seat in _background_until.keys():
 		if Time.get_ticks_msec() >= int(_background_until[seat]):
 			_background_until.erase(seat)
+			# A backgrounded player who has not returned is an AI seat. Do not
+			# leave a "wait" hint with no peer/controller: that seat would start
+			# the round and then wait forever for a human action.
+			_ctrl_hint[int(seat)] = AUTO
+			for peer in _peer_seat.keys():
+				if int(_peer_seat[peer]) == int(seat) and _members.has(peer):
+					_members[peer].ready = true
 			if _started:
 				_install_ai_for_seat(int(seat))
+			else:
+				_check_start()
 			if _return_vote_active:
 				_check_return_vote()
 				_publish_return_vote()
@@ -238,6 +249,8 @@ func _process(delta: float) -> void:
 	for seat in _background_vote_pending.keys():
 		if Time.get_ticks_msec() >= int(_background_vote_pending[seat]):
 			_background_vote_pending.erase(seat)
+			if not _return_vote_active:
+				continue
 			_return_vote_yes[int(seat)] = true
 			_check_return_vote()
 			_publish_return_vote()
@@ -260,6 +273,9 @@ func _process(delta: float) -> void:
 
 func _on_peer_connected(peer: int) -> void:
 	_pending_peers[peer] = Time.get_ticks_msec()
+
+static func new_resume_token() -> String:
+	return Crypto.new().generate_random_bytes(32).hex_encode()
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_join(number: String, player_name: String, token: String = "", resume_token: String = "", resume_only: bool = false, client_protocol: int = 0) -> void:
@@ -320,6 +336,8 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	_background_vote_pending.erase(seat)
 	_peer_protocol[peer] = client_protocol
 	_last_sent_state.erase(peer)
+	if voice_chat != null and voice_chat.has_method("reset_seat"):
+		voice_chat.reset_seat(seat)
 	_seat_peer[seat] = peer
 	_peer_seat[peer] = seat
 	_ctrl_hint[seat] = "remote"
@@ -331,7 +349,7 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	if assigned_token == "":
 		assigned_token = resume_token.left(128) if not modern else ""
 	if assigned_token == "":
-		assigned_token = Crypto.new().generate_random_bytes(32).hex_encode()
+		assigned_token = new_resume_token()
 	_members[peer] = saved if resumed else {"name": member_name, "ready": false, "wants_dealer": false}
 	_members[peer]["resume_token"] = assigned_token
 	if was_owner:
@@ -373,6 +391,8 @@ func _on_peer_disconnected(peer: int) -> void:
 	_pending_peers.erase(peer)
 	if not host_mode or not _peer_seat.has(peer): return
 	var seat: int = _peer_seat[peer]
+	if voice_chat != null and voice_chat.has_method("reset_seat"):
+		voice_chat.reset_seat(seat)
 	var member: Dictionary = _members.get(peer, {}).duplicate(true)
 	member["round_number"] = round_number
 	var retained: bool = str(member.get("resume_token", "")) != ""
@@ -388,6 +408,9 @@ func _on_peer_disconnected(peer: int) -> void:
 	_sent_audio.erase(peer)
 	_peer_protocol.erase(peer)
 	_last_sent_state.erase(peer)
+	_last_state_request.erase(peer)
+	_last_lobby_action.erase(peer)
+	_voice_last_ms.erase(peer)
 	_members.erase(peer)
 	_seat_peer[seat] = -1
 	_background_until.erase(seat)
@@ -397,6 +420,9 @@ func _on_peer_disconnected(peer: int) -> void:
 		# No AI action is scheduled until the 30s grace expires.
 		_ctrl_hint[seat] = "wait"
 	else:
+		# Explicit leave in the lobby must hand the seat to the AI controller;
+		# otherwise all_ready() allows a round to start with a null controller.
+		_ctrl_hint[seat] = AUTO
 		if _started: _install_ai_for_seat(seat)
 	if _return_vote_active and _return_vote_yes.has(seat) and not bool(_return_vote_yes.get(seat, false)):
 		_background_vote_pending[seat] = Time.get_ticks_msec() + BACKGROUND_VOTE_DELAY_MS
@@ -428,9 +454,17 @@ func _install_ai_for_seat(seat: int) -> void:
 	if game.awaiting:
 		if int(game._awaiting_response.get("seat", -1)) == seat:
 			var request: Dictionary = game._awaiting_response
-			game.submit_response(seat, str(request.get("tile", "")), actor.decide_response(game, seat, int(request.get("disc_seat", -1)), str(request.get("tile", "")), request.get("options", {})))
+			var response: Dictionary = actor.decide_response(game, seat, int(request.get("disc_seat", -1)), str(request.get("tile", "")), request.get("options", {}))
+			if not game.submit_response(seat, str(request.get("tile", "")), response):
+				# The AI model must never leave a human seat stuck; an empty
+				# legal response is always a pass.
+				game.submit_response(seat, str(request.get("tile", "")), {"action": "pass"})
 		elif game._awaiting_response.is_empty() and game.current_turn == seat:
-			game.submit_turn(seat, actor.decide_turn(game, seat))
+			var decision: Dictionary = actor.decide_turn(game, seat)
+			if not game.submit_turn(seat, decision):
+				var legal: Array = game.legal_turn_options(seat).discards
+				if not legal.is_empty():
+					game.submit_turn(seat, {"discard": str(legal[0])})
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_leave() -> void:
@@ -521,7 +555,7 @@ func _submit_lobby(action: String, data: Dictionary) -> void:
 	if _reconnecting or _resume_sync_pending: return
 	if host_mode:
 		_apply_lobby_action(1, action, data)
-	elif my_seat >= 0:
+	elif _client_joined and my_seat >= 0 and multiplayer.multiplayer_peer != null:
 		rpc_id(1, "lobby_action", action, data)
 
 func set_ready(value: bool) -> void:
@@ -541,7 +575,16 @@ func respond_swap(accept: bool) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func lobby_action(action: String, data: Dictionary) -> void:
-	if host_mode: _apply_lobby_action(multiplayer.get_remote_sender_id(), action, data)
+	if not host_mode:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	var now := Time.get_ticks_msec()
+	# Bound the lobby RPC surface per peer; ready/swap/background actions are
+	# user-paced and do not need to arrive hundreds of times per second.
+	if now - int(_last_lobby_action.get(sender, 0)) < 100:
+		return
+	_last_lobby_action[sender] = now
+	_apply_lobby_action(sender, action, data)
 
 func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 	if not _members.has(peer): return
@@ -604,6 +647,20 @@ func _exchange(peer: int, target: int) -> void:
 	_seat_peer[target] = peer
 	_ctrl_hint[source] = _ctrl_hint[target]
 	_ctrl_hint[target] = old_hint
+	# Background timers are seat-keyed. Swap them with the seats or a player
+	# who backgrounded before a swap can affect the other player's seat.
+	var background_source = _background_until.get(source)
+	var background_target = _background_until.get(target)
+	_background_until.erase(source)
+	_background_until.erase(target)
+	if background_target != null: _background_until[source] = background_target
+	if background_source != null: _background_until[target] = background_source
+	var vote_source = _background_vote_pending.get(source)
+	var vote_target = _background_vote_pending.get(target)
+	_background_vote_pending.erase(source)
+	_background_vote_pending.erase(target)
+	if vote_target != null: _background_vote_pending[source] = vote_target
+	if vote_source != null: _background_vote_pending[target] = vote_source
 	_peer_seat[peer] = target
 	if other > 0:
 		_peer_seat[other] = source
@@ -635,7 +692,13 @@ func start_net_game(seed_value: int = -1) -> bool:
 	_countdown = -1.0
 	var ctrls: Array = []
 	for seat in 4:
-		ctrls.append(AiPlayer.new("AI%d" % seat) if _ctrl_hint[seat] == AUTO else null)
+		# Do not rely on the hint alone: a seat with no live peer must always
+		# have an AI controller, even if an earlier lobby transition left the
+		# hint as "remote"/"wait".
+		var has_peer := int(_seat_peer.get(seat, -1)) > 0
+		var use_ai: bool = _ctrl_hint[seat] == AUTO or not has_peer
+		if use_ai: _ctrl_hint[seat] = AUTO
+		ctrls.append(AiPlayer.new("AI%d" % seat) if use_ai else null)
 	game.controllers = ctrls
 	game.ai_delay_seconds = _ai_turn_delay()
 	game.ai_response_delay_seconds = _ai_response_delay()
@@ -659,11 +722,17 @@ func start_net_game(seed_value: int = -1) -> bool:
 	game_started.emit()
 	return true
 
-func _on_host_require_turn(_seat: int) -> void:
+func _on_host_require_turn(seat: int) -> void:
+	if game != null and seat >= 0 and seat < 4 and game.controllers.size() > seat \
+		and game.controllers[seat] == null and int(_seat_peer.get(seat, -1)) < 1:
+		_install_ai_for_seat(seat)
 	# 提示随最新快照一起到达，避免先显示按钮却仍拿着旧 prompt_id。
 	_host_broadcast()
 
-func _on_host_require_response(_seat: int, _disc_seat: int, _tile: String, _opts: Dictionary) -> void:
+func _on_host_require_response(seat: int, _disc_seat: int, _tile: String, _opts: Dictionary) -> void:
+	if game != null and seat >= 0 and seat < 4 and game.controllers.size() > seat \
+		and game.controllers[seat] == null and int(_seat_peer.get(seat, -1)) < 1:
+		_install_ai_for_seat(seat)
 	_host_broadcast()
 
 func _host_broadcast() -> void:
@@ -826,11 +895,11 @@ func _start_return_vote(initiator: int) -> void:
 	if initiator < 0: return
 	_return_vote_active = true
 	_return_vote_initiator = initiator
-	# Keep earlier agreements. Only seats that left the room are dropped.
-	for seat in _return_vote_yes.keys():
-		if int(seat) not in humans: _return_vote_yes.erase(seat)
+	# Each vote round starts from a clean set of answers. Carrying yes answers
+	# across a cancelled vote lets a stale auto-answer skip a new round.
+	_return_vote_yes.clear()
 	for seat in humans:
-		if not _return_vote_yes.has(int(seat)): _return_vote_yes[int(seat)] = false
+		_return_vote_yes[int(seat)] = false
 	# The initiator counts as yes, except a player who just rejected and then
 	# initiates again: they must explicitly agree first.
 	if initiator != _return_vote_rejecter:
@@ -869,7 +938,8 @@ func _apply_return_vote_answer(peer: int, agree: bool) -> void:
 		_return_vote_active = false
 		_return_vote_yes[seat] = false
 		_return_vote_rejecter = seat
-		_background_vote_pending.erase(seat)
+		# Cancel all pending auto-answers; they belong to this vote only.
+		_background_vote_pending.clear()
 		_publish_return_vote()
 
 func _check_return_vote() -> void:
@@ -914,6 +984,7 @@ func _reset_room_to_lobby() -> void:
 		_ctrl_hint[seat] = "human" if int(_seat_peer.get(seat, -1)) > 0 else AUTO
 	var next_game := RoundState.new()
 	if _ai_service != null: next_game.ai_service = _ai_service
+	next_game._recorder.auto_save = true
 	game = next_game
 	_publish_lobby()
 	if multiplayer.multiplayer_peer != null:
@@ -1248,29 +1319,40 @@ func sync_delta_packed(payload: PackedByteArray) -> void:
 func _apply_sync_delta(delta: Dictionary) -> void:
 	var base := int(delta.get("base", -1))
 	if _client_sync_cache.is_empty() or int(_client_sync_cache.get("revision", -1)) != base:
-		var now := Time.get_ticks_msec()
-		if now - int(_last_resync_request.get("at", 0)) > 1000:
-			_last_resync_request["at"] = now
-			request_full_state.rpc_id(1)
+		_request_full_state_throttled()
 		return
 	var ops = delta.get("ops", [])
 	if not ops is Array:
+		_request_full_state_throttled()
 		return
 	var state: Dictionary = _client_sync_cache.duplicate(true)
 	if not _apply_state_delta(state, ops):
+		_request_full_state_throttled()
 		return
 	state["revision"] = int(delta.get("revision", -1))
 	state["round_number"] = int(delta.get("round_number", 1))
 	_on_client_sync(state)
+
+func _request_full_state_throttled() -> void:
+	var now := Time.get_ticks_msec()
+	if now - int(_last_resync_request.get("at", 0)) <= 1000:
+		return
+	_last_resync_request["at"] = now
+	request_full_state.rpc_id(1)
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_full_state() -> void:
 	if not host_mode:
 		return
 	var sender := multiplayer.get_remote_sender_id()
-	if _peer_seat.has(sender):
-		_last_sent_state.erase(sender)
-		_host_broadcast()
+	if not _peer_seat.has(sender):
+		return
+	var now := Time.get_ticks_msec()
+	if now - int(_last_state_request.get(sender, 0)) < 1000:
+		return
+	_last_state_request[sender] = now
+	_last_sent_state.erase(sender)
+	_host_broadcast()
 
 func submit_client_turn(dict: Dictionary) -> void:
 	if _reconnecting or _resume_sync_pending or not _client_joined or multiplayer.multiplayer_peer == null: return

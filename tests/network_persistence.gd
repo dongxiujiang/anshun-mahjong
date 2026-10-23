@@ -87,6 +87,8 @@ func _run() -> void:
 	lobby.room_input.text_changed.emit(lobby.room_input.text)
 	lobby.room_name_input.text = "测试桌"
 	lobby.room_name_input.text_changed.emit(lobby.room_name_input.text)
+	# Text persistence is debounced; let the single timer flush both files.
+	await create_timer(0.65).timeout
 	t.expect(STORE.read_config(config.settings_path).get_value("player", "name") == "新的昵称", "Nickname input saves without joining")
 	t.expect(STORE.read_config(network.settings_path).get_value("lobby", "name") == "测试桌", "Room title input saves without creating")
 	lobby.queue_free()

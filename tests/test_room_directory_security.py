@@ -58,6 +58,7 @@ class RoomDirectorySecurityTests(unittest.TestCase):
 
     def test_ipv6_quota_is_aggregated_by_sixty_four(self):
         self.assertEqual(rate_limit_key("2001:db8:1:2::1"), "2001:db8:1:2::/64")
+        self.assertEqual(rate_limit_key("::ffff:1.2.3.4"), "1.2.3.4")
         self.assertTrue(self.directory.allow_create("2001:db8:1:2::1"))
         self.assertTrue(self.directory.allow_create("2001:db8:1:2::2"))
         self.assertTrue(self.directory.allow_create("2001:db8:1:2::3"))
@@ -81,6 +82,7 @@ class RoomDirectorySecurityTests(unittest.TestCase):
                 result["error"] = error
 
         self.directory._view = slow_view
+        self.directory._port_available = lambda _port: True
         with patch("room_directory.subprocess.Popen", return_value=_RunningProcess()):
             thread = threading.Thread(target=create_in_thread)
             thread.start()
@@ -111,6 +113,19 @@ class RoomDirectorySecurityTests(unittest.TestCase):
         while "999999" in self.directory.rooms and time.monotonic() < deadline:
             time.sleep(0.02)
         self.assertNotIn("999999", self.directory.rooms)
+
+    def test_recover_live_room_after_directory_restart(self):
+        status = self.directory.runtime / "live.json"
+        status.write_text(json.dumps({"number": "777777", "port": 7699, "name": "recovered",
+            "players": 1, "started": False, "updated": time.time()}), encoding="utf-8")
+        restarted = RoomDirectory("godot", self.tmp.name, "127.0.0.1", max_rooms=4)
+        self.assertIn("777777", restarted.rooms)
+        self.assertTrue(restarted.has_room("777777"))
+        status.write_text(json.dumps({"number": "777777", "port": 7699, "name": "recovered",
+            "players": 1, "started": False, "updated": time.time() - 60}), encoding="utf-8")
+        with restarted.lock:
+            restarted._cleanup()
+        self.assertNotIn("777777", restarted.rooms)
 
     def test_gme_auth_requires_member_token(self):
         status = Path(self.tmp.name) / "status.json"

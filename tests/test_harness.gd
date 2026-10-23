@@ -61,6 +61,9 @@ func expect(condition: bool, message: String = "") -> bool:
 
 ## 打印汇总并返回退出码：0=全部通过，1=有失败。
 func finish(name: String) -> int:
+	if checks == 0:
+		print("[%s] 失败: 没有执行任何断言" % name)
+		return 1
 	if failures == 0:
 		print("[%s] 通过 (%d 项断言)" % [name, checks])
 		# Windows 的 OS.execute 可能错解中文编码，汇总器使用 ASCII 完成标记。

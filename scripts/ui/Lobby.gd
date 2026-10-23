@@ -38,10 +38,16 @@ var _transitioning := false
 var _leaving := false
 var _refresh := 0.0
 var _connection_attempt := 0
+var _save_timer: Timer
 var _creation_attempt := 0
 var update_panel: UpdatePanel
 
 func _ready() -> void:
+	_save_timer = Timer.new()
+	_save_timer.one_shot = true
+	_save_timer.wait_time = 0.5
+	_save_timer.timeout.connect(_flush_lobby_preferences)
+	add_child(_save_timer)
 	var ui_theme := Theme.new()
 	ui_theme.default_font = TileView._font()
 	ui_theme.default_font_size = 26
@@ -76,7 +82,7 @@ func _ready() -> void:
 	_label(browser, "房间号 · 4～8 位数字", Vector2(24, 188), Vector2(374, 34), 24)
 	var previous_number := str(Network.lobby_preferences.number)
 	room_input = _field(browser, Vector2(24, 228), Vector2(374, 56), "输入房间号", previous_number if NetGameNode.valid_room_number(previous_number) else str(randi_range(100000, 999999)), 8)
-	room_input.text_changed.connect(func(_value): _save_lobby_preferences())
+	room_input.text_changed.connect(func(_value): _schedule_lobby_save())
 	_label(browser, "房间名称", Vector2(24, 300), Vector2(374, 34), 24)
 	room_name_input = _field(browser, Vector2(24, 340), Vector2(374, 56), "朋友麻将局", str(Network.lobby_preferences.name), 24)
 	room_name_input.text_changed.connect(_on_room_name_changed)
@@ -163,16 +169,29 @@ func _initialize_room_name() -> void:
 		_save_lobby_preferences()
 
 func _on_player_name_changed(value: String) -> void:
-	GameConfig.set_player_name(value)
+	# Keep the in-memory value live for the room title, but debounce disk I/O
+	# until typing settles. Persisting on every keystroke writes two config
+	# files per character and can stutter on Android.
+	GameConfig.set_player_name(value, false)
 	if not _room_name_manual:
 		_sync_room_name_from_nickname()
-	_save_lobby_preferences()
+	_schedule_lobby_save()
 
 func _on_room_name_changed(_value: String) -> void:
 	if _syncing_room_name:
 		return
 	_room_name_manual = true
-	_save_lobby_preferences()
+	_schedule_lobby_save()
+
+func _schedule_lobby_save() -> void:
+	_save_lobby_preferences(false)
+	if _save_timer != null:
+		_save_timer.start()
+
+func _flush_lobby_preferences() -> void:
+	# Persist the debounced nickname together with the lobby fields.
+	GameConfig.set_player_name(GameConfig.player_name, true)
+	_save_lobby_preferences(true)
 
 func _sync_room_name_from_nickname() -> void:
 	if room_name_input == null:
@@ -187,9 +206,9 @@ func _sync_room_name_from_nickname() -> void:
 	room_name_input.text = automatic
 	_syncing_room_name = false
 
-func _save_lobby_preferences() -> void:
+func _save_lobby_preferences(persist: bool = true) -> void:
 	if room_input != null and room_name_input != null:
-		Network.save_lobby_preferences(online, room_input.text, room_name_input.text, _room_name_manual)
+		Network.save_lobby_preferences(online, room_input.text, room_name_input.text, _room_name_manual, persist)
 
 func _resume_saved_room() -> void:
 	if _connecting or _creating or _in_room or not Network.has_saved_session(): return

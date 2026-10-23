@@ -1,6 +1,11 @@
 .git
 .gitignore
 .godot
+Godot/
+mcp_token
+*.log
+.mcp.json
+third_party/
 build
 docs
 tests

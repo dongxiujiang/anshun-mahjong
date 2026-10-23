@@ -200,9 +200,12 @@ func _queue_voice(key: String, priority: bool, seat: int = 0) -> void:
 					discard_index = index
 					break
 			if discard_index < 0:
-				# 碰、杠、报听都要喊；积压时可以舍弃牌名，保留动作语音。
+				# All queued clips are action voices. Drop the oldest one so the
+				# queue remains bounded; never let it grow past the limit.
 				if key not in ACTION_VOICES:
 					return
+				_voice_queue.pop_front()
+				_voice_seat_queue.pop_front()
 				break
 			_voice_queue.remove_at(discard_index)
 			_voice_seat_queue.remove_at(discard_index)

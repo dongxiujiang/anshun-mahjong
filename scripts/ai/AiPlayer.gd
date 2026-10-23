@@ -10,6 +10,7 @@ const MCTS := preload("res://scripts/ai/AiMctsSearch.gd")
 var opponent_model := OPPONENT.new()
 var mcts := MCTS.new()
 var last_analysis: Array = []
+var use_mcts := true
 
 func _init(label := "AI") -> void:
 	name = label
@@ -36,9 +37,15 @@ func _pick_discard(round, seat: int) -> Dictionary:
 	var ordinary := last_analysis.filter(func(candidate): return not bool(candidate.get("declare_ready", false)))
 	var search_candidates: Array = ordinary.duplicate(true)
 	search_candidates.sort_custom(func(left, right): return float(left.merit) > float(right.merit))
+	if not search_candidates.is_empty():
+		var top_merit := float(search_candidates[0].merit)
+		# Only refine genuinely close alternatives. Running MCTS for every
+		# hand-selected candidate lets a speculative rollout overturn a clear
+		# value-model winner.
+		search_candidates = search_candidates.filter(func(candidate): return top_merit - float(candidate.merit) <= 0.35)
 	if search_candidates.size() > 6:
 		search_candidates = search_candidates.slice(0, 6)
-	var tree: Dictionary = mcts.rank(round, seat, player.concealed, player.melds, seen, search_candidates, context) if search_candidates.size() > 1 else {}
+	var tree: Dictionary = mcts.rank(round, seat, player.concealed, player.melds, seen, search_candidates, context) if use_mcts and search_candidates.size() > 1 else {}
 	for candidate in last_analysis:
 		var search: Dictionary = tree.get(candidate.tile, {})
 		candidate["mcts_visits"] = int(search.get("visits", 0))
@@ -54,11 +61,15 @@ func _pick_discard(round, seat: int) -> Dictionary:
 func _discard_options(round, seat: int, hand: Array, melds: Array, seen: Dictionary, context: Dictionary, allow_ready: bool = false, after_kong: bool = false) -> Array:
 	var options: Array = []
 	var candidates: Array = []
+	var player: PlayerState = round.players[seat]
 	var lowest := 99
 	var threat := 0.0
 	for opponent in context.opponents:
 		threat = maxf(threat, float(opponent.tenpai_probability))
 	for tile in Tiles.to_counts(hand):
+		# A tile just claimed by pong is temporarily forbidden. The UI and
+		# RoundState both exclude it; the AI candidate pool must do the same.
+		if tile == player.forbidden_discard_tile: continue
 		var after := hand.duplicate()
 		after.erase(tile)
 		var distance := Shanten.shanten(after, melds)
@@ -208,9 +219,10 @@ func _claim_context(round, context: Dictionary, source: int, tile: String) -> Di
 	var index := source_player.discards.rfind(tile)
 	if index < 0: return context
 	var charge: bool = round.is_charge_discard(source, index)
-	var multiplier := int(round.round_meta.get("chicken_multiplier", 1))
-	var amount := VALUE.tile_value(tile, context.flips, multiplier, charge)
-	var draw_amount := VALUE.tile_value(tile, {}, multiplier, charge)
+	# risk() applies the round multiplier once after summing; keep this local
+	# adjustment at single-round value to avoid double counting.
+	var amount := VALUE.tile_value(tile, context.flips, 1, charge)
+	var draw_amount := VALUE.tile_value(tile, {}, 1, charge)
 	for opponent in updated.opponents:
 		if int(opponent.seat) != source: continue
 		opponent.discarded = maxf(0.0, float(opponent.discarded) - amount)

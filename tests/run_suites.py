@@ -39,19 +39,6 @@ def run_suite(godot, suite, timeout):
             process.wait()
     output = output_path.read_text(encoding="utf-8-sig", errors="replace")
     errors = error_path.read_text(encoding="utf-8-sig", errors="replace")
-    # An audit failure is useful evidence, not a reason to discard the report.
-    # Only render after the complete suite marker; never reuse stale JSON after
-    # a parse error, timeout, or interrupted suite.
-    if name in ("rules_spec", "rules_spec_v2") and any(
-        line.startswith(f"[{name}]") and "checks" in line and "failures" in line
-        for line in output.splitlines()
-    ) and "SCRIPT ERROR:" not in errors:
-        report = subprocess.run(
-            [sys.executable, str(PROJECT / "tests/generate_rules_audit.py")],
-            cwd=PROJECT,
-        )
-        if report.returncode:
-            failure = "rule audit report generation failed"
     completed = any(
         line.startswith(f"[{name}]") and any(word in line for word in ("passed", "通过", "0 failures"))
         for line in output.splitlines()
@@ -77,6 +64,9 @@ def main():
     suites = [f"res://tests/{name.removesuffix('.gd')}.gd" for name in args.suite] if args.suite else re.findall(
         r'"(res://tests/[^"\n]+\.gd)"', (PROJECT / "tests" / "run_all.gd").read_text(encoding="utf-8-sig")
     )
+    if not suites:
+        print("[run_suites] no suites discovered", flush=True)
+        raise SystemExit(1)
     LOGS.mkdir(parents=True, exist_ok=True)
     failed = []
     for suite in suites:

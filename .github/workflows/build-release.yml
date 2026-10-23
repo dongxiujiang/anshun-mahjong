@@ -43,7 +43,7 @@ on:
         type: string
   push:
     tags:
-      - "V1.0.*"
+      - "V*"
 
 permissions:
   contents: write
@@ -52,7 +52,7 @@ permissions:
 env:
   GODOT_VERSION: "4.7.2"
   GODOT_RELEASE: "4.7.2-stable"
-  BASELINE_ID: "1.0.0-boot1"
+  BASELINE_ID: "1.4.13-boot1"
 
 jobs:
   build:
@@ -63,7 +63,7 @@ jobs:
       RELEASE_KIND: ${{ inputs.release_kind || 'full' }}
       BASELINE_RUN_ID: ${{ inputs.baseline_run_id || '' }}
       BASELINE_SOURCE: ${{ inputs.baseline_source || 'release' }}
-      BASELINE_RELEASE_TAG: ${{ inputs.baseline_release_tag || 'V1.0.0' }}
+      BASELINE_RELEASE_TAG: ${{ inputs.baseline_release_tag || 'V1.4.17' }}
       PATCH_VERSION: ${{ inputs.patch_version || '' }}
       PUBLISH_RELEASE: ${{ inputs.publish_release || false }}
       RELEASE_NOTES: ${{ inputs.release_notes || 'GitHub Actions 自动生成的构建' }}
@@ -157,7 +157,7 @@ jobs:
           set -euo pipefail
           mkdir -p build/ci
           godot --headless --path . --editor --import > build/ci/import.log 2>&1
-          python -m unittest discover -s tests -p 'test_ci_export.py' 2>&1 | tee build/ci/configure_tests.log
+          python -m unittest discover -s tests -p 'test_*.py' 2>&1 | tee build/ci/configure_tests.log
 
       - name: Run core tests
         shell: bash
@@ -185,6 +185,13 @@ jobs:
         run: |
           set -euo pipefail
           sed -i 's/^driver\/enable_input=false/driver\/enable_input=true/' project.godot
+
+      - name: Run update hot-patch and proxy regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -X utf8 tests/run_hot_update.py --godot "$(command -v godot)"
+          python -X utf8 tests/run_update_proxy.py --godot "$(command -v godot)"
 
       - name: Configure Android signing
         if: ${{ env.RELEASE_KIND == 'full' }}

@@ -34,21 +34,21 @@ func _build() -> void:
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(shade)
 	panel = Panel.new()
-	panel.size = Vector2(1120, 650)
+	panel.size = Vector2(1120, 760)
 	panel.add_theme_stylebox_override("panel", _style(Color("#173d31"), Color("#c7af73")))
 	panel.theme = Theme.new()
 	panel.theme.default_font = TileView._font()
 	add_child(panel)
 	title_label = _label("", Vector2(64, 54), Vector2(992, 64), 42, Color("#f2deb0"))
-	body_label = _label("", Vector2(64, 150), Vector2(992, 210), 30, Color("#e0ece1"))
+	body_label = _label("", Vector2(64, 150), Vector2(992, 300), 28, Color("#e0ece1"))
 	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	page_label = _label("", Vector2(64, 500), Vector2(260, 42), 24, Color("#adc6b5"))
-	previous_button = _button("上一步", _previous, Vector2(530, 548), Vector2(180, 68))
-	next_button = _button("下一步", _next, Vector2(730, 548), Vector2(180, 68))
-	_button("关闭", close, Vector2(930, 548), Vector2(130, 68))
+	page_label = _label("", Vector2(64, 610), Vector2(260, 42), 24, Color("#adc6b5"))
+	previous_button = _button("上一步", _previous, Vector2(530, 640), Vector2(180, 68))
+	next_button = _button("下一步", _next, Vector2(730, 640), Vector2(180, 68))
+	_button("关闭", close, Vector2(930, 640), Vector2(130, 68))
 	var example := HBoxContainer.new()
 	example.name = "Examples"
-	example.position = Vector2(64, 370)
+	example.position = Vector2(64, 470)
 	example.size = Vector2(992, 118)
 	example.alignment = BoxContainer.ALIGNMENT_CENTER
 	example.add_theme_constant_override("separation", 18)
@@ -98,7 +98,7 @@ func _layout() -> void:
 	if panel == null: return
 	MOTION.stop(panel)
 	var available := STYLE.usable_rect(self)
-	var factor := minf(1.0, minf((available.size.x - 48) / 1120.0, (available.size.y - 48) / 650.0))
+	var factor := minf(1.0, minf((available.size.x - 48) / 1120.0, (available.size.y - 48) / 760.0))
 	panel.scale = Vector2.ONE * maxf(0.1, factor)
 	panel.position = available.position + (available.size - panel.size * panel.scale) / 2.0
 

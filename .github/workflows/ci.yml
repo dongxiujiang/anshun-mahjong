@@ -62,7 +62,7 @@ jobs:
 
       - name: Run Python CI checks
         shell: bash
-        run: python -m unittest discover -s tests -p 'test_ci_export.py'
+        run: python -m unittest discover -s tests -p 'test_*.py'
 
       - name: Upload quick-check logs
         if: ${{ always() }}

@@ -13,6 +13,7 @@ var enabled := false
 var _state: Dictionary = {}
 var _trial := false
 var _confirmed := false
+var _verified_pack_signature := ""
 
 func _init() -> void:
 	base_version = str(ProjectSettings.get_setting("application/config/version", "1.0.0"))
@@ -86,13 +87,26 @@ func _pack_path(patch: Dictionary) -> String:
 
 func valid_pack(patch: Dictionary) -> bool:
 	if not compatible(patch): return false
+	var sha := str(patch.get("sha256", ""))
 	var path := _pack_path(patch)
 	if path == "" or not FileAccess.file_exists(path): return false
+	# Cache by content identity plus on-disk size/mtime. A corrupted or replaced
+	# file invalidates the cache; the boot path then avoids hashing the same
+	# still-valid pack twice.
+	var probe := FileAccess.open(path, FileAccess.READ)
+	if probe == null: return false
+	var disk_length := probe.get_length()
+	probe.close()
+	var signature := "%s:%d:%d" % [sha, disk_length, FileAccess.get_modified_time(path)]
+	if signature == _verified_pack_signature: return true
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null: return false
 	var valid := file.get_length() == int(patch.get("size", 0)) and file.get_buffer(4) == PackedByteArray([71, 68, 80, 67])
 	file.close()
-	return valid and FileAccess.get_sha256(path) == str(patch.sha256)
+	if valid and FileAccess.get_sha256(path) == sha:
+		_verified_pack_signature = signature
+		return true
+	return false
 
 func _boot() -> void:
 	_state = _read_state()
@@ -143,7 +157,20 @@ func stage_patch(source: String, patch: Dictionary) -> bool:
 	if not _valid_hash(sha) or FileAccess.get_sha256(source) != sha: return false
 	var target := packs_directory.path_join(sha + ".pck")
 	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(packs_directory)) != OK: return false
-	if source != ProjectSettings.globalize_path(target) and DirAccess.copy_absolute(source, ProjectSettings.globalize_path(target)) != OK: return false
+	var target_abs := ProjectSettings.globalize_path(target)
+	if source != target_abs:
+		# Content-addressed target is immutable once valid. Copy to a temp file
+		# and rename so an interrupted copy cannot corrupt an active pack.
+		if not FileAccess.file_exists(target_abs) or FileAccess.get_sha256(target_abs) != sha:
+			var temporary := target_abs + ".tmp"
+			if DirAccess.copy_absolute(source, temporary) != OK: return false
+			if FileAccess.get_sha256(temporary) != sha:
+				DirAccess.remove_absolute(temporary)
+				return false
+			if FileAccess.file_exists(target_abs): DirAccess.remove_absolute(target_abs)
+			if DirAccess.rename_absolute(temporary, target_abs) != OK:
+				DirAccess.remove_absolute(temporary)
+				return false
 	var entry := patch.duplicate(true)
 	entry["file"] = sha + ".pck"
 	if not valid_pack(entry): return false

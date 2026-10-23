@@ -8,8 +8,6 @@ const KG = preload("res://scripts/core/KongScoring.gd")
 const WIN = preload("res://scripts/core/WinScoring.gd")
 const PAY = preload("res://scripts/core/PaymentLedger.gd")
 const SEED = 20261018
-const DOC = "res://docs/当前游戏规则与玩法.txt"
-const OUT = "res://build/rules_audit/results.json"
 const PLAIN = ["wan1","wan2","wan3","wan4","wan5","wan6","tiao2","tiao3","tiao4","tong2","tong3","tong4","wan9","wan9"]
 const BIG = ["wan1","wan1","wan1","wan2","wan2","wan2","tong3","tong3","tong3","tiao4","tiao4","tiao4","wan9","wan9"]
 const FLUSH = ["wan1","wan2","wan3","wan2","wan3","wan4","wan4","wan5","wan6","wan6","wan7","wan8","wan9","wan9"]
@@ -134,10 +132,6 @@ func _run() -> void:
 	_test_additional_boundaries()
 	_test_confirmed_clarifications()
 	var failed := checks.filter(func(c): return c.result == "失败").size()
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT.get_base_dir()))
-	var output := FileAccess.open(OUT, FileAccess.WRITE)
-	output.store_string(JSON.stringify({"document": DOC, "document_sha256": FileAccess.get_sha256(DOC), "seed": SEED, "checks": checks, "failed": failed, "selected_case": selected_case}, "\t"))
-	output.close()
 	var suite := "rules_spec_v2" if OS.get_cmdline_args().has("res://tests/rules_spec_v2.gd") else "rules_spec"
 	print("[%s] %s (%d checks, %d failures, %d ambiguities)" % [suite, "passed" if failed == 0 else "FAILED", checks.size(), failed, checks.filter(func(c): return c.result == "有歧义").size()])
 	quit(1 if failed > 0 or checks.is_empty() else 0)
@@ -931,7 +925,7 @@ func _test_additional_boundaries() -> void:
 	eq([127],"没有碰不能加杠",no_add.legal_turn_options(0).add_kong,[],"scripts/core/LegalActions.gd:18")
 
 func _test_confirmed_clarifications() -> void:
-	# 文档未明处的直接答复见 tests/rules_clarifications_2026-10-18.md。
+	# 产品确认过、但未写进旧规则文档的边界行为。
 	var selected: Array = []
 	for tied in [false,true]:
 		for seed_value in range(SEED,SEED+12):

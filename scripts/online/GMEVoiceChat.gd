@@ -26,6 +26,7 @@ var _speaker_enabled := {0: true, 1: true, 2: true, 3: true}
 var _open_id := ""
 var _room_number := ""
 var _room_key := ""
+var _auth_failed_key := ""
 var _member_token := ""
 var _context = null
 var _audio = null
@@ -80,8 +81,10 @@ func connect_room(room_number: String, seat: int, _player_name: String, member_t
 		return
 	_member_token = member_token
 	var key := "%s/%d" % [room_number, seat]
-	if key == _room_key and (_context != null or _auth_http != null):
+	if key == _room_key and (_context != null or _auth_http != null or _auth_failed_key == key):
 		return
+	if key != _room_key:
+		_auth_failed_key = ""
 	_room_key = key
 	_room_number = room_number
 	# GME's Init/openId must be an INT64-shaped string, not "seat0".
@@ -103,6 +106,9 @@ func _request_auth(room_number: String) -> void:
 	var headers := PackedStringArray(["X-Room-Token: " + _member_token])
 	var error := _auth_http.request(base + query, headers, HTTPClient.METHOD_GET)
 	if error != OK:
+		_auth_http.queue_free()
+		_auth_http = null
+		_auth_failed_key = _room_key
 		_fail("GME 鉴权请求失败")
 
 func _on_auth_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray, room_number: String) -> void:
@@ -110,6 +116,9 @@ func _on_auth_completed(result: int, code: int, _headers: PackedStringArray, bod
 		_auth_http.queue_free()
 		_auth_http = null
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+		# Do not retry on every authoritative state frame. Keep the failed room
+		# key latched until the user re-toggles voice or joins another room.
+		_auth_failed_key = _room_key
 		_fail("GME 鉴权失败 HTTP=%d result=%d" % [code, result])
 		return
 	_status = "GME 鉴权成功 HTTP=200"
@@ -201,6 +210,9 @@ func set_enabled(want: bool) -> bool:
 	if not want:
 		_stop_mic()
 		return false
+	# A manual voice retry is the explicit escape hatch from a latched auth
+	# failure; the next state frame may reconnect once.
+	_auth_failed_key = ""
 	if not can_toggle():
 		_status = "当前模式不支持麦克风"
 		status_changed.emit(false, _status)
@@ -317,6 +329,10 @@ func set_speaker_enabled(seat: int, value: bool) -> void:
 			_audio.call("AddAudioBlackList", open_id)
 	if _fallback == null:
 		speaker_changed.emit(seat, value)
+
+func reset_seat(_seat: int) -> void:
+	# GME owns its receive buffer; seat changes are handled by room re-entry.
+	pass
 
 func speaker_enabled(seat: int) -> bool:
 	return bool(_speaker_enabled.get(seat, true))

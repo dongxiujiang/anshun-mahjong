@@ -122,6 +122,17 @@ func _infer(round, spec: Dictionary, pool: Array[int], flips: Dictionary, random
 		if not _can_wait(index, pool, spec.melds.size(), spec.melds):
 			result.waits[tile] = 0.0
 			result.special_waits[tile] = 0.0
+	# The per-tile likelihoods are not yet a probability mass. Normalize each
+	# family so a multi-sided wait cannot sum above 1 and inflate risk.
+	var wait_total := 0.0
+	var special_total := 0.0
+	for tile in Tiles.all_values():
+		wait_total += float(result.waits.get(tile, 0.0))
+		special_total += float(result.special_waits.get(tile, 0.0))
+	if wait_total > 1.0:
+		for tile in Tiles.all_values(): result.waits[tile] = float(result.waits[tile]) / wait_total
+	if special_total > 1.0:
+		for tile in Tiles.all_values(): result.special_waits[tile] = float(result.special_waits[tile]) / special_total
 	return result
 
 func risk(context: Dictionary, tile: String, source_ready: bool = false, after_self_kong: bool = false, rob_kong: bool = false, source: int = -1, own_chickens: float = 0.0, own_called: bool = false) -> Dictionary:

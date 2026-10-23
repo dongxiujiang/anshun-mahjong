@@ -253,7 +253,7 @@ func _check_final(r: RoundState, context: String) -> void:
 	var all_called: bool = r.round_meta.get("all_called_draw", false)
 	if all_called:
 		t.expect(c.boards.is_empty() and c.payment_labels.is_empty(), "all-called draw has no payment animation")
-		t.expect(c._notice != null and c._notice.visible and c._notice.text == "黄牌，下局鸡分 × 2", "immediate all-called draw retains multiplier notice")
+		t.expect(c._notice == null, "immediate all-called draw clears the transient multiplier notice")
 	else:
 		t.expect(c.boards.size() == 4 and c.payment_labels.size() == 4, context + ": four tabletop boards")
 	for seat in 4:
@@ -651,7 +651,7 @@ func _test_all_called_timeline() -> void:
 				c.skip()
 				await process_frame
 				t.expect(c.is_completed() and not c.is_active() and not tween.is_valid(), "skip completes and cancels the all-called timeline")
-				t.expect(c._notice != null and c._notice.visible, "skipped all-called draw retains its final notice")
+				t.expect(c._notice == null, "skipped all-called draw clears its transient notice")
 				t.expect(view.new_game_requests == requests and endpoint.ready_calls == ready_calls, "skip cannot replay the delayed automatic-next callback")
 			t.expect(_snapshot(r) == before and _sum(r.last_result.scores) == 800.0, "all-called timeline and ready actions preserve scores and settled state")
 			view.free()

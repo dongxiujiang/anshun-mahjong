@@ -17,7 +17,9 @@ func _run() -> void:
 	var network := root.get_node("Network")
 	_net = network.net_node
 	_status_path = _argument("--status-file")
-	if not _net.host(false, true, int(_argument("--room-port", "7600")), _argument("--room-number", "0000"), _argument("--room-name", "在线麻将"), true, _argument("--owner-token")):
+	var owner_token := OS.get_environment("MAHJONG_OWNER_TOKEN")
+	if owner_token == "": owner_token = _argument("--owner-token")
+	if not _net.host(false, true, int(_argument("--room-port", "7600")), _argument("--room-number", "0000"), _argument("--room-name", "在线麻将"), true, owner_token):
 		quit(1)
 		return
 	_net.game.ai_delay_seconds = 1.0
@@ -46,13 +48,16 @@ func _token_digest(token: String) -> String:
 func _write_status() -> void:
 	if _status_path == "": return
 	var file := FileAccess.open(_status_path + ".tmp", FileAccess.WRITE)
-	if file == null: return
+	if file == null:
+		push_error("无法写入房间状态文件，目录服务将看不到此房间")
+		return
 	var members := {}
 	for peer in _net._members:
 		var seat := int(_net._peer_seat.get(peer, -1))
 		var token := str(_net._members[peer].get("resume_token", ""))
 		if seat >= 0 and token != "":
 			members[str(seat)] = _token_digest(token)
-	file.store_string(JSON.stringify({"number": _net.room_number, "name": _net.room_name, "players": _net._members.size(), "started": _net._started, "members": members, "host_token": _token_digest(_net._owner_token), "updated": Time.get_unix_time_from_system()}))
+	file.store_string(JSON.stringify({"number": _net.room_number, "port": _net._port, "name": _net.room_name, "players": _net._members.size(), "started": _net._started, "members": members, "host_token": _token_digest(_net._owner_token), "updated": Time.get_unix_time_from_system()}))
 	file.close()
-	DirAccess.rename_absolute(_status_path + ".tmp", _status_path)
+	if DirAccess.rename_absolute(_status_path + ".tmp", _status_path) != OK:
+		push_error("无法更新房间状态文件")

@@ -15,8 +15,10 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -27,6 +29,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 ASSET_SUFFIXES = {".pck", ".apk", ".exe"}
 MANIFEST_NAME = "update-manifest.json"
 FALLBACK_NAME = "update-manifest-fallback.json"
+SAFE_ASSET = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def fail(message: str) -> None:
@@ -87,6 +90,17 @@ def rewrite_urls(data: dict, release: Path, domain: str, assets: set[str]) -> di
                 fail(f"{section}.{platform} 没有可识别的文件名")
             if filename not in assets:
                 fail(f"清单引用了不存在的文件: {filename}")
+            if not SAFE_ASSET.fullmatch(filename):
+                fail(f"清单文件名包含不安全字符: {filename}")
+            local = release / filename
+            if not local.is_file():
+                fail(f"发布目录缺少文件: {filename}")
+            expected_sha = str(entry.get("sha256", "")).lower()
+            if expected_sha and hashlib.sha256(local.read_bytes()).hexdigest() != expected_sha:
+                fail(f"清单 SHA-256 与本地文件不一致: {filename}")
+            expected_size = int(entry.get("size", 0))
+            if expected_size and local.stat().st_size != expected_size:
+                fail(f"清单大小与本地文件不一致: {filename}")
             entry["url"] = f"{base}/{filename}"
     result["release_url"] = f"{base}/"
     apk = release / "anshun-mahjong.apk"
@@ -122,9 +136,13 @@ def push(staging: Path, domain: str, ssh_target: str, remote_dir: str, assets: l
     run(["ssh", ssh_target, f"mkdir -p {remote_quote(remote_dir)}"], dry_run)
     names = assets + [FALLBACK_NAME, MANIFEST_NAME]
     for name in names:
+        if not SAFE_ASSET.fullmatch(name):
+            fail(f"上传文件名包含不安全字符: {name}")
         temporary = f"{remote_dir}/.{name}.upload"
         final = f"{remote_dir}/{name}"
-        run(["scp", str(staging / name), f"{ssh_target}:{temporary}"], dry_run)
+        # The destination is interpreted by the remote shell. Quote it instead
+        # of relying on manifest filenames being benign.
+        run(["scp", str(staging / name), f"{ssh_target}:{remote_quote(temporary)}"], dry_run)
         run(["ssh", ssh_target, f"mv -f {remote_quote(temporary)} {remote_quote(final)}"], dry_run)
 
 

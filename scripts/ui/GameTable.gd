@@ -559,7 +559,9 @@ func _on_net_prompt(seat: int) -> void:
 			var tile: String = response.tile
 			var options := round.legal_response_options(seat, int(response.get("disc_seat", -1)), tile, int(response.get("stage", RoundState.ResponseStage.NONE)))
 			_on_require_response(seat, response.disc_seat, tile, options)
-	elif round.current_turn == human_seat and round.phase == RoundState.Phase.PLAYING:
+	elif round.awaiting and round._awaiting_response.is_empty() \
+		and round.current_turn == human_seat and round.phase == RoundState.Phase.PLAYING \
+		and str(round.allowed_actions(seat).get("kind", "")) == "turn":
 		_on_require_turn(seat)
 	_update_interactivity()
 
@@ -572,6 +574,8 @@ func _on_round_finished(_result: Dictionary) -> void:
 func _on_connection_error(message: String) -> void:
 	_selecting = false
 	_clear_actions()
+	if _connection_dialog != null and is_instance_valid(_connection_dialog):
+		_connection_dialog.queue_free()
 	_connection_dialog = AcceptDialog.new()
 	_connection_dialog.dialog_text = message
 	_connection_dialog.title = "联机"

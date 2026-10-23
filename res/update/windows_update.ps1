@@ -46,7 +46,7 @@ try {
         }
     }
     Move-Item -LiteralPath $updateStage -Destination $updateTarget -Force
-    Start-Process -FilePath $updateTarget -WorkingDirectory ([System.IO.Path]::GetDirectoryName($updateTarget)) -WindowStyle Hidden
+    Start-Process -FilePath $updateTarget -WorkingDirectory ([System.IO.Path]::GetDirectoryName($updateTarget))
     "已更新至 $updateVersion。旧版本保留在 $updateBackup" | Set-Content -LiteralPath $updateLog -Encoding UTF8
 } catch {
     $updateError = $_.Exception.Message
@@ -56,9 +56,10 @@ try {
     }
     "自动更新失败：$updateError`r`n下载文件：$updateSource`r`n原版本：$updateTarget" | Set-Content -LiteralPath $updateLog -Encoding UTF8
     if (Test-Path -LiteralPath $updateTarget) {
-        Start-Process -FilePath $updateTarget -WorkingDirectory ([System.IO.Path]::GetDirectoryName($updateTarget)) -WindowStyle Hidden
+        Start-Process -FilePath $updateTarget -WorkingDirectory ([System.IO.Path]::GetDirectoryName($updateTarget))
     }
-    Start-Process -FilePath 'notepad.exe' -ArgumentList @($updateLog) -WindowStyle Hidden
+    # Keep this visible: a failed update needs an actionable error window.
+    Start-Process -FilePath 'notepad.exe' -ArgumentList @($updateLog)
 } finally {
     if (Test-Path -LiteralPath $updateStage) { Remove-Item -LiteralPath $updateStage -Force -ErrorAction SilentlyContinue }
 }

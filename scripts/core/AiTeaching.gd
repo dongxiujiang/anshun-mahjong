@@ -24,6 +24,9 @@ static func recommend(round, seat: int) -> Dictionary:
 	# 教打与正式 AI 共用同一套公开信息推理；刚摸到的牌已经在
 	# player.concealed 中，这里显式复制，避免后续误改权威手牌。
 	var ai := AI_PLAYER.new("AI教打")
+	# Teaching runs on the UI thread. Use the value model's bounded candidate
+	# analysis without an MCTS rollout so clicking 教打 cannot freeze a frame.
+	ai.use_mcts = false
 	var decision: Dictionary = ai.decide_turn(round, seat)
 	var tile := str(decision.get("discard", ""))
 	if tile == "" or not discards.has(tile):
