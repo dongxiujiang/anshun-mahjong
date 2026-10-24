@@ -674,10 +674,10 @@ func _test_kong_and_burn_payments() -> void:
 		r.players[1].concealed = PLAIN.duplicate()
 		r.players[2].concealed = waiting()
 		win_meta(r,1,-1)
-		begin("uncalled_kong_"+kind,r,"0未叫牌且杠tiao1，来源1；1胡、2叫牌；每个叫牌者应收基础4及杠鸡8")
+		begin("uncalled_kong_"+kind,r,"0未叫牌且杠tiao1，来源1；1胡、2叫牌；未叫杠主不收基础4，只补杠鸡8")
 		var result := settle(r)
 		for target in [1,2]:
-			eq([263],"未叫杠主向%d补基础4" % target,fee(result,0,target,"未叫牌杠分"),4.0,"scripts/core/ScoringEngine.gd:99")
+			eq([263],"未叫杠主不收基础4",fee(result,0,target,"未叫牌杠分"),0.0,"scripts/core/ScoringEngine.gd:99")
 			eq([263],"未叫杠主向%d补杠鸡8" % target,fee(result,0,target,"未叫牌杠中鸡"),8.0,"scripts/core/KongScoring.gd:6")
 
 func _test_ledger_and_draws() -> void:

@@ -86,7 +86,6 @@ static func settle(round) -> Dictionary:
 					items[payer].append({"kind": "penalty", "label": "荒牌基础补付", "tile": "", "tiles": [],
 						"amount": -huang_amount, "own_amount": -huang_amount, "note": "未叫牌补给叫牌玩家"})
 			KONG.pay(round, deltas, transfers, called_seats, items, "", true)
-			_pay_uncalled_kong_income(round, called_seats, deltas, transfers)
 			_record_uncalled_kong_payments(transfers, called_seats, items)
 			lines.append("荒牌：未叫者向每位叫牌者补付双方出牌鸡、基础4分，并按规则补杠分")
 		for seat in 4:
@@ -97,7 +96,6 @@ static func settle(round) -> Dictionary:
 	for target in winners:
 		WIN.settle_winner(round, int(target), points, winners, deltas, transfers, items, lines)
 	KONG.pay(round, deltas, transfers, called_seats, items, flip, false)
-	_pay_uncalled_kong_income(round, called_seats, deltas, transfers)
 	# §十五：烧鸡取消本局所有收入，也包括未叫者补付的出牌鸡和杠分。
 	# 统一在账本边界移除该座位的入账，保留其支出，并同步修正双方净值。
 	PAY.cancel_income(deltas, transfers, int(meta.get("burn_chicken_seat", -1)))
@@ -105,19 +103,6 @@ static func settle(round) -> Dictionary:
 	for seat in 4:
 		status[seat] = _win_status(seat, winners, self_draw, int(meta.get("discard_seat", -1)), called_seats, round)
 	return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, false, 1, winners, multiplier)
-
-static func _pay_uncalled_kong_income(round, called: Array, deltas: Array, transfers: Array) -> void:
-	# 未叫牌杠牌者本应得到的杠基础分改记为负分，向其他叫牌者支付。
-	for owner in 4:
-		if called[owner] or owner == int(round.round_meta.get("burn_chicken_seat", -1)):
-			continue
-		for meld in round.players[owner].melds:
-			if meld.get("robbed", false) or meld.get("kind", "") not in ["kong", "add_kong"]:
-				continue
-			for payer in 4:
-				if payer == owner or not called[payer] or payer == int(round.round_meta.get("burn_chicken_seat", -1)):
-					continue
-				PAY.transfer(deltas, transfers, owner, payer, CFG.SCORE_DRAW_KONG, "未叫牌杠分")
 
 static func _record_uncalled_kong_payments(transfers: Array, called: Array, items: Array) -> void:
 	var base_totals := [0.0, 0.0, 0.0, 0.0]

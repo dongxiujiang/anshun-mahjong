@@ -79,20 +79,6 @@ static func expected(round: RoundState) -> Dictionary:
 					for payer in 4:
 						if payer != receiver and not called[payer]:
 							_credit(matrix, payer, receiver, chicken_fee + flip_fee, burned)
-		elif not has_winner and not called[receiver]:
-			if receiver == burned:
-				continue
-			# 流局时未叫牌杠牌者不收杠分，反而向每位叫牌者支付4分；
-			# 所有杠都向每个叫牌者反付（§十八一6）。
-			for meld in round.players[receiver].melds:
-				if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
-					continue
-				var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
-				var source := int(meld.get("from_seat", -1))
-				for payer in 4:
-					if payer == receiver or not called[payer]:
-						continue
-					_credit(matrix, receiver, payer, 4.0, burned)
 		else:
 			continue
 	# 未叫牌杠家的杠中鸡不计正分，但要向每位叫牌玩家单独补付。
@@ -112,22 +98,6 @@ static func expected(round: RoundState) -> Dictionary:
 			for receiver in 4:
 				if called[receiver]:
 					_credit(matrix, owner, receiver, chicken_fee, burned)
-
-	# For a winning round, an uncalled kong owner pays its directed kong fee to
-	# called players. This is separate from chicken comparison.
-	if has_winner:
-		for owner in 4:
-			if called[owner]:
-				continue
-			for meld in round.players[owner].melds:
-				if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
-					continue
-				var own_kong: bool = meld.kind == "add_kong" or meld.get("concealed", false)
-				var source := int(meld.get("from_seat", -1))
-				for payer in 4:
-					if payer == owner or not called[payer]:
-						continue
-					_credit(matrix, owner, payer, 4.0, burned)
 
 	if has_winner:
 		for target in winners:

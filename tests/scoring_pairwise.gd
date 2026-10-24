@@ -124,8 +124,8 @@ func _test_uncalled_kong_chicken() -> void:
 	r.players[2].concealed = WAIT.duplicate()
 	var result := ScoringEngine.settle(r)
 	ORACLE.check(r, result, t, "未叫牌明杠幺鸡流局")
-	t.expect(result.pairwise[0][1] == -16.0 and result.pairwise[0][2] == -16.0,
-		"未叫牌明杠幺鸡按8分杠中鸡逐家补付")
+	t.expect(result.pairwise[0][1] == -12.0 and result.pairwise[0][2] == -12.0,
+		"未叫牌明杠幺鸡按荒牌基础4+杠中鸡8逐家补付，不收基础杠4")
 
 func _test_uncalled_pong_chicken() -> void:
 	var r := _fixture(0)
@@ -222,16 +222,16 @@ func _test_snapshot_1024() -> void:
 		"flip_tile": "wan8", "chicken_multiplier": 1, "dealer_seat": 1,
 		"charge_chickens": {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}}, true)
 	var result := ScoringEngine.settle(r)
-	t.expect(result.round_points == [0.0, -8.0, 0.0, 10.0], "snapshot signed individual scores")
-	t.expect(result.deltas == [-10.0, -18.0, -10.0, 38.0], "snapshot formula pairwise payments")
-	t.expect(result.pairwise[3] == [10.0, 18.0, 10.0, 0.0], "snapshot winner matrix")
+	t.expect(result.round_points == [0.0, -4.0, 0.0, 10.0], "snapshot signed individual scores")
+	t.expect(result.deltas == [-10.0, -14.0, -10.0, 34.0], "snapshot formula pairwise payments")
+	t.expect(result.pairwise[3] == [10.0, 14.0, 10.0, 0.0], "snapshot winner matrix")
 
 func _test_signed_individual_scores() -> void:
 	var r := _fixture(3)
 	r.players[1].discards = ["tiao1"]
 	r.players[1].melds = [{"kind": "kong", "tile": "tong2", "from_seat": 0, "concealed": false, "robbed": false}]
 	var result := ScoringEngine.settle(r)
-	t.expect(result.round_points[1] == -12.0, "uncalled individual score is negative own chicken plus kong")
+	t.expect(result.round_points[1] == -4.0, "uncalled individual score includes only own discard chicken, not its uncalled kong base")
 	t.expect(result.deltas[3] == 3 * result.round_points[3] - result.round_points[1], "winner receives called score from each opponent plus uncalled debt")
 	t.expect(result.deltas[1] == -result.round_points[3] + result.round_points[1], "uncalled pays winner score plus own negative score")
 
