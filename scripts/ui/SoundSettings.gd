@@ -190,7 +190,7 @@ func _ready() -> void:
 		question.reparent(dialog, false)
 		confirm_exit_button = _button("退出房间", Vector2(48, 176), Vector2(288, 126), func(): exit_confirmed.emit())
 		confirm_exit_button.reparent(dialog, false)
-		var return_label := "返回座位" if table_mode else "继续游戏"
+		var return_label := "继续游戏"
 		cancel_exit_button = _button(return_label, Vector2(384, 176), Vector2(288, 126), func(): exit_confirmation.hide())
 		cancel_exit_button.reparent(dialog, false)
 		exit_confirmation.hide()

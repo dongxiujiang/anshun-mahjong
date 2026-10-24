@@ -33,24 +33,25 @@ func build() -> void:
 	_post_controls.hide()
 
 func _return_to_seat() -> void:
-	# “返回座位”与“准备下一局”走同一条准备状态链路：留在当前房间，
-	# 不再发起回大厅投票；界面只保留一个准备按钮，避免双入口不一致。
-	_next_round()
+	# 返回座位由结算页发起房间投票；所有真人同意后才回大厅/座位选择。
+	# 退出房间是独立的直接退出动作，不再和返回座位混在同一个确认框里。
+	var network = table._net_node()
+	if network != null and network.has_method("request_return_to_lobby"):
+		network.request_return_to_lobby()
 
 func refresh_layout() -> void:
 	if not is_instance_valid(_post_controls): return
 	var online: bool = table._net_mode() != ""
-	_post_controls.size = UI.DISCARD_BUTTON_SIZE
+	_post_controls.size = Vector2(374.0 if online else UI.DISCARD_BUTTON_SIZE.x, UI.DISCARD_BUTTON_SIZE.y)
 	_post_controls.position = Vector2((table._design_size().x - _post_controls.size.x) / 2.0, table._design_size().y - _post_controls.size.y - 8.0)
 	# The readiness/countdown text lives inside the button now; keep the old
 	# labels as hidden compatibility fields for regression probes.
 	_next_round_status.visible = false
 	_next_round_hint.visible = false
 	if is_instance_valid(_return_seat_button):
-		# Compatibility node only; the visible UI is one prepare button.
-		_return_seat_button.visible = false
+		_return_seat_button.visible = online
 	_return_seat_button.position = Vector2.ZERO
-	_next_round_button.position = Vector2.ZERO
+	_next_round_button.position = Vector2(197, 0) if online else Vector2.ZERO
 	_next_round_button.size = UI.DISCARD_BUTTON_SIZE
 	_next_round_button.add_theme_font_size_override("font_size", 32 if online else UI.NEXT_ROUND_FONT_SIZE)
 
@@ -94,6 +95,9 @@ func _refresh_next_round_controls() -> void:
 	_next_round_button.text = "准备下一局"
 	if not ready_round:
 		_next_round_button.text = "准备下一局 --/4"
+		if is_instance_valid(_return_seat_button):
+			_return_seat_button.text = "返回座位 --/4"
+			_return_seat_button.disabled = true
 		_next_round_status.text = "下一局准备"
 		_next_round_hint.text = "等待房间同步…"
 		return
@@ -103,13 +107,22 @@ func _refresh_next_round_controls() -> void:
 		if bool(member.get("ai", false)): continue
 		human_count += 1
 		if bool(member.get("ready", false)): ready_count += 1
+	var return_vote: Dictionary = state.get("return_vote", {})
+	var vote_humans: Array = return_vote.get("humans", [])
+	var vote_yes: Dictionary = return_vote.get("yes", {})
+	var returned := 0
+	for voter in vote_humans:
+		if bool(vote_yes.get(int(voter), false)): returned += 1
+	if is_instance_valid(_return_seat_button):
+		_return_seat_button.text = "返回座位 %d/%d" % [returned, maxi(1, vote_humans.size())]
+		_return_seat_button.disabled = vote_humans.is_empty()
 	var seconds := int(state.get("countdown", -1))
 	var ready := bool(seats[table.human_seat].get("ready", false))
 	var all_ready := human_count > 0 and ready_count >= human_count
 	# Only human seats participate in the countdown/readiness display; AI
 	# seats are automatically ready.
 	if seconds >= 0 and all_ready:
-		_next_round_button.text = "%d 秒后开始" % seconds
+		_next_round_button.text = "全部准备，%d 秒后开始" % seconds
 	else:
 		_next_round_button.text = "准备下一局 %d/%d" % [ready_count, maxi(1, human_count)]
 	_next_round_status.text = "下一局准备  %d / %d" % [ready_count, maxi(1, human_count)]
