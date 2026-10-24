@@ -235,14 +235,11 @@ func _test_requested_kong_clicks() -> void:
 					var name := "幺鸡" if index == 0 else "八筒"
 					var unit := 16 if not is_draw and tile == gold else 8
 					var chicken := name + str(unit if called_owner else -unit) + "分"
-					var base := "杠上家" + name + "4分"
+					var base := "杠上家" + name + ("4分" if called_owner else "-4分")
 					var button: Button = a.hit_buttons[str(a._tiles_for(group)[0].get_instance_id())]
 					button.pressed.emit()
 					t.expect(a.labels[group.id].text.contains(chicken), "live click shows the requested signed chicken kong tile rate")
-					if called_owner:
-						t.expect(a.labels[group.id].text.contains(base), "live click keeps only the exposed kong's source direction")
-					else:
-						t.expect(not a.labels[group.id].text.contains("杠上家"), "uncalled kong owner does not display or charge its own base")
+					t.expect(a.labels[group.id].text.contains(base), "live click keeps only the exposed kong's source direction")
 					t.expect(not a.labels[group.id].text.contains("向") and not a.labels[group.id].text.contains("补付"), "live kong click omits payment flow wording")
 					expected.append(group.detail)
 					if is_draw and gold == "tiao1":

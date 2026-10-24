@@ -81,6 +81,17 @@ static func expected(round: RoundState) -> Dictionary:
 							_credit(matrix, payer, receiver, chicken_fee + flip_fee, burned)
 		else:
 			continue
+	# 未叫牌杠主不能作为收款杠主，反向向每位叫牌者支付基础4。
+	for owner in 4:
+		if called[owner]:
+			continue
+		for meld in round.players[owner].melds:
+			if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
+				continue
+			for payer in 4:
+				if called[payer]:
+					_credit(matrix, owner, payer, 4.0, burned)
+
 	# 未叫牌杠家的杠中鸡不计正分，但要向每位叫牌玩家单独补付。
 	# 胡牌局只有翻牌关联幺鸡/八筒时才翻倍；流局不翻鸡。
 	for owner in 4:

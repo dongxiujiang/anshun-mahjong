@@ -124,8 +124,8 @@ func _test_uncalled_kong_chicken() -> void:
 	r.players[2].concealed = WAIT.duplicate()
 	var result := ScoringEngine.settle(r)
 	ORACLE.check(r, result, t, "未叫牌明杠幺鸡流局")
-	t.expect(result.pairwise[0][1] == -12.0 and result.pairwise[0][2] == -12.0,
-		"未叫牌明杠幺鸡按荒牌基础4+杠中鸡8逐家补付，不收基础杠4")
+	t.expect(result.pairwise[0][1] == -16.0 and result.pairwise[0][2] == -16.0,
+		"未叫牌明杠幺鸡按荒牌基础4+杠基础4+杠中鸡8逐家补付")
 
 func _test_uncalled_pong_chicken() -> void:
 	var r := _fixture(0)
@@ -223,8 +223,8 @@ func _test_snapshot_1024() -> void:
 		"charge_chickens": {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}}, true)
 	var result := ScoringEngine.settle(r)
 	t.expect(result.round_points == [0.0, -8.0, 0.0, 10.0], "snapshot signed individual scores include own uncalled kong base")
-	t.expect(result.deltas == [-10.0, -14.0, -10.0, 34.0], "snapshot formula pairwise payments")
-	t.expect(result.pairwise[3] == [10.0, 14.0, 10.0, 0.0], "snapshot winner matrix")
+	t.expect(result.deltas == [-10.0, -18.0, -10.0, 38.0], "snapshot formula pairwise payments")
+	t.expect(result.pairwise[3] == [10.0, 18.0, 10.0, 0.0], "snapshot winner matrix")
 
 func _test_snapshot_1217() -> void:
 	# 2026-10-24 12:17 snapshot: seat 0 has add-kong tiao1 (gold 16),
@@ -258,7 +258,13 @@ func _test_snapshot_1217() -> void:
 	var result := ScoringEngine.settle(r)
 	t.expect(result.round_points == [-22.0, 5.0, 8.0, 2.0], "12:17 snapshot signed individual scores")
 	t.expect(result.round_points[0] == -22.0, "gold kong 16 + normal chicken 2 + add-kong base 4 = -22")
-	t.expect(result.deltas == [-69.0, 23.0, 35.0, 11.0], "12:17 snapshot pairwise transfers")
+	t.expect(result.deltas == [-81.0, 27.0, 39.0, 15.0], "12:17 snapshot pairwise transfers")
+	t.expect(result.pairwise == [
+		[0.0, -27.0, -30.0, -24.0],
+		[27.0, 0.0, -3.0, 3.0],
+		[30.0, 3.0, 0.0, 6.0],
+		[24.0, -3.0, -6.0, 0.0],
+	], "12:17 snapshot pairwise matrix: called-call differences and uncalled debt")
 
 func _test_signed_individual_scores() -> void:
 	var r := _fixture(3)
@@ -266,8 +272,8 @@ func _test_signed_individual_scores() -> void:
 	r.players[1].melds = [{"kind": "kong", "tile": "tong2", "from_seat": 0, "concealed": false, "robbed": false}]
 	var result := ScoringEngine.settle(r)
 	t.expect(result.round_points[1] == -12.0, "uncalled individual score includes its own kong base once")
-	t.expect(result.deltas[3] == 88.0, "winner receives called score from each opponent plus the paid discard debt")
-	t.expect(result.deltas[1] == -32.0, "uncalled pays winner score and its discard debt; own kong base is personal only")
+	t.expect(result.deltas[3] == 96.0, "winner receives called score from each opponent plus the paid discard debt")
+	t.expect(result.deltas[1] == -40.0, "uncalled pays winner score and its discard debt; own kong base is personal only")
 
 func _run() -> void:
 	_test_screenshot()

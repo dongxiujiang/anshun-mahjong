@@ -218,8 +218,8 @@ func _test_uncalled_kong_chicken_payments() -> void:
 	draw.players[1].concealed = WAIT.duplicate()
 	draw.players[2].concealed = WAIT.duplicate()
 	var draw_result := settle(draw)
-	check(draw_result.pairwise[0][1] == -12.0 and draw_result.pairwise[0][2] == -12.0,
-		"未叫牌明杠幺鸡流局：每位叫牌者收荒牌基础4+杠中鸡8=12，不收未叫杠基础4")
+	check(draw_result.pairwise[0][1] == -16.0 and draw_result.pairwise[0][2] == -16.0,
+		"未叫牌明杠幺鸡流局：每位叫牌者收荒牌基础4+杠基础4+杠中鸡8=16")
 	check(draw_result.transfers.any(func(item): return item.get("from", -1) == 0 and item.get("to", -1) == 1 and item.get("reason", "") == "未叫牌杠中鸡" and float(item.get("amount", 0.0)) == 8.0),
 		"未叫牌明杠幺鸡向原放杠叫牌者补8分")
 	check(draw_result.transfers.any(func(item): return item.get("from", -1) == 0 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌杠中鸡" and float(item.get("amount", 0.0)) == 8.0),
@@ -229,8 +229,8 @@ func _test_uncalled_kong_chicken_payments() -> void:
 	no_source_called.players[0].melds = [{"kind": "kong", "tile": "tiao1", "from_seat": 1, "concealed": false}]
 	no_source_called.players[2].concealed = WAIT.duplicate()
 	var no_source_result := settle(no_source_called)
-	check(no_source_result.pairwise[0][2] == -12.0 and no_source_result.pairwise[0][1] == 0.0,
-		"未叫杠主不收基础4，仍补荒牌基础4+杠中鸡8")
+	check(no_source_result.pairwise[0][2] == -16.0 and no_source_result.pairwise[0][1] == 0.0,
+		"未叫杠主反向支付基础4，并补荒牌基础4+杠中鸡8")
 	var win := fixture()
 	win.round_meta.winner = 2
 	win.round_meta.winners = [2]
@@ -313,8 +313,8 @@ func _test_kong_payments() -> void:
 			r.players[0].concealed = ["wan2"]
 			var uncalled_expected := [0.0, 0.0, 0.0, 0.0]
 			if source_called:
-				uncalled_expected = [-4.0, 12.0, -4.0, -4.0]
-			check(settle(r).deltas == uncalled_expected.map(func(v): return v * 2.0), "未叫牌杠主不收基础杠分，只补荒牌基础与杠中鸡（倍率作用）")
+				uncalled_expected = [-8.0, 16.0, -4.0, -4.0] if kind in ["concealed", "add_kong", "kong"] else [-4.0, 12.0, -4.0, -4.0]
+			check(settle(r).deltas == uncalled_expected.map(func(v): return v * 2.0), "未叫牌杠主反向支付基础杠分（倍率作用）")
 	# Four concealed kongs: per-group fees plus a discarded charge.
 	var r := fixture()
 	r.players[0].concealed = ["wan9"]
