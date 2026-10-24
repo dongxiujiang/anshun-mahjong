@@ -51,8 +51,8 @@ static func pay(round, deltas: Array, transfers: Array, called: Array, items: Ar
 				"chicken_amount": chicken_value, "flip_amount": flip_value, "own_amount": own_amount,
 				"kong_kind": RoundState.KongKind.ADD_KONG if meld.kind == "add_kong" else (RoundState.KongKind.CONCEALED if own_kong else RoundState.KongKind.EXPOSED),
 				"from_seat": source, "owner": receiver, "payers": payers, "chicken_payers": chicken_payers, "draw": is_draw, "note": ""})
-	# 未叫牌杠家手中的杠中鸡不计正分，但仍按每张普通鸡2分
-	# 向所有叫牌玩家逐家补付。明杠幺鸡因此为4×2=8分。
+	# 未叫牌杠家的杠组不计正分：个人分只扣一次“杠基础 + 杠中鸡”，
+	# 再按流水向每位叫牌者逐家补付杠中鸡。
 	for owner in 4:
 		if called[owner] or owner == int(round.round_meta.get("burn_chicken_seat", -1)):
 			continue
@@ -60,11 +60,23 @@ static func pay(round, deltas: Array, transfers: Array, called: Array, items: Ar
 			if meld.get("robbed", false) or meld.kind not in ["kong", "add_kong"]:
 				continue
 			var tile := str(meld.get("tile", ""))
-			if not Tiles.is_chicken(tile):
-				continue
-			var chicken_value: float = CFG.SCORE_CALL_CHICKEN * 4.0
-			if not is_draw and tile in related:
-				chicken_value *= CFG.SCORE_FLIP_DOUBLE
-			for receiver in 4:
-				if called[receiver] and receiver != int(round.round_meta.get("burn_chicken_seat", -1)):
-					PAY.transfer(deltas, transfers, owner, receiver, chicken_value, "未叫牌杠中鸡")
+			var chicken_value := 0.0
+			var flip_value := 0.0
+			if Tiles.is_chicken(tile):
+				chicken_value = CFG.SCORE_CALL_CHICKEN * 4.0
+				if not is_draw and tile in related:
+					chicken_value *= CFG.SCORE_FLIP_DOUBLE
+			elif not is_draw and tile in related:
+				flip_value = CFG.SCORE_FLIP_CHICKEN * 4.0
+			var base_value: float = CFG.SCORE_DRAW_KONG
+			var own_amount := -(base_value + chicken_value + flip_value)
+			items[owner].append({"kind": "kong", "label": ("加杠" if meld.kind == "add_kong" else ("暗杠" if meld.get("concealed", false) else "明杠")),
+				"tile": tile, "tiles": [tile, tile, tile, tile], "amount": -own_amount,
+				"base_amount": base_value, "chicken_amount": chicken_value, "flip_amount": flip_value,
+				"own_amount": own_amount, "kong_kind": RoundState.KongKind.ADD_KONG if meld.kind == "add_kong" else (RoundState.KongKind.CONCEALED if meld.get("concealed", false) else RoundState.KongKind.EXPOSED),
+				"from_seat": int(meld.get("from_seat", -1)), "payers": [], "chicken_payers": [],
+				"draw": is_draw, "note": "未叫牌杠主只计一次负分"})
+			if chicken_value > 0.0:
+				for receiver in 4:
+					if called[receiver] and receiver != int(round.round_meta.get("burn_chicken_seat", -1)):
+						PAY.transfer(deltas, transfers, owner, receiver, chicken_value, "未叫牌杠中鸡")

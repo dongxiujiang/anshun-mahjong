@@ -86,7 +86,6 @@ static func settle(round) -> Dictionary:
 					items[payer].append({"kind": "penalty", "label": "荒牌基础补付", "tile": "", "tiles": [],
 						"amount": -huang_amount, "own_amount": -huang_amount, "note": "未叫牌补给叫牌玩家"})
 			KONG.pay(round, deltas, transfers, called_seats, items, "", true)
-			_record_uncalled_kong_payments(transfers, called_seats, items)
 			lines.append("荒牌：未叫者向每位叫牌者补付双方出牌鸡、基础4分，并按规则补杠分")
 		for seat in 4:
 			status[seat] = _draw_status(seat, called_seats)
@@ -99,30 +98,9 @@ static func settle(round) -> Dictionary:
 	# §十五：烧鸡取消本局所有收入，也包括未叫者补付的出牌鸡和杠分。
 	# 统一在账本边界移除该座位的入账，保留其支出，并同步修正双方净值。
 	PAY.cancel_income(deltas, transfers, int(meta.get("burn_chicken_seat", -1)))
-	_record_uncalled_kong_payments(transfers, called_seats, items)
 	for seat in 4:
 		status[seat] = _win_status(seat, winners, self_draw, int(meta.get("discard_seat", -1)), called_seats, round)
 	return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, false, 1, winners, multiplier)
-
-static func _record_uncalled_kong_payments(transfers: Array, called: Array, items: Array) -> void:
-	var base_totals := [0.0, 0.0, 0.0, 0.0]
-	var chicken_totals := [0.0, 0.0, 0.0, 0.0]
-	for transfer in transfers:
-		var payer := int(transfer.get("from", -1))
-		var reason := str(transfer.get("reason", ""))
-		if payer not in range(4) or called[payer]:
-			continue
-		if reason == "未叫牌杠中鸡":
-			chicken_totals[payer] += float(transfer.get("amount", 0.0))
-		elif reason in ["暗杠", "加杠", "明杠", "查叫暗杠", "查叫加杠", "查叫明杠", "杠中鸡", "未叫牌杠分"]:
-			base_totals[payer] += float(transfer.get("amount", 0.0))
-	for payer in 4:
-		if base_totals[payer] > 0.0:
-			items[payer].append({"kind": "penalty", "label": "未叫牌杠分", "tile": "", "tiles": [],
-				"amount": -base_totals[payer], "own_amount": -base_totals[payer], "note": "需补付给叫牌玩家"})
-		if chicken_totals[payer] > 0.0:
-			items[payer].append({"kind": "penalty", "label": "未叫牌杠中鸡", "tile": "", "tiles": [],
-				"amount": -chicken_totals[payer], "own_amount": -chicken_totals[payer], "note": "杠中鸡需补付给叫牌玩家"})
 
 static func _winner_seats(meta: Dictionary) -> Array:
 	var winners: Array = meta.get("winners", []).duplicate()

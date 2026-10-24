@@ -222,22 +222,57 @@ func _test_snapshot_1024() -> void:
 		"flip_tile": "wan8", "chicken_multiplier": 1, "dealer_seat": 1,
 		"charge_chickens": {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}}, true)
 	var result := ScoringEngine.settle(r)
-	t.expect(result.round_points == [0.0, -4.0, 0.0, 10.0], "snapshot signed individual scores")
+	t.expect(result.round_points == [0.0, -8.0, 0.0, 10.0], "snapshot signed individual scores include own uncalled kong base")
 	t.expect(result.deltas == [-10.0, -14.0, -10.0, 34.0], "snapshot formula pairwise payments")
 	t.expect(result.pairwise[3] == [10.0, 14.0, 10.0, 0.0], "snapshot winner matrix")
+
+func _test_snapshot_1217() -> void:
+	# 2026-10-24 12:17 snapshot: seat 0 has add-kong tiao1 (gold 16),
+	# a normal tong8 discard (2) and the add-kong base (4), so its personal
+	# score is -22 even though the pairwise transfers are larger.
+	var r := RoundState.new()
+	r.set_rng_seed(1)
+	r.build_players(0)
+	r.phase = RoundState.Phase.PLAYING
+	r.players[0].concealed = ["wan8", "tong2", "tong3", "wan8", "wan5", "wan3", "wan9"]
+	r.players[0].discards = ["tiao9", "wan1", "tiao7", "tiao3", "tong9", "tong8", "tiao4", "tong5", "tiao4"]
+	r.players[0].melds = [
+		{"after_discard": 0, "from_seat": 1, "kind": "pung", "robbed": false, "tile": "tiao6"},
+		{"after_discard": 5, "from_seat": 1, "kind": "add_kong", "robbed": false, "tile": "tiao1"},
+	]
+	r.players[1].concealed = ["wan4", "tong2", "wan9", "tong6", "tong5", "tong2", "tong4", "tong2", "wan7", "wan4"]
+	r.players[1].discards = ["tong7", "tong6", "tong9", "tong4", "tiao3", "tong8", "tiao7", "wan3"]
+	r.players[1].melds = [{"after_discard": 7, "from_seat": 2, "kind": "pung", "robbed": false, "tile": "tiao8"}]
+	r.players[2].concealed = ["wan3", "wan2", "tong3", "wan7", "tong3", "wan6", "wan7", "wan6", "wan4", "wan5", "wan8"]
+	r.players[2].discards = ["tong8", "tiao9", "tiao6", "tong5", "tiao4", "wan6"]
+	r.players[2].melds = [{"after_discard": 5, "from_seat": 1, "kind": "pung", "robbed": false, "tile": "tiao5"}]
+	r.players[3].concealed = ["tong6", "wan5", "tong5", "wan2", "tong1", "tong1", "wan2", "tong1", "wan4", "tong4"]
+	r.players[3].discards = ["wan1", "wan9", "tiao7", "tiao4", "tong8", "tiao9", "wan1"]
+	r.players[3].melds = [{"after_discard": 3, "from_seat": 2, "kind": "pung", "robbed": false, "tile": "tiao2"}]
+	r.round_meta.merge({"winner": 2, "winners": [2], "self_draw": true, "win_tile": "wan8",
+		"flip_tile": "tiao9", "chicken_multiplier": 1, "dealer_seat": 1,
+		"charge_chickens": {
+			"tiao1": {"owner": 0, "location": "meld", "meld_index": 1, "discard_id": 4},
+			"tong8": {"owner": 2, "location": "discard", "discard_id": 0},
+		}}, true)
+	var result := ScoringEngine.settle(r)
+	t.expect(result.round_points == [-22.0, 5.0, 8.0, 2.0], "12:17 snapshot signed individual scores")
+	t.expect(result.round_points[0] == -22.0, "gold kong 16 + normal chicken 2 + add-kong base 4 = -22")
+	t.expect(result.deltas == [-69.0, 23.0, 35.0, 11.0], "12:17 snapshot pairwise transfers")
 
 func _test_signed_individual_scores() -> void:
 	var r := _fixture(3)
 	r.players[1].discards = ["tiao1"]
 	r.players[1].melds = [{"kind": "kong", "tile": "tong2", "from_seat": 0, "concealed": false, "robbed": false}]
 	var result := ScoringEngine.settle(r)
-	t.expect(result.round_points[1] == -4.0, "uncalled individual score includes only own discard chicken, not its uncalled kong base")
-	t.expect(result.deltas[3] == 3 * result.round_points[3] - result.round_points[1], "winner receives called score from each opponent plus uncalled debt")
-	t.expect(result.deltas[1] == -result.round_points[3] + result.round_points[1], "uncalled pays winner score plus own negative score")
+	t.expect(result.round_points[1] == -12.0, "uncalled individual score includes its own kong base once")
+	t.expect(result.deltas[3] == 88.0, "winner receives called score from each opponent plus the paid discard debt")
+	t.expect(result.deltas[1] == -32.0, "uncalled pays winner score and its discard debt; own kong base is personal only")
 
 func _run() -> void:
 	_test_screenshot()
 	_test_snapshot_1024()
+	_test_snapshot_1217()
 	_test_signed_individual_scores()
 	_test_six_pairs()
 	_test_uncalled_discard_chicken()
