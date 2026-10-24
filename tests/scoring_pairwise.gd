@@ -200,8 +200,45 @@ func _test_result_ui() -> void:
 	table.queue_free()
 	await process_frame
 
+func _test_snapshot_1024() -> void:
+	# 2026-10-24 10:32 self-draw snapshot: called seat 3 has +10,
+	# uncalled seat 1 has -8; pairwise settlement is 10/18/10.
+	var r := RoundState.new()
+	r.set_rng_seed(1)
+	r.build_players(0)
+	r.phase = RoundState.Phase.PLAYING
+	r.players[0].concealed = ["wan3", "tong8", "wan5", "tiao6", "wan3", "wan1", "wan6", "tong4", "tong5", "tong7", "tiao5", "wan4", "tong7"]
+	r.players[0].discards = ["tiao9", "tiao3"]
+	r.players[1].concealed = ["tiao4", "tiao7", "wan7", "tong4", "tiao4", "tiao5", "wan2", "tong6", "tiao6", "wan4"]
+	r.players[1].discards = ["tiao1", "wan9"]
+	r.players[1].melds = [{"after_discard": 3, "from_seat": 0, "kind": "kong", "robbed": false, "tile": "tong2"}]
+	r.players[2].concealed = ["tong9", "tong5", "wan4", "tiao2", "tiao8", "tiao2", "wan6", "tong9", "tong6", "wan6"]
+	r.players[2].discards = ["wan7", "tiao5", "tong1"]
+	r.players[2].melds = [{"after_discard": 1, "from_seat": 1, "kind": "pung", "robbed": false, "tile": "wan1"}]
+	r.players[3].concealed = ["tong3", "wan7", "tiao4", "tong7", "tong6", "wan8", "tong8", "tiao2", "tong3", "tiao3", "wan6"]
+	r.players[3].discards = ["tiao1", "tiao9", "tiao6"]
+	r.players[3].melds = [{"after_discard": 1, "from_seat": 1, "kind": "pung", "robbed": false, "tile": "tong1"}]
+	r.round_meta.merge({"winner": 3, "winners": [3], "self_draw": true, "win_tile": "wan6",
+		"flip_tile": "wan8", "chicken_multiplier": 1, "dealer_seat": 1,
+		"charge_chickens": {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}}, true)
+	var result := ScoringEngine.settle(r)
+	t.expect(result.round_points == [0.0, -8.0, 0.0, 10.0], "snapshot signed individual scores")
+	t.expect(result.deltas == [-10.0, -18.0, -10.0, 38.0], "snapshot formula pairwise payments")
+	t.expect(result.pairwise[3] == [10.0, 18.0, 10.0, 0.0], "snapshot winner matrix")
+
+func _test_signed_individual_scores() -> void:
+	var r := _fixture(3)
+	r.players[1].discards = ["tiao1"]
+	r.players[1].melds = [{"kind": "kong", "tile": "tong2", "from_seat": 0, "concealed": false, "robbed": false}]
+	var result := ScoringEngine.settle(r)
+	t.expect(result.round_points[1] == -12.0, "uncalled individual score is negative own chicken plus kong")
+	t.expect(result.deltas[3] == 3 * result.round_points[3] - result.round_points[1], "winner receives called score from each opponent plus uncalled debt")
+	t.expect(result.deltas[1] == -result.round_points[3] + result.round_points[1], "uncalled pays winner score plus own negative score")
+
 func _run() -> void:
 	_test_screenshot()
+	_test_snapshot_1024()
+	_test_signed_individual_scores()
 	_test_six_pairs()
 	_test_uncalled_discard_chicken()
 	_test_uncalled_kong_chicken()

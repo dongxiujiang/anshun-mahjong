@@ -150,7 +150,10 @@ static func _result(deltas: Array, lines: Array, points: Array, discard_points: 
 	for seat in 4:
 		items[seat] = group_chicken_items(items[seat])
 		for item in items[seat]:
-			round_points[seat] += maxf(0.0, float(item.get("own_amount", item.get("amount", 0.0))))
+			# Signed individual score: called players accumulate positive hand
+			# income, uncalled players accumulate their negative debts. The
+			# pairwise ledger then settles these signed scores against the table.
+			round_points[seat] += float(item.get("own_amount", item.get("amount", 0.0)))
 	# multiplier 应用到所有金额（鸡分、牌型分、杠分、报听费、额外胡牌分），
 	# 无论胡牌还是流局都应用。
 	if multiplier > 1:

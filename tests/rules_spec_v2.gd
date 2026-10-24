@@ -700,7 +700,7 @@ func _test_ledger_and_draws() -> void:
 	begin("uncalled_discards",r,"2未叫牌打出冲锋tiao1=4、普通tong8=2; 0胡、1叫牌")
 	var result := settle(r)
 	for target in [0,1]: eq([263],"向%d补出牌鸡6" % target,fee(result,2,target,"未叫牌出牌鸡"),6.0,"scripts/core/PaymentLedger.gd:60")
-	eq([263],"未叫牌自身总分0",result.round_points[2],0.0,"scripts/core/ScoringEngine.gd:138")
+	eq([263],"未叫牌自身总分为负6",result.round_points[2],-6.0,"scripts/core/ScoringEngine.gd:138")
 	var total := fixture()
 	total.players[0].concealed = ["wan1","wan2","wan3","tong2","tong3","tong4","tiao2","tiao3","tiao4","wan9","wan9"]
 	total.players[0].melds = [meld("tiao1","kong",1,true)]
