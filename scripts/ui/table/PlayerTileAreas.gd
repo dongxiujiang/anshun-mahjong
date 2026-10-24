@@ -20,6 +20,7 @@ var ready_frames := {}
 var voice_speaker_buttons := {}
 var _status_labels := {}
 var _exposed_layouts := {}
+var _exposed_layout_key := PackedByteArray()
 var _seat_visual_keys := {}
 var _exposed_keys := {}
 var _river_keys := {}
@@ -368,7 +369,6 @@ func _refresh_exposed(seat: int) -> void:
 		var meld: Dictionary = group.meld
 		var count = 3 if meld.kind == "pung" else 4
 		var layout: Dictionary = group.layout
-		var charge_index := -1
 		var up: bool = _meld_revealed(seat, group.meld_index)
 		for index in count:
 			var tile: TileView = table._make_tile(meld.tile if up else "", up, player_unit)
@@ -378,9 +378,8 @@ func _refresh_exposed(seat: int) -> void:
 			# the caller's old concealed row.
 			tile.set_meta("meld_slot", index)
 			tile.set_meta("meld_sideways", int(layout.sideways))
-			tile.set_meta("charge_chicken", index == charge_index)
-			if index == charge_index:
-				tile.set_highlight(true)
+			# 碰杠后的鸡牌不再显示冲锋标记；该标记只存在于实际出牌鸡
+			# 的 chicken 组中，不能在这里伪造。
 			if index == int(layout.sideways):
 				tile.rotation = -PI / 2.0
 			table._put_tile(meld_box[seat], tile, group_origin + Vector2(layout.positions[index]))
@@ -392,10 +391,15 @@ func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> 
 	var count = 3 if kind == "pung" else 4
 	var source = posmod(int(meld.get("from_seat", -1)) - seat, 4)
 	var exposed: bool = kind == "kong" and not meld.get("concealed", false) and int(meld.get("from_seat", -1)) in range(4)
+	# 明杠的横牌槽位按“来源相对于自己的方向”固定：
+	# 上家(3) 横放最左；下家(1) 横放最右；对家(2) 单独走下方
+	# 的对家分支，三竖牌加顶部横牌，也以右侧槽位表示。
 	var sideways = int({1: 3, 2: 3, 3: 0}.get(source, -1)) if exposed else -1
 	# 碰牌没有来源标记：即使碰到幺鸡，三张牌也全部竖放。
 	var positions: Array = []
 	if exposed and source == 2:
+		# 对家明杠：三张竖牌在上方排一行，第四张横放在正中上方；
+		# 横牌仍占 sideways=3 槽位，方便动画复用同一组物理槽位。
 		var span = 3 * width + 2 * gap
 		for index in 3:
 			positions.append(Vector2(index * (width + gap), width + gap))
@@ -407,11 +411,37 @@ func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> 
 		x += (height if index == sideways else width) + gap
 	return {"positions": positions, "size": Vector2(x - gap, height), "sideways": sideways}
 
+func _exposed_layout_input_key() -> PackedByteArray:
+	# 布局输入只包含会影响占位的内容：牌桌尺寸、手牌/摸牌、碰杠与鸡牌、
+	# 中心控件以及操作栏可见性。动画帧只要这些输入没变就直接复用结果。
+	var parts: Array = [table.size, table.human_seat, table.round.phase,
+		table.action_bar.visible, table.action_bar.position, table.action_bar.size,
+		table._settings_button.position, table._settings_button.touch_rect()]
+	for control in center_labels.values() + name_labels.values() + dealer_badges.values() \
+		+ [table.center_info, table._remaining_label, table._ai_teach_button, table._voice_button]:
+		if control != null:
+			parts.append([control.visible, control.position, control.size])
+	for seat in 4:
+		var player: PlayerState = table.round.players[seat]
+		var metrics: Dictionary = table._seat_metrics(seat)
+		parts.append([
+			player.concealed, player.just_drew, player.ready, player.melds,
+			table._exposed_groups(seat), table._hand_layout(seat), metrics,
+			table._hand_tile_unit(seat), table._player_tile_unit(seat),
+		])
+	return var_to_bytes(parts)
+
 func _prepare_exposed_layouts() -> void:
-	_exposed_layouts.clear()
 	# 联机客户端可能尚未收到四家数据，等待期间不规划牌组。
 	if table.round.players.size() != 4:
+		_exposed_layouts.clear()
+		_exposed_layout_key = PackedByteArray()
 		return
+	var layout_key := _exposed_layout_input_key()
+	if not _exposed_layouts.is_empty() and layout_key == _exposed_layout_key:
+		return
+	_exposed_layout_key = layout_key
+	_exposed_layouts.clear()
 	var occupied: Array[Rect2] = []
 	if table.action_bar.visible:
 		occupied.append(Rect2(table.action_bar.position, table.action_bar.size))
@@ -456,10 +486,13 @@ func _prepare_exposed_layouts() -> void:
 				var charge: bool = group.chicken.charge
 				layout = {"positions": [Vector2(0, height if charge else 0)], "size": Vector2(height if charge else width, height), "sideways": 0 if charge else -1}
 			else:
-				var meld: Dictionary = group.meld.duplicate()
-				meld["charge_marker"] = table.round.is_charge_meld(seat, group.meld_index)
-				layout = table._meld_tile_layout(meld, seat, player_unit, UI.TILE_GAP)
-			var origin = Vector2.ZERO
+				# 明杠/暗杠/加杠的横放槽位只由来源方向决定；碰牌没有来源
+				# 标记，碰到的鸡牌也不显示冲锋标记。
+				layout = table._meld_tile_layout(group.meld, seat, player_unit, UI.TILE_GAP)
+			var fallback_x: float = next_x if next_x + float(layout.size.x) <= metrics.overflow_right else metrics.overflow_x
+			fallback_x = maxf(metrics.left, minf(fallback_x, metrics.overflow_right - float(layout.size.x)))
+			var fallback_origin := Vector2(fallback_x, metrics.exposed_y + height - float(layout.size.y))
+			var origin = fallback_origin
 			var rects: Array[Rect2] = []
 			var placed = false
 			var row_index = 0
@@ -479,7 +512,12 @@ func _prepare_exposed_layouts() -> void:
 				if not placed:
 					row_index += 1
 			if not placed:
-				push_error("碰杠/鸡牌区域无法容纳当前牌组")
+				# Deterministic compact fallback: never leave origin at the last
+				# probed position, which could retain stale coordinates and overlap
+				# an unrelated group. Keep the group at the inward-most row edge.
+				origin = fallback_origin
+				rects = table._exposed_rects(layout, origin, transform, width, height)
+				push_warning("碰杠/鸡牌区域空间不足，使用确定性紧凑兜底")
 			group["origin"] = origin
 			group["layout"] = layout
 			plans.append(group)
