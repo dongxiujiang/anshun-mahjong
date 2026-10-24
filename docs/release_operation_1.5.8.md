@@ -40,3 +40,11 @@ SHA-256 584093789aa8babea5d05f90c52c4ee81c63e7dbc943f0f2506028c0b3b6e42c
 完整PCK 11,044,576 字节
 SHA-256 0798f745c937c2588300182b12f9ac9c293bb101c2d1b1cc4b737c2550c439e1
 ```n
+
+## 发布
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.5.8
+服务端镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-3b4c0c2
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+```n
