@@ -75,9 +75,9 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 			and RuleEngine.special_pattern_key(pattern) == "" \
 			and not pattern.get("all_triplets", false) and not pattern.get("seven_pairs", false) \
 			and not pattern.get("dragon_seven_pairs", false) and not pattern.get("flush", false):
-			PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_KONG_SELF_RON, "自带杠小牌放炮")
-			items[winner].append(_item("win", "自带杠小牌放炮", CFG.SCORE_KONG_SELF_RON, "放炮者支付"))
-			lines.append("自带杠小牌放炮：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), CFG.SCORE_KONG_SELF_RON])
+			PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_KONG_SELF_RON, "通行证胡牌")
+			items[winner].append(_item("win", "通行证胡牌", CFG.SCORE_KONG_SELF_RON, "放炮者支付"))
+			lines.append("通行证胡牌：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), CFG.SCORE_KONG_SELF_RON])
 
 		# 报听胡：点炮时只有点炮者支付；牌型分也只由放炮者支付。
 		# 其他两家只按幺鸡八筒、杠分、翻鸡分参与两两比较。
