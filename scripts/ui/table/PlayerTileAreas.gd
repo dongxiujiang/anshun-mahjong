@@ -192,7 +192,7 @@ func _hand_key(seat: int) -> PackedByteArray:
 	var player: PlayerState = table.round.players[seat]
 	var controller = table._table_animation_controller
 	return var_to_bytes([table.human_seat, table._design_size(), table.round.audio_session,
-		player.concealed, player.just_drew, _settlement_reveals_hands(), table._hand_layout(seat),
+		player.concealed, player.just_drew, player.ready, _settlement_reveals_hands(), table._hand_layout(seat),
 		controller.opening_active(), controller.dealt_count(seat), controller.holds_draw_slot(seat)])
 
 func highlight_ai_teach(tile: String) -> void:
@@ -324,14 +324,15 @@ func _refresh_ready_frame(seat: int) -> void:
 		return
 	var bounds := Rect2()
 	var has_tile := false
-	for box in [hand_box.get(seat), draw_box.get(seat)]:
-		if box == null:
-			continue
-		for child in box.get_children():
-			if child is TileView and child.visible:
-				var rect := Rect2(box.position + child.position, child.size)
-				bounds = rect if not has_tile else bounds.merge(rect)
-				has_tile = true
+	var box: Control = hand_box.get(seat)
+	if box == null:
+		frame.hide()
+		return
+	for child in box.get_children():
+		if child is TileView and child.visible:
+			var rect := Rect2(box.position + child.position, child.size)
+			bounds = rect if not has_tile else bounds.merge(rect)
+			has_tile = true
 	if not has_tile:
 		frame.hide()
 		return

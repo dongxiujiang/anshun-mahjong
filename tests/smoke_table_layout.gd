@@ -150,9 +150,21 @@ func _test_ready() -> void:
 func _test_ready_frame() -> void:
 	var frame: Panel = table.ready_frames[0]
 	_expect(frame != null and frame.visible, "Ready player gets a gold hand-area frame")
-	_expect(frame.size.x > 0.0 and frame.size.y > 0.0, "Ready frame encloses the hand and drawn tile")
+	_expect(frame.size.x > 0.0 and frame.size.y > 0.0, "Ready frame encloses the hand")
+	var drawn: TileView = table.draw_box[0].get_child(0)
+	_expect(frame.position.x + frame.size.x <= drawn.position.x, "Ready frame excludes the separate drawn tile")
 	for seat in range(1, 4):
 		_expect(not table.ready_frames[seat].visible, "Non-ready seats do not show the ready frame")
+	var host: RoundState = table.round
+	host.players[1].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
+	host.players[1].ready = true
+	table._refresh()
+	_expect(table.ready_frames[1].visible, "Ready opponents show the gold frame on the table")
+	var client := RoundState.new()
+	client.apply_sync(host.serialize_for_seat(0))
+	table.round = client
+	table._refresh()
+	_expect(table.ready_frames[1].visible, "Online snapshots preserve the opponent ready frame")
 
 func _test_kong() -> void:
 	_new_fixture()

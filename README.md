@@ -9,7 +9,7 @@
 - 更新：主菜单和联机大厅都可「检查更新」。新完整 APK 默认使用自建 HTTPS 更新源，主清单和回退清单都在 `https://mj.dongxiu.fun/updates/`；1.1.9 及更早版本仍需先安装一次新完整包。
 - 联机语音：正在从 LiveKit 迁移到腾讯云 GME；Android 使用 GME arm64，Windows 暂时保留 PCM。需要服务器 `GME_APP_ID`/`GME_APP_KEY`，详见 [GME 语音接入手册](docs/gme_voice.md)。
 
-联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.5.1**，完整规则见 [当前游戏规则与玩法](docs/当前游戏规则与玩法.txt)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
+联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.5.2**，完整规则见 [当前游戏规则与玩法](docs/当前游戏规则与玩法.txt)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 
 应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Windows 和 Android 游戏内下载补丁，重启生效，不必重装；大版本更新完整 EXE/APK。首次使用热更新须安装包含 PatchBoot 的完整版本。自 1.4.19 起，自建更新清单必须携带离线 RSA 签名，客户端只信任内置公钥验证通过的 `signed_payload`；发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
 
@@ -30,7 +30,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 
 - 轮到你：轻点一次**手牌或摸牌**即可打出，不再显示「出牌」按钮。拖动不会误出牌；开局发牌和自己的摸牌动画完成前不能出牌。若可自摸/暗杠/加杠/报听，右下操作区会出现对应按钮。
 - 别家打出牌：底部出现 **胡 / 碰 / 杠 / 过**，点选即可。
-- 报听：在自己第一次摸牌后的出牌机会，打出一张即可听牌时可点「报听」；此前允许连续暗杠并从牌尾补牌，但不能有碰、明杠或加杠。报听后手牌区域显示一整圈金色边框并锁定，只允许打出刚摸到的牌；自动摸打，只能打摸到的牌；自动出牌等待与人机速度设置一致，摸到可自摸的牌或别人点炮可胡时停下，等待玩家选择自摸/胡。
+- 报听：在自己第一次摸牌后的出牌机会，打出一张即可听牌时可点「报听」；此前允许连续暗杠并从牌尾补牌，但不能有碰、明杠或加杠。报听后手牌区域显示一整圈金色边框并锁定，只允许打出刚摸到的牌；金色边框只包住手牌，不含摸牌位，联机其他玩家也可见；自动摸打，只能打摸到的牌；自动出牌等待与人机速度设置一致，摸到可自摸的牌或别人点炮可胡时停下，等待玩家选择自摸/胡。
 - 暗杠：只开放两个窗口——开局手牌已有四张，第一次弃牌前；或本回合摸到第四张，本次弃牌前。选择弃牌后这张牌本局不能再暗杠。加杠只在本回合摸到第四张时开放；本次不选择加杠，本局该牌不能再加杠。明杠响应中若本可杠却选择碰，本局该牌也不能再加杠。自己的牌桌视图立即显示暗杠牌面，其他玩家看到四张反扣。暗杠补牌后的本轮出牌仍保持对其他玩家反扣，下一轮该玩家出牌后四张一起翻开；同一轮连续暗杠一起翻开，不同轮暗杠各自等待。亮出后联机公开牌面，AI也开始计入可见牌；提前结算时展示完整牌面。
 - 四家分数默认各 200，可为负；牌桌各玩家名字下显示当前累计分数，叫牌和本局记分明细放在局末结算卡片。单机可继续下一局，保留累计分数。
 - 牌桌中央只保留四家的累计分数：单机不显示东南西北或相对称呼；联机在分数上方显示玩家自己输入的姓名，AI 统一显示“人机”。四个分数相对中央正方形的上、右、下、左边水平/垂直居中，庄家标识紧贴自己的分数。当前出牌玩家对应的正方形外边缘会出现淡黄色散射光；等待碰杠胡、发牌、结算时熄灭。
@@ -60,7 +60,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 
 ### 3.1 在线服务器 Docker 部署
 
-完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。1.4.16 的实际发布与部署记录见 [docs/release_operation_1.4.16.md](docs/release_operation_1.4.16.md)，1.4.17 记录见 [docs/release_operation_1.4.17.md](docs/release_operation_1.4.17.md)，1.4.18 记录见 [docs/release_operation_1.4.18.md](docs/release_operation_1.4.18.md)，1.4.19 记录见 [docs/release_operation_1.4.19.md](docs/release_operation_1.4.19.md)，1.5.0 记录见 [docs/release_operation_1.5.0.md](docs/release_operation_1.5.0.md)，1.5.1 记录见 [docs/release_operation_1.5.1.md](docs/release_operation_1.5.1.md)。
+完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。1.4.16 的实际发布与部署记录见 [docs/release_operation_1.4.16.md](docs/release_operation_1.4.16.md)，1.4.17 记录见 [docs/release_operation_1.4.17.md](docs/release_operation_1.4.17.md)，1.4.18 记录见 [docs/release_operation_1.4.18.md](docs/release_operation_1.4.18.md)，1.4.19 记录见 [docs/release_operation_1.4.19.md](docs/release_operation_1.4.19.md)，1.5.0 记录见 [docs/release_operation_1.5.0.md](docs/release_operation_1.5.0.md)，1.5.1 记录见 [docs/release_operation_1.5.1.md](docs/release_operation_1.5.1.md)，1.5.2 记录见 [docs/release_operation_1.5.2.md](docs/release_operation_1.5.2.md)。
 
 生产环境由两部分组成：
 
@@ -577,5 +577,7 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 - `TableActions._on_human_tile_gui()` 在短按松手时提交一次出牌，滑动超过阈值不出牌；所有提交入口都检查开局锁。原生触控和模拟鼠标不能重复提交。
 - `SettlementCard` 的 `ReadinessFooter` 独立显示四人的昵称与准备状态、等待提示、大号准备/取消按钮。每个真人各自准备，人机默认准备；全部准备后仍由权威端等待 1 秒开始下一局。
 - `tests/table_interaction.gd` 加入常规和 CI 快速检查；`tests/capture_table_controls.gd` 需真实窗口，保存本轮牌桌、结算、准备和骰子截图到 `build/ui_review/table_controls/`。
+
+
 
 
