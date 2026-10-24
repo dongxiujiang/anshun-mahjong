@@ -189,9 +189,9 @@ func _test_result_ui() -> void:
 		t.expect(settlement.is_completed() and settlement.boards.size() == 4, "四个视角均在桌面完成结算")
 		t.expect(settlement.current_pairs == r.last_result.pairwise, "桌面收付矩阵等于真实结算账本")
 		t.expect(table._settlement_card._post_controls.visible and settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "桌面结算直接显示下一局，不遮挡牌桌输入")
-		t.expect(not table._settlement_card._return_seat_button.visible, "结算只保留一个准备按钮，不额外显示返回座位入口")
-		t.expect(table._settlement_card._next_round_button.position == Vector2.ZERO, "单按钮居中，不再左右分栏")
-		t.expect(table._settlement_card._post_controls.size == table.DISCARD_BUTTON_SIZE, "单按钮使用标准按钮尺寸")
+		t.expect(not table._settlement_card._return_seat_button.visible, "离线结算不显示联机返回座位投票")
+		t.expect(table._settlement_card._next_round_button.position == Vector2.ZERO, "离线下一局按钮居中")
+		t.expect(table._settlement_card._post_controls.size == table.NEXT_ROUND_BUTTON_SIZE, "离线下一局按钮保持标准尺寸")
 		for seat in 4:
 			t.expect(settlement.boards[seat].is_visible_in_tree(), "每家桌面结算板可见")
 			t.expect(table.center_labels[seat].text.contains("%.0f分" % r.players[seat].score), "桌面累计分显示真实入账后的分数")

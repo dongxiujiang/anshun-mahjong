@@ -53,7 +53,7 @@ func _run() -> void:
 	settlement.reset()
 	table._refresh()
 	settlement.skip()
-	t.expect(table._settlement_card._post_controls.visible and table._next_round_button.get_parent() == table._settlement_card._post_controls, "Next round stays in the bottom tabletop controls")
+	t.expect(table._settlement_card._post_controls.visible and table._next_round_button.get_parent() == table._settlement_card._actions_row, "Next round stays in the bottom tabletop controls")
 	t.expect(table._next_round_button.size.y >= 80 and not table._next_round_button.disabled, "Next round retains a usable enabled touch target")
 	t.expect(settlement.is_completed() and settlement.boards.size() == 4 and settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Settlement completes on the table without a blocking input layer")
 	var next_bounds: Rect2 = table._next_round_button.get_global_rect()

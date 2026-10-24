@@ -10,6 +10,7 @@ var _post_next_button: Button:
 var _next_round_status: Label
 var _next_round_hint: Label
 var _return_seat_button: Button
+var _actions_row: HBoxContainer
 
 func build() -> void:
 	_post_controls = table._box(table.surface)
@@ -42,18 +43,35 @@ func _return_to_seat() -> void:
 func refresh_layout() -> void:
 	if not is_instance_valid(_post_controls): return
 	var online: bool = table._net_mode() != ""
-	_post_controls.size = Vector2(374.0 if online else UI.DISCARD_BUTTON_SIZE.x, UI.DISCARD_BUTTON_SIZE.y)
+	# 两个在线按钮同宽同高，250px 可容纳“返回座位 0/1”和“准备下一局 2/4”。
+	var button_size := Vector2(250.0, UI.DISCARD_BUTTON_SIZE.y) if online else UI.NEXT_ROUND_BUTTON_SIZE
+	var post_width := button_size.x * 2.0 + 20.0 if online else button_size.x
+	_post_controls.size = Vector2(post_width, button_size.y)
 	_post_controls.position = Vector2((table._design_size().x - _post_controls.size.x) / 2.0, table._design_size().y - _post_controls.size.y - 8.0)
 	# The readiness/countdown text lives inside the button now; keep the old
 	# labels as hidden compatibility fields for regression probes.
 	_next_round_status.visible = false
 	_next_round_hint.visible = false
+	if _actions_row == null:
+		_actions_row = HBoxContainer.new()
+		_actions_row.name = "SettlementActions"
+		_actions_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		_actions_row.add_theme_constant_override("separation", 20)
+		_post_controls.add_child(_actions_row)
+	_actions_row.position = Vector2.ZERO
+	_actions_row.size = _post_controls.size
+	if _return_seat_button.get_parent() != _actions_row:
+		_return_seat_button.reparent(_actions_row, false)
+	if _next_round_button.get_parent() != _actions_row:
+		_next_round_button.reparent(_actions_row, false)
 	if is_instance_valid(_return_seat_button):
 		_return_seat_button.visible = online
-	_return_seat_button.position = Vector2.ZERO
-	_next_round_button.position = Vector2(197, 0) if online else Vector2.ZERO
-	_next_round_button.size = UI.DISCARD_BUTTON_SIZE
-	_next_round_button.add_theme_font_size_override("font_size", 32 if online else UI.NEXT_ROUND_FONT_SIZE)
+		_return_seat_button.custom_minimum_size = button_size
+		_return_seat_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_return_seat_button.add_theme_font_size_override("font_size", 28 if online else 32)
+	_next_round_button.custom_minimum_size = button_size
+	_next_round_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_next_round_button.add_theme_font_size_override("font_size", 28 if online else UI.NEXT_ROUND_FONT_SIZE)
 
 func show_post_settlement_controls() -> void:
 	if not is_instance_valid(_post_controls) or table.round == null or table.round.phase != RoundState.Phase.SETTLED: return

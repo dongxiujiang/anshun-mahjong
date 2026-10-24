@@ -424,12 +424,32 @@ func _exposed_layout_input_key() -> PackedByteArray:
 	for seat in 4:
 		var player: PlayerState = table.round.players[seat]
 		var metrics: Dictionary = table._seat_metrics(seat)
+		var holds_refresh := false
+		if table._table_animation_controller != null:
+			holds_refresh = table._table_animation_controller.holds_seat_refresh(seat)
 		parts.append([
 			player.concealed, player.just_drew, player.ready, player.melds,
 			table._exposed_groups(seat), table._hand_layout(seat), metrics,
 			table._hand_tile_unit(seat), table._player_tile_unit(seat),
+			holds_refresh, _layout_hand_left(seat),
 		])
 	return var_to_bytes(parts)
+
+func _layout_hand_left(seat: int) -> float:
+	# 弃牌动画期间旧手牌仍显示在桌上，但模型已经少了这张牌；此时如果
+	# 用刷新后的 hand_x，鸡牌会右移进冻结手牌。冻结期改用可见手牌的最左
+	# 边界（打牌前），动画结束、手牌刷新后自动恢复新边界。
+	var controller = table._table_animation_controller
+	if controller != null and controller.holds_seat_refresh(seat) and seat in hand_box:
+		var box: Control = hand_box[seat]
+		if box != null:
+			var left := INF
+			for child in box.get_children():
+				if child is Control:
+					left = minf(left, (child as Control).position.x)
+			if left < INF:
+				return left
+	return table._hand_layout(seat).hand_x
 
 func _prepare_exposed_layouts() -> void:
 	# 联机客户端可能尚未收到四家数据，等待期间不规划牌组。
@@ -477,7 +497,7 @@ func _prepare_exposed_layouts() -> void:
 		var transform = Transform2D(UI.ROTATIONS[table._relative_seat(seat)], table._table_center())
 		var metrics: Dictionary = table._seat_metrics(seat)
 		var player: PlayerState = table.round.players[seat]
-		var hand_left: float = table._hand_layout(seat).hand_x
+		var hand_left: float = _layout_hand_left(seat)
 		# 所有碰杠/鸡牌固定从手牌左边缘向左排；第一个牌组右边贴着手牌，
 		# 后续牌组继续向左，换行后重新贴着手牌左边缘。
 		var anchor_right: float = hand_left - UI.EXPOSED_HAND_GAP
