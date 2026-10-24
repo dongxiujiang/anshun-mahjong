@@ -68,7 +68,8 @@ static func settle(round) -> Dictionary:
 				lines.append("翻中%s：金鸡普通鸡 4，冲锋鸡 8" % ("幺鸡" if tile == "tiao1" else "八筒"))
 	if winner < 0:
 		var all_called := called_seats.all(func(value): return value)
-		var next_multiplier := 2 if all_called else 1
+		# 流局无论四家叫牌还是部分叫牌，下一局鸡分都翻倍。
+		var next_multiplier := 2
 		if all_called:
 			lines.append("四家叫牌流局，本局不计分；下局鸡分 ×2")
 			items = [[], [], [], []]
@@ -87,7 +88,7 @@ static func settle(round) -> Dictionary:
 						"amount": -huang_amount, "own_amount": -huang_amount, "note": "未叫牌补给叫牌玩家"})
 			KONG.pay(round, deltas, transfers, called_seats, items, "", true)
 			_pay_uncalled_kong_income(round, called_seats, deltas, transfers)
-			lines.append("荒牌：未叫者向每位叫牌者补付双方出牌鸡、基础4分，并按规则补杠分")
+			lines.append("荒牌：未叫者补付后，下局鸡分仍 ×2")
 		for seat in 4:
 			status[seat] = _draw_status(seat, called_seats)
 		return _result(deltas, lines, points, discard_points, called_seats, transfers, items, status, all_called, next_multiplier, winners, multiplier)
@@ -112,6 +113,15 @@ static func _pay_uncalled_kong_income(round, called: Array, deltas: Array, trans
 			continue
 		for meld in round.players[owner].melds:
 			if meld.get("robbed", false) or meld.get("kind", "") not in ["kong", "add_kong"]:
+				continue
+			var exposed: bool = meld.get("kind", "") == "kong" and not meld.get("concealed", false)
+			if exposed:
+				# 未叫牌明杠只反向付给放杠者；不能把4分同时付给所有叫牌人。
+				var source := int(meld.get("from_seat", -1))
+				if source in range(4) and source != owner \
+					and source != int(round.round_meta.get("burn_chicken_seat", -1)):
+					# 放杠人即使未叫牌，也是明杠基础分的唯一收款人。
+					PAY.transfer(deltas, transfers, owner, source, CFG.SCORE_DRAW_KONG, "未叫牌杠分")
 				continue
 			for payer in 4:
 				if payer == owner or not called[payer] or payer == int(round.round_meta.get("burn_chicken_seat", -1)):

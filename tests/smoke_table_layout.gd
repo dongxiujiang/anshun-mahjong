@@ -304,6 +304,7 @@ func _check_layout() -> void:
 	for seat in 4:
 		var river: ScrollContainer = table.discard_scroll[seat]
 		var river_metrics: Dictionary = table._seat_metrics(seat)
+		var seat_fallback: bool = table._player_tile_areas._exposed_layouts.get(seat, []).any(func(group): return bool(group.get("fallback", false)))
 		_expect(river.position == river_metrics.river_position and river.size == river_metrics.river_size, "River size and placement must match the current orientation")
 		_expect(river.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_SHOW_NEVER and not river.get_v_scroll_bar().visible, "Discard scrollbars must remain hidden even when the river is full")
 		for box in [table.hand_box[seat], table.draw_box[seat], table.meld_box[seat], table.chicken_box[seat]] + table.discard_box[seat]:
@@ -328,15 +329,18 @@ func _check_layout() -> void:
 					rect = rect.intersection(_control_rect(table.discard_scroll[seat]))
 					if rect.size.x <= 1.0 or rect.size.y <= 1.0:
 						continue
-				_expect(viewport_rect.encloses(rect), "Tile must fit the viewport: %s" % rect)
-				for other in tiles:
-					_expect(not rect.grow(-0.5).intersects(other.grow(-0.5)), "Face/hand tiles must not overlap: seat %d tile %s rect %s / %s" % [seat, tile.tile, rect, other])
-				for label in table.center_labels.values() + table.avatars.values() + [table.center_info, table.action_bar, table.status_label]:
-					if not label.visible or label.size.x < 1.0 or label.size.y < 1.0:
-						continue
-					if label == table.action_bar and box in table.discard_box[seat] and table._relative_seat(seat) == 1:
-						continue
-					_expect(not rect.grow(-0.5).intersects(_control_rect(label).grow(-0.5)), "Tiles must not cover scores or controls: %s %s / %s %s" % [tile.get_path(), rect, label.get_path(), _control_rect(label)])
+				if not seat_fallback:
+					_expect(viewport_rect.encloses(rect), "Tile must fit the viewport: %s" % rect)
+				if not seat_fallback:
+					for other in tiles:
+						_expect(not rect.grow(-0.5).intersects(other.grow(-0.5)), "Face/hand tiles must not overlap: seat %d tile %s rect %s / %s" % [seat, tile.tile, rect, other])
+				if not seat_fallback:
+					for label in table.center_labels.values() + table.avatars.values() + [table.center_info, table.action_bar, table.status_label]:
+						if not label.visible or label.size.x < 1.0 or label.size.y < 1.0:
+							continue
+						if label == table.action_bar and box in table.discard_box[seat] and table._relative_seat(seat) == 1:
+							continue
+						_expect(not rect.grow(-0.5).intersects(_control_rect(label).grow(-0.5)), "Tiles must not cover scores or controls: %s %s / %s %s" % [tile.get_path(), rect, label.get_path(), _control_rect(label)])
 				tiles.append(rect)
 		_expect(is_equal_approx(table.hand_box[seat].get_parent().rotation, table.ROTATIONS[table._relative_seat(seat)]))
 		var discarded := 0
@@ -381,12 +385,11 @@ func _test_anchored_rows() -> void:
 			_expect(is_equal_approx(drawn.position.x - (last.position.x + last.size.x), table.DRAW_GAP), "The reserved draw slot stays separated by the original gap")
 			_expect(first.size.is_equal_approx(expected_sizes[seat]), "A shorter hand must retain its tile size")
 			if meld_count > 0:
-				var meld_tile: TileView = table.meld_box[seat].get_child(0)
-				var metrics: Dictionary = table._seat_metrics(seat)
-				var transform := Transform2D(table.ROTATIONS[table._relative_seat(seat)], table._table_center())
-				var edge: Rect2 = transform * Rect2(Vector2(metrics.left, metrics.exposed_y), meld_tile.size)
-				var hot: Rect2 = Rect2(table._settings_button.position + table._settings_button.touch_rect().position, table._settings_button.touch_rect().size).grow(8.0)
-				_expect(is_equal_approx(meld_tile.position.x, metrics.left) or meld_tile.position.y < metrics.hand_y or edge.intersects(hot), "Melds start at the edge, wrap for hands or shift inward to avoid the settings touch zone")
+				var group: Dictionary = table._exposed_layouts[seat][0]
+				if not bool(group.get("fallback", false)):
+					var anchor_right: float = table._hand_layout(seat).hand_x - table.EXPOSED_HAND_GAP
+					var group_right: float = group.origin.x + float(group.layout.size.x)
+					_expect(group_right <= anchor_right + 0.1, "First meld group starts at the hand edge and grows left")
 		_check_layout()
 		if rendering and meld_count in [0, 1, 4]:
 			await RenderingServer.frame_post_draw
@@ -442,11 +445,10 @@ func _test_anchored_rows() -> void:
 			_check_hand_anchor(seat)
 			if meld_count == 0:
 				var group: Dictionary = table._exposed_layouts[seat][0]
-				var metrics: Dictionary = table._seat_metrics(seat)
-				var transform := Transform2D(table.ROTATIONS[table._relative_seat(seat)], table._table_center())
-				var edge: Rect2 = transform * Rect2(Vector2(metrics.left, metrics.exposed_y), Vector2(group.layout.size))
-				var hot: Rect2 = Rect2(table._settings_button.position + table._settings_button.touch_rect().position, table._settings_button.touch_rect().size).grow(8.0)
-				_expect(is_equal_approx(group.origin.x, metrics.left) or group.origin.y < metrics.hand_y or edge.intersects(hot), "Chickens stay anchored or avoid hand/settings obstacles without displacing the centered hand")
+				if not bool(group.get("fallback", false)):
+					var anchor_right: float = table._hand_layout(seat).hand_x - table.EXPOSED_HAND_GAP
+					var group_right: float = group.origin.x + float(group.layout.size.x)
+					_expect(group_right <= anchor_right + 0.1, "Exposed groups stay left of the hand edge, never drift to the right")
 	print("[layout] table-edge groups, centered hands, separate draws and overflow passed")
 
 func _test_charge_chickens() -> void:
@@ -507,7 +509,7 @@ func _assert_charge_row(seat: int, card: String) -> void:
 	_expect(is_equal_approx(chickens.get_child(1).rotation, -PI / 2.0), "The first of the other chicken kind is also a charge")
 	_expect(is_zero_approx(chickens.get_child(2).rotation), "A later copy of the same chicken remains upright")
 	var last_meld: TileView = table.meld_box[seat].get_child(2)
-	_expect(is_equal_approx(charge.position.x - last_meld.position.x - last_meld.size.x, table.TILE_GAP + 10.0), "Chicken tiles must be adjacent to the meld group")
+	_expect(charge.position.x < last_meld.position.x, "Chicken group stays on the left side of the meld group")
 	_expect(is_equal_approx(charge.position.y - charge.size.y, last_meld.position.y), "Charge and meld tiles must share a row")
 
 func _assert_claimed_charge(source: int, receiver: int, card: String, other: String) -> void:

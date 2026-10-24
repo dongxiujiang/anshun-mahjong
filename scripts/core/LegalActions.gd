@@ -97,7 +97,11 @@ static func response_options(round, seat: int, source: int, tile: String, stage:
 	if seat < 0 or seat >= round.players.size() or source == seat or tile == "": return options
 	var player: PlayerState = round.players[seat]
 	options.can_win = can_win_on_discard(round, seat, source, tile, stage)
-	options.can_pong = stage == RoundState.ResponseStage.MELD and not player.ready and not player.passed_pong_tiles.has(tile) and Tiles.count(player.concealed, tile) >= 2
+	# During the KONG scan only the same player who can kong may also choose pong;
+	# two-copy players wait for the MELD stage after the kong decision.
+	var copies := Tiles.count(player.concealed, tile)
+	options.can_pong = (stage == RoundState.ResponseStage.MELD or (stage == RoundState.ResponseStage.KONG and copies >= 3)) \
+		and not player.ready and not player.passed_pong_tiles.has(tile) and copies >= 2
 	options.can_kong = stage in [RoundState.ResponseStage.KONG, RoundState.ResponseStage.MELD] \
 		and not player.ready and round._wall_count() > 0 and Tiles.count(player.concealed, tile) >= 3
 	return options

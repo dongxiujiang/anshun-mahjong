@@ -91,7 +91,7 @@ func _test_next_dealer() -> void:
 			for player in mixed.players:
 				player.concealed = CALLED.duplicate() if player.seat != uncalled else []
 			mixed._penzu()
-			t.expect(mixed.next_dealer_seat == uncalled and mixed.next_chicken_multiplier == 1, "唯一未叫者成为下庄")
+			t.expect(mixed.next_dealer_seat == uncalled and mixed.next_chicken_multiplier == 2, "唯一未叫者成为下庄，下局鸡分仍×2")
 		var multiple := _fixture(dealer)
 		multiple.players[dealer].concealed = CALLED.duplicate()
 		multiple._penzu()

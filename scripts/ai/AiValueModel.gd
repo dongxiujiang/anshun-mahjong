@@ -91,6 +91,19 @@ static func kong_base(melds: Array, payer: int) -> float:
 static func uncalled_kong_base(melds: Array) -> float:
 	return CFG.SCORE_DRAW_KONG * melds.filter(func(meld): return meld.kind in ["kong", "add_kong"] and not meld.get("robbed", false)).size()
 
+static func uncalled_kong_base_for(melds: Array, receiver: int) -> float:
+	# 未叫牌明杠只反向付给放杠者；暗杠/加杠才付给每位叫牌者。
+	var total := 0.0
+	for meld in melds:
+		if meld.kind not in ["kong", "add_kong"] or meld.get("robbed", false):
+			continue
+		if meld.kind == "kong" and not meld.get("concealed", false):
+			if int(meld.get("from_seat", -1)) == receiver:
+				total += CFG.SCORE_DRAW_KONG
+		else:
+			total += CFG.SCORE_DRAW_KONG
+	return total
+
 static func has_self_kong(melds: Array) -> bool:
 	return melds.any(func(meld): return meld.kind == "add_kong" or (meld.kind == "kong" and meld.get("concealed", false)))
 
@@ -192,10 +205,10 @@ static func draw_value(round, seat: int, hand: Array, melds: Array, opponents: A
 	var uncalled_value := 0.0
 	for opponent in opponents:
 		var probability := float(opponent.tenpai_probability)
-		called_value += (1.0 - probability) * (float(own.discarded) + float(opponent.draw_discarded) + CFG.SCORE_SELF_DRAW + float(own.kong_chickens) + kong_base(melds, int(opponent.seat)) + uncalled_kong_base(opponent.melds) + float(opponent.get("draw_kong_chickens", 0.0)))
+		called_value += (1.0 - probability) * (float(own.discarded) + float(opponent.draw_discarded) + CFG.SCORE_SELF_DRAW + float(own.kong_chickens) + kong_base(melds, int(opponent.seat)) + uncalled_kong_base_for(opponent.melds, seat) + float(opponent.get("draw_kong_chickens", 0.0)))
 		# 未叫牌方也要为自己的杠中鸡向每位已叫牌对手逐家补付；
 		# 因此估值中同时扣除对手的杠中鸡和本人的杠中鸡。
-		uncalled_value -= probability * (float(opponent.draw_discarded) + float(own.discarded) + CFG.SCORE_SELF_DRAW + float(opponent.draw_kong_chickens) + float(own.kong_chickens) + kong_base(opponent.melds, seat) + uncalled_kong_base(melds))
+		uncalled_value -= probability * (float(opponent.draw_discarded) + float(own.discarded) + CFG.SCORE_SELF_DRAW + float(opponent.draw_kong_chickens) + float(own.kong_chickens) + kong_base(opponent.melds, seat) + uncalled_kong_base_for(melds, int(opponent.seat)))
 	var multiplier := clampi(int(round.round_meta.get("chicken_multiplier", 1)), 1, CFG.MAX_CHICKEN_MULTIPLIER)
 	return {"called": called_value * multiplier, "uncalled": uncalled_value * multiplier}
 

@@ -478,7 +478,13 @@ func _prepare_exposed_layouts() -> void:
 		var metrics: Dictionary = table._seat_metrics(seat)
 		var player: PlayerState = table.round.players[seat]
 		var hand_left: float = table._hand_layout(seat).hand_x
-		var next_x: float = metrics.left
+		# 所有碰杠/鸡牌固定从手牌左边缘向左排；第一个牌组右边贴着手牌，
+		# 后续牌组继续向左，换行后重新贴着手牌左边缘。
+		var anchor_right: float = hand_left - UI.EXPOSED_HAND_GAP
+		var right_cursor: float = anchor_right
+		# 对家明杠的最高牌组高度接近两张牌；用足够大的行距保证向上叠放时
+		# 不会把上一行压出重叠。极端情况仍由确定性兜底处理。
+		var row_step: float = height * 2.5 + UI.EXPOSED_ROW_GAP
 		var plans: Array = []
 		for group in table._exposed_groups(seat):
 			var layout: Dictionary
@@ -489,40 +495,44 @@ func _prepare_exposed_layouts() -> void:
 				# 明杠/暗杠/加杠的横放槽位只由来源方向决定；碰牌没有来源
 				# 标记，碰到的鸡牌也不显示冲锋标记。
 				layout = table._meld_tile_layout(group.meld, seat, player_unit, UI.TILE_GAP)
-			var fallback_x: float = next_x if next_x + float(layout.size.x) <= metrics.overflow_right else metrics.overflow_x
-			fallback_x = maxf(metrics.left, minf(fallback_x, metrics.overflow_right - float(layout.size.x)))
-			var fallback_origin := Vector2(fallback_x, metrics.exposed_y + height - float(layout.size.y))
+			var fallback_row: int = mini(plans.size(), UI.EXPOSED_MAX_ROWS - 1)
+			var fallback_bottom: float = metrics.exposed_y + height if fallback_row == 0 \
+				else metrics.exposed_y - UI.EXPOSED_ROW_GAP - (fallback_row - 1) * row_step
+			var fallback_origin := Vector2(metrics.left, fallback_bottom - float(layout.size.y))
 			var origin = fallback_origin
 			var rects: Array[Rect2] = []
 			var placed = false
 			var row_index = 0
 			while row_index < UI.EXPOSED_MAX_ROWS and not placed:
-				# Scan inward for free space, checking every tile's actual bounds;
-				# opposite-player kongs include their upper sideways tile.
-				var bottom: float = metrics.exposed_y + height if row_index == 0 else metrics.exposed_y - UI.EXPOSED_ROW_GAP - (row_index - 1) * UI.EXPOSED_ROW_STEP
-				var right: float = hand_left - UI.EXPOSED_HAND_GAP if row_index == 0 else metrics.overflow_right
-				var x: float = next_x if row_index == 0 else metrics.overflow_x
-				while x + float(layout.size.x) <= right:
+				# Scan leftward from the hand edge, checking every tile's actual
+				# bounds; opposite-player kongs include their upper sideways tile.
+				var bottom: float = metrics.exposed_y + height if row_index == 0 else metrics.exposed_y - UI.EXPOSED_ROW_GAP - (row_index - 1) * row_step
+				var x: float = right_cursor - float(layout.size.x)
+				while x >= metrics.left:
 					origin = Vector2(x, bottom - float(layout.size.y))
 					rects = table._exposed_rects(layout, origin, transform, width, height)
 					if table._exposed_space_clear(rects, occupied):
 						placed = true
 						break
-					x += UI.TILE_GAP
+					x -= UI.TILE_GAP
 				if not placed:
+					# New row: reset the right edge to the hand edge instead of
+					# overflowing to the table's right side.
 					row_index += 1
+					right_cursor = anchor_right
 			if not placed:
 				# Deterministic compact fallback: never leave origin at the last
-				# probed position, which could retain stale coordinates and overlap
-				# an unrelated group. Keep the group at the inward-most row edge.
+				# probed position. Keep the group at the left boundary so every tile
+				# still has a known landing point.
 				origin = fallback_origin
 				rects = table._exposed_rects(layout, origin, transform, width, height)
+				group["fallback"] = true
 				push_warning("碰杠/鸡牌区域空间不足，使用确定性紧凑兜底")
 			group["origin"] = origin
 			group["layout"] = layout
 			plans.append(group)
 			occupied.append_array(rects)
-			next_x = origin.x + float(layout.size.x) + UI.TILE_GAP + (UI.MELD_GROUP_GAP if group.has("meld") else 0.0)
+			right_cursor = origin.x - UI.TILE_GAP - (UI.MELD_GROUP_GAP if group.has("meld") else 0.0)
 		_exposed_layouts[seat] = plans
 
 func _exposed_rects(layout: Dictionary, origin: Vector2, transform: Transform2D, width: float, height: float) -> Array[Rect2]:

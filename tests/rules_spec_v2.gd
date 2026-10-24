@@ -249,6 +249,16 @@ func _test_actions() -> void:
 	eq([96], "组成一组碰", pong.players[2].melds.size(), 1, "scripts/core/RoundState.gd:657")
 	eq([97], "碰家继续出牌", pong.current_turn, 2, "scripts/core/RoundState.gd:661")
 	eq([98], "碰后禁打同值", pong.submit_turn(2,{"discard":"wan5"}), false, "scripts/core/LegalActions.gd:13")
+	var kong_or_pong := fixture()
+	kong_or_pong.players[0].concealed = ["wan5"]
+	kong_or_pong.players[2].concealed = ["wan5","wan5","wan5","tong2"]
+	begin("kong_or_pong", kong_or_pong, "0打wan5，2有三张：杠和碰都必须开放")
+	kong_or_pong.submit_turn(0,{"discard":"wan5"})
+	var kong_pong_options := kong_or_pong.legal_response_options(2,0,"wan5",RoundState.ResponseStage.KONG)
+	eq([95], "明杠窗口仍可碰", kong_pong_options.can_pong, true, "scripts/core/LegalActions.gd:100")
+	eq([95], "明杠窗口仍可杠", kong_pong_options.can_kong, true, "scripts/core/LegalActions.gd:101")
+	eq([96], "选择碰而非杠", kong_or_pong.submit_response(2,"wan5",{"action":"pong"}), true, "scripts/core/RoundState.gd:842")
+	eq([96], "选择碰后组成碰", kong_or_pong.players[2].melds[0].kind, "pung", "scripts/core/RoundState.gd:850")
 	eq([101], "弃牌记录移除", pong.players[0].discards.has("wan5"), false, "scripts/core/RoundState.gd:828")
 	var priority := fixture()
 	priority.players[0].concealed = ["wan5"]
@@ -677,7 +687,8 @@ func _test_kong_and_burn_payments() -> void:
 		begin("uncalled_kong_"+kind,r,"0未叫牌且杠tiao1，来源1；1胡、2叫牌；未叫杠主反向支付基础4，并补杠鸡8")
 		var result := settle(r)
 		for target in [1,2]:
-			eq([263],"未叫杠主向%d反向支付基础4" % target,fee(result,0,target,"未叫牌杠分"),4.0,"scripts/core/ScoringEngine.gd:99")
+			var expected_base := 4.0 if kind != "exposed" or target == 1 else 0.0
+			eq([263],"未叫杠主向%d反向支付基础4" % target,fee(result,0,target,"未叫牌杠分"),expected_base,"scripts/core/ScoringEngine.gd:99")
 			eq([263],"未叫杠主向%d补杠鸡8" % target,fee(result,0,target,"未叫牌杠中鸡"),8.0,"scripts/core/KongScoring.gd:6")
 
 func _test_ledger_and_draws() -> void:
