@@ -66,4 +66,10 @@ anshun-mahjong-full-1.5.7.pck
 SHA-256：8623d74e56ca8586de90c7622a3f449fa2ecbab5f20415ee796bde4e8a03be69
 ```
 
+## 发布
 
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.5.7
+服务端镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-b259328
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+```n
