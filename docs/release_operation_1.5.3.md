@@ -60,3 +60,11 @@ anshun-mahjong-full-1.5.3.pck
 11,043,504 字节
 SHA-256：563ae4286e4bca58fbc7ada4ac47c413c99d569e28f244681ee39437e93d4aee
 ```
+
+## 发布
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.5.3
+服务端镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-e483db9
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+```n
