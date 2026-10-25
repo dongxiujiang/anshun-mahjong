@@ -21,8 +21,7 @@ var _sound_button: Button
 var _settings_button: Button
 var _voice_button: Button
 var _ai_teach_button: Button
-var _ai_teach_panel: Panel
-var _ai_teach_label: Label
+
 var _ai_teach_token := 0
 var _ai_assist_enabled := false
 var _settlement_round_id := 0
@@ -193,23 +192,6 @@ func _build_table_overlays() -> void:
 	_return_vote_status.z_index = 100
 	add_child(_return_vote_status)
 	_return_vote_status.hide()
-	_ai_teach_panel = Panel.new()
-	_ai_teach_panel.name = "AITeachMessage"
-	_ai_teach_panel.size = Vector2(1200, 88)
-	_ai_teach_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ai_teach_panel.z_index = 90
-	_ai_teach_panel.add_theme_stylebox_override("panel", _style(Color("#102018ee"), UI.GOLD, 12, 2))
-	_table_layout.surface.add_child(_ai_teach_panel)
-	_ai_teach_label = Label.new()
-	_ai_teach_label.position = Vector2(20, 8)
-	_ai_teach_label.size = Vector2(1160, 72)
-	_ai_teach_label.add_theme_font_override("font", TileView._font())
-	_ai_teach_label.add_theme_font_size_override("font_size", 24)
-	_ai_teach_label.add_theme_color_override("font_color", UI.INK)
-	_ai_teach_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_ai_teach_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ai_teach_panel.add_child(_ai_teach_label)
-	_ai_teach_panel.hide()
 
 func _on_voice_status(_enabled: bool, _message: String) -> void:
 	_refresh_voice_button()
@@ -241,18 +223,8 @@ func _refresh_ai_assist() -> void:
 
 func _clear_ai_teach() -> void:
 	_ai_teach_token += 1
-	if _ai_teach_panel != null:
-		_ai_teach_panel.hide()
 	if _player_tile_areas != null:
 		_player_tile_areas.clear_ai_teach_highlight()
-
-func _show_ai_response_assist(source: int, tile: String, options: Dictionary) -> void:
-	if not _ai_assist_enabled:
-		return
-	var result: Dictionary = AiTeaching.recommend_response(round, human_seat, source, tile, options)
-	if result.is_empty():
-		return
-	_show_ai_teach(str(result.get("message", "")))
 
 func request_ai_teach() -> void:
 	if round == null or round.players.size() != 4:
@@ -260,26 +232,10 @@ func request_ai_teach() -> void:
 	if not _is_ai_turn_now():
 		return
 	var result: Dictionary = AiTeaching.recommend(round, human_seat)
-	var message := str(result.get("message", "AI教学：暂无建议"))
-	_show_ai_teach(message)
 	var tile := str(result.get("tile", ""))
+	_player_tile_areas.clear_ai_teach_highlight()
 	if tile != "":
 		_player_tile_areas.highlight_ai_teach(tile)
-
-func _show_ai_teach(message: String) -> void:
-	if _ai_teach_panel == null:
-		return
-	var metrics: Dictionary = _seat_metrics(human_seat)
-	var hand_y: float = _table_center().y + float(metrics.hand_y)
-	_ai_teach_panel.position = Vector2(_table_center().x - _ai_teach_panel.size.x / 2.0,
-		maxf(90.0, hand_y - 190.0))
-	_ai_teach_label.text = message
-	_ai_teach_panel.show()
-	_ai_teach_token += 1
-	var token := _ai_teach_token
-	await get_tree().create_timer(12.0).timeout
-	if token == _ai_teach_token:
-		_ai_teach_panel.hide()
 
 func _refresh_voice_button() -> void:
 	if _voice_button == null:
