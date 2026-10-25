@@ -20,6 +20,9 @@ static func _session_key() -> PackedByteArray:
 static func _encrypted_path(path: String) -> String:
 	return path + ".session"
 
+static func modified_time(path: String) -> int:
+	return FileAccess.get_modified_time(ProjectSettings.globalize_path(_encrypted_path(path)))
+
 static func read_session(path: String) -> Dictionary:
 	var encrypted := _encrypted_path(path)
 	if FileAccess.file_exists(encrypted):

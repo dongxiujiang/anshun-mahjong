@@ -42,10 +42,8 @@ func load_settings() -> void:
 	saved_session = SESSIONS.read_session(settings_path)
 	# 服务端最多保留断线座位 30 分钟；更早的本地记录一定已经没有房间，
 	# 启动时直接清掉，避免再次提示“继续上次房间”。
-	if has_saved_session():
-		var saved_at := float(saved_session.get("saved_at", 0.0))
-		if saved_at <= 0.0 or Time.get_unix_time_from_system() - saved_at > SESSION_MAX_AGE_SECONDS:
-			clear_saved_session()
+	if has_saved_session() and _saved_session_expired():
+		clear_saved_session()
 	var config := STORE.read_config(settings_path)
 	for key in lobby_preferences:
 		var value = config.get_value("lobby", key, lobby_preferences[key])
@@ -80,10 +78,21 @@ func clear_saved_session() -> void:
 	if persist_settings and SESSIONS.write_session(settings_path, {}) != OK:
 		push_warning("无法清除上次房间信息")
 
+func _saved_session_expired() -> bool:
+	var now := Time.get_unix_time_from_system()
+	var saved_at := float(saved_session.get("saved_at", 0.0))
+	if saved_at > 0.0 and now - saved_at <= SESSION_MAX_AGE_SECONDS:
+		return false
+	# 旧记录没有 saved_at 时用加密会话文件的修改时间兜底；测试/CI 的时钟
+	# 或迁移场景不会因此误删刚写入的会话。
+	var modified := SESSIONS.modified_time(settings_path)
+	if modified > 0 and now - float(modified) <= SESSION_MAX_AGE_SECONDS:
+		return false
+	return true
+
 func resume_saved_session() -> bool:
 	if not has_saved_session(): return false
-	var saved_at := float(saved_session.get("saved_at", 0.0))
-	if saved_at <= 0.0 or Time.get_unix_time_from_system() - saved_at > SESSION_MAX_AGE_SECONDS:
+	if _saved_session_expired():
 		clear_saved_session()
 		return false
 	mode = "client"

@@ -84,7 +84,7 @@ jobs:
         run: python -X utf8 tests/run_hot_update.py --godot "$env:GODOT_EXE"
 
   build:
-    name: Build Windows and Android
+    name: Build Android
     needs: hot-update-windows
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -238,15 +238,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p build/windows build/android
-          godot --headless --path . --export-release "Windows" build/windows/anshun-mahjong-windows-x64.exe > build/ci/windows-export.log 2>&1 || { cat build/ci/windows-export.log; exit 1; }
+          mkdir -p build/android
           rm -rf android
           godot --headless --path . --install-android-build-template --export-release "Android" /tmp/gme-template.apk > build/ci/android-template.log 2>&1 || { cat build/ci/android-template.log; exit 1; }
           mkdir -p android/build/libs
           cp addons/gme/gmesdk.aar android/build/libs/gmesdk.aar
           printf "\ndependencies { implementation files(%s) }\n" "\"libs/gmesdk.aar\"" >> android/build/build.gradle
           godot --headless --path . --export-release "Android" build/android/anshun-mahjong.apk > build/ci/android-export.log 2>&1 || { cat build/ci/android-export.log; exit 1; }
-          test -s build/windows/anshun-mahjong-windows-x64.exe
           test -s build/android/anshun-mahjong.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose build/android/anshun-mahjong.apk
 
@@ -256,7 +254,6 @@ jobs:
         run: |
           set -euo pipefail
           python tools/update/prepare_release.py \
-            --windows build/windows/anshun-mahjong-windows-x64.exe \
             --android build/android/anshun-mahjong.apk \
             --output build/releases \
             --repository "$GITHUB_REPOSITORY"
@@ -289,7 +286,6 @@ jobs:
           if-no-files-found: error
           path: |
             build/releases/**
-            build/windows/anshun-mahjong-windows-x64.exe
             build/android/anshun-mahjong.apk
 
       - name: Upload patch baseline artifact
@@ -301,7 +297,6 @@ jobs:
           if-no-files-found: error
           path: |
             build/update_baselines/${{ env.BASELINE_ID }}/baseline.json
-            build/update_baselines/${{ env.BASELINE_ID }}/windows-base.pck
             build/update_baselines/${{ env.BASELINE_ID }}/android-base.pck
 
       - name: Download selected baseline
@@ -320,13 +315,12 @@ jobs:
           set -euo pipefail
           folder="build/update_baselines/$BASELINE_ID"
           mkdir -p "$folder"
-          for file in baseline.json windows-base.pck android-base.pck; do
+          for file in baseline.json android-base.pck; do
             curl --fail --location --retry 3 \
               "https://github.com/$GITHUB_REPOSITORY/releases/download/$BASELINE_RELEASE_TAG/$file" \
               --output "$folder/$file"
           done
           test -s "$folder/baseline.json"
-          test -s "$folder/windows-base.pck"
           test -s "$folder/android-base.pck"
 
       - name: Generate hot-update patches
