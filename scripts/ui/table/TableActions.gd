@@ -123,7 +123,7 @@ func _on_require_turn(seat: int) -> void:
 	_declaring_ready = false
 	_response_disc = ""
 	table._build_turn_options(table.round.players[seat])
-	table._refresh_ai_assist()
+	table.call_deferred("_refresh_ai_assist")
 	if table.round.players[seat].ready:
 		_auto_ready_discard(seat, serial)
 
@@ -253,6 +253,7 @@ func _commit_turn(decision: Dictionary) -> void:
 	_selecting = false
 	_declaring_ready = false
 	table._clear_actions()
+	table._clear_ai_teach()
 	table._update_interactivity()
 	if bool(decision.get("ready", false)):
 		# 不等下一次服务端/下一轮刷新：本地先锁手牌并显示金边。
@@ -284,6 +285,7 @@ func _on_require_response(seat: int, discarded_seat: int, tile: String, options:
 		table._add_action("杠", func(): table._commit_response("kong"), true)
 	table._add_action("过", func(): table._commit_response("pass"))
 	table._update_interactivity()
+	table._show_ai_response_assist(discarded_seat, tile, options)
 
 func _commit_response(action: String) -> void:
 	if input_locked() or _response_disc == "": return
@@ -292,6 +294,7 @@ func _commit_response(action: String) -> void:
 	var tile = _response_disc
 	_response_disc = ""
 	table._clear_actions()
+	table._clear_ai_teach()
 	table._emit_response(tile, {"action": action})
 
 func _add_action(text: String, callback: Callable, primary: bool = false, tooltip: String = "") -> Button:

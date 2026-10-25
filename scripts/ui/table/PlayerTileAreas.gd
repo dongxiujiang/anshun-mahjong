@@ -518,119 +518,80 @@ func _prepare_exposed_layouts() -> void:
 		var metrics: Dictionary = table._seat_metrics(seat)
 		var player: PlayerState = table.round.players[seat]
 		var hand_left: float = table._hand_layout(seat).hand_x
-		# 所有碰杠/鸡牌固定从手牌左边缘向左排；第一个牌组右边贴着手牌，
-		# 后续牌组继续向左。每一行保留自己的右游标，换行后重新贴手牌。
+		# 碰杠/鸡牌采用堆叠模式：
+		# 最底行放冲锋鸡，上方普通鸡四张一行；碰/杠各占一行，按出牌顺序向上。
 		var anchor_right: float = hand_left - UI.EXPOSED_HAND_GAP
-		var row_cursors: Array[float] = []
-		# 行距只表达“最高牌组高度 + 安全余量”；首行过渡的额外间隙由
-		# UI.EXPOSED_ROW_GAP 单独承担，避免同一常量在公式里出现两遍。
-		# 对家明杠的最高牌组≈height + width + TILE_GAP。
-		var row_step: float = height + width + UI.TILE_GAP + 2.0
-		var start_row := 0
-		var plans: Array = []
-		var cluster_anchor := Vector2(anchor_right, metrics.exposed_y + height)
-		for group in table._exposed_groups(seat):
+		var groups: Array = table._exposed_groups(seat)
+		var charge_items: Array = []
+		var normal_items: Array = []
+		var meld_items: Array = []
+		for group in groups:
 			var layout: Dictionary
 			if group.has("chicken"):
 				var charge: bool = group.chicken.charge
 				layout = {"positions": [Vector2(0, height if charge else 0)], "size": Vector2(height if charge else width, height), "sideways": 0 if charge else -1}
+				var item := {"group": group, "layout": layout}
+				if charge: charge_items.append(item)
+				else: normal_items.append(item)
 			else:
-				# 明杠/暗杠/加杠的横放槽位只由来源方向决定；碰牌没有来源
-				# 标记，碰到的鸡牌也不显示冲锋标记。
 				layout = table._meld_tile_layout(group.meld, seat, player_unit, UI.TILE_GAP)
-			var fallback_row: int = mini(maxi(start_row, plans.size()), UI.EXPOSED_MAX_ROWS - 1)
-			var fallback_bottom: float = metrics.exposed_y + height if fallback_row == 0 \
-				else metrics.exposed_y - UI.EXPOSED_ROW_GAP - (fallback_row - 1) * row_step
-			# 兜底也必须保持右缘贴着手牌左边界；宁可向桌面外/上方让位，
-			# 不能再次向右压到自己的手牌或摸牌位。
-			var fallback_x: float = anchor_right - float(layout.size.x)
-			var fallback_origin := Vector2(fallback_x, fallback_bottom - float(layout.size.y))
-			var origin = fallback_origin
-			var rects: Array[Rect2] = []
-			var placed = false
-			var table_bounds := Rect2(Vector2(8, 8), UI.DESIGN_SIZE - Vector2(16, 16))
-			var row_index = start_row
-			while row_index < UI.EXPOSED_MAX_ROWS and not placed:
-				while row_cursors.size() <= row_index:
-					row_cursors.append(anchor_right)
-				var right_cursor := row_cursors[row_index]
-				# Scan leftward from the current row cursor, checking every tile's
-				# actual bounds; opposite-player kongs include their upper tile.
-				var bottom: float = metrics.exposed_y + height if row_index == 0 else metrics.exposed_y - UI.EXPOSED_ROW_GAP - (row_index - 1) * row_step
-				var x: float = right_cursor - float(layout.size.x)
-				while x >= metrics.left:
-					origin = Vector2(x, bottom - float(layout.size.y))
-					rects = table._exposed_rects(layout, origin, transform, width, height)
-					if table._exposed_space_clear(rects, occupied) and _exposed_inside(rects, table_bounds):
-						placed = true
-						break
-					x -= UI.TILE_GAP
-				if not placed:
-					row_index += 1
-			if not placed:
-				# Fallback still right-aligns to the hand edge: it can move off
-				# the table or up, but never back over the hand/draw slot.
-				for candidate_row in UI.EXPOSED_MAX_ROWS:
-					var candidate_bottom: float = metrics.exposed_y + height if candidate_row == 0 \
-						else metrics.exposed_y - UI.EXPOSED_ROW_GAP - (candidate_row - 1) * row_step
-					var candidate := Vector2(anchor_right - float(layout.size.x), candidate_bottom - float(layout.size.y))
-					var candidate_rects: Array[Rect2] = table._exposed_rects(layout, candidate, transform, width, height)
-					if table._exposed_space_clear(candidate_rects, occupied) and _exposed_inside(candidate_rects, table_bounds):
-						origin = candidate
-						rects = candidate_rects
-						placed = true
-						break
-				if not placed:
-					# Last resort: scan inside the table, but choose the free slot
-					# nearest the owner's hand. A plain top-left scan could put a
-					# player's kong into another player's area.
-					var inverse := transform.affine_inverse()
-					var step_x := maxf(24.0, width * 0.75)
-					var step_y := maxf(24.0, height * 0.75)
-					var best := Vector2.INF
-					var best_rects: Array[Rect2] = []
-					var best_score := INF
-					var target := Vector2(anchor_right - float(layout.size.x), metrics.exposed_y + height - float(layout.size.y))
-					var sy := table_bounds.position.y
-					while sy + height <= table_bounds.end.y:
-						var sx := table_bounds.position.x
-						while sx + width <= table_bounds.end.x:
-							var candidate := inverse * Vector2(sx, sy)
-							var candidate_rects: Array[Rect2] = table._exposed_rects(layout, candidate, transform, width, height)
-							if table._exposed_space_clear(candidate_rects, occupied) and _exposed_inside(candidate_rects, table_bounds):
-								var local_right: float = candidate.x + float(layout.size.x)
-								var score := candidate.distance_squared_to(target)
-								# 兜底也优先贴着本家上一组牌，避免两组碰牌被
-								# 分别放到两个远处的空位。
-								score += candidate.distance_squared_to(cluster_anchor) * 2.5
-								if local_right > anchor_right + 0.5:
-									score += 4000000.0
-								if candidate.y + float(layout.size.y) > metrics.hand_y + height:
-									score += 1000000.0
-								if score < best_score:
-									best_score = score
-									best = candidate
-									best_rects = candidate_rects
-							sx += step_x
-						sy += step_y
-					if best != Vector2.INF:
-						origin = best
-						rects = best_rects
-						placed = true
-				if not placed:
-					origin = fallback_origin
-					rects = table._exposed_rects(layout, origin, transform, width, height)
-				group["fallback"] = true
-				push_warning("碰杠/鸡牌区域空间不足，使用确定性紧凑兜底")
-			else:
-				# 只更新当前行的游标；下一组优先从同一行继续向左。
-				row_cursors[row_index] = origin.x - UI.TILE_GAP - (UI.MELD_GROUP_GAP if group.has("meld") else 0.0)
-				start_row = row_index
-			group["origin"] = origin
+				meld_items.append({"group": group, "layout": layout})
+		var rows: Array = []
+		if not charge_items.is_empty():
+			rows.append(charge_items)
+		for index in range(0, normal_items.size(), 4):
+			rows.append(normal_items.slice(index, mini(index + 4, normal_items.size())))
+		for item in meld_items:
+			rows.append([item])
+		var plan_items: Array = []
+		for row in rows:
+			for item in row: plan_items.append(item)
+		var base_origins: Array = []
+		var row_bottom: float = float(metrics.exposed_y) + height
+		var group_gap := UI.MELD_GROUP_GAP
+		for row_items in rows:
+			var row_width := 0.0
+			var row_height := 0.0
+			for item in row_items:
+				row_width += float(item.layout.size.x) + (group_gap if row_width > 0.0 else 0.0)
+				row_height = maxf(row_height, float(item.layout.size.y))
+			var x := anchor_right - row_width
+			for item in row_items:
+				base_origins.append({"item": item, "origin": Vector2(x, row_bottom - float(item.layout.size.y))})
+				x += float(item.layout.size.x) + group_gap
+			row_bottom -= row_height + UI.EXPOSED_ROW_GAP
+		var table_bounds := Rect2(Vector2(8, 8), UI.DESIGN_SIZE - Vector2(16, 16))
+		var chosen_offset := Vector2.INF
+		var chosen_rects: Array[Rect2] = []
+		var best_score := INF
+		for dx in range(0, -1, -8):
+			for dy in range(0, 901, 8):
+				var all_rects: Array[Rect2] = []
+				for entry in base_origins:
+					var origin: Vector2 = entry.origin + Vector2(dx, -dy)
+					all_rects.append_array(table._exposed_rects(entry.item.layout, origin, transform, width, height))
+				if _exposed_inside(all_rects, table_bounds) and table._exposed_space_clear(all_rects, occupied):
+					var score := float(-dx + dy)
+					if score < best_score:
+						best_score = score
+						chosen_offset = Vector2(dx, -dy)
+						chosen_rects = all_rects
+					break
+		var fallback := chosen_offset == Vector2.INF
+		var offset := chosen_offset if not fallback else Vector2.ZERO
+		var plans: Array = []
+		for entry in base_origins:
+			var group: Dictionary = entry.item.group
+			var layout: Dictionary = entry.item.layout
+			group["origin"] = entry.origin + offset
 			group["layout"] = layout
+			if fallback: group["fallback"] = true
 			plans.append(group)
-			cluster_anchor = origin + Vector2(float(layout.size.x), float(layout.size.y) * 0.5)
-			occupied.append_array(rects)
+		if fallback: push_warning("碰杠/鸡牌堆叠空间不足，使用紧凑兜底")
+		if not fallback: occupied.append_array(chosen_rects)
+		else:
+			for entry in base_origins:
+				occupied.append_array(table._exposed_rects(entry.item.layout, entry.origin, transform, width, height))
 		_exposed_layouts[seat] = plans
 
 func _exposed_inside(rects: Array[Rect2], bounds: Rect2) -> bool:

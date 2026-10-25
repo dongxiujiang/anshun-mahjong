@@ -218,31 +218,49 @@ func _on_ai_assist_pressed() -> void:
 	if _ai_teach_button == null:
 		return
 	_ai_assist_enabled = _ai_teach_button.button_pressed
-	_ai_teach_button.text = "AI帮打 开" if _ai_assist_enabled else "AI帮打"
+	_ai_teach_button.text = "AI教学 开" if _ai_assist_enabled else "AI教学"
 	if not _ai_assist_enabled:
-		_ai_teach_token += 1
-		if _ai_teach_panel != null:
-			_ai_teach_panel.hide()
-		if _player_tile_areas != null:
-			_player_tile_areas.clear_ai_teach_highlight()
+		_clear_ai_teach()
 		return
-	request_ai_teach()
+	# 非出牌回合打开开关只记录状态，不弹“不是你的回合”；下一次
+	# 自己摸牌出牌时会自动提示。
+	if _is_ai_turn_now():
+		request_ai_teach()
+
+func _is_ai_turn_now() -> bool:
+	return round != null and round.players.size() == 4 \
+		and round.phase == RoundState.Phase.PLAYING \
+		and round.awaiting and round.current_turn == human_seat
 
 func _refresh_ai_assist() -> void:
 	if not _ai_assist_enabled:
 		return
-	if round == null or round.phase != RoundState.Phase.PLAYING:
-		return
-	if round.current_turn != human_seat or round.awaiting:
+	if not _is_ai_turn_now():
 		return
 	request_ai_teach()
 
+func _clear_ai_teach() -> void:
+	_ai_teach_token += 1
+	if _ai_teach_panel != null:
+		_ai_teach_panel.hide()
+	if _player_tile_areas != null:
+		_player_tile_areas.clear_ai_teach_highlight()
+
+func _show_ai_response_assist(source: int, tile: String, options: Dictionary) -> void:
+	if not _ai_assist_enabled:
+		return
+	var result: Dictionary = AiTeaching.recommend_response(round, human_seat, source, tile, options)
+	if result.is_empty():
+		return
+	_show_ai_teach(str(result.get("message", "")))
+
 func request_ai_teach() -> void:
 	if round == null or round.players.size() != 4:
-		_show_ai_teach("AI帮打：当前没有牌局")
+		return
+	if not _is_ai_turn_now():
 		return
 	var result: Dictionary = AiTeaching.recommend(round, human_seat)
-	var message := str(result.get("message", "AI帮打：暂无建议"))
+	var message := str(result.get("message", "AI教学：暂无建议"))
 	_show_ai_teach(message)
 	var tile := str(result.get("tile", ""))
 	if tile != "":
@@ -604,6 +622,7 @@ func _on_net_prompt(seat: int) -> void:
 	_update_interactivity()
 
 func _on_round_finished(_result: Dictionary) -> void:
+	_clear_ai_teach()
 	_selecting = false
 	_response_disc = ""
 	_clear_actions()

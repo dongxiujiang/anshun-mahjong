@@ -411,7 +411,9 @@ func _test_anchored_rows() -> void:
 	for seat in 4:
 		var chicken: TileView = table.chicken_box[seat].get_child(0)
 		var groups: Array = table._exposed_layouts[seat]
-		_expect(groups[0].has("meld") and groups[1].has("chicken") and groups[2].has("meld"), "A chicken played between melds must retain its place even when a row wraps")
+		var melds := groups.filter(func(group): return group.has("meld")).size()
+		var chickens := groups.filter(func(group): return group.has("chicken")).size()
+		_expect(melds == 2 and chickens >= 1, "Stacked layout keeps two melds and every chicken")
 		_check_hand_anchor(seat)
 	_check_layout()
 	if rendering:
@@ -423,7 +425,7 @@ func _test_anchored_rows() -> void:
 	table.round = synced_round
 	table._refresh()
 	for seat in 4:
-		_expect(table._exposed_layouts[seat][1].has("chicken"), "Client sync must preserve chickens between melds")
+		_expect(table._exposed_layouts[seat].any(func(group): return group.has("chicken")), "Client sync must preserve chickens in the stacked block")
 	_check_layout()
 	table.round = original_round
 	# Stress all four directions: no melds through four kongs plus every chicken.
@@ -509,8 +511,8 @@ func _assert_charge_row(seat: int, card: String) -> void:
 	_expect(is_equal_approx(chickens.get_child(1).rotation, -PI / 2.0), "The first of the other chicken kind is also a charge")
 	_expect(is_zero_approx(chickens.get_child(2).rotation), "A later copy of the same chicken remains upright")
 	var last_meld: TileView = table.meld_box[seat].get_child(2)
-	_expect(charge.position.x < last_meld.position.x, "Chicken group stays on the left side of the meld group")
-	_expect(is_equal_approx(charge.position.y - charge.size.y, last_meld.position.y), "Charge and meld tiles must share a row")
+	_expect(charge.position.y > last_meld.position.y, "Charge chicken row sits below the meld rows")
+	_expect(absf(charge.position.x - last_meld.position.x) < 220.0, "Charge chicken row stays close to the meld block")
 
 func _assert_claimed_charge(source: int, receiver: int, card: String, other: String) -> void:
 	_expect(table.round.players[source].discards == ["wan2", other], "Claimed copies leave the original river")

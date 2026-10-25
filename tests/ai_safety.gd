@@ -65,10 +65,11 @@ func _run() -> void:
 	t.expect(is_equal_approx(claimed, expected), "claim adjustment does not pre-apply the round multiplier")
 
 	var teaching := AiTeaching.recommend(round, 0)
-	t.expect(not teaching.is_empty() and str(teaching.get("message", "")).begins_with("AI帮打"), "AI teaching returns a bounded recommendation")
+	t.expect(not teaching.is_empty() and str(teaching.get("message", "")).begins_with("AI教学"), "AI teaching returns a bounded recommendation")
 	var teaching_tile := str(teaching.get("tile", ""))
 	t.expect(teaching_tile == "" or round.legal_turn_options(0).discards.has(teaching_tile), "AI teaching recommends a legal tile")
 
 	t.expect(AiPlayer.new().use_mcts, "normal AI retains MCTS")
 	t.expect(not ai.use_mcts, "teaching mode disables MCTS")
 	await H.quit_cleanly(self, t.finish("ai_safety"))
+
