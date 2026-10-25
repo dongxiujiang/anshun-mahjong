@@ -218,6 +218,7 @@ func _toggle_ready() -> void:
 	if is_instance_valid(_ready_button):
 		_ready_button.text = "取消" if _declaring_ready else "报听"
 	table._update_interactivity()
+	table._refresh_ready_hint()
 	table._refresh_status()
 
 func _update_interactivity() -> void:
@@ -252,6 +253,10 @@ func _commit_turn(decision: Dictionary) -> void:
 	_declaring_ready = false
 	table._clear_actions()
 	table._update_interactivity()
+	if bool(decision.get("ready", false)):
+		# 不等下一次服务端/下一轮刷新：本地先锁手牌并显示金边。
+		table._show_pending_ready(table.human_seat)
+	table._refresh_ready_hint()
 	table._emit_turn(decision)
 
 func _submit_discard(tile: String, discard_index: int = -1) -> void:

@@ -187,6 +187,14 @@ func _on_settlement_animation_finished() -> void:
 	_settlement_card.show_post_settlement_controls()
 	_update_interactivity()
 
+func _refresh_ready_hint() -> void:
+	if _player_tile_areas != null:
+		_player_tile_areas.refresh_ready_hint(int(get("human_seat")))
+
+func _show_pending_ready(seat: int) -> void:
+	if _player_tile_areas != null:
+		_player_tile_areas.show_pending_ready(seat)
+
 func _settlement_animation_active() -> bool:
 	return _settlement_animation_controller.is_active()
 

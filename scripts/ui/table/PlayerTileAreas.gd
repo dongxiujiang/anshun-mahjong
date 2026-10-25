@@ -22,6 +22,8 @@ var _status_labels := {}
 var _exposed_layouts := {}
 var _exposed_layout_key := PackedByteArray()
 var _seat_visual_keys := {}
+var _pending_ready_round := 0
+var _pending_ready_seat := -1
 var _exposed_keys := {}
 var _river_keys := {}
 
@@ -330,25 +332,35 @@ func _refresh_ready_discard_hint(seat: int) -> void:
 		return
 	var player: PlayerState = table.round.players[seat]
 	var hinted: Dictionary = {}
-	if table.round.current_turn == seat and not table.round.awaiting:
-		var options: Dictionary = table.round.legal_turn_options(seat)
-		if player.ready:
-			if player.just_drew != "":
-				hinted[player.just_drew] = true
-		else:
-			for tile in options.get("ready_discards", []):
-				hinted[str(tile)] = true
+	# 只有点击“报听”进入选牌状态后才标黄可报听的出牌；
+	# 报听后自动摸打，不再给自己的摸牌加黄色提示。
+	if table.round.current_turn == seat and not table.round.awaiting \
+		and not player.ready and table._declaring_ready:
+		for tile in table._ready_discards:
+			hinted[str(tile)] = true
 	for box in [hand_box[seat], draw_box[seat]]:
 		for child in box.get_children():
 			if child is TileView:
 				child.set_score_highlight(hinted.has(str(child.tile)))
+
+func refresh_ready_hint(seat: int) -> void:
+	_refresh_ready_discard_hint(seat)
+
+func show_pending_ready(seat: int) -> void:
+	if table.round == null:
+		return
+	_pending_ready_round = table.round.get_instance_id()
+	_pending_ready_seat = seat
+	_refresh_ready_frame(seat)
 
 func _refresh_ready_frame(seat: int) -> void:
 	var frame: Panel = ready_frames.get(seat)
 	if frame == null or seat >= table.round.players.size():
 		return
 	var player: PlayerState = table.round.players[seat]
-	if not player.ready:
+	var pending_ready: bool = _pending_ready_seat == seat \
+		and table.round != null and _pending_ready_round == table.round.get_instance_id()
+	if not player.ready and not pending_ready:
 		frame.hide()
 		return
 	var bounds := Rect2()
@@ -535,6 +547,7 @@ func _prepare_exposed_layouts() -> void:
 			var origin = fallback_origin
 			var rects: Array[Rect2] = []
 			var placed = false
+			var table_bounds := Rect2(Vector2(8, 8), UI.DESIGN_SIZE - Vector2(16, 16))
 			var row_index = start_row
 			while row_index < UI.EXPOSED_MAX_ROWS and not placed:
 				while row_cursors.size() <= row_index:
@@ -547,7 +560,7 @@ func _prepare_exposed_layouts() -> void:
 				while x >= metrics.left:
 					origin = Vector2(x, bottom - float(layout.size.y))
 					rects = table._exposed_rects(layout, origin, transform, width, height)
-					if table._exposed_space_clear(rects, occupied):
+					if table._exposed_space_clear(rects, occupied) and _exposed_inside(rects, table_bounds):
 						placed = true
 						break
 					x -= UI.TILE_GAP
@@ -561,11 +574,45 @@ func _prepare_exposed_layouts() -> void:
 						else metrics.exposed_y - UI.EXPOSED_ROW_GAP - (candidate_row - 1) * row_step
 					var candidate := Vector2(anchor_right - float(layout.size.x), candidate_bottom - float(layout.size.y))
 					var candidate_rects: Array[Rect2] = table._exposed_rects(layout, candidate, transform, width, height)
-					if table._exposed_space_clear(candidate_rects, occupied):
+					if table._exposed_space_clear(candidate_rects, occupied) and _exposed_inside(candidate_rects, table_bounds):
 						origin = candidate
 						rects = candidate_rects
 						placed = true
 						break
+				if not placed:
+					# Last resort: scan inside the table, but choose the free slot
+					# nearest the owner's hand. A plain top-left scan could put a
+					# player's kong into another player's area.
+					var inverse := transform.affine_inverse()
+					var step_x := maxf(24.0, width * 0.75)
+					var step_y := maxf(24.0, height * 0.75)
+					var best := Vector2.INF
+					var best_rects: Array[Rect2] = []
+					var best_score := INF
+					var target := Vector2(anchor_right - float(layout.size.x), metrics.exposed_y + height - float(layout.size.y))
+					var sy := table_bounds.position.y
+					while sy + height <= table_bounds.end.y:
+						var sx := table_bounds.position.x
+						while sx + width <= table_bounds.end.x:
+							var candidate := inverse * Vector2(sx, sy)
+							var candidate_rects: Array[Rect2] = table._exposed_rects(layout, candidate, transform, width, height)
+							if table._exposed_space_clear(candidate_rects, occupied) and _exposed_inside(candidate_rects, table_bounds):
+								var local_right: float = candidate.x + float(layout.size.x)
+								var score := candidate.distance_squared_to(target)
+								if local_right > anchor_right + 0.5:
+									score += 4000000.0
+								if candidate.y + float(layout.size.y) > metrics.hand_y + height:
+									score += 1000000.0
+								if score < best_score:
+									best_score = score
+									best = candidate
+									best_rects = candidate_rects
+							sx += step_x
+						sy += step_y
+					if best != Vector2.INF:
+						origin = best
+						rects = best_rects
+						placed = true
 				if not placed:
 					origin = fallback_origin
 					rects = table._exposed_rects(layout, origin, transform, width, height)
@@ -580,6 +627,12 @@ func _prepare_exposed_layouts() -> void:
 			plans.append(group)
 			occupied.append_array(rects)
 		_exposed_layouts[seat] = plans
+
+func _exposed_inside(rects: Array[Rect2], bounds: Rect2) -> bool:
+	for rect in rects:
+		if not bounds.encloses(rect):
+			return false
+	return true
 
 func _exposed_rects(layout: Dictionary, origin: Vector2, transform: Transform2D, width: float, height: float) -> Array[Rect2]:
 	var rects: Array[Rect2] = []
