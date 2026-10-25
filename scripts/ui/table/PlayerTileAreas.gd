@@ -213,8 +213,13 @@ func _apply_ai_teach_highlight() -> void:
 		for child in box.get_children():
 			if child is TileView:
 				var mark: bool = _ai_teach_tile != "" and child.face_up and child.tile == _ai_teach_tile
-				child.set_highlight(mark)
-				child.set_meta("ai_teach", mark)
+				# 只清掉上一轮 AI 标记，不能把报听/鸡牌等其它金边一起清掉。
+				if mark:
+					child.set_ai_teach_highlight(true)
+					child.set_meta("ai_teach", true)
+				elif bool(child.get_meta("ai_teach", false)):
+					child.set_ai_teach_highlight(false)
+					child.set_meta("ai_teach", false)
 
 func clear_ai_teach_highlight() -> void:
 	_ai_teach_tile = ""
@@ -348,6 +353,10 @@ func _refresh_ready_discard_hint(seat: int) -> void:
 func refresh_ready_hint(seat: int) -> void:
 	_refresh_ready_discard_hint(seat)
 
+func refresh_ready_frames() -> void:
+	for seat in ready_frames:
+		_refresh_ready_frame(int(seat))
+
 func show_pending_ready(seat: int) -> void:
 	if table.round == null:
 		return
@@ -382,6 +391,8 @@ func _refresh_ready_frame(seat: int) -> void:
 	frame.position = bounds.position - Vector2(8, 8)
 	frame.size = bounds.size + Vector2(16, 16)
 	frame.show()
+	# 金边只画边框，置于手牌之上，避免被新刷出的牌面盖住。
+	frame.move_to_front()
 
 func _refresh_exposed(seat: int) -> void:
 	var player: PlayerState = table.round.players[seat]
@@ -553,7 +564,7 @@ func _prepare_exposed_layouts() -> void:
 		var row_bottom: float = float(metrics.exposed_y) + height
 		# 普通鸡、碰、杠之间不再留额外行距；只有冲锋鸡与普通鸡之间
 		# 保留一个视觉分隔。牌面内部间距仍由 TILE_GAP 决定。
-		var group_gap := 0.0
+		var group_gap := UI.EXPOSED_STACK_GAP
 		var previous_kind := ""
 		for row_index in rows.size():
 			var row_items: Array = rows[row_index]
@@ -564,7 +575,7 @@ func _prepare_exposed_layouts() -> void:
 			for item in row_items:
 				base_origins.append({"item": item, "origin": Vector2(x, row_bottom - float(item.layout.size.y))})
 				x += float(item.layout.size.x) + group_gap
-			var row_gap := UI.EXPOSED_ROW_GAP if previous_kind == "charge" and row_kinds[row_index] != "charge" else 0.0
+			var row_gap := UI.EXPOSED_ROW_GAP if previous_kind == "charge" and row_kinds[row_index] != "charge" else UI.EXPOSED_STACK_GAP
 			row_bottom -= row_height + row_gap
 			previous_kind = row_kinds[row_index]
 		var table_bounds: Rect2 = table._table_bounds()

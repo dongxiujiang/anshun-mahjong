@@ -784,7 +784,10 @@ func start_net_game(seed_value: int = -1) -> bool:
 	game.controllers = ctrls
 	game.ai_delay_seconds = _ai_turn_delay()
 	game.ai_response_delay_seconds = _ai_response_delay()
-	game.opening_delay_seconds = GameConfig.OPENING_WAIT_SECONDS if dedicated or DisplayServer.get_name() != "headless" else 0.0
+	# 联机统一使用快档发牌节奏，客户端动画也固定 0.5 倍，避免服务端
+	# 已经进入摸牌而客户端还在看 13 张牌，或反过来产生额外等待。
+	game.opening_delay_seconds = GameConfig.OPENING_WAIT_SECONDS * 0.5 \
+		if dedicated or DisplayServer.get_name() != "headless" else 0.0
 	game.require_turn.connect(_on_host_require_turn)
 	game.require_response.connect(_on_host_require_response)
 	game.state_update.connect(_host_broadcast)

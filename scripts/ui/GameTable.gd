@@ -362,7 +362,8 @@ func new_game() -> void:
 	round.controllers = controllers
 	round.ai_delay_seconds = GameConfig.ai_delay_seconds()
 	round.ai_response_delay_seconds = GameConfig.ai_response_delay_seconds()
-	round.opening_delay_seconds = GameConfig.animation_duration(GameConfig.OPENING_WAIT_SECONDS) if DisplayServer.get_name() != "headless" else 0.0
+	round.opening_delay_seconds = GameConfig.OPENING_WAIT_SECONDS * GameConfig.opening_animation_scale() \
+		if DisplayServer.get_name() != "headless" else 0.0
 	round.randomize_seed()
 	# 先带入累计分数，再让新庄家开始行动（AI 庄家也可能马上结算）。
 	if scores.size() == 4:
@@ -456,6 +457,7 @@ func _refresh() -> void:
 			_player_tile_areas._refresh_discards(seat)
 			continue
 		_refresh_seat(seat)
+	_player_tile_areas.refresh_ready_frames()
 	_refresh_center()
 	_refresh_status()
 	_update_interactivity()

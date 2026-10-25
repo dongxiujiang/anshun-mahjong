@@ -6,7 +6,8 @@ extends Control
 var tile := ""       # 牌值 "tong3"/"tiao1"/"wan9"
 var face_up := true
 var unit := 1.0      # 玩家牌与牌墙/出牌区可分别指定尺寸倍率。
-var highlight := false   # 金框高亮（用于标记鸡牌）
+var highlight := false   # 金框高亮（用于标记鸡牌、报听等）
+var ai_teach_highlight := false   # AI 教学推荐，独立于鸡牌/报听金框
 var score_highlight := false   # 结算预览阶段的记分牌黄色底色
 var selected := false
 var interactive := false
@@ -107,6 +108,10 @@ func set_highlight(on: bool) -> void:
 	highlight = on
 	queue_redraw()
 
+func set_ai_teach_highlight(on: bool) -> void:
+	ai_teach_highlight = on
+	queue_redraw()
+
 func set_score_highlight(on: bool) -> void:
 	score_highlight = on
 	queue_redraw()
@@ -143,7 +148,7 @@ func _draw() -> void:
 		_draw_back(w, h - depth)
 		if score_highlight:
 			draw_rect(Rect2(0, 0, w, h - depth), Color(0.95, 0.78, 0.22, 0.40))
-	if highlight or selected or _win_glow > 0:
+	if highlight or ai_teach_highlight or selected or _win_glow > 0:
 		var glow := _tile_style(Color.TRANSPARENT, Color(0.95, 0.80, 0.39, maxf(0.24, _win_glow)))
 		glow.set_border_width_all(4)
 		draw_style_box(glow, Rect2(-4, -4, w + 8, h + 8))
@@ -152,6 +157,9 @@ func _draw() -> void:
 		draw_style_box(outline, Rect2(-1, -1, w + 2, h + 2))
 		if highlight:
 			draw_circle(Vector2(w / 2, -5 * unit), 2.5 * unit, Color("#f1d47f"))
+		if ai_teach_highlight:
+			# AI 推荐单独标记：金框内加一个蓝色小点，和鸡牌/报听金框不冲突。
+			draw_circle(Vector2(w - 7 * unit, -5 * unit), 2.2 * unit, Color("#67d9ff"))
 	if bool(get_meta("charge_chicken", false)) and bool(get_meta("gold_chicken", false)):
 		_draw_badge(Vector2(w - 12 * unit, 12 * unit), Color("#d5af4e"), "冲金")
 	elif bool(get_meta("charge_chicken", false)):
@@ -219,6 +227,7 @@ func reset() -> void:
 	set_interactive(false)
 	set_winning(false)
 	set_highlight(false)
+	set_ai_teach_highlight(false)
 	set_score_highlight(false)
 	tile = ""
 	face_up = false
