@@ -23,3 +23,25 @@ smoke_table_layout：通过
 table_interaction：16 项通过
 settlement_animation_flow：通过
 ```
+
+## 产物
+
+```text
+APK 94,793,826 字节
+SHA-256 9219adc2cae54e1abc4e00e5351774589fa7bf8d097a29cf1cfaa3907b220589
+
+EXE 120,356,344 字节
+SHA-256 366f3f38e10652c89a31b4c40305b504c6b4abd1916797f2a79c8d827d73d73e
+
+Android/Windows 热补丁 243,708 字节
+SHA-256 f6d97f3b97b7e80a7f0db910f2fc1b1c09d703f938477c877a426cdd857a8871
+```
+
+## 发布
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.5.12
+服务端镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-2ce768d
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+热补丁基线：1.5.9 / 1.4.13-boot1
+```
