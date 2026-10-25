@@ -108,7 +108,7 @@ func _test_groups() -> void:
 	r.wall.set_head(0)
 	r.wall._ring[0] = "tiao8"
 	r._finish()
-	t.expect(r.last_result.round_points[0] == 52, "§十二：小七对24+报听24+手中鸡4=52，每项只记一次")
+	t.expect(r.last_result.round_points[0] == 48, "§十二：小七对24+报听20+手中鸡4=48，只算一个自摸4")
 	var client := RoundState.new()
 	client.set_rng_seed(20261018)
 	client.apply_sync(r.serialize_for_seat(2))

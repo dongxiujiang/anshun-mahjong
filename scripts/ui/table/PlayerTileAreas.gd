@@ -36,13 +36,15 @@ func build() -> void:
 		var ready_frame := Panel.new()
 		ready_frame.name = "ReadyFrame%d" % seat
 		ready_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ready_frame.z_index = -1
 		var ready_style := StyleBoxFlat.new()
-		ready_style.bg_color = Color(0.08, 0.22, 0.16, 0.10)
+		# 只画边框，不填充半透明绿色；整块填充会盖住手牌牌面。
+		ready_style.bg_color = Color(0, 0, 0, 0)
 		ready_style.border_color = UI.GOLD
-		ready_style.set_border_width_all(3)
+		ready_style.set_border_width_all(2)
 		ready_style.set_corner_radius_all(18)
-		ready_style.shadow_color = Color(UI.GOLD, 0.22)
-		ready_style.shadow_size = 5
+		ready_style.shadow_color = Color(UI.GOLD, 0.0)
+		ready_style.shadow_size = 0
 		ready_frame.add_theme_stylebox_override("panel", ready_style)
 		station.add_child(ready_frame)
 		ready_frames[seat] = ready_frame
@@ -312,8 +314,34 @@ func _refresh_seat(seat: int) -> void:
 			drawn.gui_input.connect(table._on_human_tile_gui.bind(drawn))
 		if drawn_index >= 0:
 			drawn.set_meta("concealed_index", drawn_index)
+	if own:
+		# 自己的手牌/摸牌位只允许正面牌；任何残留的反面动画牌都不能
+		# 盖在手牌上。
+		for box in [hand_box[seat], draw_box[seat]]:
+			for child in box.get_children():
+				if child is TileView and not child.face_up:
+					child.hide()
 	table._refresh_discards(seat)
+	_refresh_ready_discard_hint(seat)
 	_refresh_ready_frame(seat)
+
+func _refresh_ready_discard_hint(seat: int) -> void:
+	if seat != table.human_seat or table.round == null or table.round.phase != RoundState.Phase.PLAYING:
+		return
+	var player: PlayerState = table.round.players[seat]
+	var hinted: Dictionary = {}
+	if table.round.current_turn == seat and not table.round.awaiting:
+		var options: Dictionary = table.round.legal_turn_options(seat)
+		if player.ready:
+			if player.just_drew != "":
+				hinted[player.just_drew] = true
+		else:
+			for tile in options.get("ready_discards", []):
+				hinted[str(tile)] = true
+	for box in [hand_box[seat], draw_box[seat]]:
+		for child in box.get_children():
+			if child is TileView:
+				child.set_score_highlight(hinted.has(str(child.tile)))
 
 func _refresh_ready_frame(seat: int) -> void:
 	var frame: Panel = ready_frames.get(seat)
@@ -424,32 +452,12 @@ func _exposed_layout_input_key() -> PackedByteArray:
 	for seat in 4:
 		var player: PlayerState = table.round.players[seat]
 		var metrics: Dictionary = table._seat_metrics(seat)
-		var holds_refresh := false
-		if table._table_animation_controller != null:
-			holds_refresh = table._table_animation_controller.holds_seat_refresh(seat)
 		parts.append([
 			player.concealed, player.just_drew, player.ready, player.melds,
 			table._exposed_groups(seat), table._hand_layout(seat), metrics,
 			table._hand_tile_unit(seat), table._player_tile_unit(seat),
-			holds_refresh, _layout_hand_left(seat),
 		])
 	return var_to_bytes(parts)
-
-func _layout_hand_left(seat: int) -> float:
-	# 弃牌动画期间旧手牌仍显示在桌上，但模型已经少了这张牌；此时如果
-	# 用刷新后的 hand_x，鸡牌会右移进冻结手牌。冻结期改用可见手牌的最左
-	# 边界（打牌前），动画结束、手牌刷新后自动恢复新边界。
-	var controller = table._table_animation_controller
-	if controller != null and controller.holds_seat_refresh(seat) and seat in hand_box:
-		var box: Control = hand_box[seat]
-		if box != null:
-			var left := INF
-			for child in box.get_children():
-				if child is Control:
-					left = minf(left, (child as Control).position.x)
-			if left < INF:
-				return left
-	return table._hand_layout(seat).hand_x
 
 func _prepare_exposed_layouts() -> void:
 	# 联机客户端可能尚未收到四家数据，等待期间不规划牌组。
@@ -497,14 +505,16 @@ func _prepare_exposed_layouts() -> void:
 		var transform = Transform2D(UI.ROTATIONS[table._relative_seat(seat)], table._table_center())
 		var metrics: Dictionary = table._seat_metrics(seat)
 		var player: PlayerState = table.round.players[seat]
-		var hand_left: float = _layout_hand_left(seat)
+		var hand_left: float = table._hand_layout(seat).hand_x
 		# 所有碰杠/鸡牌固定从手牌左边缘向左排；第一个牌组右边贴着手牌，
-		# 后续牌组继续向左，换行后重新贴着手牌左边缘。
+		# 后续牌组继续向左。每一行保留自己的右游标，换行后重新贴手牌。
 		var anchor_right: float = hand_left - UI.EXPOSED_HAND_GAP
-		var right_cursor: float = anchor_right
-		# 对家明杠的最高牌组高度接近两张牌；用足够大的行距保证向上叠放时
-		# 不会把上一行压出重叠。极端情况仍由确定性兜底处理。
-		var row_step: float = height * 2.5 + UI.EXPOSED_ROW_GAP
+		var row_cursors: Array[float] = []
+		# 行距只表达“最高牌组高度 + 安全余量”；首行过渡的额外间隙由
+		# UI.EXPOSED_ROW_GAP 单独承担，避免同一常量在公式里出现两遍。
+		# 对家明杠的最高牌组≈height + width + TILE_GAP。
+		var row_step: float = height + width + UI.TILE_GAP + 2.0
+		var start_row := 0
 		var plans: Array = []
 		for group in table._exposed_groups(seat):
 			var layout: Dictionary
@@ -515,17 +525,23 @@ func _prepare_exposed_layouts() -> void:
 				# 明杠/暗杠/加杠的横放槽位只由来源方向决定；碰牌没有来源
 				# 标记，碰到的鸡牌也不显示冲锋标记。
 				layout = table._meld_tile_layout(group.meld, seat, player_unit, UI.TILE_GAP)
-			var fallback_row: int = mini(plans.size(), UI.EXPOSED_MAX_ROWS - 1)
+			var fallback_row: int = mini(maxi(start_row, plans.size()), UI.EXPOSED_MAX_ROWS - 1)
 			var fallback_bottom: float = metrics.exposed_y + height if fallback_row == 0 \
 				else metrics.exposed_y - UI.EXPOSED_ROW_GAP - (fallback_row - 1) * row_step
-			var fallback_origin := Vector2(metrics.left, fallback_bottom - float(layout.size.y))
+			# 兜底也必须保持右缘贴着手牌左边界；宁可向桌面外/上方让位，
+			# 不能再次向右压到自己的手牌或摸牌位。
+			var fallback_x: float = anchor_right - float(layout.size.x)
+			var fallback_origin := Vector2(fallback_x, fallback_bottom - float(layout.size.y))
 			var origin = fallback_origin
 			var rects: Array[Rect2] = []
 			var placed = false
-			var row_index = 0
+			var row_index = start_row
 			while row_index < UI.EXPOSED_MAX_ROWS and not placed:
-				# Scan leftward from the hand edge, checking every tile's actual
-				# bounds; opposite-player kongs include their upper sideways tile.
+				while row_cursors.size() <= row_index:
+					row_cursors.append(anchor_right)
+				var right_cursor := row_cursors[row_index]
+				# Scan leftward from the current row cursor, checking every tile's
+				# actual bounds; opposite-player kongs include their upper tile.
 				var bottom: float = metrics.exposed_y + height if row_index == 0 else metrics.exposed_y - UI.EXPOSED_ROW_GAP - (row_index - 1) * row_step
 				var x: float = right_cursor - float(layout.size.x)
 				while x >= metrics.left:
@@ -536,23 +552,33 @@ func _prepare_exposed_layouts() -> void:
 						break
 					x -= UI.TILE_GAP
 				if not placed:
-					# New row: reset the right edge to the hand edge instead of
-					# overflowing to the table's right side.
 					row_index += 1
-					right_cursor = anchor_right
 			if not placed:
-				# Deterministic compact fallback: never leave origin at the last
-				# probed position. Keep the group at the left boundary so every tile
-				# still has a known landing point.
-				origin = fallback_origin
-				rects = table._exposed_rects(layout, origin, transform, width, height)
+				# Fallback still right-aligns to the hand edge: it can move off
+				# the table or up, but never back over the hand/draw slot.
+				for candidate_row in UI.EXPOSED_MAX_ROWS:
+					var candidate_bottom: float = metrics.exposed_y + height if candidate_row == 0 \
+						else metrics.exposed_y - UI.EXPOSED_ROW_GAP - (candidate_row - 1) * row_step
+					var candidate := Vector2(anchor_right - float(layout.size.x), candidate_bottom - float(layout.size.y))
+					var candidate_rects: Array[Rect2] = table._exposed_rects(layout, candidate, transform, width, height)
+					if table._exposed_space_clear(candidate_rects, occupied):
+						origin = candidate
+						rects = candidate_rects
+						placed = true
+						break
+				if not placed:
+					origin = fallback_origin
+					rects = table._exposed_rects(layout, origin, transform, width, height)
 				group["fallback"] = true
 				push_warning("碰杠/鸡牌区域空间不足，使用确定性紧凑兜底")
+			else:
+				# 只更新当前行的游标；下一组优先从同一行继续向左。
+				row_cursors[row_index] = origin.x - UI.TILE_GAP - (UI.MELD_GROUP_GAP if group.has("meld") else 0.0)
+				start_row = row_index
 			group["origin"] = origin
 			group["layout"] = layout
 			plans.append(group)
 			occupied.append_array(rects)
-			right_cursor = origin.x - UI.TILE_GAP - (UI.MELD_GROUP_GAP if group.has("meld") else 0.0)
 		_exposed_layouts[seat] = plans
 
 func _exposed_rects(layout: Dictionary, origin: Vector2, transform: Transform2D, width: float, height: float) -> Array[Rect2]:

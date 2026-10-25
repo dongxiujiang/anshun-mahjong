@@ -38,6 +38,8 @@ const SCORE_BIG_SET_SINGLE_WAIT := 24.0 # 大对子单吊。
 const SCORE_CLEAN_SEVEN_PAIRS := 44.0 # 清七对。
 const SCORE_CLEAN_DRAGON_SEVEN_PAIRS := 64.0 # 清龙对。
 const SCORE_READY := 24.0         # 报听单独加24：自摸三家付，非自摸只由被胡者付。
+const SCORE_KILL_READY := 24.0    # 杀报：报听者被胡或他人自摸时，向赢家额外支付24。
+const SCORE_READY_PATTERN := 20.0 # 报听自摸有牌型：24-自摸基础4，只补20。
 
 # ---------- 番型表 ----------
 # 牌型按最高项替代；仅暗杠/加杠后放炮另收17/21，普通放炮无基础费。

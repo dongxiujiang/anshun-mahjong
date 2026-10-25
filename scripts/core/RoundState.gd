@@ -1181,6 +1181,9 @@ func apply_sync(state: Dictionary) -> void:
 func serialize_for_seat(seat: int) -> Dictionary:
 	return SERIALIZER.serialize_for_seat(self, seat)
 
+func mask_for_seat(base_state: Dictionary, seat: int) -> Dictionary:
+	return SERIALIZER.mask_for_seat(base_state, self, seat)
+
 func export_replay(path: String = "") -> String:
 	return _recorder.save(path)
 

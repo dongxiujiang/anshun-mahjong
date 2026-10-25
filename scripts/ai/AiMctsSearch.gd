@@ -4,14 +4,19 @@ extends RefCounted
 ## it never reads opponent concealed tiles or the wall order.
 
 const VALUE := preload("res://scripts/ai/AiValueModel.gd")
+const OPPONENT := preload("res://scripts/ai/AiOpponentModel.gd")
 ## Keep the search bounded so a phone can finish a turn promptly.
 ## AiPlayer sends only its strongest few candidates here; the value model
 ## remains the primary decision layer.
-const ITERATIONS := 16
+var iterations := 16
+var defense_weight := 0.0
+var _opponent_model := OPPONENT.new()
 const DEPTH := 2
 const EXPLORATION := 1.15
 
-func rank(round, seat: int, hand: Array, melds: Array, seen: Dictionary, candidates: Array, context: Dictionary) -> Dictionary:
+func rank(round, seat: int, hand: Array, melds: Array, seen: Dictionary, candidates: Array, context: Dictionary, weight: float = -1.0) -> Dictionary:
+	if weight >= 0.0:
+		defense_weight = weight
 	var roots: Array = []
 	var indexes := {}
 	for candidate in candidates:
@@ -23,14 +28,15 @@ func rank(round, seat: int, hand: Array, melds: Array, seen: Dictionary, candida
 	var random := RandomNumberGenerator.new()
 	random.seed = absi(str([Tiles.counts_array(seen), hand, melds]).hash())
 	var pool := _pool(seen)
-	for iteration in ITERATIONS:
+	for iteration in iterations:
 		var root_index := _select_root(roots)
 		var root: Dictionary = roots[root_index]
 		var state: Array = hand.duplicate()
 		state.erase(root.tile)
 		# 每个 rollout 都必须从相同的未知牌池开始；模拟内的摸牌只影响
 		# 当前分支，不能污染其他候选牌或后续 rollout。
-		var reward := _simulate(round, seat, state, melds, pool, random, context)
+		var reward := -defense_weight * _discard_loss(context, str(root.tile))
+		reward += _simulate(round, seat, state, melds, pool, random, context)
 		root.visits = int(root.visits) + 1
 		root.value = float(root.value) + reward
 		roots[root_index] = root
@@ -80,9 +86,17 @@ func _simulate(round, seat: int, state: Array, melds: Array, pool: Array[int], r
 		var distance := Shanten.shanten(current, melds)
 		var outs := _outs(current, melds, remaining_pool)
 		reward += (4.0 - float(distance)) * 2.2 + float(outs) * 0.06
+		if defense_weight > 0.0:
+			reward -= defense_weight * _discard_loss(context, discard)
 	# A small pattern term helps retain seven-pairs/flush routes when progress ties.
 	reward += 0.10 * VALUE.potential_pattern(current, melds)
 	return reward
+
+func _discard_loss(context: Dictionary, tile: String) -> float:
+	if tile == "" or defense_weight <= 0.0:
+		return 0.0
+	# risk() 已包含对手听牌概率与牌型危险度；巡目不要在这里重复乘。
+	return float(_opponent_model.risk(context, tile, false, false, false, -1).loss)
 
 func _draw(pool: Array[int], random: RandomNumberGenerator) -> int:
 	var total := 0

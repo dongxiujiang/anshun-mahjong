@@ -9,7 +9,7 @@
 - 更新：主菜单和联机大厅都可「检查更新」。新完整 APK 默认使用自建 HTTPS 更新源，主清单和回退清单都在 `https://mj.dongxiu.fun/updates/`；1.1.9 及更早版本仍需先安装一次新完整包。
 - 联机语音：正在从 LiveKit 迁移到腾讯云 GME；Android 使用 GME arm64，Windows 暂时保留 PCM。需要服务器 `GME_APP_ID`/`GME_APP_KEY`，详见 [GME 语音接入手册](docs/gme_voice.md)。
 
-联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.5.9**，完整规则见 [当前游戏规则与玩法](docs/当前游戏规则与玩法.txt)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
+联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.5.11**，完整规则见 [当前游戏规则与玩法](docs/当前游戏规则与玩法.txt)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 
 应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Windows 和 Android 游戏内下载补丁，重启生效，不必重装；大版本更新完整 EXE/APK。首次使用热更新须安装包含 PatchBoot 的完整版本。自 1.4.19 起，自建更新清单必须携带离线 RSA 签名，客户端只信任内置公钥验证通过的 `signed_payload`；发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
 
@@ -61,7 +61,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 
 ### 3.1 在线服务器 Docker 部署
 
-完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。1.4.16 的实际发布与部署记录见 [docs/release_operation_1.4.16.md](docs/release_operation_1.4.16.md)，1.4.17 记录见 [docs/release_operation_1.4.17.md](docs/release_operation_1.4.17.md)，1.4.18 记录见 [docs/release_operation_1.4.18.md](docs/release_operation_1.4.18.md)，1.4.19 记录见 [docs/release_operation_1.4.19.md](docs/release_operation_1.4.19.md)，1.5.0 记录见 [docs/release_operation_1.5.0.md](docs/release_operation_1.5.0.md)，1.5.1 记录见 [docs/release_operation_1.5.1.md](docs/release_operation_1.5.1.md)，1.5.2 记录见 [docs/release_operation_1.5.2.md](docs/release_operation_1.5.2.md)，1.5.3 记录见 [docs/release_operation_1.5.3.md](docs/release_operation_1.5.3.md)，1.5.4 记录见 [docs/release_operation_1.5.4.md](docs/release_operation_1.5.4.md)，1.5.5 记录见 [docs/release_operation_1.5.5.md](docs/release_operation_1.5.5.md)，1.5.6 记录见 [docs/release_operation_1.5.6.md](docs/release_operation_1.5.6.md)，1.5.7 记录见 [docs/release_operation_1.5.7.md](docs/release_operation_1.5.7.md)，1.5.8 记录见 [docs/release_operation_1.5.8.md](docs/release_operation_1.5.8.md)，1.5.9 记录见 [docs/release_operation_1.5.9.md](docs/release_operation_1.5.9.md)。
+完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。1.4.16 的实际发布与部署记录见 [docs/release_operation_1.4.16.md](docs/release_operation_1.4.16.md)，1.4.17 记录见 [docs/release_operation_1.4.17.md](docs/release_operation_1.4.17.md)，1.4.18 记录见 [docs/release_operation_1.4.18.md](docs/release_operation_1.4.18.md)，1.4.19 记录见 [docs/release_operation_1.4.19.md](docs/release_operation_1.4.19.md)，1.5.0 记录见 [docs/release_operation_1.5.0.md](docs/release_operation_1.5.0.md)，1.5.1 记录见 [docs/release_operation_1.5.1.md](docs/release_operation_1.5.1.md)，1.5.2 记录见 [docs/release_operation_1.5.2.md](docs/release_operation_1.5.2.md)，1.5.3 记录见 [docs/release_operation_1.5.3.md](docs/release_operation_1.5.3.md)，1.5.4 记录见 [docs/release_operation_1.5.4.md](docs/release_operation_1.5.4.md)，1.5.5 记录见 [docs/release_operation_1.5.5.md](docs/release_operation_1.5.5.md)，1.5.6 记录见 [docs/release_operation_1.5.6.md](docs/release_operation_1.5.6.md)，1.5.7 记录见 [docs/release_operation_1.5.7.md](docs/release_operation_1.5.7.md)，1.5.8 记录见 [docs/release_operation_1.5.8.md](docs/release_operation_1.5.8.md)，1.5.9 记录见 [docs/release_operation_1.5.9.md](docs/release_operation_1.5.9.md)，1.5.10/1.5.11 记录见 [docs/release_operation_1.5.11.md](docs/release_operation_1.5.11.md)。
 
 生产环境由两部分组成：
 
@@ -308,7 +308,7 @@ docker compose -f compose.prod.yaml up -d app --pull never
 - **起手**：按庄→下家→对家→上家的顺时针方向轮流拿 4，三轮后各 12，再各 1 共 13；庄再摸 1 成 14 开打。之后统一按顺时针摸牌、出牌和检查响应。
 - **行牌**：只能碰/杠，不能吃。杠从牌尾补一张。暗杠和加杠补牌后的第一张弃牌可以被普通牌型胡；只有这两类弃牌被胡才算杠后放炮并烧鸡。明杠后弃牌不再开放普通胡通行资格，只有报听、大对子、七对、清一色、自己有暗杠/加杠等条件仍可胡。只有加杠可以被抢，抢杠胡由被抢杠者支付12分及牌型分。被抢杠者或杠后弃牌放炮者烧鸡：自己的全部鸡分归 0，自己的出牌鸡、碰中鸡、杠中鸡和杠收入都不计；仍必须赔付赢家的出牌鸡、碰中鸡、杠中鸡、杠分和放炮分。胡牌优先于碰牌，碰牌优先于摸牌；同一张弃牌允许多人同胡。小七对、大对子、清一色等牌型可胡别人打出的牌；普通牌只有自摸，除非持有自己的暗杠/加杠、报听，或牌来自报听者/暗杠或加杠后出牌等特殊情形。
 - **过牌限制**：过胡后直到自己下一次摸牌前只能自摸；过碰后同张牌在自己下一次摸牌前不能再碰。碰牌后不能立即打出刚碰的同一张牌。
-- **报听**：第一次摸牌后的出牌机会，打出后形成听牌且此前只暗杠时可报听；报听胡牌24；报听自摸普通牌只收24+鸡、不再加自摸4，有牌型为牌型分+24+鸡；报听后未自摸或被其他人胡为杀报24；报听者打出的牌允许直接胡。
+- **报听**：第一次摸牌后的出牌机会，打出后形成听牌且此前只暗杠时可报听；报听胡牌24；报听自摸普通牌只收24+鸡、不再加自摸4；报听自摸有牌型为牌型分+20+鸡（只算一个自摸4）。报听者放炮或他人自摸时，仅该报听者另付杀报24；若赢家也报听，则按报听胡牌由放炮者或自摸三家各付24，不再重复杀报。报听者打出的牌允许直接胡。
 - **胡牌分值**：普通自摸4（报听自摸的普通牌不再加4，只收24+鸡）；干扣14、大干扣24；小七对24、龙七对44、大对子14、大对子单吊24、清一色24、清大对34、清七对44、清单吊54、清龙对64。牌型按最高一项计；龙七对不叠加小七对。牌型总分已包含基础自摸4，不重复加4。
 - **下局庄家**：自摸者为庄；胡别人或抢加杠时，放炮者/被抢杠者为庄。流局无论是否有人未叫牌均由当前庄家连庄。新庄家首先摸牌出牌，发牌顺序、14/13墩牌墙和骰子破墙都以新庄家为准；单机与联机均保留累计分数。
 - **捉鸡**：
@@ -319,7 +319,7 @@ docker compose -f compose.prod.yaml up -d app --pull never
   - 普通牌自摸4；报听自摸的普通牌只收24+鸡，不再加自摸4；赢家鸡分为0时干扣总计14；若四家结算鸡分都为0，大干扣改为总计24，不叠加干扣。干扣只用于普通小牌自摸，报听和大牌自摸不加干扣。
   - 杠开 +5；海底（最后四张任意牌）自摸 +5；干扣、牌型、报听分值均按各自条款结算。
   - 胡牌结算的杠基础分：叫牌者暗杠、加杠每组由其他每家各付4；明杠每组仅放杠者付4。杠内鸡/翻鸡纳入完整鸡分逐家比较一次，不再额外重复收鸡分。杠牌者未叫牌不收杠分。例：明杠四张普通鸡，放杠者付鸡分8+杠分4=12，其他无可抵鸡分的玩家各付鸡分8。
-  - 有人胡牌时，四家两两比较幺鸡八筒、杠分和翻鸡分（手中、碰杠、保留出牌鸡、金鸡及翻鸡）；未叫牌者自身鸡分按0参与，但其出牌鸡、碰中鸡和杠中鸡按债务补付给叫牌者。自摸由另外三家各付完整胡牌分；普通自摸含4分，报听自摸普通牌为24+鸡、不再加4，有牌型为牌型分+24+鸡；普通放炮不收17/21，**放炮牌型分只由放炮者支付**，其他两家不付牌型分，只按幺鸡八筒、杠分、翻鸡分比较。杠放炮的17/21由放炮者另付；自带暗杠/加杠的玩家以普通小牌胡别人弃牌时，放炮者另付4分（大对子、七对、清一色、报听及以上不加）；抢杠12由被抢杠者另付。多家同胡时放炮者向每位胡牌者分别支付各自的牌型分，赢家之间不互付牌型差额。杠分、报听/杀报按各自付款关系另算。结算卡片“本局分”展示本人的得分点，“上家/对家/下家”展示实际逐家收付；分数从200起累计，可为负。
+  - 有人胡牌时，四家两两比较幺鸡八筒、杠分和翻鸡分（手中、碰杠、保留出牌鸡、金鸡及翻鸡）；未叫牌者自身鸡分按0参与，但其出牌鸡、碰中鸡和杠中鸡按债务补付给叫牌者。自摸由另外三家各付完整胡牌分；普通自摸含4分，报听自摸普通牌为24+鸡、不再加4，有牌型为牌型分+20+鸡、只算一个自摸4；普通放炮不收17/21，**放炮牌型分只由放炮者支付**，其他两家不付牌型分，只按幺鸡八筒、杠分、翻鸡分比较。杠放炮的17/21由放炮者另付；自带暗杠/加杠的玩家以普通小牌胡别人弃牌时，放炮者另付4分（大对子、七对、清一色、报听及以上不加）；抢杠12由被抢杠者另付。多家同胡时放炮者向每位胡牌者分别支付各自的牌型分，赢家之间不互付牌型差额。杠分、报听/杀报按各自付款关系另算。结算卡片“本局分”展示本人的得分点，“上家/对家/下家”展示实际逐家收付；分数从200起累计，可为负。
 - **牌墙摸完无人胡牌**：不翻鸡。四家均叫牌时本局不计分，下局鸡分翻倍；连续流局时倍率仍保持 ×2，不继续倍增。若有人未叫牌，由未叫牌者向每位叫牌者补：双方已打出的幺鸡/八筒（翻鸡范围里的普通牌不计，幺鸡/八筒本身仍按金鸡/冲锋金鸡翻倍）、双方碰中的幺鸡/八筒、应付杠分，以及荒牌基础补付4分；叫牌者之间不补差，手中鸡不加入本次补分。
   - 暗杠、加杠：叫牌杠主每组基础杠分 4 分，由其他三家各付；未叫牌杠主不收自己的基础杠分，也不反向支付。杠中每张鸡按个人分计一次，再按叫牌/未叫牌两两付款。
   - 明杠：基础杠分4仅由未叫牌的放杠者付；杠中四张鸡的鸡分8由每个未叫牌者付。放杠者已叫牌时不收其基础4，其他未叫牌者仍补鸡分8。
@@ -578,6 +578,11 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 - `TableActions._on_human_tile_gui()` 在短按松手时提交一次出牌，滑动超过阈值不出牌；所有提交入口都检查开局锁。原生触控和模拟鼠标不能重复提交。
 - `SettlementCard` 的 `ReadinessFooter` 独立显示四人的昵称与准备状态、等待提示、大号准备/取消按钮。每个真人各自准备，人机默认准备；全部准备后仍由权威端等待 1 秒开始下一局。
 - `tests/table_interaction.gd` 加入常规和 CI 快速检查；`tests/capture_table_controls.gd` 需真实窗口，保存本轮牌桌、结算、准备和骰子截图到 `build/ui_review/table_controls/`。
+
+
+
+
+
 
 
 

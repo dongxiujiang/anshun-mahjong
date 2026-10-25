@@ -5,6 +5,9 @@ const DIRECTORY := "user://replays"
 var record := {}
 var playback := false
 var auto_save := false
+# 逐步状态指纹只用于严格回放校验。正常对局每出一张牌都做一次全量序列化+
+# 规范化 JSON 哈希，成本很高且结果不会被读取，因此默认只在最终结算时算一次。
+var capture_action_fingerprints := false
 var last_path := ""
 var _started_ticks := 0
 
@@ -25,7 +28,9 @@ func begin(round) -> void:
 func action(round, kind: String, seat: int, decision: Dictionary, source: int = -1, tile: String = "") -> void:
 	if playback or record.is_empty(): return
 	record.actions.append({"kind": kind, "seat": seat, "decision": decision.duplicate(true),
-		"source": source, "tile": tile, "stage": int(round._response_stage), "before": fingerprint(round), "elapsed_ms": Time.get_ticks_msec() - _started_ticks})
+		"source": source, "tile": tile, "stage": int(round._response_stage),
+		"before": fingerprint(round) if capture_action_fingerprints else "",
+		"elapsed_ms": Time.get_ticks_msec() - _started_ticks})
 
 func request(seat: int, kind: String, decision: Dictionary, accepted: bool, reason: String) -> void:
 	if playback or record.is_empty(): return
@@ -135,7 +140,8 @@ static func replay(data: Dictionary) -> Dictionary:
 			return {"ok": false, "error": "操作记录格式错误", "event_index": index}
 		if not event.has("seat") or int(event.seat) not in range(4):
 			return {"ok": false, "error": "操作座位越界", "event_index": index}
-		if fingerprint(round) != str(event.get("before", "")):
+		var expected_before := str(event.get("before", ""))
+		if expected_before != "" and fingerprint(round) != expected_before:
 			return {"ok": false, "error": "操作前状态与记录不一致", "event_index": index, "round": round}
 		var accepted := false
 		if event.get("kind", "") == "turn":
@@ -144,6 +150,7 @@ static func replay(data: Dictionary) -> Dictionary:
 			accepted = round.submit_response(int(event.seat), str(event.get("tile", "")), event.decision)
 		if not accepted:
 			return {"ok": false, "error": "记录中的操作不符合当前规则", "event_index": index, "round": round}
-	if not data.get("final", {}).is_empty() and fingerprint(round) != str(data.final.get("fingerprint", "")):
+	var final_fingerprint := str(data.get("final", {}).get("fingerprint", ""))
+	if final_fingerprint != "" and fingerprint(round) != final_fingerprint:
 		return {"ok": false, "error": "最终状态或结算与记录不一致", "event_index": data.actions.size(), "round": round}
 	return {"ok": true, "error": "", "event_index": data.actions.size(), "round": round}

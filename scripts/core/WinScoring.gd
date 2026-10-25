@@ -51,11 +51,21 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 			for payer in base_payers:
 				PAY.transfer(deltas, transfers, payer, winner, primary_amount, primary_label)
 			lines.append("%s：每家付 %.0f" % [primary_label, primary_amount])
+		# 自摸底分与牌型互斥；报听自摸有牌型时，24 里已含一个自摸4，
+		# 牌型分也含一个4，只能再补20，不能重复算两份基础4。
 		if player.ready:
+			var ready_bonus := CFG.SCORE_READY_PATTERN if pattern_amount > 0.0 else CFG.SCORE_READY
 			for payer in base_payers:
-				PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_READY, "报听胡牌")
-			items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "另加报听分，三家各付"))
-			lines.append("报听胡牌：每家另付 %.0f" % CFG.SCORE_READY)
+				PAY.transfer(deltas, transfers, payer, winner, ready_bonus, "报听胡牌")
+			items[winner].append(_item("ready", "报听胡牌", ready_bonus, "另加报听分，三家各付"))
+			lines.append("报听胡牌：每家另付 %.0f" % ready_bonus)
+		elif not player.ready:
+			# 杀报：赢家未报听时，被自摸的报听者单独支付24。
+			for payer in base_payers:
+				if round.players[payer].ready:
+					PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_KILL_READY, "杀报")
+					items[winner].append(_item("ready", "杀报", CFG.SCORE_KILL_READY, "报听者被自摸，单独支付"))
+					lines.append("杀报：%s付 %.0f" % [_nm(payer, int(meta.get("dealer_seat", 0))), CFG.SCORE_KILL_READY])
 	else:
 		# 非自摸胡分成三类：抢杠胡、暗/加杠后的单次放炮，以及
 		# 报听/大牌胡。普通弃牌不再产生点炮基础分。
@@ -87,6 +97,11 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 				PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY, "报听胡牌")
 				items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "点炮者支付"))
 				lines.append("报听胡牌：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), CFG.SCORE_READY])
+		elif source in range(4) and source != winner and round.players[source].ready:
+			# 杀报：赢家未报听，胡了报听者的弃牌，报听者额外付24。
+			PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_KILL_READY, "杀报")
+			items[winner].append(_item("ready", "杀报", CFG.SCORE_KILL_READY, "报听者放炮，单独支付"))
+			lines.append("杀报：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), CFG.SCORE_KILL_READY])
 		if pattern_amount > 0.0:
 			# 放炮牌型分只由放炮者支付；一炮多响时，放炮者向每位赢家
 			# 分别支付各自的牌型分。其他两家不付牌型分。

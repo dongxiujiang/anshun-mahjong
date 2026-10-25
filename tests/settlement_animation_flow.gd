@@ -729,13 +729,13 @@ func _test_settlement_identities(render: bool = true) -> void:
 		["rob_kong", "抢杠下家 +12", "", 1], ["dry", "自摸", "干扣 +14", 1],
 		["big_dry", "自摸", "大干扣 +24", 1], ["triplets", "自摸", "大对子 +14", 1],
 		["flush", "自摸", "清一色 +24", 1],
-		["ready_flush", "报听自摸 +24", "清一色 +24", 1],
+		["ready_flush", "报听自摸 +20", "清一色 +24", 1],
 		["ready_rob_kong", "抢杠下家 +12", "报听 +24", 1],
 		["self_draw", "自摸 +8", "", 2],
 		["ready_self", "报听自摸 +48", "", 2],
 		["ready_ron", "报听胡对家 +48", "", 2],
 		["ready_rob_kong", "抢杠下家 +24", "报听 +48", 2],
-		["ready_flush", "报听自摸 +48", "清一色 +48", 2],
+		["ready_flush", "报听自摸 +40", "清一色 +48", 2],
 		["dry", "自摸", "干扣 +28", 2], ["big_dry", "自摸", "大干扣 +48", 2],
 		["triplets", "自摸", "大对子 +28", 2]]:
 		var r := _fixture(sample[0], sample[3])

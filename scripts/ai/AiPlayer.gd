@@ -7,16 +7,45 @@ var inference_weight := 1.0
 const VALUE := preload("res://scripts/ai/AiValueModel.gd")
 const OPPONENT := preload("res://scripts/ai/AiOpponentModel.gd")
 const MCTS := preload("res://scripts/ai/AiMctsSearch.gd")
+const RISK_CALIBRATION := preload("res://scripts/ai/AiRiskCalibration.gd")
 var opponent_model := OPPONENT.new()
 var mcts := MCTS.new()
 var last_analysis: Array = []
+var last_discard_risk := 0.0
+var last_calibrated_loss := 0.0
+var last_risk_strength := 0.0
 var use_mcts := true
+var difficulty := "low"
+var defense_weight := 0.0
+var risk_calibrated := false
+var risk_aversion := 1.0
 
-func _init(label := "AI") -> void:
+func _init(label := "AI", level := "low") -> void:
 	name = label
 	rng.randomize()
+	set_difficulty(level)
+
+func set_risk_calibrated(value: bool) -> void:
+	risk_calibrated = value
+
+func set_risk_aversion(value: float) -> void:
+	risk_aversion = maxf(0.0, value)
+
+func set_defense_weight(weight: float) -> void:
+	defense_weight = maxf(0.0, weight)
+	mcts.defense_weight = defense_weight
+
+func set_difficulty(level: String) -> void:
+	difficulty = level
+	var factor := 1.0
+	match level:
+		"medium": factor = 1.5
+		"high": factor = 2.0
+	mcts.iterations = roundi(16.0 * factor)
 
 func decide_turn(round, seat: int) -> Dictionary:
+	last_discard_risk = 0.0
+	last_calibrated_loss = 0.0
 	var player: PlayerState = round.players[seat]
 	var options: Dictionary = round.legal_turn_options(seat)
 	if options.self_win: return {"self_win": true}
@@ -32,6 +61,9 @@ func _pick_discard(round, seat: int) -> Dictionary:
 	var player: PlayerState = round.players[seat]
 	var seen := _seen_map(round, seat)
 	var context := opponent_model.observe(round, seat, seen)
+	last_risk_strength = 0.0
+	for opponent in context.opponents:
+		last_risk_strength = maxf(last_risk_strength, float(opponent.tenpai_probability))
 	var after_kong: bool = round._kong_draw_turn
 	last_analysis = _discard_options(round, seat, player.concealed, player.melds, seen, context, round.can_declare_ready(seat), after_kong)
 	var ordinary := last_analysis.filter(func(candidate): return not bool(candidate.get("declare_ready", false)))
@@ -45,7 +77,7 @@ func _pick_discard(round, seat: int) -> Dictionary:
 		search_candidates = search_candidates.filter(func(candidate): return top_merit - float(candidate.merit) <= 0.35)
 	if search_candidates.size() > 6:
 		search_candidates = search_candidates.slice(0, 6)
-	var tree: Dictionary = mcts.rank(round, seat, player.concealed, player.melds, seen, search_candidates, context) if use_mcts and search_candidates.size() > 1 else {}
+	var tree: Dictionary = mcts.rank(round, seat, player.concealed, player.melds, seen, search_candidates, context, defense_weight) if use_mcts and search_candidates.size() > 1 else {}
 	for candidate in last_analysis:
 		var search: Dictionary = tree.get(candidate.tile, {})
 		candidate["mcts_visits"] = int(search.get("visits", 0))
@@ -56,6 +88,9 @@ func _pick_discard(round, seat: int) -> Dictionary:
 	var best: Dictionary = last_analysis[0]
 	for candidate in last_analysis:
 		if float(candidate.merit) > float(best.merit): best = candidate
+	last_discard_risk = float(best.get("discard_risk", 0.0))
+	# 机制指标保持 λ=1 的纯校准尺度，不能把风险厌恶系数混进损失口径。
+	last_calibrated_loss = RISK_CALIBRATION.expected_loss(last_discard_risk, last_risk_strength)
 	return {"tile": best.tile, "ready_capable": best.declare_ready}
 
 func _discard_options(round, seat: int, hand: Array, melds: Array, seen: Dictionary, context: Dictionary, allow_ready: bool = false, after_kong: bool = false) -> Array:
@@ -144,15 +179,18 @@ func _evaluate_hand(round, seat: int, hand: Array, melds: Array, seen: Dictionar
 	var risk := {"probability": 0.0, "loss": 0.0}
 	if discard != "":
 		risk = opponent_model.risk(context, discard, declared, after_kong, false, seat, float(own.total) if distance == 0 else 0.0, distance == 0)
+	var risk_loss := float(risk.loss)
+	if risk_calibrated and discard != "":
+		risk_loss = RISK_CALIBRATION.expected_loss(float(risk.probability), last_risk_strength) * risk_aversion
 	var merit := self_probability * self_value + (1.0 - self_probability) * ron_probability * ron_value
 	merit += (1.0 - win_probability) * (called_probability * called_balance + (1.0 - called_probability) * uncalled_balance)
-	merit -= float(risk.loss) * inference_weight
+	merit -= risk_loss * inference_weight
 	var expected_net := merit
 	# Future hand probabilities are approximate. Preserve an attack-efficiency
 	# anchor so speculative pattern income cannot outweigh real live improvements.
 	merit += 8.0 * called_probability - 24.0 * distance + 0.60 * outs + 0.10 * _shape_quality(hand, seen)
 	return {"tile": discard, "distance": distance, "outs": outs, "win_probability": win_probability,
-		"win_value": self_value, "called_probability": called_probability, "expected_loss": risk.loss,
+		"win_value": self_value, "called_probability": called_probability, "expected_loss": risk_loss,
 		"discard_risk": risk.probability, "declare_ready": declared, "expected_net": expected_net, "merit": merit}
 
 func _shape_quality(hand: Array, seen: Dictionary) -> float:

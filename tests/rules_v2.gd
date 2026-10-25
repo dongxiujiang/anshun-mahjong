@@ -73,7 +73,7 @@ func _test_payments() -> void:
 	t.expect(ScoringEngine.settle(ready).deltas == [72.0, -24.0, -24.0, -24.0], "报听普通自摸每家24，不再加自摸4")
 	var killed := fixture(); killed.players[0].concealed = PLAIN.duplicate(); killed.players[1].concealed = PLAIN.duplicate(); killed.players[1].ready = true; killed.round_meta.winner = 0; killed.round_meta.winners = [0]; killed.round_meta.self_draw = true
 	var killed_result := ScoringEngine.settle(killed)
-	t.expect(killed_result.deltas == [72.0, -24.0, -24.0, -24.0], "自摸不把其他报听者重复计为杀报")
+	t.expect(killed_result.deltas == [96.0, -48.0, -24.0, -24.0], "自摸杀报只由报听者额外支付24")
 	var dry := fixture(); dry.players[0].concealed = PLAIN.duplicate(); dry.players[1].concealed = WAIT.duplicate(); dry.players[1].discards = ["tiao1"]; dry.players[1].discard_ids = [0]
 	dry.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}
 	dry.round_meta.winner = 0; dry.round_meta.winners = [0]; dry.round_meta.self_draw = true

@@ -94,30 +94,61 @@ static func apply_sync(round_state, state: Dictionary) -> void:
 	round_state._presentation.apply_sync(state)
 
 static func serialize_for_seat(round_state, seat: int) -> Dictionary:
-	var state := serialize(round_state)
+	return mask_for_seat(serialize(round_state), round_state, seat)
+
+## 以一次全量 serialize() 的结果为模板，只为当前座位复制需要遮牌的玩家
+## 和视觉事件；房主不再为每个对手重新序列化整局。
+static func mask_for_seat(state: Dictionary, round_state, seat: int) -> Dictionary:
+	var masked := state.duplicate(false)
 	if round_state.phase == round_state.Phase.SETTLED:
-		return state
-	for player in state.players:
-		if int(player.seat) == seat:
+		return masked
+	var players: Array = state.get("players", [])
+	var masked_players: Array = players.duplicate(false)
+	for index in players.size():
+		var player: Dictionary = players[index]
+		if int(player.get("seat", -1)) == seat:
 			continue
-		player.concealed.fill("hidden0")
-		if player.just_drew != "":
-			player.just_drew = "hidden0"
-		for index in player.melds.size():
-			if not round_state.is_meld_revealed(int(player.seat), index):
-				player.melds[index].tile = "hidden0"
-	for event in state.get("visual_events", []):
-		if event.get("type", "") in ["draw", "deal"] and int(event.get("seat", -1)) != seat:
-			if event.has("tile"): event.tile = "hidden0"
-			if event.has("cards") and event.cards is Array:
-				event.cards = event.cards.map(func(_card): return "hidden0")
-		if event.get("type", "") == "discard" and int(event.get("seat", -1)) != seat and event.has("draw_tile"):
-			event.draw_tile = "hidden0"
-		if event.get("type", "") == "deal_batch":
-			for deal in event.get("deals", []):
+		var hidden: Dictionary = player.duplicate(false)
+		hidden.concealed = player.get("concealed", []).duplicate()
+		hidden.concealed.fill("hidden0")
+		hidden.just_drew = "hidden0" if str(hidden.get("just_drew", "")) != "" else ""
+		hidden.melds = player.get("melds", []).duplicate(true)
+		for meld_index in hidden.melds.size():
+			if not round_state.is_meld_revealed(int(player.get("seat", -1)), meld_index):
+				hidden.melds[meld_index].tile = "hidden0"
+		masked_players[index] = hidden
+	masked.players = masked_players
+	var events: Array = state.get("visual_events", [])
+	var masked_events: Array = events.duplicate(false)
+	var events_changed := false
+	for index in events.size():
+		var event: Dictionary = events[index]
+		var event_type := str(event.get("type", ""))
+		var hidden_event := false
+		if event_type in ["draw", "deal"] and int(event.get("seat", -1)) != seat:
+			hidden_event = true
+		elif event_type == "discard" and int(event.get("seat", -1)) != seat and event.has("draw_tile"):
+			hidden_event = true
+		elif event_type == "deal_batch":
+			hidden_event = event.get("deals", []).any(func(deal): return int(deal.get("seat", -1)) != seat)
+		if not hidden_event:
+			continue
+		var copy: Dictionary = event.duplicate(true)
+		if event_type in ["draw", "deal"]:
+			if copy.has("tile"): copy.tile = "hidden0"
+			if copy.get("cards") is Array:
+				copy.cards = copy.cards.map(func(_card): return "hidden0")
+		elif event_type == "discard":
+			copy.draw_tile = "hidden0"
+		elif event_type == "deal_batch":
+			for deal in copy.get("deals", []):
 				if int(deal.get("seat", -1)) != seat:
 					deal.cards = deal.cards.map(func(_card): return "hidden0")
-	return state
+		masked_events[index] = copy
+		events_changed = true
+	if events_changed:
+		masked.visual_events = masked_events
+	return masked
 
 # 结算 items、points 等嵌套数据中的杠类型也要在边界转换。
 static func _convert_kong_kinds(value: Variant, to_wire: bool) -> Variant:

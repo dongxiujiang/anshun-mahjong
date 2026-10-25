@@ -145,7 +145,12 @@ static func expected(round: RoundState) -> Dictionary:
 					else:
 						primary = 4.0
 				for payer in base_payers:
-					_credit(matrix, payer, target_seat, primary + (24.0 if player.ready else 0.0), burned)
+					var add := primary
+					if player.ready:
+						add += 20.0 if pattern_fee > 0.0 else 24.0
+					elif round.players[payer].ready:
+						add += 24.0
+					_credit(matrix, payer, target_seat, add, burned)
 			else:
 				var kong_discard := not robbed_kong and _is_post_kong_discard(round.last_discard)
 				var source_called := source >= 0 and source < 4 and RuleEngine.is_tenpai(round.players[source].concealed, round.players[source].melds)
@@ -156,6 +161,9 @@ static func expected(round: RoundState) -> Dictionary:
 					# 报听胡牌：点炮时只有点炮者支付
 					if source in range(4) and source != target_seat:
 						_credit(matrix, source, target_seat, 24.0, burned)
+				elif source in range(4) and source != target_seat and round.players[source].ready:
+					# 杀报：赢家未报听，报听者放炮单独支付24。
+					_credit(matrix, source, target_seat, 24.0, burned)
 				# 放炮牌型分只由放炮者支付；一炮多响时每位赢家
 				# 分别向放炮者收取自己的牌型分，赢家之间不互付差额。
 				if pattern_fee > 0.0 and source in range(4) and source != target_seat:

@@ -66,7 +66,7 @@ func _run() -> void:
 	var board_count: int = 0 if settlement.plan.all_called_draw else 4
 	t.expect(settlement.boards.size() == board_count and table._settlement_card._post_controls.visible, "Lobby-launched game displays the final tabletop settlement and bottom controls")
 	t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Lobby-launched settlement uses non-blocking tabletop content and plain bottom controls")
-	t.expect(table._next_round_button.get_parent() == table._settlement_card._actions_row and not table._next_round_button.disabled, "Lobby player can ready from the bottom control")
+	t.expect(table._next_round_button.get_parent() == table._settlement_card._post_controls and not table._next_round_button.disabled, "Lobby player can ready from the bottom control")
 	var scores: Array = table.round.players.map(func(player): return player.score)
 	var next_dealer: int = table.round.next_dealer_seat
 	table._next_round_button.pressed.emit()

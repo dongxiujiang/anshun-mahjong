@@ -36,7 +36,7 @@ func _run() -> void:
 	for tile in result:
 		visits += int(result[tile].visits)
 		t.expect(int(result[tile].visits) > 0 and is_finite(float(result[tile].value)), "MCTS root has finite visits and value")
-	t.expect(visits == search.ITERATIONS, "MCTS uses bounded iteration budget")
+	t.expect(visits == search.iterations, "MCTS uses bounded iteration budget")
 	var choice := ai._pick_discard(round, 0)
 	t.expect(round.players[0].concealed.has(choice.tile), "MCTS-integrated AI chooses a legal discard")
 	var hidden: Array = round.players[1].concealed.duplicate()

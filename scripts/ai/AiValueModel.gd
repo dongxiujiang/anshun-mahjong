@@ -168,7 +168,9 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 		if self_draw:
 			total += bonus
 			if declared_ready:
-				total += CFG.SCORE_READY
+				total += CFG.SCORE_READY_PATTERN if points > 0.0 else CFG.SCORE_READY
+			elif bool(opponent.get("ready", false)):
+				total += CFG.SCORE_KILL_READY
 		var base_payer := self_draw or payer == source
 		if base_payer:
 			if self_draw:
@@ -192,10 +194,12 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 				and not pattern.get("all_triplets", false) and not pattern.get("seven_pairs", false) \
 				and not pattern.get("dragon_seven_pairs", false) and not pattern.get("flush", false):
 				total += CFG.SCORE_KONG_SELF_RON
-			# 报听费：只有点炮者支付
+			# 报听费：只有点炮者支付；赢家未报听时，报听放炮者另付杀报24。
 			if payer == source:
 				if declared_ready:
 					total += CFG.SCORE_READY
+				elif bool(opponent.get("ready", false)):
+					total += CFG.SCORE_KILL_READY
 	return total * multiplier
 
 static func draw_value(round, seat: int, hand: Array, melds: Array, opponents: Array, discard: String = "") -> Dictionary:

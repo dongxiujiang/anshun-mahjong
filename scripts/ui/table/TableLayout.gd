@@ -103,13 +103,21 @@ func _layout() -> void:
 	var changed = not _landscape
 	_landscape = true
 	var design: Vector2 = table._design_size()
-	var factor = minf(available.size.x / design.x, available.size.y / design.y)
+	# Android 的屏幕比例通常比 2280×1280 设计稿更宽。若继续按短边等比缩放，
+	# 左右会留下大块黑边；这里只对 Android 使用安全区内的非等比铺满，
+	# 保证整张牌桌都显示在屏幕上。桌面/编辑器仍保持等比居中。
+	var android_fill := OS.has_feature("android")
 	surface.size = design
-	surface.scale = Vector2.ONE * factor
-	surface.position = available.position + (available.size - design * factor) / 2.0
+	if android_fill:
+		surface.scale = Vector2(available.size.x / design.x, available.size.y / design.y)
+		surface.position = available.position
+	else:
+		var factor = minf(available.size.x / design.x, available.size.y / design.y)
+		surface.scale = Vector2.ONE * factor
+		surface.position = available.position + (available.size - design * factor) / 2.0
 	table._animation_layer.position = surface.position
 	table._animation_layer.size = design
-	table._animation_layer.scale = Vector2.ONE * factor
+	table._animation_layer.scale = surface.scale
 	for seat in 4:
 		table.seat_roots[seat].position = table._table_center()
 		table.seat_roots[seat].show()

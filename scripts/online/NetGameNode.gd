@@ -832,9 +832,14 @@ func _flush_host_state() -> void:
 	_state_queued = false
 	if not host_mode or game == null or game.phase == RoundState.Phase.IDLE: return
 	_state_revision += 1
+	# 整局状态只从模型序列化一次；每个对手只复制需要遮牌的玩家/事件。
+	# 没有已连接对手时连这一次序列化也跳过。
+	var base_state: Dictionary = {}
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer):
-			var state := game.serialize_for_seat(int(_peer_seat[peer]))
+			if base_state.is_empty():
+				base_state = game.serialize()
+			var state := game.mask_for_seat(base_state, int(_peer_seat[peer]))
 			state["round_number"] = round_number
 			state["revision"] = _state_revision
 			if measure_state_traffic: state_metrics.full_bytes += var_to_bytes(state).size()

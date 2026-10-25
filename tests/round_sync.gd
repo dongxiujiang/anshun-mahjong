@@ -45,8 +45,10 @@ func _run() -> void:
 	host._awaiting_response = {}
 	host.players[1].melds = [{"kind": "kong", "tile": "wan5", "concealed": true, "after_discard": 0}]
 	host.players[1].discard_count = 0
+	var base_state := host.serialize()
 	for seat in 4:
 		var wire := host.serialize_for_seat(seat)
+		t.expect(host.mask_for_seat(base_state, seat) == wire, "复用同一份全量状态遮牌后与逐座位序列化一致")
 		for player in wire.players:
 			if player.seat == seat:
 				t.expect(player.concealed == host.players[seat].concealed, "仅本人可见自己的手牌")

@@ -17,6 +17,8 @@ func _run() -> void:
 		original.start_round(0, seed_value % 6 + 1)
 		var record := original.replay_record()
 		t.expect(original.phase == RoundState.Phase.SETTLED and not record.actions.is_empty(), "完整对局自动记录实际操作")
+		t.expect(str(record.actions[0].get("before", "")) == "", "正常对局不再为每次出牌计算全量状态指纹")
+		t.expect(not str(record.get("final", {}).get("fingerprint", "")).is_empty(), "结算时仍保留一次最终指纹用于回放校验")
 		var data: Variant = JSON.parse_string(JSON.stringify(record))
 		var restored := REPLAY.replay(data)
 		if not t.expect(restored.ok, "种子%d重放第%d步：%s" % [100 + seed_value, restored.event_index, restored.error]):

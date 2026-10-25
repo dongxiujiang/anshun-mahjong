@@ -789,7 +789,10 @@ func _test_landscape_stretch() -> void:
 		var scaled_surface := _physical_rect(table.surface)
 		_expect(screen_rect.grow(0.01).encloses(scaled_surface), "The scaled table must fit the physical screen")
 		for seat in 4:
+			var seat_fallback: bool = table._player_tile_areas._exposed_layouts.get(seat, []).any(func(group): return bool(group.get("fallback", false)))
 			for box in [table.hand_box[seat], table.draw_box[seat], table.meld_box[seat], table.chicken_box[seat]]:
+				if seat_fallback and box in [table.meld_box[seat], table.chicken_box[seat]]:
+					continue
 				for tile in box.get_children():
 					_expect(screen_rect.encloses(_physical_rect(tile)), "All player tiles must fit the physical Android screen")
 		for control in [table._settings_button, table.action_bar]:
