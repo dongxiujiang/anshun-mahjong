@@ -24,3 +24,28 @@ scoring_audit：83,040 项通过
 settlement_animation_flow：通过
 settlement_card：3,789 项通过
 ```
+
+## 产物
+
+```text
+APK 94,792,122 字节
+SHA-256 d88978a88f2d7630dfc2675151cc57ea18f0a8e13b14e08fe5d5fe07abad5690
+
+EXE 120,354,536 字节
+SHA-256 89dbfc8544973791ea2743eb1dba992d5f023ea8fe7f9fc022768bb5d46624f7
+
+Android 热补丁 222,772 字节
+SHA-256 c806e049319659873f2abbbd2ec6a05f62c1a6ddc7fe2adbeb5318ee48ef2af6
+
+Windows 热补丁 222,772 字节
+SHA-256 c806e049319659873f2abbbd2ec6a05f62c1a6ddc7fe2adbeb5318ee48ef2af6
+```
+
+## 发布
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.5.11
+服务端镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-acfaaeb
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+热补丁基线：1.5.9 / 1.4.13-boot1
+```
