@@ -72,7 +72,15 @@ def run_godot(godot, args, log):
     result = subprocess.run([str(godot), "--headless", "--path", str(PROJECT), *args], capture_output=True, timeout=300)
     output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
     log.write_text(output, encoding="utf-8")
-    if result.returncode or "SCRIPT ERROR:" in output or "\nERROR:" in output: raise RuntimeError(f"Godot 导出失败：{log}")
+    # Headless editor shutdown can leave MCP/server resource leaks reported as
+    # ERROR lines; they are not export failures.
+    filtered = "\n".join(
+        line for line in output.splitlines()
+        if "resources still in use at exit" not in line
+        and "ObjectDB instances were leaked at exit" not in line
+    )
+    if result.returncode or "SCRIPT ERROR:" in filtered or "\nERROR:" in filtered:
+        raise RuntimeError(f"Godot 导出失败：{log}")
 
 
 def baseline(args):

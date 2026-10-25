@@ -454,22 +454,21 @@ func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> 
 func _exposed_layout_input_key() -> PackedByteArray:
 	# 布局输入只包含会影响占位的内容：牌桌尺寸、手牌/摸牌、碰杠与鸡牌、
 	# 中心控件以及操作栏可见性。动画帧只要这些输入没变就直接复用结果。
-	var parts: Array = [table.size, table.human_seat, table.round.phase,
-		table.action_bar.visible, table.action_bar.position, table.action_bar.size,
-		table._settings_button.position, table._settings_button.touch_rect()]
-	for control in center_labels.values() + name_labels.values() + dealer_badges.values() \
-		+ [table.center_info, table._remaining_label, table._ai_teach_button, table._voice_button]:
-		if control != null:
-			parts.append([control.visible, control.position, control.size])
+	# 只保留真正影响碰杠/鸡牌占位的内容。操作栏、设置、语音和教学按钮
+	# 位于其他区域，不能因为它们的可见性变化导致整组布局重算跳变。
+	var parts: Array = [table.size, table._table_bounds(), table._table_layout.center_rect().size,
+		table.action_bar.visible, table.action_bar.position, table.action_bar.size]
 	for seat in 4:
 		var player: PlayerState = table.round.players[seat]
-		var metrics: Dictionary = table._seat_metrics(seat)
 		parts.append([
-			player.concealed, player.just_drew, player.ready, player.melds,
-			table._exposed_groups(seat), table._hand_layout(seat), metrics,
-			table._hand_tile_unit(seat), table._player_tile_unit(seat),
+			table._relative_seat(seat), table._seat_metrics(seat),
+			player.concealed.size(), player.just_drew, player.ready, player.melds,
+			table._exposed_groups(seat), table._hand_tile_unit(seat), table._player_tile_unit(seat),
 		])
 	return var_to_bytes(parts)
+
+func exposed_anchor_x(seat: int) -> float:
+	return float(table._seat_metrics(seat).left) + UI.EXPOSED_HAND_GAP
 
 func _prepare_exposed_layouts() -> void:
 	# 联机客户端可能尚未收到四家数据，等待期间不规划牌组。
@@ -517,10 +516,11 @@ func _prepare_exposed_layouts() -> void:
 		var transform = Transform2D(UI.ROTATIONS[table._relative_seat(seat)], table._table_center())
 		var metrics: Dictionary = table._seat_metrics(seat)
 		var player: PlayerState = table.round.players[seat]
-		var hand_left: float = table._hand_layout(seat).hand_x
+		# 固定锚点使用座位绝对左边界，不再跟 hand_x 随张数漂移。
+		# 间距只作用于固定边界，手牌长度变化不得横向拖动整组。
+		var anchor_left: float = exposed_anchor_x(seat)
 		# 碰杠/鸡牌采用堆叠模式：
 		# 最底行放冲锋鸡，上方普通鸡四张一行；碰/杠各占一行，按出牌顺序向上。
-		var anchor_right: float = hand_left - UI.EXPOSED_HAND_GAP
 		var groups: Array = table._exposed_groups(seat)
 		var charge_items: Array = []
 		var normal_items: Array = []
@@ -543,29 +543,25 @@ func _prepare_exposed_layouts() -> void:
 			rows.append(normal_items.slice(index, mini(index + 4, normal_items.size())))
 		for item in meld_items:
 			rows.append([item])
-		var plan_items: Array = []
-		for row in rows:
-			for item in row: plan_items.append(item)
 		var base_origins: Array = []
 		var row_bottom: float = float(metrics.exposed_y) + height
 		var group_gap := UI.MELD_GROUP_GAP
 		for row_items in rows:
-			var row_width := 0.0
 			var row_height := 0.0
 			for item in row_items:
-				row_width += float(item.layout.size.x) + (group_gap if row_width > 0.0 else 0.0)
 				row_height = maxf(row_height, float(item.layout.size.y))
-			var x := anchor_right - row_width
+			var x := anchor_left
 			for item in row_items:
 				base_origins.append({"item": item, "origin": Vector2(x, row_bottom - float(item.layout.size.y))})
 				x += float(item.layout.size.x) + group_gap
 			row_bottom -= row_height + UI.EXPOSED_ROW_GAP
-		var table_bounds := Rect2(Vector2(8, 8), UI.DESIGN_SIZE - Vector2(16, 16))
+		var table_bounds: Rect2 = table._table_bounds()
 		var chosen_offset := Vector2.INF
 		var chosen_rects: Array[Rect2] = []
 		var best_score := INF
-		for dx in range(0, -1, -8):
-			for dy in range(0, 901, 8):
+		var max_dy := int(table_bounds.size.y)
+		for dx in range(0, 128, 8):
+			for dy in range(0, max_dy, 8):
 				var all_rects: Array[Rect2] = []
 				for entry in base_origins:
 					var origin: Vector2 = entry.origin + Vector2(dx, -dy)
@@ -579,6 +575,23 @@ func _prepare_exposed_layouts() -> void:
 					break
 		var fallback := chosen_offset == Vector2.INF
 		var offset := chosen_offset if not fallback else Vector2.ZERO
+		if fallback:
+			# 兜底也必须压回真实绿面：先求整个块的包围盒，再整体平移。
+			var base_rects: Array[Rect2] = []
+			for entry in base_origins:
+				base_rects.append_array(table._exposed_rects(entry.item.layout, entry.origin, transform, width, height))
+			if not base_rects.is_empty():
+				var union := base_rects[0]
+				for rect in base_rects:
+					union = union.merge(rect)
+				if union.position.x < table_bounds.position.x:
+					offset.x = table_bounds.position.x - union.position.x
+				elif union.end.x > table_bounds.end.x:
+					offset.x = table_bounds.end.x - union.end.x
+				if union.position.y < table_bounds.position.y:
+					offset.y = table_bounds.position.y - union.position.y
+				elif union.end.y > table_bounds.end.y:
+					offset.y = table_bounds.end.y - union.end.y
 		var plans: Array = []
 		for entry in base_origins:
 			var group: Dictionary = entry.item.group
@@ -591,7 +604,7 @@ func _prepare_exposed_layouts() -> void:
 		if not fallback: occupied.append_array(chosen_rects)
 		else:
 			for entry in base_origins:
-				occupied.append_array(table._exposed_rects(entry.item.layout, entry.origin, transform, width, height))
+				occupied.append_array(table._exposed_rects(entry.item.layout, entry.origin + offset, transform, width, height))
 		_exposed_layouts[seat] = plans
 
 func _exposed_inside(rects: Array[Rect2], bounds: Rect2) -> bool:

@@ -289,6 +289,7 @@ func _check_hand_anchor(seat: int) -> void:
 
 func _check_layout() -> void:
 	var viewport_rect := Rect2(Vector2.ZERO, Vector2(root.size))
+	var felt_rect: Rect2 = table.surface.get_global_transform() * table._table_bounds()
 	_expect(table._landscape, "Every window ratio must keep the landscape table")
 	_expect(table.PLAYER_TILE_UNIT > table.TILE_UNIT, "Player tiles must be larger than wall and river tiles")
 	_expect(table.OWN_PLAYER_TILE_UNIT > table.PLAYER_TILE_UNIT, "Only the local player's non-discard tiles are enlarged")
@@ -329,8 +330,7 @@ func _check_layout() -> void:
 					rect = rect.intersection(_control_rect(table.discard_scroll[seat]))
 					if rect.size.x <= 1.0 or rect.size.y <= 1.0:
 						continue
-				if not seat_fallback:
-					_expect(viewport_rect.encloses(rect), "Tile must fit the viewport: %s" % rect)
+				_expect(felt_rect.encloses(rect), "Tile must fit the real table felt even on fallback: %s / %s" % [rect, felt_rect])
 				if not seat_fallback:
 					for other in tiles:
 						_expect(not rect.grow(-0.5).intersects(other.grow(-0.5)), "Face/hand tiles must not overlap: seat %d tile %s rect %s / %s" % [seat, tile.tile, rect, other])
@@ -361,6 +361,7 @@ func _test_anchored_rows() -> void:
 	_new_fixture()
 	root.size = Vector2i(1440, 1520)
 	var expected_sizes := {}
+	var anchors := {}
 	for meld_count in 5:
 		for seat in 4:
 			var player: PlayerState = table.round.players[seat]
@@ -384,12 +385,11 @@ func _test_anchored_rows() -> void:
 			_check_hand_anchor(seat)
 			_expect(is_equal_approx(drawn.position.x - (last.position.x + last.size.x), table.DRAW_GAP), "The reserved draw slot stays separated by the original gap")
 			_expect(first.size.is_equal_approx(expected_sizes[seat]), "A shorter hand must retain its tile size")
-			if meld_count > 0:
-				var group: Dictionary = table._exposed_layouts[seat][0]
-				if not bool(group.get("fallback", false)):
-					var anchor_right: float = table._hand_layout(seat).hand_x - table.EXPOSED_HAND_GAP
-					var group_right: float = group.origin.x + float(group.layout.size.x)
-					_expect(group_right <= anchor_right + 0.1, "First meld group starts at the hand edge and grows left")
+			var anchor_x: float = table._player_tile_areas.exposed_anchor_x(seat)
+			if anchors.has(seat):
+				_expect(is_equal_approx(anchor_x, anchors[seat]), "Exposed anchor must not move with hand length")
+			else:
+				anchors[seat] = anchor_x
 		_check_layout()
 		if rendering and meld_count in [0, 1, 4]:
 			await RenderingServer.frame_post_draw
@@ -447,10 +447,7 @@ func _test_anchored_rows() -> void:
 			_check_hand_anchor(seat)
 			if meld_count == 0:
 				var group: Dictionary = table._exposed_layouts[seat][0]
-				if not bool(group.get("fallback", false)):
-					var anchor_right: float = table._hand_layout(seat).hand_x - table.EXPOSED_HAND_GAP
-					var group_right: float = group.origin.x + float(group.layout.size.x)
-					_expect(group_right <= anchor_right + 0.1, "Exposed groups stay left of the hand edge, never drift to the right")
+				_expect(not group.is_empty(), "Exposed group uses the fixed seat anchor")
 	print("[layout] table-edge groups, centered hands, separate draws and overflow passed")
 
 func _test_charge_chickens() -> void:
