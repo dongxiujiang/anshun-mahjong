@@ -528,6 +528,7 @@ func _prepare_exposed_layouts() -> void:
 		var row_step: float = height + width + UI.TILE_GAP + 2.0
 		var start_row := 0
 		var plans: Array = []
+		var cluster_anchor := Vector2(anchor_right, metrics.exposed_y + height)
 		for group in table._exposed_groups(seat):
 			var layout: Dictionary
 			if group.has("chicken"):
@@ -599,6 +600,9 @@ func _prepare_exposed_layouts() -> void:
 							if table._exposed_space_clear(candidate_rects, occupied) and _exposed_inside(candidate_rects, table_bounds):
 								var local_right: float = candidate.x + float(layout.size.x)
 								var score := candidate.distance_squared_to(target)
+								# 兜底也优先贴着本家上一组牌，避免两组碰牌被
+								# 分别放到两个远处的空位。
+								score += candidate.distance_squared_to(cluster_anchor) * 2.5
 								if local_right > anchor_right + 0.5:
 									score += 4000000.0
 								if candidate.y + float(layout.size.y) > metrics.hand_y + height:
@@ -625,6 +629,7 @@ func _prepare_exposed_layouts() -> void:
 			group["origin"] = origin
 			group["layout"] = layout
 			plans.append(group)
+			cluster_anchor = origin + Vector2(float(layout.size.x), float(layout.size.y) * 0.5)
 			occupied.append_array(rects)
 		_exposed_layouts[seat] = plans
 
