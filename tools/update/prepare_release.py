@@ -7,7 +7,7 @@ import re
 import shutil
 
 PROJECT = Path(__file__).resolve().parents[2]
-ASSETS = {"windows": "anshun-mahjong-windows-x64.exe", "android": "anshun-mahjong.apk"}
+ASSETS = {"android": "anshun-mahjong.apk"}
 
 
 def sha256(path):
@@ -36,8 +36,8 @@ def manifest(version, repository, notes="", tag_prefix="v"):
             "packages": {}, "patches": {}}
 
 
-def copy_packages(data, windows, android, output, repository, tag_prefix="v"):
-    for platform, source in [("windows", windows), ("android", android)]:
+def copy_packages(data, android, output, repository, tag_prefix="v"):
+    for platform, source in [("android", android)]:
         if not source: continue
         source = Path(source).resolve()
         if not source.is_file():
@@ -56,14 +56,14 @@ def write_manifest(data, output):
     (output / "checksums.json").write_text(text, encoding="utf-8")
 
 
-def prepare(windows, android, output, repository=None, notes=""):
+def prepare(android, output, repository=None, notes=""):
     version = project_value("config/version")
     repository = repository or project_value("github_repository")
     tag_prefix = project_value("tag_prefix", "v")
     output = Path(output).resolve() / ("v" + version)
     output.mkdir(parents=True, exist_ok=True)
     data = manifest(version, repository, notes, tag_prefix)
-    copy_packages(data, windows, android, output, repository, tag_prefix)
+    copy_packages(data, android, output, repository, tag_prefix)
     write_manifest(data, output)
     print(f"已准备大版本 {tag_prefix}{version}：{output}")
     print("未上传或发布；导出文件须与当前工程版本一致。")
@@ -72,11 +72,11 @@ def prepare(windows, android, output, repository=None, notes=""):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--windows", default=str(PROJECT / "build/windows/安顺麻将.exe"))
     parser.add_argument("--android", default=str(PROJECT / "build/android/安顺麻将.apk"))
     parser.add_argument("--output", default=str(PROJECT / "build/releases"))
     parser.add_argument("--repository", default=None)
     parser.add_argument("--notes", type=Path, help="UTF-8 更新说明文本")
     args = parser.parse_args()
     notes = args.notes.read_text(encoding="utf-8-sig") if args.notes else ""
-    prepare(args.windows, args.android, args.output, args.repository, notes)
+    prepare(args.android, args.output, args.repository, notes)
+

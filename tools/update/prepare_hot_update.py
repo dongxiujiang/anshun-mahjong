@@ -8,7 +8,7 @@ import re
 import subprocess
 
 PROJECT = Path(__file__).resolve().parents[2]
-PRESETS = {"windows": "Windows", "android": "Android"}
+PRESETS = {"android": "Android"}
 SKIP = {".git", ".godot", "build", "tests", "docs", "tools", "server", ".vscode", ".idea", "__pycache__"}
 
 
@@ -148,3 +148,4 @@ if __name__ == "__main__":
         baseline(args) if args.command == "baseline" else patch(args)
     except (ValueError, RuntimeError, OSError) as error:
         parser.exit(1, str(error) + "\n")
+

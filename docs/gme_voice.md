@@ -4,7 +4,7 @@
 
 - LiveKit 已从客户端代码、服务器编排和更新清单中移除。
 - Android 使用 GME Android SDK 2.9.17（arm64）。
-- Windows 先保留原有 PCM 语音，GME Windows GDExtension 随后接入。
+- Windows 客户端已移除；仅保留 Android GME。
 - 小米 15 的 1.3.0 启动崩溃不再使用 LiveKit 原生库。
 
 ## 2. 必需配置
@@ -66,7 +66,7 @@ GME_Windows_audio_sdk_2.9.17.9e947c95.zip
 - 其他 GME 运行 DLL
 ```
 
-Windows 端需要 GDExtension 包装，不能直接由 GDScript 调 DLL。当前版本先用 PCM 回退，完成 GDExtension 后再切到 GME。
+Windows 客户端已移除，不再提供 PCM 回退或 Windows GME 桥接。
 
 ## 5. GME 进房流程
 
@@ -143,4 +143,5 @@ permissions/record_audio=true
 - **/gme-auth 503**：`.env` 没有配置 `GME_APP_KEY`。
 - **进入房间失败**：AppID/AppKey 不匹配、GME 应用未开通、AuthBuffer 过期。
 - **Android 没有声音**：检查录音权限、GME AAR 是否被打进 APK、`libgmesdk.so` 是否在 `lib/arm64-v8a/`。
-- **Windows 没声音**：当前 Windows 还是 PCM 回退；GME Windows GDExtension 尚未发布。
+- **Windows 版本**：已移除，不再提供安装包。
+

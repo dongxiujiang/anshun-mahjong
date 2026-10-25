@@ -1,6 +1,6 @@
 # 安顺麻将 · 捉鸡（Godot 4.7）
 
-108 张（万/条/筒 × 1-9 × 4，无字牌）的安顺麻将「捉鸡」四人对局游戏。支持 **PC 桌面** 与 **Android**。
+108 张（万/条/筒 × 1-9 × 4，无字牌）的安顺麻将「捉鸡」四人对局游戏。仅支持 **Android**。
 
 牌面使用 `res/tiles` 素材：**1-9.png=筒子，11-19.png=条子，21-29.png=万字**（270×360）；牌背无素材，由程序化绘制（缺图时牌面也自动回退程序化绘制）。
 
@@ -9,7 +9,7 @@
 - 更新：主菜单和联机大厅都可「检查更新」。新完整 APK 默认使用自建 HTTPS 更新源，主清单和回退清单都在 `https://mj.dongxiu.fun/updates/`；1.1.9 及更早版本仍需先安装一次新完整包。
 - 联机语音：正在从 LiveKit 迁移到腾讯云 GME；Android 使用 GME arm64，Windows 暂时保留 PCM。需要服务器 `GME_APP_ID`/`GME_APP_KEY`，详见 [GME 语音接入手册](docs/gme_voice.md)。
 
-联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.5.13**，完整规则见 [当前游戏规则与玩法](docs/当前游戏规则与玩法.txt)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
+联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.5.14**，完整规则见 [当前游戏规则与玩法](docs/当前游戏规则与玩法.txt)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 
 应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Windows 和 Android 游戏内下载补丁，重启生效，不必重装；大版本更新完整 EXE/APK。首次使用热更新须安装包含 PatchBoot 的完整版本。自 1.4.19 起，自建更新清单必须携带离线 RSA 签名，客户端只信任内置公钥验证通过的 `signed_payload`；发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
 
@@ -37,7 +37,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 - 牌桌中央只保留四家的累计分数：单机不显示东南西北或相对称呼；联机在分数上方显示玩家自己输入的姓名，AI 统一显示“人机”。四个分数相对中央正方形的上、右、下、左边水平/垂直居中，庄家标识紧贴自己的分数。当前出牌玩家对应的正方形外边缘会出现淡黄色散射光；等待碰杠胡、发牌、结算时熄灭。
 - **胡牌那张牌停在摸牌位**：自摸或胡别人打出的牌，那张牌都单独显示在右侧摸牌位，不并回手牌排序里，一眼能看出胡的是哪张。
 - **结算卡片**：从上到下为你、上家、对家、下家。每家第一行显示累计分数、自己的「本局分」，以及从该玩家自己视角与上家、对家、下家的三笔收付（正数收款，负数付款）。本局分是得分点合计，明杠基础4分仅向放杠者收，不混入通用本局分。明细显示叫牌状态、自摸等奖励及完整牌面：同类型、同单张分值的牌合并一组，普通鸡2、金鸡4、冲锋鸡4、冲锋金鸡8分别展示，翻鸡也按张数合计。所有杠集中放在最后，四张牌与基础杠分、杠内鸡分一并展示；暗杠、加杠四张都竖放。明杠来源是下家时第四张右横，上家时第一张左横，对家时三张竖牌上方居中横放第四张。明细多时独立换行和滚动。卡片右上角「看牌桌」与「查看结算」在同一位置切换。结算动画按“清零/重置 → 翻鸡展示 → 翻鸡计分 → 幺鸡八筒 → 暗杠/加杠 → 胡牌分项 → 两两收支滚动 → 最终分数”推进；结算卡默认不遮挡牌桌，玩家可手动打开结算页查看明细。进入结算阶段后四家手牌全部翻开显示牌面，包括流局和四家叫牌流局。
-- 牌桌按四向围坐排布，Windows 与 Android 固定横屏：自己的手牌和摸牌使用 2.40 倍牌面（上版的 1.5 倍），自己的碰杠牌和鸡牌使用 1.60 倍，其他三家使用 1.35 倍，弃牌保持 1.10 倍；牌墙数据继续用于骰子和发牌，但牌桌不绘制牌墙。东西两家手牌与摸牌位整体水平居中，操作按钮放在摸牌位上方，报听、碰、杠、胡、自摸等选择按钮统一为 177×126（原按钮的 1.5 倍），字号为 42，与手牌留出 56 像素的空隙；手牌变短时按钮会向右避开自己的弃牌区，允许覆盖下家弃牌区。碰杠后仍会按空间向内换行。碰杠/鸡牌固定从手牌左边缘向左排列，满一行后向上换行；不再向手牌右侧溢出，空间不足时使用确定性紧凑兜底。东西两家的弃牌容器扩大并隐藏滚动条，牌面尺寸不变。幺鸡、八筒各自全场首张打出的牌横放表示冲锋鸡；被碰杠后原弃牌区和记录移除，冲锋标记跟随到领取者的碰杠组。碰不标来源；明杠与结算采用相同的上/对/下家横牌排列；暗杠、加杠全部四竖。联机时自己的座位始终在下方。
+- 牌桌按四向围坐排布，Android 固定横屏：自己的手牌和摸牌使用 2.40 倍牌面（上版的 1.5 倍），自己的碰杠牌和鸡牌使用 1.60 倍，其他三家使用 1.35 倍，弃牌保持 1.10 倍；牌墙数据继续用于骰子和发牌，但牌桌不绘制牌墙。东西两家手牌与摸牌位整体水平居中，操作按钮放在摸牌位上方，报听、碰、杠、胡、自摸等选择按钮统一为 177×126（原按钮的 1.5 倍），字号为 42，与手牌留出 56 像素的空隙；手牌变短时按钮会向右避开自己的弃牌区，允许覆盖下家弃牌区。碰杠后仍会按空间向内换行。碰杠/鸡牌固定从手牌左边缘向左排列，满一行后向上换行；不再向手牌右侧溢出，空间不足时使用确定性紧凑兜底。东西两家的弃牌容器扩大并隐藏滚动条，牌面尺寸不变。幺鸡、八筒各自全场首张打出的牌横放表示冲锋鸡；被碰杠后原弃牌区和记录移除，冲锋标记跟随到领取者的碰杠组。碰不标来源；明杠与结算采用相同的上/对/下家横牌排列；暗杠、加杠全部四竖。联机时自己的座位始终在下方。
 - 右上角可调 AI 出牌速度：**快 0.8 秒 / 中 1.3 秒 / 慢 2 秒**；碰/杠响应与出牌等待一致，单机和主机即时生效。
 - 设置面板新增 **AI强度**：弱 / 中 / 强三挡，当前默认弱；中、强策略后续接入。
 - 右上角新增 **AI教打**：点击后分析自己手牌和刚摸到的牌，复用 AI 的公开信息模型，推荐牌高亮，手牌上方显示类似结算的消息，包含向听数和进张数。不会读取对手暗手或牌墙顺序。
@@ -61,7 +61,7 @@ Godot_v4.7.2-stable_win64.exe --path "桌面/Mahjong-Godot"
 
 ### 3.1 在线服务器 Docker 部署
 
-完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。1.4.16 的实际发布与部署记录见 [docs/release_operation_1.4.16.md](docs/release_operation_1.4.16.md)，1.4.17 记录见 [docs/release_operation_1.4.17.md](docs/release_operation_1.4.17.md)，1.4.18 记录见 [docs/release_operation_1.4.18.md](docs/release_operation_1.4.18.md)，1.4.19 记录见 [docs/release_operation_1.4.19.md](docs/release_operation_1.4.19.md)，1.5.0 记录见 [docs/release_operation_1.5.0.md](docs/release_operation_1.5.0.md)，1.5.1 记录见 [docs/release_operation_1.5.1.md](docs/release_operation_1.5.1.md)，1.5.2 记录见 [docs/release_operation_1.5.2.md](docs/release_operation_1.5.2.md)，1.5.3 记录见 [docs/release_operation_1.5.3.md](docs/release_operation_1.5.3.md)，1.5.4 记录见 [docs/release_operation_1.5.4.md](docs/release_operation_1.5.4.md)，1.5.5 记录见 [docs/release_operation_1.5.5.md](docs/release_operation_1.5.5.md)，1.5.6 记录见 [docs/release_operation_1.5.6.md](docs/release_operation_1.5.6.md)，1.5.7 记录见 [docs/release_operation_1.5.7.md](docs/release_operation_1.5.7.md)，1.5.8 记录见 [docs/release_operation_1.5.8.md](docs/release_operation_1.5.8.md)，1.5.9 记录见 [docs/release_operation_1.5.9.md](docs/release_operation_1.5.9.md)，1.5.10/1.5.11 记录见 [docs/release_operation_1.5.11.md](docs/release_operation_1.5.11.md)，1.5.12 记录见 [docs/release_operation_1.5.12.md](docs/release_operation_1.5.12.md)，1.5.13 记录见 [docs/release_operation_1.5.13.md](docs/release_operation_1.5.13.md)。
+完整的服务端从零部署、客户端完整包、热补丁和自建更新源发布流程见 [docs/deploy_release_update.md](docs/deploy_release_update.md)；本次已走通的实操命令见 [docs/self_hosted_update_operation.md](docs/self_hosted_update_operation.md)。1.4.16 的实际发布与部署记录见 [docs/release_operation_1.4.16.md](docs/release_operation_1.4.16.md)，1.4.17 记录见 [docs/release_operation_1.4.17.md](docs/release_operation_1.4.17.md)，1.4.18 记录见 [docs/release_operation_1.4.18.md](docs/release_operation_1.4.18.md)，1.4.19 记录见 [docs/release_operation_1.4.19.md](docs/release_operation_1.4.19.md)，1.5.0 记录见 [docs/release_operation_1.5.0.md](docs/release_operation_1.5.0.md)，1.5.1 记录见 [docs/release_operation_1.5.1.md](docs/release_operation_1.5.1.md)，1.5.2 记录见 [docs/release_operation_1.5.2.md](docs/release_operation_1.5.2.md)，1.5.3 记录见 [docs/release_operation_1.5.3.md](docs/release_operation_1.5.3.md)，1.5.4 记录见 [docs/release_operation_1.5.4.md](docs/release_operation_1.5.4.md)，1.5.5 记录见 [docs/release_operation_1.5.5.md](docs/release_operation_1.5.5.md)，1.5.6 记录见 [docs/release_operation_1.5.6.md](docs/release_operation_1.5.6.md)，1.5.7 记录见 [docs/release_operation_1.5.7.md](docs/release_operation_1.5.7.md)，1.5.8 记录见 [docs/release_operation_1.5.8.md](docs/release_operation_1.5.8.md)，1.5.9 记录见 [docs/release_operation_1.5.9.md](docs/release_operation_1.5.9.md)，1.5.10/1.5.11 记录见 [docs/release_operation_1.5.11.md](docs/release_operation_1.5.11.md)，1.5.12 记录见 [docs/release_operation_1.5.12.md](docs/release_operation_1.5.12.md)，1.5.13 记录见 [docs/release_operation_1.5.13.md](docs/release_operation_1.5.13.md)，1.5.14 记录见 [docs/release_operation_1.5.14.md](docs/release_operation_1.5.14.md)。
 
 生产环境由两部分组成：
 
@@ -441,7 +441,7 @@ godot --headless res://tests/client_scene.tscn
 
 主要视觉参数集中在 [`scripts/ui/table/TableUiConfig.gd`](scripts/ui/table/TableUiConfig.gd)：`OWN_HAND_TILE_UNIT` 控制自己的手牌和摸牌（当前 2.40 倍），`OWN_PLAYER_TILE_UNIT` 控制自己的碰杠和鸡牌（1.60 倍），`PLAYER_TILE_UNIT` 控制其他三家的同类牌（1.35 倍），`TILE_UNIT` 保持弃牌牌面（1.10 倍）；牌墙数据仍参与骰子和摸牌逻辑，但牌桌不再绘制牌墙。`DISCARD_BUTTON_SIZE` 统一控制报听、碰、杠、胡等选择按钮（出牌改为点牌）；`SETTINGS_BUTTON_SIZE` 独立控制顶部设置入口（144×72），`SettingsButton.gd` 将触控范围向左、下扩大到 168×112，不增大可见按钮；碰杠牌区避开整个热区，`ACTION_HAND_GAP` 控制操作区与手牌上边的空隙。`RESULT_TILE_UNIT` 控制结算牌面和翻鸡牌；`DRAW_GAP` 是手牌与摸牌位之间的距离，`EXPOSED_HAND_GAP` 是碰杠/鸡牌与手牌的最小间隔。`TableLayout._hand_layout()` 让手牌和摸牌位整体居中，预留摸牌位避免摸打时整排晃动；`_seat_metrics()` 控制各家的手牌、弃牌区和碰杠换行区域。东西两家的弃牌区扩大容器但仍使用 `TILE_UNIT`，滚动条隐藏；`PlayerTileAreas._prepare_exposed_layouts()` 会在多组碰杠/鸡牌时向内换行并避开按钮、分数和中央区域。`GameTable` 中同名常量只保留兼容引用，调整数值请改配置文件。动画事件时序、真实桌面对照和当前 2D 限制见 [`docs/animation_review.md`](docs/animation_review.md)。
 
-Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280），Android 使用 `window/handheld/orientation=4`。窗口比例变化只缩放和留边，不切回竖屏；`_usable_rect()` 为安卓安全区域留边，切换尺寸会自动刷新牌面、弃牌区和操作按钮。布局测试覆盖 16:9、20:9、16:10、方屏和竖屏窗口的横屏画布边界；截图见 `docs/android_table_*.png` 和 `docs/android_result_*.png`。
+Android 固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280），Android 使用 `window/handheld/orientation=4`。窗口比例变化只缩放和留边，不切回竖屏；`_usable_rect()` 为安卓安全区域留边，切换尺寸会自动刷新牌面、弃牌区和操作按钮。布局测试覆盖 16:9、20:9、16:10、方屏和竖屏窗口的横屏画布边界；截图见 `docs/android_table_*.png` 和 `docs/android_result_*.png`。
 
 `PlayerTileAreas._meld_tile_layout()` 同时控制牌桌和结算的杠牌排列，`_prepare_exposed_layouts()` 负责四向牌组避让；`SettlementCard._show_result()` 控制四家结算行，`_draw_result_details()`/`_draw_result_group()` 控制得分牌组。`scripts/core/ScoringEngine.gd` 中 `round_points` 是本人得分点，`pairwise[本人][对方]` 是实际收付；`group_chicken_items()` 合并同类同分牌，`_pay_kongs()` 分别处理通用鸡分和定向明杠基础4分。
 
@@ -578,6 +578,8 @@ Windows 与 Android 都固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280）
 - `TableActions._on_human_tile_gui()` 在短按松手时提交一次出牌，滑动超过阈值不出牌；所有提交入口都检查开局锁。原生触控和模拟鼠标不能重复提交。
 - `SettlementCard` 的 `ReadinessFooter` 独立显示四人的昵称与准备状态、等待提示、大号准备/取消按钮。每个真人各自准备，人机默认准备；全部准备后仍由权威端等待 1 秒开始下一局。
 - `tests/table_interaction.gd` 加入常规和 CI 快速检查；`tests/capture_table_controls.gd` 需真实窗口，保存本轮牌桌、结算、准备和骰子截图到 `build/ui_review/table_controls/`。
+
+
 
 
 

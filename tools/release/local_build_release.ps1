@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateSet("Check", "Full", "Patch")]
     [string]$Mode = "Check",
@@ -243,13 +243,8 @@ try {
 
     if ($Mode -eq "Full") {
         Write-Stage "完整包导出"
-        $windows = Join-Path $script:LogDirectory "anshun-mahjong-windows-x64.exe"
         $android = Join-Path $script:LogDirectory "anshun-mahjong.apk"
         $androidSigner = Check-AndroidEnvironment
-        Invoke-LoggedStep -Name "export_windows" -FilePath $godot -Arguments @("--headless", "--path", $projectRoot, "--export-release", "Windows", $windows)
-        if (-not (Test-Path -LiteralPath $windows -PathType Leaf) -or (Get-Item -LiteralPath $windows).Length -le 0) {
-            throw "Windows 导出文件为空：$windows"
-        }
         Invoke-LoggedStep -Name "export_android" -FilePath $godot -Arguments @("--headless", "--path", $projectRoot, "--export-release", "Android", $android)
         if (-not (Test-Path -LiteralPath $android -PathType Leaf) -or (Get-Item -LiteralPath $android).Length -le 0) {
             throw "Android 导出文件为空：$android"
@@ -257,7 +252,7 @@ try {
         Invoke-LoggedStep -Name "verify_apk" -FilePath $androidSigner -Arguments @("verify", "--verbose", $android)
         $notesPath = Join-Path $script:LogDirectory "release-notes.md"
         Set-Content -LiteralPath $notesPath -Value $Notes -Encoding UTF8
-        Invoke-PythonStep -Name "prepare_release" -Arguments @("tools/update/prepare_release.py", "--windows", $windows, "--android", $android, "--output", (Join-Path $script:LogDirectory "releases"), "--repository", $repository, "--notes", $notesPath)
+        Invoke-PythonStep -Name "prepare_release" -Arguments @("tools/update/prepare_release.py", "--android", $android, "--output", (Join-Path $script:LogDirectory "releases"), "--repository", $repository, "--notes", $notesPath)
     }
     elseif ($Mode -eq "Patch") {
         Write-Stage "热更新补丁导出"

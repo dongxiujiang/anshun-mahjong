@@ -61,7 +61,7 @@ def configure(project, config_dir, signing_dir, environment, godot_version, sign
             "keystore/release_password": environment["ANDROID_KEYSTORE_PASSWORD"],
         }
         credentials.write_text(
-            "[preset.1.options]\n" + "\n".join(
+            "[preset.0.options]\n" + "\n".join(
                 name + "=" + json.dumps(value, ensure_ascii=False) for name, value in values.items()
             ) + "\n", encoding="utf-8",
         )
@@ -89,3 +89,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
