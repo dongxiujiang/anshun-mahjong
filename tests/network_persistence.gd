@@ -35,14 +35,14 @@ func _run() -> void:
 		"saved_at": Time.get_unix_time_from_system()}
 	t.expect(SESSIONS.write_session(network.settings_path, session) == OK, "Confirmed session saved")
 	network.load_settings()
-	t.expect(network.saved_session == session, "All reconnection fields survive loading")
+	t.expect(_same_session(network.saved_session, session), "All reconnection fields survive loading")
 	t.expect(network.lobby_preferences.get("online", false) and network.lobby_preferences.get("number", "") == "001234" and network.lobby_preferences.get("name", "") == "朋友房间" and not network.lobby_preferences.get("room_name_manual", true), "Mode, room number and room title persist")
 	directory.configure("https://example.com/changed")
-	t.expect(SESSIONS.read_session(network.settings_path) == session, "Editing directory URL preserves reconnection identity")
+	t.expect(_same_session(SESSIONS.read_session(network.settings_path), session), "Editing directory URL preserves reconnection identity")
 	network.save_lobby_preferences(false, "765432", "新的房间")
 	t.expect(STORE.read_config(network.settings_path).get_value("online", "url") == "https://example.com/changed", "Editing lobby fields preserves directory URL")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(network.settings_path))
-	t.expect(SESSIONS.read_session(network.settings_path) == session, "Interrupted write can recover session backup")
+	t.expect(_same_session(SESSIONS.read_session(network.settings_path), session), "Interrupted write can recover session backup")
 	network.clear_saved_session()
 	t.expect(SESSIONS.read_session(network.settings_path).is_empty(), "Explicit leave clears saved identity")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(network.settings_path))
@@ -99,3 +99,11 @@ func _run() -> void:
 	network.persist_settings = false
 	config.persist_settings = false
 	await H.quit_cleanly(self, t.finish("network_persistence"))
+
+
+func _same_session(first: Dictionary, second: Dictionary) -> bool:
+	var a := first.duplicate(true)
+	var b := second.duplicate(true)
+	a.erase("saved_at")
+	b.erase("saved_at")
+	return a == b
