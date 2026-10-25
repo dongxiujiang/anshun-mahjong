@@ -379,8 +379,10 @@ static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, 
 							# 同种普通鸡多张时，显示每个叫牌玩家应付的合计单注，
 							# 例如两张普通幺鸡显示“幺鸡-4分”，而不是漏掉一张的
 							# “幺鸡-2分”。冲锋+普通仍分开显示。
-							var ordinary_line_count := ordinary_count if not charged else 1
-							var ordinary_line_unit := -ordinary_unit * scale * ordinary_line_count
+							# 显示的是该家普通鸡的实际合计，不是单张单价。
+							# 三张八筒（1 冲锋 + 2 普通）必须显示“八筒-4分”，
+							# 与“冲锋八筒-4分”合计 8 分，不能漏成 -2。
+							var ordinary_line_unit := -ordinary_unit * scale * ordinary_count
 							var ordinary_amount := -ordinary_unit * scale * ordinary_count
 							_part(group, stage, tile_name, ordinary_amount, 1, ordinary_line_unit, true)
 				else:

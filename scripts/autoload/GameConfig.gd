@@ -81,6 +81,7 @@ var ai_speed := "medium"
 const AI_STRENGTHS := {"weak": "弱", "medium": "中", "strong": "强"}
 static var ai_strength := "weak"
 const ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0}
+const OPENING_SPEEDS := {"standard": 1.0, "fast": 0.5}
 const TILE_ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0, "slow": 1.8}
 var draw_animation_speed := "fast"
 var discard_animation_speed := "fast"
@@ -109,6 +110,7 @@ const OPENING_SORT_TILE_STAGGER := 0.012
 ## to the opening presentation, so the first turn cannot begin over it.
 const OPENING_WAIT_SECONDS := OPENING_DICE_SECONDS + OPENING_DICE_HOLD_SECONDS + 12 * (OPENING_DEAL_SECONDS + 3 * OPENING_DEAL_TILE_STAGGER) + 4 * OPENING_DEAL_SECONDS + OPENING_SORT_SECONDS + 13 * OPENING_SORT_TILE_STAGGER + 0.25
 var animation_speed := "standard"
+static var opening_animation_speed := "standard"
 
 const SETTINGS_STORE := preload("res://scripts/core/UserSettingsStore.gd")
 const SETTINGS_PATH := "user://game_settings.cfg"
@@ -116,6 +118,7 @@ const PREFERENCE_CHOICES := {
 	"ai_speed": AI_SPEED_DELAYS,
 	"ai_strength": AI_STRENGTHS,
 	"animation_speed": ANIMATION_SPEEDS,
+	"opening_animation_speed": OPENING_SPEEDS,
 	"draw_animation_speed": TILE_ANIMATION_SPEEDS,
 	"discard_animation_speed": TILE_ANIMATION_SPEEDS,
 	"settlement_speed": SETTLEMENT_SPEEDS,
@@ -195,6 +198,14 @@ func set_animation_speed(value: String, persist: bool = true) -> void:
 	if ANIMATION_SPEEDS.has(value):
 		animation_speed = value
 		_save_preference(persist)
+
+func set_opening_animation_speed(value: String, persist: bool = true) -> void:
+	if OPENING_SPEEDS.has(value):
+		opening_animation_speed = value
+		_save_preference(persist)
+
+func opening_animation_scale() -> float:
+	return float(OPENING_SPEEDS.get(opening_animation_speed, 1.0))
 
 func animation_duration(base_seconds: float) -> float:
 	return base_seconds * float(ANIMATION_SPEEDS.get(animation_speed, 1.0))

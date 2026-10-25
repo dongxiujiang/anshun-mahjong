@@ -150,7 +150,7 @@ func _on_visual_event(event: Dictionary) -> void:
 	var copy := event.duplicate(true)
 	if event.get("type", "") == "dice" and DisplayServer.get_name() != "headless":
 		_opening = true
-		_opening_speed_scale = 1.0 if table._net_mode() != "" else float(GameConfig.ANIMATION_SPEEDS.get(GameConfig.animation_speed, 1.0))
+		_opening_speed_scale = 1.0 if table._net_mode() != "" else GameConfig.opening_animation_scale()
 	var seat := int(event.get("seat", 0))
 	if event.get("type", "") in ["draw", "meld", "discard"]:
 		_finish_seat_discard(seat)

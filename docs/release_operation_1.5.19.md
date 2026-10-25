@@ -19,3 +19,21 @@ run_suites.py：70 / 70
 smoke_table_layout：通过
 ai_safety：通过
 ```
+
+## 产物
+
+```text
+APK 94,794,534 字节
+SHA-256 03e9aeedd85fc3593473bc25b0078d02a777107fa1b0bf1001c9b8f82ffab46f
+
+Android 热补丁 72,400 字节（基线 1.5.18）
+SHA-256 d1f52ea7dd1e8b8cf00dcd2de6664d887a7d62f8267134d2bd4d359689e5956d
+```
+
+## 发布
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.5.19
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+热补丁基线：1.5.18
+```

@@ -225,7 +225,7 @@ func _test_uncalled_two_same_chickens() -> void:
 	f.result.transfers.clear()
 	for receiver in [0, 2, 3]: _pay(f, 1, receiver, 8, "未叫牌出牌鸡")
 	group = _find(_build(f), "1:chicken_tiao1")
-	t.expect(group.detail == "冲锋幺鸡-4分 幺鸡-2分", "multiple ordinary copies keep the per-tile debt caption")
+	t.expect(group.detail == "冲锋幺鸡-4分 幺鸡-4分", "multiple ordinary copies keep the combined ordinary debt caption")
 	_amount(group, "chicken", -24, "three discarded copies retain the full recorded debt")
 
 func _test_uncalled_ordinary_chickens() -> void:
@@ -532,3 +532,4 @@ func _run() -> void:
 	_test_draw_chicken_debts()
 	DETAILS.set_debug_enabled(false)
 	quit(t.finish("settlement_score_details"))
+

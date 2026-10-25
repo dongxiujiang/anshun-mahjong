@@ -24,6 +24,7 @@ var _exposed_layout_key := PackedByteArray()
 var _seat_visual_keys := {}
 var _pending_ready_round := 0
 var _pending_ready_seat := -1
+var _ai_teach_tile := ""
 var _exposed_keys := {}
 var _river_keys := {}
 
@@ -201,24 +202,23 @@ func _hand_key(seat: int) -> PackedByteArray:
 		controller.opening_active(), controller.dealt_count(seat), controller.holds_draw_slot(seat)])
 
 func highlight_ai_teach(tile: String) -> void:
-	clear_ai_teach_highlight()
-	if tile == "" or table.round == null:
-		return
-	for box in [hand_box.get(table.human_seat), draw_box.get(table.human_seat)]:
+	_ai_teach_tile = tile
+	_apply_ai_teach_highlight()
+
+func _apply_ai_teach_highlight() -> void:
+	var human: int = int(table.human_seat)
+	for box in [hand_box.get(human), draw_box.get(human)]:
 		if box == null:
 			continue
 		for child in box.get_children():
-			if child is TileView and child.face_up and child.tile == tile:
-				child.set_highlight(true)
-				child.set_meta("ai_teach", true)
-				return
+			if child is TileView:
+				var mark: bool = _ai_teach_tile != "" and child.face_up and child.tile == _ai_teach_tile
+				child.set_highlight(mark)
+				child.set_meta("ai_teach", mark)
 
 func clear_ai_teach_highlight() -> void:
-	for box in hand_box.values() + draw_box.values():
-		for child in box.get_children():
-			if child is TileView and bool(child.get_meta("ai_teach", false)):
-				child.set_highlight(false)
-				child.set_meta("ai_teach", false)
+	_ai_teach_tile = ""
+	_apply_ai_teach_highlight()
 
 func cache_current_hand(seat: int) -> void:
 	_seat_visual_keys[seat] = _hand_key(seat)
@@ -323,6 +323,8 @@ func _refresh_seat(seat: int) -> void:
 			for child in box.get_children():
 				if child is TileView and not child.face_up:
 					child.hide()
+	if own:
+		_apply_ai_teach_highlight()
 	table._refresh_discards(seat)
 	_refresh_ready_discard_hint(seat)
 	_refresh_ready_frame(seat)
@@ -537,16 +539,24 @@ func _prepare_exposed_layouts() -> void:
 				layout = table._meld_tile_layout(group.meld, seat, player_unit, UI.TILE_GAP)
 				meld_items.append({"group": group, "layout": layout})
 		var rows: Array = []
+		var row_kinds: Array[String] = []
 		if not charge_items.is_empty():
 			rows.append(charge_items)
+			row_kinds.append("charge")
 		for index in range(0, normal_items.size(), 4):
 			rows.append(normal_items.slice(index, mini(index + 4, normal_items.size())))
+			row_kinds.append("normal")
 		for item in meld_items:
 			rows.append([item])
+			row_kinds.append("meld")
 		var base_origins: Array = []
 		var row_bottom: float = float(metrics.exposed_y) + height
-		var group_gap := UI.MELD_GROUP_GAP
-		for row_items in rows:
+		# 普通鸡、碰、杠之间不再留额外行距；只有冲锋鸡与普通鸡之间
+		# 保留一个视觉分隔。牌面内部间距仍由 TILE_GAP 决定。
+		var group_gap := 0.0
+		var previous_kind := ""
+		for row_index in rows.size():
+			var row_items: Array = rows[row_index]
 			var row_height := 0.0
 			for item in row_items:
 				row_height = maxf(row_height, float(item.layout.size.y))
@@ -554,7 +564,9 @@ func _prepare_exposed_layouts() -> void:
 			for item in row_items:
 				base_origins.append({"item": item, "origin": Vector2(x, row_bottom - float(item.layout.size.y))})
 				x += float(item.layout.size.x) + group_gap
-			row_bottom -= row_height + UI.EXPOSED_ROW_GAP
+			var row_gap := UI.EXPOSED_ROW_GAP if previous_kind == "charge" and row_kinds[row_index] != "charge" else 0.0
+			row_bottom -= row_height + row_gap
+			previous_kind = row_kinds[row_index]
 		var table_bounds: Rect2 = table._table_bounds()
 		var chosen_offset := Vector2.INF
 		var chosen_rects: Array[Rect2] = []

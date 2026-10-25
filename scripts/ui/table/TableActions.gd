@@ -187,6 +187,7 @@ func _build_turn_options(player: PlayerState) -> void:
 	_ready_discards = options.ready_discards.duplicate()
 	if not _ready_discards.is_empty():
 		_ready_button = table._add_action("报听", table._toggle_ready)
+	_highlight_ai_action_buttons()
 
 func _add_kong_choices(title: String, decision_key: String, cards: Array) -> void:
 	if cards.is_empty():
@@ -285,6 +286,14 @@ func _on_require_response(seat: int, discarded_seat: int, tile: String, options:
 		table._add_action("杠", func(): table._commit_response("kong"), true)
 	table._add_action("过", func(): table._commit_response("pass"))
 	table._update_interactivity()
+	_highlight_ai_action_buttons()
+
+func _highlight_ai_action_buttons() -> void:
+	if not bool(table._ai_assist_enabled):
+		return
+	for button in action_bar.get_children():
+		if button is Button and button.text in ["胡", "碰", "杠", "自摸", "暗杠", "加杠"]:
+			button.modulate = Color("#f6d36b")
 
 func _commit_response(action: String) -> void:
 	if input_locked() or _response_disc == "": return

@@ -28,6 +28,7 @@ var ai_strength_buttons := {}
 var draw_speed_buttons := {}
 var discard_speed_buttons := {}
 var settlement_speed_buttons := {}
+var opening_speed_buttons := {}
 var table_mode := false
 var exit_confirmation: Panel
 var confirm_exit_button: Button
@@ -157,7 +158,11 @@ func _ready() -> void:
 			strength_button.disabled = strength_key != "weak"
 			strength_button.tooltip_text = "中、强 AI 策略后续接入；当前仅弱档可用"
 			ai_strength_buttons[strength_key] = strength_button
-		_label("四项速度独立调整", Vector2(716, 610), Vector2(368, 30), 20)
+		_label("开局发牌", Vector2(716, 610), Vector2(96, 30), 20)
+		for item in [["快", "fast"], ["正常", "standard"]]:
+			var opening_key: String = item[1]
+			opening_speed_buttons[opening_key] = _button(item[0], Vector2(812 + opening_speed_buttons.size() * 96, 610),
+				Vector2(86, 64), func(): _set_opening_speed(opening_key))
 		exit_room_button = _button("退出房间", Vector2(716, 682), Vector2(368, 80), func(): exit_requested.emit())
 		exit_room_button.name = "ExitRoomButton"
 		replay_export_button = _button("保存本局记录", Vector2(36, 682), Vector2(296, 80), func(): replay_export_requested.emit())
@@ -330,6 +335,10 @@ func _set_tile_speed(action: String, speed_key: String) -> void:
 	else: GameConfig.set_discard_animation_speed(speed_key, persist_changes)
 	_update_speed_buttons()
 
+func _set_opening_speed(speed_key: String) -> void:
+	GameConfig.set_opening_animation_speed(speed_key, persist_changes)
+	_update_speed_buttons()
+
 func _set_settlement_speed(speed_key: String) -> void:
 	GameConfig.set_settlement_speed(speed_key, persist_changes)
 	_update_speed_buttons()
@@ -351,6 +360,8 @@ func _update_speed_buttons() -> void:
 		discard_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.discard_animation_speed else Color.WHITE
 	for speed_key in settlement_speed_buttons:
 		settlement_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.settlement_speed else Color.WHITE
+	for speed_key in opening_speed_buttons:
+		opening_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.opening_animation_speed else Color.WHITE
 
 func open() -> void:
 	_sync()

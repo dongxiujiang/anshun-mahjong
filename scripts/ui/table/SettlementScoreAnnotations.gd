@@ -198,17 +198,18 @@ func _place(label: Label, bounds: Rect2, seat: int, occupied: Array[Rect2]) -> v
 	var relative: int = table._relative_seat(seat)
 	var span := label.size
 	var center := bounds.get_center()
-	var inward := Vector2(0, -1)
-	var origin := Vector2(center.x - span.x / 2, bounds.position.y - span.y - 12)
+	# “上/对/下”的记分向桌心收，避免被左右两家的碰杠/鸡牌压住。
+	var inward := Vector2(0, 1)
+	var origin := Vector2(center.x - span.x / 2, bounds.end.y + 12)
 	if relative == 2:
-		inward = Vector2(0, 1)
-		origin = Vector2(center.x - span.x / 2, bounds.end.y + 12)
+		inward = Vector2(0, -1)
+		origin = Vector2(center.x - span.x / 2, bounds.position.y - span.y - 12)
 	elif relative == 1:
-		inward = Vector2(-1, 0)
-		origin = Vector2(bounds.position.x - span.x - 12, center.y - span.y / 2)
-	elif relative == 3:
 		inward = Vector2(1, 0)
 		origin = Vector2(bounds.end.x + 12, center.y - span.y / 2)
+	elif relative == 3:
+		inward = Vector2(-1, 0)
+		origin = Vector2(bounds.position.x - span.x - 12, center.y - span.y / 2)
 	var best := origin
 	var best_cost := INF
 	var offsets: Array[int] = [0]
