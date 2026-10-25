@@ -40,10 +40,6 @@ func _new_net_node() -> void:
 
 func load_settings() -> void:
 	saved_session = SESSIONS.read_session(settings_path)
-	# 服务端最多保留断线座位 30 分钟；更早的本地记录一定已经没有房间，
-	# 启动时直接清掉，避免再次提示“继续上次房间”。
-	if has_saved_session() and _saved_session_expired():
-		clear_saved_session()
 	var config := STORE.read_config(settings_path)
 	for key in lobby_preferences:
 		var value = config.get_value("lobby", key, lobby_preferences[key])
@@ -70,7 +66,7 @@ func _remember_session() -> void:
 		push_warning("无法保存重连信息，请检查存储空间")
 
 func has_saved_session() -> bool:
-	return SESSIONS.valid(saved_session)
+	return SESSIONS.valid(saved_session) and not _saved_session_expired()
 
 func clear_saved_session() -> void:
 	saved_session = {}
