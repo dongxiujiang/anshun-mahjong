@@ -79,7 +79,7 @@ const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
 var ai_speed := "medium"
 # AI 强度入口先保留三档；当前仅弱档，后续再接中/强策略。
 const AI_STRENGTHS := {"weak": "弱", "medium": "中", "strong": "强"}
-var ai_strength := "weak"
+static var ai_strength := "weak"
 const ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0}
 const TILE_ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0, "slow": 1.8}
 var draw_animation_speed := "fast"

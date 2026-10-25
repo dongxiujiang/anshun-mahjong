@@ -123,6 +123,7 @@ func _on_require_turn(seat: int) -> void:
 	_declaring_ready = false
 	_response_disc = ""
 	table._build_turn_options(table.round.players[seat])
+	table._refresh_ai_assist()
 	if table.round.players[seat].ready:
 		_auto_ready_discard(seat, serial)
 

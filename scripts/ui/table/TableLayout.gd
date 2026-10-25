@@ -66,10 +66,11 @@ func _build_static_ui() -> void:
 	voice_button.visible = false
 	surface.add_child(voice_button)
 	table._voice_button = voice_button
-	var ai_teach: Button = table._button("AI教打", table.request_ai_teach, Vector2(132, UI.SETTINGS_BUTTON_SIZE.y))
+	var ai_teach: Button = table._button("AI帮打", table._on_ai_assist_pressed, Vector2(148, UI.SETTINGS_BUTTON_SIZE.y))
 	ai_teach.name = "AITeachButton"
+	ai_teach.toggle_mode = true
 	ai_teach.add_theme_font_size_override("font_size", 20)
-	ai_teach.tooltip_text = "分析当前已知信息并推荐出牌"
+	ai_teach.tooltip_text = "开启后每到自己出牌自动提示，关闭后不提示"
 	surface.add_child(ai_teach)
 	table._ai_teach_button = ai_teach
 	# 返回、声音和 AI 速度统一收进大号设置面板，避免右上角小按钮难以点击。

@@ -24,6 +24,7 @@ var _ai_teach_button: Button
 var _ai_teach_panel: Panel
 var _ai_teach_label: Label
 var _ai_teach_token := 0
+var _ai_assist_enabled := false
 var _settlement_round_id := 0
 var _settlement_session := ""
 var _settlement_round_number := -1
@@ -213,12 +214,35 @@ func _build_table_overlays() -> void:
 func _on_voice_status(_enabled: bool, _message: String) -> void:
 	_refresh_voice_button()
 
+func _on_ai_assist_pressed() -> void:
+	if _ai_teach_button == null:
+		return
+	_ai_assist_enabled = _ai_teach_button.button_pressed
+	_ai_teach_button.text = "AI帮打 开" if _ai_assist_enabled else "AI帮打"
+	if not _ai_assist_enabled:
+		_ai_teach_token += 1
+		if _ai_teach_panel != null:
+			_ai_teach_panel.hide()
+		if _player_tile_areas != null:
+			_player_tile_areas.clear_ai_teach_highlight()
+		return
+	request_ai_teach()
+
+func _refresh_ai_assist() -> void:
+	if not _ai_assist_enabled:
+		return
+	if round == null or round.phase != RoundState.Phase.PLAYING:
+		return
+	if round.current_turn != human_seat or round.awaiting:
+		return
+	request_ai_teach()
+
 func request_ai_teach() -> void:
 	if round == null or round.players.size() != 4:
-		_show_ai_teach("AI教打：当前没有牌局")
+		_show_ai_teach("AI帮打：当前没有牌局")
 		return
 	var result: Dictionary = AiTeaching.recommend(round, human_seat)
-	var message := str(result.get("message", "AI教打：暂无建议"))
+	var message := str(result.get("message", "AI帮打：暂无建议"))
 	_show_ai_teach(message)
 	var tile := str(result.get("tile", ""))
 	if tile != "":
