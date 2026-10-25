@@ -18,6 +18,7 @@ var lobby_preferences := {"online": false, "number": "", "name": "朋友麻将�
 var resume_on_lobby := false
 var resume_prompt_shown := false
 var room_generation := 0
+const SESSION_MAX_AGE_SECONDS := 31 * 60
 
 func _ready() -> void:
 	_new_net_node()
@@ -39,6 +40,12 @@ func _new_net_node() -> void:
 
 func load_settings() -> void:
 	saved_session = SESSIONS.read_session(settings_path)
+	# 服务端最多保留断线座位 30 分钟；更早的本地记录一定已经没有房间，
+	# 启动时直接清掉，避免再次提示“继续上次房间”。
+	if has_saved_session():
+		var saved_at := float(saved_session.get("saved_at", 0.0))
+		if saved_at <= 0.0 or Time.get_unix_time_from_system() - saved_at > SESSION_MAX_AGE_SECONDS:
+			clear_saved_session()
 	var config := STORE.read_config(settings_path)
 	for key in lobby_preferences:
 		var value = config.get_value("lobby", key, lobby_preferences[key])
@@ -57,7 +64,8 @@ func _remember_session() -> void:
 	var session := {"host": net_node._server_ip, "port": net_node._server_port,
 		"number": net_node._join_number if net_node.lobby.is_empty() else net_node.room_number,
 		"name": net_node.room_name, "token": net_node._resume_token,
-		"player_name": net_node._join_name, "online": bool(lobby_preferences.online)}
+		"player_name": net_node._join_name, "online": bool(lobby_preferences.online),
+		"saved_at": Time.get_unix_time_from_system()}
 	if not SESSIONS.valid(session) or session == saved_session: return
 	saved_session = session
 	if persist_settings and SESSIONS.write_session(settings_path, session) != OK:
@@ -74,6 +82,10 @@ func clear_saved_session() -> void:
 
 func resume_saved_session() -> bool:
 	if not has_saved_session(): return false
+	var saved_at := float(saved_session.get("saved_at", 0.0))
+	if saved_at <= 0.0 or Time.get_unix_time_from_system() - saved_at > SESSION_MAX_AGE_SECONDS:
+		clear_saved_session()
+		return false
 	mode = "client"
 	return net_node.client(saved_session.host, saved_session.port, saved_session.number,
 		saved_session.player_name, "", saved_session.token, true)

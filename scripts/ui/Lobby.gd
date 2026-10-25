@@ -34,6 +34,7 @@ var _syncing_room_name := false
 var _in_room := false
 var _connecting := false
 var _creating := false
+var _resuming := false
 var _transitioning := false
 var _leaving := false
 var _refresh := 0.0
@@ -219,6 +220,7 @@ func _resume_saved_room() -> void:
 	Network.reset()
 	_bind_net()
 	_connecting = true
+	_resuming = true
 	create_button.disabled = true
 	search_button.disabled = true
 	lan_button.disabled = true
@@ -411,6 +413,7 @@ func _bind_net() -> void:
 	net.room_ready.connect(func(_seat):
 		if _connecting:
 			_connecting = false
+			_resuming = false
 			_show_waiting())
 	net.lobby_updated.connect(_render_waiting)
 	net.lobby_notice.connect(_message)
@@ -474,6 +477,11 @@ func _enter_table() -> void:
 
 func _connection_failed(message: String) -> void:
 	if _transitioning: return
+	if _resuming:
+		# The old room is gone (or its 30-minute reservation expired). Do not
+		# keep showing “继续上次房间” on every launch.
+		_resuming = false
+		Network.clear_saved_session()
 	Network.reset()
 	if _creating and online: Network.directory.cancel()
 	_connection_attempt += 1

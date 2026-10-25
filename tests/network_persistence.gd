@@ -31,7 +31,8 @@ func _run() -> void:
 	t.expect(directory.base_url == "https://mj.dongxiu.fun", "Fresh install uses the production directory by default")
 	t.expect(directory.configure("https://example.com/rooms-service/"), "Directory address can be saved")
 	var session := {"host": "127.0.0.1", "port": 7594, "number": "001234", "name": "朋友房间",
-		"player_name": "重启后的玩家", "token": "a".repeat(64), "online": true}
+		"player_name": "重启后的玩家", "token": "a".repeat(64), "online": true,
+		"saved_at": Time.get_unix_time_from_system()}
 	t.expect(SESSIONS.write_session(network.settings_path, session) == OK, "Confirmed session saved")
 	network.load_settings()
 	t.expect(network.saved_session == session, "All reconnection fields survive loading")

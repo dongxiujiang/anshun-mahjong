@@ -16,3 +16,17 @@ Android versionCode：`46`
 ```text
 run_suites.py：70 / 70
 ```
+
+## 产物
+
+```text
+APK 94,794,754 字节
+SHA-256 815e274c2c04f7ba0ef4179fbdd717c3c611bcc81dad1c251e2e0b721d5537d3
+```
+
+## 发布
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.5.15
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+```
