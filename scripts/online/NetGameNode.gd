@@ -694,6 +694,17 @@ func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 	if action == "test_vote":
 		_apply_test_vote_answer(peer, bool(data.get("agree", false)))
 		return
+	if action == "test_propose":
+		_start_test_vote(int(_peer_seat.get(peer, -1)), str(data.get("pattern", "")))
+		return
+	if action == "opening_speed":
+		if peer != _owner_peer: return
+		var speed := str(data.get("value", ""))
+		if speed in CONFIG.OPENING_SPEEDS:
+			opening_speed = speed
+			_apply_opening_delay()
+			_publish_lobby()
+		return
 	if action == "ai_speed":
 		var speed_key := str(data.get("value", ""))
 		if peer != _owner_peer or speed_key not in ["fast", "medium", "slow"]: return
@@ -1022,7 +1033,7 @@ func _start_return_vote(initiator: int) -> void:
 	_check_return_vote()
 
 func propose_test_pattern(pattern: String) -> void:
-	if not _started or game == null:
+	if game == null:
 		return
 	var seat := _local_seat()
 	if seat < 0:
@@ -1030,7 +1041,7 @@ func propose_test_pattern(pattern: String) -> void:
 	if host_mode:
 		_start_test_vote(seat, pattern)
 	elif _client_joined:
-		rpc_id(1, "request_test_pattern", pattern)
+		rpc_id(1, "lobby_action", "test_propose", {"pattern": pattern})
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_test_pattern(pattern: String) -> void:
@@ -1230,7 +1241,7 @@ func set_opening_speed(value: String) -> void:
 		_apply_opening_delay()
 		_publish_lobby()
 	elif _client_joined:
-		rpc_id(1, "request_opening_speed", value)
+		rpc_id(1, "lobby_action", "opening_speed", {"value": value})
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_opening_speed(value: String) -> void:
@@ -1496,7 +1507,7 @@ func _report_opening_speed() -> void:
 	var desired := CONFIG.opening_animation_speed
 	if str(lobby.get("opening_speed", "")) == desired:
 		return
-	rpc_id(1, "request_opening_speed", desired)
+	rpc_id(1, "lobby_action", "opening_speed", {"value": desired})
 
 @rpc("authority", "call_remote", "reliable")
 func join_rejected(message: String) -> void:
