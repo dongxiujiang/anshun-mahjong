@@ -16,7 +16,7 @@ config/name="安顺麻将·捉鸡"
 config/name_localized={
 "en": "Anshun Mahjong"
 }
-config/version="1.5.23"
+config/version="1.5.24"
 run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://res/icons/game_icon.png"
@@ -79,3 +79,4 @@ manifest_urls=["https://mj.dongxiu.fun/updates/update-manifest.json", "https://m
 auto_check=true
 windows_asset="anshun-mahjong-windows-x64.exe"
 android_asset="anshun-mahjong.apk"
+

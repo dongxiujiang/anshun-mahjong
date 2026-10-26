@@ -174,7 +174,12 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 		var base_payer := self_draw or payer == source
 		if base_payer:
 			if self_draw:
-				total += primary
+				# 自摸者未报听、该对手已报听：牌型分照付，但不再另加自摸4；
+				# 没有牌型时自摸基础4也不付。
+				if not declared_ready and bool(opponent.get("ready", false)):
+					total += points if points > 0.0 else 0.0
+				else:
+					total += primary
 			else:
 				# 普通弃牌不收17/21；只有抢杠胡或暗/加杠后的
 				# 第一张弃牌才产生基础费。

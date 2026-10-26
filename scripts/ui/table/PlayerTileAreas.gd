@@ -23,6 +23,7 @@ var _exposed_layouts := {}
 var _exposed_layout_key := PackedByteArray()
 var _seat_visual_keys := {}
 var _pending_ready_round := 0
+var _pending_ready_session := ""
 var _pending_ready_seat := -1
 var _ai_teach_tile := ""
 var _exposed_keys := {}
@@ -361,6 +362,7 @@ func show_pending_ready(seat: int) -> void:
 	if table.round == null:
 		return
 	_pending_ready_round = table.round.get_instance_id()
+	_pending_ready_session = table.round.audio_session
 	_pending_ready_seat = seat
 	_refresh_ready_frame(seat)
 
@@ -370,8 +372,15 @@ func _refresh_ready_frame(seat: int) -> void:
 		return
 	var player: PlayerState = table.round.players[seat]
 	var pending_ready: bool = _pending_ready_seat == seat \
-		and table.round != null and _pending_ready_round == table.round.get_instance_id()
-	if not player.ready and not pending_ready:
+		and table.round != null \
+		and _pending_ready_round == table.round.get_instance_id() \
+		and _pending_ready_session == table.round.audio_session
+	if player.ready:
+		# 服务器已确认报听，待确认状态可以清掉，之后只看 player.ready。
+		if _pending_ready_seat == seat:
+			_pending_ready_seat = -1
+			_pending_ready_session = ""
+	elif not pending_ready:
 		frame.hide()
 		return
 	var bounds := Rect2()

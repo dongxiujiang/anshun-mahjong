@@ -145,11 +145,14 @@ static func expected(round: RoundState) -> Dictionary:
 					else:
 						primary = 4.0
 				for payer in base_payers:
+					# 自摸者未报听、付款者报听：只免自摸基础4，牌型分仍付。
+					if not player.ready and round.players[payer].ready:
+						var pattern_share := pattern_fee if pattern_fee > 0.0 else 0.0
+						_credit(matrix, payer, target_seat, pattern_share + 24.0, burned)
+						continue
 					var add := primary
 					if player.ready:
 						add += 20.0 if pattern_fee > 0.0 else 24.0
-					elif round.players[payer].ready:
-						add += 24.0
 					_credit(matrix, payer, target_seat, add, burned)
 			else:
 				var kong_discard := not robbed_kong and _is_post_kong_discard(round.last_discard)

@@ -73,7 +73,20 @@ func _test_payments() -> void:
 	t.expect(ScoringEngine.settle(ready).deltas == [72.0, -24.0, -24.0, -24.0], "报听普通自摸每家24，不再加自摸4")
 	var killed := fixture(); killed.players[0].concealed = PLAIN.duplicate(); killed.players[1].concealed = PLAIN.duplicate(); killed.players[1].ready = true; killed.round_meta.winner = 0; killed.round_meta.winners = [0]; killed.round_meta.self_draw = true
 	var killed_result := ScoringEngine.settle(killed)
-	t.expect(killed_result.deltas == [96.0, -48.0, -24.0, -24.0], "自摸杀报只由报听者额外支付24")
+	t.expect(killed_result.deltas == [72.0, -24.0, -24.0, -24.0], "自摸杀报只由报听者支付24，不再另付自摸4")
+	var seven_ready := fixture()
+	seven_ready.players[0].concealed = ["tiao1","tiao1","tiao2","tiao2","tiao3","tiao3","tiao4","tiao4","tiao5","tiao5","tiao6","tiao6","tiao9","tiao9"]
+	seven_ready.players[1].ready = true
+	seven_ready.round_meta.winner = 0
+	seven_ready.round_meta.winners = [0]
+	seven_ready.round_meta.self_draw = true
+	var seven_result := ScoringEngine.settle(seven_ready)
+	var ready_pattern := 0.0
+	for transfer in seven_result.transfers:
+		if int(transfer.get("from", -1)) == 1 and int(transfer.get("to", -1)) == 0 \
+			and str(transfer.get("reason", "")) == "清七对":
+			ready_pattern += float(transfer.get("amount", 0.0))
+	t.expect(is_equal_approx(ready_pattern, 44.0), "报听付款者仍付完整牌型分，但不额外加自摸4")
 	var dry := fixture(); dry.players[0].concealed = PLAIN.duplicate(); dry.players[1].concealed = WAIT.duplicate(); dry.players[1].discards = ["tiao1"]; dry.players[1].discard_ids = [0]
 	dry.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}
 	dry.round_meta.winner = 0; dry.round_meta.winners = [0]; dry.round_meta.self_draw = true

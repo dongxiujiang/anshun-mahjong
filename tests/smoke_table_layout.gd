@@ -769,6 +769,8 @@ func _test_next_round() -> void:
 	_expect(not table.round_label.text.contains("鸡分 ×2"), "The active multiplier stays inside settlement details")
 	_expect(not table._settlement_animation_controller.has_started() and table._settlement_animation_controller.boards.is_empty() and not table._settlement_card._post_controls.visible, "New game removes all settlement boards and bottom controls")
 	_expect(table.round.phase == RoundState.Phase.PLAYING)
+	for seat in 4:
+		_expect(not table.ready_frames[seat].visible, "A new round clears the previous ready gold frame")
 
 func _physical_rect(control: Control) -> Rect2:
 	return root.get_screen_transform() * _control_rect(control)
