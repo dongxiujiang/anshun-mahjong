@@ -337,6 +337,9 @@ func _set_tile_speed(action: String, speed_key: String) -> void:
 
 func _set_opening_speed(speed_key: String) -> void:
 	GameConfig.set_opening_animation_speed(speed_key, persist_changes)
+	var net := get_node_or_null("/root/Network")
+	if table_mode and net != null and net.mode != "" and net.net_node != null:
+		net.net_node.set_opening_speed(speed_key)
 	_update_speed_buttons()
 
 func _set_settlement_speed(speed_key: String) -> void:

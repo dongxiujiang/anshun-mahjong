@@ -150,9 +150,14 @@ func _on_visual_event(event: Dictionary) -> void:
 	var copy := event.duplicate(true)
 	if event.get("type", "") == "dice" and DisplayServer.get_name() != "headless":
 		_opening = true
-		# 联机房间由权威端按 0.5 倍节奏开始首次摸牌，所有客户端动画同步
-		# 使用 0.5 倍，确保 13 张牌动画结束就接摸牌，而不是再空等。
-		_opening_speed_scale = 0.5 if table._net_mode() != "" else GameConfig.opening_animation_scale()
+		# 联机使用房主设置的开局速度，服务器和所有客户端必须同速，
+		# 否则一方动画结束、另一方还在理牌，就会出现空等。
+		if table._net_mode() != "":
+			var net = table._net_node()
+			var speed := str(net.lobby.get("opening_speed", "standard")) if net != null else "standard"
+			_opening_speed_scale = float(GameConfig.OPENING_SPEEDS.get(speed, 1.0))
+		else:
+			_opening_speed_scale = GameConfig.opening_animation_scale()
 	var seat := int(event.get("seat", 0))
 	if event.get("type", "") in ["draw", "meld", "discard"]:
 		_finish_seat_discard(seat)

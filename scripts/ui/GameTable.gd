@@ -27,6 +27,7 @@ var _test_popup: PopupMenu
 var _test_vote_panel: Panel
 var _test_vote_label: Label
 var _test_vote_buttons: HBoxContainer
+var _opening_speed_synced := false
 
 var _ai_teach_token := 0
 var _ai_assist_enabled := false
@@ -639,6 +640,11 @@ func _on_net_lobby_updated() -> void:
 	_update_speed_buttons()
 	_refresh_next_round_controls()
 	var net = _net_node()
+	if not _opening_speed_synced and net != null and net._client_joined \
+		and net.lobby.get("owner", -1) == net._local_peer():
+		# 联机房主把自己保存的开局速度同步给权威端，避免服务器永远用默认值。
+		net.set_opening_speed(GameConfig.opening_animation_speed)
+		_opening_speed_synced = true
 	if net != null and net.lobby is Dictionary and net.lobby.has("return_vote"):
 		_on_return_vote_updated(net.lobby.get("return_vote", {}))
 	_refresh_test_pattern_ui()

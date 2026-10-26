@@ -19,6 +19,7 @@ signal voice_status(enabled, message)
 const VOICE_CHAT := preload("res://scripts/online/GMEVoiceChat.gd")
 const PCM_VOICE := preload("res://scripts/online/OnlineVoiceChat.gd")
 const TEST_PATTERNS := preload("res://scripts/core/TestPatterns.gd")
+const CONFIG := preload("res://scripts/autoload/GameConfig.gd")
 const AUTO := "auto"
 const START_DELAY := 3.0
 const NEXT_ROUND_DELAY := 1.0
@@ -83,6 +84,7 @@ var _state_queued := false
 var _state_revision := 0
 var _received_revision := -1
 var ai_speed := "fast"
+var opening_speed := "standard"
 var voice_chat = null
 var _ai_service = null
 var _voice_last_ms := {}
@@ -601,7 +603,7 @@ func _publish_lobby() -> void:
 		# disconnected seats have an orphan record with the retained member.
 		if _orphaned.has(seat): member = _orphaned[seat].member
 		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": (not _waiting_for_reconnect(seat) and ai) if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
-	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
+	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "opening_speed": opening_speed, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer): rpc_id(peer, "lobby_sync", lobby)
 	lobby_updated.emit()
@@ -800,10 +802,9 @@ func start_net_game(seed_value: int = -1) -> bool:
 	game.controllers = ctrls
 	game.ai_delay_seconds = _ai_turn_delay()
 	game.ai_response_delay_seconds = _ai_response_delay()
-	# 联机统一使用快档发牌节奏，客户端动画也固定 0.5 倍，避免服务端
-	# 已经进入摸牌而客户端还在看 13 张牌，或反过来产生额外等待。
-	game.opening_delay_seconds = GameConfig.OPENING_WAIT_SECONDS * 0.5 \
-		if dedicated or DisplayServer.get_name() != "headless" else 0.0
+	if not dedicated:
+		opening_speed = CONFIG.opening_animation_speed
+	_apply_opening_delay()
 	game.require_turn.connect(_on_host_require_turn)
 	game.require_response.connect(_on_host_require_response)
 	game.state_update.connect(_host_broadcast)
@@ -1097,6 +1098,7 @@ func _restart_with_test_hand() -> void:
 	game.next_dealer_seat = game.dealer_seat
 	_ready_round = -1
 	_invalidate_ready()
+	_apply_opening_delay()
 	game.start_round(my_seat)
 	_apply_member_names()
 	_host_broadcast()
@@ -1207,12 +1209,40 @@ func _apply_round_ready(peer: int, data: Dictionary) -> void:
 	_check_start()
 	_publish_lobby()
 
+func _apply_opening_delay() -> void:
+	if game == null:
+		return
+	game.opening_delay_seconds = CONFIG.OPENING_WAIT_SECONDS \
+		* float(CONFIG.OPENING_SPEEDS.get(opening_speed, 1.0)) \
+		if dedicated or DisplayServer.get_name() != "headless" else 0.0
+
+func set_opening_speed(value: String) -> void:
+	if value not in CONFIG.OPENING_SPEEDS:
+		return
+	if host_mode:
+		opening_speed = value
+		_apply_opening_delay()
+		_publish_lobby()
+	elif _client_joined and _owner_peer == _local_peer():
+		rpc_id(1, "request_opening_speed", value)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_opening_speed(value: String) -> void:
+	if not host_mode or multiplayer.get_remote_sender_id() != _owner_peer:
+		return
+	if value not in CONFIG.OPENING_SPEEDS:
+		return
+	opening_speed = value
+	_apply_opening_delay()
+	_publish_lobby()
+
 func _start_next_round() -> void:
 	if not host_mode or game == null or game.phase != RoundState.Phase.SETTLED or _ready_round != round_number or not all_ready() or _countdown > 0.0: return
 	_ready_round = -1
 	_invalidate_ready()
 	round_number += 1
 	_publish_lobby()
+	_apply_opening_delay()
 	game.start_round(my_seat)
 	_apply_member_names()
 	_host_broadcast()
@@ -1575,4 +1605,5 @@ func ack(text: String) -> void:
 	if host_mode and _peer_seat.has(multiplayer.get_remote_sender_id()):
 		ack_flag = true
 		ack_text = text
+
 

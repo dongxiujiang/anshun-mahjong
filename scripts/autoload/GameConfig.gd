@@ -108,7 +108,7 @@ const OPENING_SORT_TILE_STAGGER := 0.012
 ## stagger inside each packet so authority unlock and the last visible tile
 ## settle at the same point in time.  The final hand-sorting pass also belongs
 ## to the opening presentation, so the first turn cannot begin over it.
-const OPENING_WAIT_SECONDS := OPENING_DICE_SECONDS + OPENING_DICE_HOLD_SECONDS + 12 * (OPENING_DEAL_SECONDS + 3 * OPENING_DEAL_TILE_STAGGER) + 4 * OPENING_DEAL_SECONDS + OPENING_SORT_SECONDS + 13 * OPENING_SORT_TILE_STAGGER + 0.25
+const OPENING_WAIT_SECONDS := OPENING_DICE_SECONDS + OPENING_DICE_HOLD_SECONDS + 12 * (OPENING_DEAL_SECONDS + 3 * OPENING_DEAL_TILE_STAGGER) + 4 * OPENING_DEAL_SECONDS + OPENING_SORT_SECONDS + 13 * OPENING_SORT_TILE_STAGGER + 0.08
 var animation_speed := "standard"
 static var opening_animation_speed := "standard"
 
@@ -235,3 +235,4 @@ func set_settlement_speed(value: String, persist: bool = true) -> void:
 
 func settlement_duration(base_seconds: float) -> float:
 	return base_seconds * float(SETTLEMENT_SPEEDS.get(settlement_speed, 2.0))
+
