@@ -31,3 +31,18 @@ draw pattern：清七对44/无牌型4/多叫牌分别补付
 GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.6.0
 自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
 ```
+
+## 产物
+
+```text
+APK 94,809,963 字节
+SHA-256 b36d8bf3f1b91fa04da3f3749116dc1555738bea4a5c53b6383ee74a90606bb4
+```
+
+## 部署
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.6.0
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+服务器镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-395488d
+```
