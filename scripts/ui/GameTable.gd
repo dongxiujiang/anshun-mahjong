@@ -232,6 +232,8 @@ func _build_test_pattern_ui() -> void:
 	_test_vote_panel.hide()
 
 func _on_test_pattern_pressed() -> void:
+	if not GameConfig.debug_enabled:
+		return
 	var net = _net_node()
 	if net == null or net.mode == "":
 		return
@@ -283,6 +285,9 @@ func _answer_test_vote(agree: bool) -> void:
 
 func _refresh_test_pattern_ui() -> void:
 	if _test_vote_panel == null:
+		return
+	if not GameConfig.debug_enabled:
+		_test_vote_panel.hide()
 		return
 	var net = _net_node()
 	var vote: Dictionary = net.lobby.get("test_vote", {}) if net != null else {}
