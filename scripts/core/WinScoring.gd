@@ -50,11 +50,10 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		if primary_amount > 0.0:
 			for payer in base_payers:
 				var pay_amount := primary_amount
-				# 自摸者未报听、付款者已报听：不承担自摸基础4，但牌型分
-				# 仍需支付。牌型分表本身含基础4，所以报听付款者付
-				# pattern_amount - 4；没有牌型时这笔为0，只走杀报24。
+				# 自摸者未报听、付款者已报听：牌型分照付，但不再额外加
+				# 自摸基础4；没有牌型时这4分不付，只走杀报24。
 				if not player.ready and round.players[payer].ready:
-					pay_amount = maxf(0.0, pattern_amount - CFG.SCORE_SELF_DRAW) if pattern_amount > 0.0 else 0.0
+					pay_amount = pattern_amount if pattern_amount > 0.0 else 0.0
 				if pay_amount > 0.0:
 					PAY.transfer(deltas, transfers, payer, winner, pay_amount, primary_label)
 			lines.append("%s：其余每家付 %.0f" % [primary_label, primary_amount])
