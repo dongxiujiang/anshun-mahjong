@@ -20,3 +20,22 @@ Android versionCode：`55`
 run_suites.py：71 / 71
 远端单人在线测试：通过
 ```
+
+## 产物
+
+```text
+APK 94,806,927 字节
+SHA-256 6e2d91c5d3ae816e817bd9ae86f78d64def3db14d400a9d1904cbe4373cd09d7
+
+Android 热补丁 202,364 字节（基线 1.5.23）
+SHA-256 5f8f6e5d9c9af870cfd7f598fd8e0abad3ede34a3e10027882d6c3822104178d
+```
+
+## 发布
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.5.24
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+服务器镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-53e6d67
+热补丁基线：1.5.23
+```
