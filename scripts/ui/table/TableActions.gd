@@ -3,6 +3,7 @@ extends "res://scripts/ui/table/TableComponent.gd"
 
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
 const LEGAL := preload("res://scripts/core/LegalActions.gd")
+const AI_TEACH := preload("res://scripts/core/AiTeaching.gd")
 
 var action_bar: HBoxContainer
 var auto_ready_enabled := DisplayServer.get_name() != "headless"
@@ -187,7 +188,10 @@ func _build_turn_options(player: PlayerState) -> void:
 	_ready_discards = options.ready_discards.duplicate()
 	if not _ready_discards.is_empty():
 		_ready_button = table._add_action("报听", table._toggle_ready)
-	_highlight_ai_action_buttons()
+	var ai_label := ""
+	if bool(table._ai_assist_enabled):
+		ai_label = str(AI_TEACH.recommend(table.round, player.seat).get("label", ""))
+	_highlight_ai_action_buttons(ai_label)
 
 func _add_kong_choices(title: String, decision_key: String, cards: Array) -> void:
 	if cards.is_empty():
@@ -286,14 +290,29 @@ func _on_require_response(seat: int, discarded_seat: int, tile: String, options:
 		table._add_action("杠", func(): table._commit_response("kong"), true)
 	table._add_action("过", func(): table._commit_response("pass"))
 	table._update_interactivity()
-	_highlight_ai_action_buttons()
+	var ai_label := ""
+	if bool(table._ai_assist_enabled):
+		ai_label = str(AI_TEACH.recommend_response(table.round, table.human_seat,
+			discarded_seat, tile, options).get("label", ""))
+	_highlight_ai_action_buttons(ai_label)
 
-func _highlight_ai_action_buttons() -> void:
-	if not bool(table._ai_assist_enabled):
+func _highlight_ai_action_buttons(label: String) -> void:
+	if label == "" or not bool(table._ai_assist_enabled):
 		return
 	for button in action_bar.get_children():
-		if button is Button and button.text in ["胡", "碰", "杠", "自摸", "暗杠", "加杠"]:
-			button.modulate = Color("#f6d36b")
+		if not button is Button:
+			continue
+		var text: String = button.text
+		if not text.begins_with(label):
+			continue
+		button.modulate = Color.WHITE
+		for state in ["normal", "hover", "pressed"]:
+			var base: StyleBox = button.get_theme_stylebox(state)
+			if base is StyleBoxFlat:
+				var style := base.duplicate() as StyleBoxFlat
+				style.border_color = Color("#5ad4ff")
+				style.set_border_width_all(4)
+				button.add_theme_stylebox_override(state, style)
 
 func _commit_response(action: String) -> void:
 	if input_locked() or _response_disc == "": return

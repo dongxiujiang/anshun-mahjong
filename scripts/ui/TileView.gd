@@ -158,8 +158,10 @@ func _draw() -> void:
 		if highlight:
 			draw_circle(Vector2(w / 2, -5 * unit), 2.5 * unit, Color("#f1d47f"))
 		if ai_teach_highlight:
-			# AI 推荐单独标记：金框内加一个蓝色小点，和鸡牌/报听金框不冲突。
-			draw_circle(Vector2(w - 7 * unit, -5 * unit), 2.2 * unit, Color("#67d9ff"))
+			# AI 推荐使用更粗的蓝色边框；多张同牌都会各自显示。
+			var ai_outline := _tile_style(Color.TRANSPARENT, Color("#5ad4ff"))
+			ai_outline.set_border_width_all(6)
+			draw_style_box(ai_outline, Rect2(-5, -5, w + 10, h + 10))
 	if bool(get_meta("charge_chicken", false)) and bool(get_meta("gold_chicken", false)):
 		_draw_badge(Vector2(w - 12 * unit, 12 * unit), Color("#d5af4e"), "冲金")
 	elif bool(get_meta("charge_chicken", false)):

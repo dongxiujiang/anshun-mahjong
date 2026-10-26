@@ -23,7 +23,8 @@ var _settings_button: Button
 var _voice_button: Button
 var _test_pattern_button: Button
 var _ai_teach_button: Button
-var _test_popup: PopupMenu
+var _test_choice_panel: Panel
+var _test_choice_box: VBoxContainer
 var _test_vote_panel: Panel
 var _test_vote_label: Label
 var _test_vote_buttons: HBoxContainer
@@ -234,17 +235,45 @@ func _on_test_pattern_pressed() -> void:
 	var net = _net_node()
 	if net == null or net.mode == "":
 		return
-	if _test_popup == null:
-		_test_popup = PopupMenu.new()
-		_test_popup.name = "TestPatternMenu"
-		for index in TEST_PATTERNS.CATALOG.size():
-			var entry: Dictionary = TEST_PATTERNS.CATALOG[index]
-			_test_popup.add_item("%s  %s" % [entry.name, entry.description], index)
-		_test_popup.id_pressed.connect(func(index: int):
-			if index >= 0 and index < TEST_PATTERNS.CATALOG.size():
-				net.propose_test_pattern(str(TEST_PATTERNS.CATALOG[index].id)))
-		add_child(_test_popup)
-	_test_popup.popup_centered(Vector2i(620, 210))
+	if _test_choice_panel == null:
+		_test_choice_panel = Panel.new()
+		_test_choice_panel.name = "TestPatternChooser"
+		_test_choice_panel.size = Vector2(620, 390)
+		_test_choice_panel.position = Vector2((_design_size().x - 620.0) / 2.0, 150.0)
+		_test_choice_panel.z_index = 220
+		_test_choice_panel.add_theme_stylebox_override("panel", _style(Color("#102018f5"), UI.GOLD, 18, 2))
+		add_child(_test_choice_panel)
+		var title := Label.new()
+		title.text = "选择测试牌型"
+		title.position = Vector2(24, 18)
+		title.size = Vector2(572, 44)
+		title.add_theme_font_override("font", TileView._font())
+		title.add_theme_font_size_override("font_size", 30)
+		title.add_theme_color_override("font_color", UI.GOLD)
+		_test_choice_panel.add_child(title)
+		_test_choice_box = VBoxContainer.new()
+		_test_choice_box.position = Vector2(24, 74)
+		_test_choice_box.size = Vector2(572, 300)
+		_test_choice_box.add_theme_constant_override("separation", 8)
+		_test_choice_panel.add_child(_test_choice_box)
+		for entry in TEST_PATTERNS.CATALOG:
+			var pattern := str(entry.id)
+			var button := _button(str(entry.name),
+				func(): _choose_test_pattern(pattern), Vector2(572, 68))
+			button.tooltip_text = str(entry.description)
+			button.add_theme_font_size_override("font_size", 26)
+			_test_choice_box.add_child(button)
+		var cancel := _button("取消", func(): _test_choice_panel.hide(), Vector2(572, 48))
+		cancel.add_theme_font_size_override("font_size", 20)
+		_test_choice_box.add_child(cancel)
+	_test_choice_panel.show()
+
+func _choose_test_pattern(pattern: String) -> void:
+	if _test_choice_panel != null:
+		_test_choice_panel.hide()
+	var net = _net_node()
+	if net != null:
+		net.propose_test_pattern(pattern)
 
 func _answer_test_vote(agree: bool) -> void:
 	var net = _net_node()

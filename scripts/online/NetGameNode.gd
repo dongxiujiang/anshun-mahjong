@@ -1046,6 +1046,7 @@ func _start_test_vote(initiator: int, pattern: String) -> void:
 		return
 	_test_vote = {"pattern": pattern, "seat": initiator, "humans": humans.duplicate(), "yes": [initiator]}
 	_publish_lobby()
+	_check_test_vote()
 
 func answer_test_vote(agree: bool) -> void:
 	if host_mode:
@@ -1069,14 +1070,16 @@ func _apply_test_vote_answer(peer: int, agree: bool) -> void:
 	if seat not in yes:
 		yes.append(seat)
 	_test_vote["yes"] = yes
-	var all_yes := true
+	_publish_lobby()
+	_check_test_vote()
+
+func _check_test_vote() -> void:
+	if _test_vote.is_empty():
+		return
+	var yes: Array = _test_vote.get("yes", [])
 	for human in _test_vote.get("humans", []):
 		if int(human) not in yes:
-			all_yes = false
-			break
-	if not all_yes:
-		_publish_lobby()
-		return
+			return
 	_test_pending = {"pattern": str(_test_vote.get("pattern", "")), "seat": int(_test_vote.get("seat", -1))}
 	_test_vote.clear()
 	_restart_with_test_hand()
@@ -1467,6 +1470,9 @@ func seat_assign(seat: int, issued_token: String = "") -> void:
 	_reconnecting = false
 	_reconnect_attempt = 0
 	my_seat = seat
+	# 房主入座时就同步开局速度，确保服务器第一次 start_round 前已经拿到。
+	if _owner_peer == _local_peer():
+		call_deferred("set_opening_speed", CONFIG.opening_animation_speed)
 	room_ready.emit(seat)
 	if not _pending_snapshot.is_empty():
 		var state := _pending_snapshot

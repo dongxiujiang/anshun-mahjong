@@ -14,11 +14,13 @@ static func recommend(round, seat: int) -> Dictionary:
 	var player: PlayerState = round.players[seat]
 	var options: Dictionary = round.legal_turn_options(seat)
 	if options.get("self_win", false):
-		return {"message": "AI教学：建议自摸；当前手牌已经满足胡牌条件"}
+		return {"action": "win", "label": "自摸", "message": "AI教学：建议自摸；当前手牌已经满足胡牌条件"}
 	if not options.get("kong_declares", []).is_empty():
-		return {"message": "AI教学：建议暗杠 %s；完成后从牌尾补牌" % _display(str(options.kong_declares[0]))}
+		return {"action": "kong", "label": "暗杠", "tile": str(options.kong_declares[0]),
+			"message": "AI教学：建议暗杠 %s；完成后从牌尾补牌" % _display(str(options.kong_declares[0]))}
 	if not options.get("add_kong", []).is_empty():
-		return {"message": "AI教学：建议加杠 %s；注意可能被抢杠" % _display(str(options.add_kong[0]))}
+		return {"action": "kong", "label": "加杠", "tile": str(options.add_kong[0]),
+			"message": "AI教学：建议加杠 %s；注意可能被抢杠" % _display(str(options.add_kong[0]))}
 	var discards: Array = options.get("discards", [])
 	if discards.is_empty():
 		return {"message": "AI教学：当前没有可分析的出牌"}
@@ -40,7 +42,7 @@ static func recommend(round, seat: int) -> Dictionary:
 		if str(candidate.get("tile", "")) == tile:
 			detail = "；向听%d，进张%d" % [int(candidate.get("distance", 0)), int(candidate.get("outs", 0))]
 			break
-	return {"tile": tile, "message": "AI教学：建议打%s%s" % [_display(tile), detail]}
+	return {"action": "discard", "tile": tile, "message": "AI教学：建议打%s%s" % [_display(tile), detail]}
 
 static func recommend_response(round, seat: int, source: int, tile: String, options: Dictionary) -> Dictionary:
 	if round == null or seat < 0 or seat >= round.players.size():
@@ -53,7 +55,8 @@ static func recommend_response(round, seat: int, source: int, tile: String, opti
 	var decision: Dictionary = ai.decide_response(round, seat, source, tile, options)
 	var action := str(decision.get("action", "pass"))
 	var text: String = {"win": "建议胡", "pong": "建议碰", "kong": "建议杠", "pass": "建议过"}.get(action, "建议过")
-	return {"action": action, "message": "AI教学：%s %s" % [text, _display(tile)]}
+	var label: String = {"win": "胡", "pong": "碰", "kong": "杠"}.get(action, "")
+	return {"action": action, "label": label, "message": "AI教学：%s %s" % [text, _display(tile)]}
 
 static func _display(tile: String) -> String:
 	var suit := Tiles.suit(tile)

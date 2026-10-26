@@ -66,8 +66,8 @@ func _build_static_ui() -> void:
 	voice_button.visible = false
 	surface.add_child(voice_button)
 	table._voice_button = voice_button
-	var test_button: Button = table._button("测试", table._on_test_pattern_pressed,
-		Vector2(104, UI.SETTINGS_BUTTON_SIZE.y))
+	var test_button: Button = table._button("测试牌型", table._on_test_pattern_pressed,
+		Vector2(136, UI.SETTINGS_BUTTON_SIZE.y))
 	test_button.name = "TestPatternButton"
 	test_button.add_theme_font_size_override("font_size", UI.SETTINGS_FONT_SIZE - 8)
 	test_button.tooltip_text = "联机测试牌型，需要全部真人同意"

@@ -21,6 +21,11 @@ run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://res/icons/game_icon.png"
 
+[audio]
+
+driver/enable_input=true
+driver/mix_rate=48000
+
 [autoload]
 
 PatchBoot="*res://scripts/autoload/PatchBoot.gd"
@@ -29,15 +34,6 @@ AudioManager="*res://scripts/autoload/AudioManager.gd"
 Network="*res://scripts/autoload/Network.gd"
 UpdateManager="*res://scripts/autoload/UpdateManager.gd"
 MCPRuntimeServer="*res://addons/godot_mcp_toolkit/runtime/mcp_runtime_server.gd"
-
-[audio]
-
-driver/enable_input=true
-driver/mix_rate=48000
-
-[network]
-
-gme_auth_url="https://mj.dongxiu.fun/gme-auth"
 
 [display]
 
@@ -57,15 +53,19 @@ enabled=PackedStringArray("res://addons/godot_mcp_toolkit/plugin.cfg")
 
 pointing/emulate_touch_from_mouse=true
 
+[network]
+
+gme_auth_url="https://mj.dongxiu.fun/gme-auth"
+
+[online]
+
+default_url="https://mj.dongxiu.fun"
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
-
-[online]
-
-default_url="https://mj.dongxiu.fun"
 
 [updates]
 
@@ -75,23 +75,7 @@ manifest_asset="update-manifest.json"
 github_repository="dongxiujiang/anshun-mahjong"
 manifest_url=""
 manifest_public_key="LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQm9qQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FZOEFNSUlCaWdLQ0FZRUF0b2hRM0NCazJpMkEva3QyQVBrNAppYW9GOEZKc2pCb2dNSU1CN2o2YlFIN3czWTRCNTNoSUNxRUk4NS9ZYkFmRS9GbExScVNDSWdiakhoQTdqZXd4Ck43M2FPdjluUTVlUUZBU09ZamZ2SFA5bFFuOTV3QUhpdVJhanZISnZXNFR1UzlXaVkyNkpDOFdxQUNtV0hDeXcKRDc3SFBhMnhJVk1KY3lMd3NUZnZ2a0FUaG5mblZzZ0ljOVlkVFVYY0hYQVgrS0xKUmIvdGJ4eGxHZE81UnJmSgpOZ3RZZGo2cFFEd2hjaFpvWktDR2llb2VwbGRmdWNUYlVTRVZSWVVqRzR3MElFS3BaTXJYSkZNdUZ4QlJ0bkJFCmpuYldpTmhMcElpRlViQjE1RXM2T0FOMUtMZVhTM2NDN1BrZXNsa0hkZXBSTnkrbGhSRWVwSWNiL01jS2c5RXgKU240NEMwMzFMaUtvZjd6blpGczY3R2t5Sld6NlpWeVFuQTY5SSt2RTJiRCsxd1Vqei9NTkpsdEh6cVg2WDBtMQp6c2tOek5KdGM3NjkxYXg1VThYd1QvZ21ELzZtWlhMVkJMdUNoVDJwbW54eXd5djBuV0VyM2dtbmN2RmVaMHBaCjhzQkE0Q21lT1pMRkIraW9rc2NTY0dxUVBjWXBZWVFGdGx4YlU3bnl4K05sQWdNQkFBRT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg=="
-manifest_urls=[
-"https://mj.dongxiu.fun/updates/update-manifest.json",
-"https://mj.dongxiu.fun/updates/update-manifest-fallback.json"
-]
+manifest_urls=["https://mj.dongxiu.fun/updates/update-manifest.json", "https://mj.dongxiu.fun/updates/update-manifest-fallback.json"]
 auto_check=true
 windows_asset="anshun-mahjong-windows-x64.exe"
 android_asset="anshun-mahjong.apk"
-
-
-
-
-
-
-
-
-
-
-
-
-
