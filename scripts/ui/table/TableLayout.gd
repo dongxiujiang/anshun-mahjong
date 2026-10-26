@@ -154,7 +154,9 @@ func _layout() -> void:
 		table._refresh_voice_button()
 	if table._test_pattern_button != null:
 		# 测试牌型只对调试构建/开启 debug 的测试环境开放，正式包不显示。
-		table._test_pattern_button.visible = table._net_mode() != "" and GameConfig.debug_enabled
+		var test_net = table._net_node()
+		table._test_pattern_button.visible = table._net_mode() != "" and GameConfig.debug_enabled \
+			and test_net != null and bool(test_net.test_mode)
 		table._test_pattern_button.position = table._voice_button.position - Vector2(table._test_pattern_button.size.x + 10.0, 0.0)
 	# Actions sit immediately above the local player's draw slot.
 	table._layout_actions()

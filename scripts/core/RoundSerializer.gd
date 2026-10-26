@@ -12,6 +12,7 @@ static func serialize(round_state) -> Dictionary:
 		"last_result": _convert_kong_kinds(round_state.last_result, true),
 		"players": [], "wall": {}, "wall_stacks": {},
 		"next_chicken_multiplier": round_state.next_chicken_multiplier,
+		"opening_speed": round_state.opening_speed,
 		"audio_session": round_state.audio_session, "audio_event_id": round_state.audio_event_id,
 		"audio_events": round_state.audio_events.duplicate(true),
 		"visual_session": round_state._presentation.session, "visual_event_id": round_state.visual_event_id,
@@ -75,6 +76,7 @@ static func apply_sync(round_state, state: Dictionary) -> void:
 	round_state.phase = round_state._phase_from_name(str(state.get("phase", "idle")))
 	round_state.round_meta = state.round_meta.duplicate(true)
 	round_state.next_chicken_multiplier = int(state.get("next_chicken_multiplier", 1))
+	round_state.opening_speed = str(state.get("opening_speed", "standard"))
 	round_state.last_discard = _convert_kong_kinds(state.last_discard, false)
 	round_state.awaiting = state.awaiting
 	round_state.prompt_id = int(state.get("prompt_id", 0))

@@ -363,7 +363,8 @@ func _create() -> void:
 		# A background list refresh must not swallow the create request.
 		Network.directory.cancel()
 		_message("正在创建在线房间…")
-		Network.directory.create_room(number, room_name_input.text, GameConfig.opening_animation_speed)
+		Network.directory.create_room(number, room_name_input.text, GameConfig.opening_animation_speed,
+			GameConfig.debug_enabled)
 		return
 	_message("检查房间号…")
 	Network.discovery.search()
@@ -378,6 +379,8 @@ func _create() -> void:
 	var first := randi_range(7600, 8600)
 	for attempt in 24:
 		if Network.start_host(false, true, first + attempt, number, room_name_input.text):
+			if Network.net_node != null:
+				Network.net_node.test_mode = GameConfig.debug_enabled
 			opened = true
 			break
 	if not opened or not Network.discovery.advertise(Network.net_node):

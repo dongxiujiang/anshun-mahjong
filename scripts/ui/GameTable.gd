@@ -28,7 +28,8 @@ var _test_choice_box: VBoxContainer
 var _test_vote_panel: Panel
 var _test_vote_label: Label
 var _test_vote_buttons: HBoxContainer
-var _opening_speed_synced := false
+var _test_vote_id := ""
+var _test_mode_ui := false
 
 var _ai_teach_token := 0
 var _ai_assist_enabled := false
@@ -280,7 +281,7 @@ func _choose_test_pattern(pattern: String) -> void:
 func _answer_test_vote(agree: bool) -> void:
 	var net = _net_node()
 	if net != null:
-		net.answer_test_vote(agree)
+		net.answer_test_vote(agree, _test_vote_id)
 	_refresh_test_pattern_ui()
 
 func _refresh_test_pattern_ui() -> void:
@@ -292,8 +293,10 @@ func _refresh_test_pattern_ui() -> void:
 	var net = _net_node()
 	var vote: Dictionary = net.lobby.get("test_vote", {}) if net != null else {}
 	if vote.is_empty():
+		_test_vote_id = ""
 		_test_vote_panel.hide()
 		return
+	_test_vote_id = str(vote.get("proposal_id", ""))
 	var pattern := str(vote.get("pattern", ""))
 	var entry: Dictionary = TEST_PATTERNS.get_entry(pattern)
 	var humans: Array = vote.get("humans", [])
@@ -456,6 +459,7 @@ func new_game() -> void:
 	_selected_tile = null
 	_round_number += 1
 	round = RoundState.new()
+	round.opening_speed = GameConfig.opening_animation_speed
 	if _net_mode() == "" and DisplayServer.get_name() != "headless":
 		if _ai_service == null:
 			_ai_service = load("res://scripts/ai/AiDecisionService.gd").new()
@@ -674,11 +678,10 @@ func _on_net_lobby_updated() -> void:
 	_update_speed_buttons()
 	_refresh_next_round_controls()
 	var net = _net_node()
-	if not _opening_speed_synced and net != null and net._client_joined \
-		and net.lobby.get("owner", -1) == net._local_peer():
-		# 联机房主把自己保存的开局速度同步给权威端，避免服务器永远用默认值。
-		net.set_opening_speed(GameConfig.opening_animation_speed)
-		_opening_speed_synced = true
+	if net != null and bool(net.test_mode) != _test_mode_ui:
+		_test_mode_ui = bool(net.test_mode)
+		_layout()
+
 	if net != null and net.lobby is Dictionary and net.lobby.has("return_vote"):
 		_on_return_vote_updated(net.lobby.get("return_vote", {}))
 	_refresh_test_pattern_ui()

@@ -154,7 +154,11 @@ func _on_visual_event(event: Dictionary) -> void:
 		# 否则一方动画结束、另一方还在理牌，就会出现空等。
 		if table._net_mode() != "":
 			var net = table._net_node()
-			var speed := str(net.lobby.get("opening_speed", "standard")) if net != null else "standard"
+			var speed := "standard"
+			if table.round != null:
+				speed = str(table.round.opening_speed)
+			elif net != null:
+				speed = str(net.lobby.get("opening_speed", "standard"))
 			_opening_speed_scale = float(GameConfig.OPENING_SPEEDS.get(speed, 1.0))
 		else:
 			_opening_speed_scale = GameConfig.opening_animation_scale()

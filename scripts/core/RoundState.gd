@@ -113,6 +113,8 @@ var ai_compute_max_ms := 0.0
 var ai_apply_max_ms := 0.0
 var _ai_pending: Dictionary = {}
 var opening_delay_seconds := 0.0
+## 首帧快照也要带开局速度，避免客户端在收到 lobby 前先按默认速度播放。
+var opening_speed := "standard"
 var _opening_generation := 0
 ## 联机测试牌型：只覆盖指定座位，牌墙会先从完整牌库移除这些牌。
 var test_hand_seat := -1

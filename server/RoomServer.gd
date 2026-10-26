@@ -23,6 +23,7 @@ func _run() -> void:
 		quit(1)
 		return
 	_net.set_opening_speed(_argument("--opening-speed", "standard"))
+	_net.test_mode = _argument("--test-mode", "0") == "1"
 	_net.game.ai_delay_seconds = 1.0
 	_net.lobby_updated.connect(_write_status)
 	_net.room_empty.connect(func():

@@ -50,9 +50,9 @@ func cancel() -> void:
 	busy = false
 	_operation = ""
 
-func create_room(number: String, title: String, opening_speed: String = "standard") -> void:
+func create_room(number: String, title: String, opening_speed: String = "standard", test_mode: bool = false) -> void:
 	_request("create", "/rooms", HTTPClient.METHOD_POST,
-		{"number": number, "name": title, "opening_speed": opening_speed})
+		{"number": number, "name": title, "opening_speed": opening_speed, "test_mode": test_mode})
 
 func _request(operation: String, path: String, method: int, body: Dictionary = {}) -> void:
 	if busy: return

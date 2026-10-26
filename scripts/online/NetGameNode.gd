@@ -77,6 +77,8 @@ var _background_until: Dictionary = {}
 var _background_vote_pending: Dictionary = {}
 var _test_vote: Dictionary = {}
 var _test_pending: Dictionary = {}
+var _test_vote_serial := 0
+var _test_vote_deadline := 0
 var _return_vote_active := false
 var _return_vote_yes: Dictionary = {}
 var _return_vote_initiator := -1
@@ -86,6 +88,7 @@ var _state_revision := 0
 var _received_revision := -1
 var ai_speed := "fast"
 var opening_speed := "standard"
+var test_mode := false
 var voice_chat = null
 var _ai_service = null
 var _voice_last_ms := {}
@@ -230,6 +233,11 @@ func _process(delta: float) -> void:
 		voice_chat.poll_permission()
 	if game != null:
 		game.poll_ai()
+	if host_mode and not _test_vote.is_empty() and Time.get_ticks_msec() >= _test_vote_deadline:
+		_test_vote.clear()
+		_test_vote_deadline = 0
+		_publish_lobby()
+		lobby_notice.emit("测试牌型投票超时，已取消")
 	if not host_mode:
 		if _reconnecting:
 			_reconnect_wait -= delta
@@ -604,7 +612,7 @@ func _publish_lobby() -> void:
 		# disconnected seats have an orphan record with the retained member.
 		if _orphaned.has(seat): member = _orphaned[seat].member
 		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": (not _waiting_for_reconnect(seat) and ai) if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
-	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "opening_speed": opening_speed, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
+	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "opening_speed": opening_speed, "test_mode": test_mode, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer): rpc_id(peer, "lobby_sync", lobby)
 	lobby_updated.emit()
@@ -692,7 +700,7 @@ func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 		_apply_return_vote_answer(peer, bool(data.get("agree", false)))
 		return
 	if action == "test_vote":
-		_apply_test_vote_answer(peer, bool(data.get("agree", false)))
+		_apply_test_vote_answer(peer, bool(data.get("agree", false)), str(data.get("proposal_id", "")))
 		return
 	if action == "test_propose":
 		_start_test_vote(int(_peer_seat.get(peer, -1)), str(data.get("pattern", "")))
@@ -1043,32 +1051,32 @@ func propose_test_pattern(pattern: String) -> void:
 	elif _client_joined:
 		rpc_id(1, "lobby_action", "test_propose", {"pattern": pattern})
 
-@rpc("any_peer", "call_remote", "reliable")
-func request_test_pattern(pattern: String) -> void:
-	if not host_mode or not _started or game == null:
-		return
-	var seat := int(_peer_seat.get(multiplayer.get_remote_sender_id(), -1))
-	_start_test_vote(seat, pattern)
-
 func _start_test_vote(initiator: int, pattern: String) -> void:
-	if not host_mode or game == null or pattern not in TEST_PATTERNS.ids():
+	if not host_mode or not test_mode or game == null or pattern not in TEST_PATTERNS.ids():
+		return
+	if not _test_vote.is_empty():
 		return
 	var humans := _human_seats()
 	if initiator not in humans or humans.is_empty():
 		return
 	# 发起者也要明确点“同意”，避免只有发起者一个真人时看起来像没弹确认。
-	_test_vote = {"pattern": pattern, "seat": initiator, "humans": humans.duplicate(), "yes": []}
+	_test_vote_serial += 1
+	_test_vote_deadline = Time.get_ticks_msec() + 60000
+	_test_vote = {"proposal_id": str(_test_vote_serial), "pattern": pattern, "seat": initiator,
+		"humans": humans.duplicate(), "yes": []}
 	_publish_lobby()
 	_check_test_vote()
 
-func answer_test_vote(agree: bool) -> void:
+func answer_test_vote(agree: bool, proposal_id: String = "") -> void:
 	if host_mode:
-		_apply_test_vote_answer(_local_peer(), agree)
+		_apply_test_vote_answer(_local_peer(), agree, proposal_id)
 	elif _client_joined:
-		rpc_id(1, "lobby_action", "test_vote", {"agree": agree})
+		rpc_id(1, "lobby_action", "test_vote", {"agree": agree, "proposal_id": proposal_id})
 
-func _apply_test_vote_answer(peer: int, agree: bool) -> void:
+func _apply_test_vote_answer(peer: int, agree: bool, proposal_id: String = "") -> void:
 	if not host_mode or _test_vote.is_empty():
+		return
+	if proposal_id != str(_test_vote.get("proposal_id", "")):
 		return
 	var seat := int(_peer_seat.get(peer, -1))
 	if seat not in _test_vote.get("humans", []):
@@ -1076,6 +1084,7 @@ func _apply_test_vote_answer(peer: int, agree: bool) -> void:
 	if not agree:
 		var pattern := str(_test_vote.get("pattern", ""))
 		_test_vote.clear()
+		_test_vote_deadline = 0
 		_publish_lobby()
 		lobby_notice.emit("测试牌型“%s”被拒绝" % TEST_PATTERNS.get_entry(pattern).get("name", pattern))
 		return
@@ -1095,6 +1104,7 @@ func _check_test_vote() -> void:
 			return
 	_test_pending = {"pattern": str(_test_vote.get("pattern", "")), "seat": int(_test_vote.get("seat", -1))}
 	_test_vote.clear()
+	_test_vote_deadline = 0
 	_restart_with_test_hand()
 
 func _restart_with_test_hand() -> void:
@@ -1228,6 +1238,7 @@ func _apply_round_ready(peer: int, data: Dictionary) -> void:
 func _apply_opening_delay() -> void:
 	if game == null:
 		return
+	game.opening_speed = opening_speed
 	game.opening_delay_seconds = CONFIG.OPENING_WAIT_SECONDS \
 		* float(CONFIG.OPENING_SPEEDS.get(opening_speed, 1.0)) \
 		if dedicated or DisplayServer.get_name() != "headless" else 0.0
@@ -1242,16 +1253,6 @@ func set_opening_speed(value: String) -> void:
 		_publish_lobby()
 	elif _client_joined:
 		rpc_id(1, "lobby_action", "opening_speed", {"value": value})
-
-@rpc("any_peer", "call_remote", "reliable")
-func request_opening_speed(value: String) -> void:
-	if not host_mode or multiplayer.get_remote_sender_id() != _owner_peer:
-		return
-	if value not in CONFIG.OPENING_SPEEDS:
-		return
-	opening_speed = value
-	_apply_opening_delay()
-	_publish_lobby()
 
 func _start_next_round() -> void:
 	if not host_mode or game == null or game.phase != RoundState.Phase.SETTLED or _ready_round != round_number or not all_ready() or _countdown > 0.0: return
@@ -1497,6 +1498,7 @@ func lobby_sync(state: Dictionary) -> void:
 	lobby = state
 	room_number = str(state.number)
 	room_name = str(state.name)
+	test_mode = bool(state.get("test_mode", false))
 	if not bool(state.get("started", false)) and _client_joined: _resume_sync_pending = false
 	_report_opening_speed()
 	lobby_updated.emit()
