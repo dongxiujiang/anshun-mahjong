@@ -24,6 +24,7 @@ func _run() -> void:
 	await _test_input()
 	_test_ready()
 	_test_ready_frame()
+	_test_test_pattern_hidden()
 	_test_kong()
 	_test_kong_choices()
 	await _test_response_actions()
@@ -165,6 +166,18 @@ func _test_ready_frame() -> void:
 	table.round = client
 	table._refresh()
 	_expect(table.ready_frames[1].visible, "Online snapshots preserve the opponent ready frame")
+
+func _test_test_pattern_hidden() -> void:
+	var config = root.get_node_or_null("GameConfig")
+	var was_debug := false
+	if config != null:
+		was_debug = bool(config.debug_enabled)
+		config.set_debug_enabled(false, false)
+	_new_fixture()
+	_expect(table._test_pattern_button != null and not table._test_pattern_button.visible,
+		"正式模式不显示测试牌型按钮")
+	if config != null:
+		config.set_debug_enabled(was_debug, false)
 
 func _test_kong() -> void:
 	_new_fixture()

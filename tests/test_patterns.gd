@@ -30,6 +30,10 @@ func _run() -> void:
 	for player in round.players: total += player.concealed.size()
 	for seat in 4: total += round.wall.wall_remaining(seat)
 	t.expect(total == 108, "测试发牌后牌张总数仍为 108")
+	round.opening_speed = "fast"
+	var client := RoundState.new()
+	client.apply_sync(round.serialize())
+	t.expect(client.opening_speed == "fast", "首份快照必须携带房主开局速度")
 	if t.failures == 0:
 		print("[test_patterns] passed")
 	await H.quit_cleanly(self, 0 if t.failures == 0 else 1)

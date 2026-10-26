@@ -87,6 +87,39 @@ func _test_payments() -> void:
 			and str(transfer.get("reason", "")) == "清七对":
 			ready_pattern += float(transfer.get("amount", 0.0))
 	t.expect(is_equal_approx(ready_pattern, 44.0), "报听付款者仍付完整牌型分，但不额外加自摸4")
+	var multi_ready := fixture()
+	multi_ready.players[0].concealed = PLAIN.duplicate()
+	multi_ready.players[1].ready = true
+	multi_ready.players[2].ready = true
+	multi_ready.round_meta.winner = 0
+	multi_ready.round_meta.winners = [0]
+	multi_ready.round_meta.self_draw = true
+	var multi_ready_result := ScoringEngine.settle(multi_ready)
+	var kill_by_payer := {}
+	for transfer in multi_ready_result.transfers:
+		if str(transfer.get("reason", "")) == "杀报":
+			kill_by_payer[int(transfer.get("from", -1))] = float(transfer.get("amount", 0.0))
+	t.expect(kill_by_payer.get(1, 0.0) == 24.0 and kill_by_payer.get(2, 0.0) == 24.0,
+		"多个报听付款者各付一份杀报24")
+	t.expect(multi_ready_result.pairwise[0][3] == 24.0,
+		"未报听第三家仍按普通自摸/干扣支付")
+	t.expect(multi_ready_result.pairwise[0][1] == 24.0 and multi_ready_result.pairwise[0][2] == 24.0,
+		"报听付款者不再另付自摸4")
+	var multi_winner := fixture()
+	multi_winner.players[0].concealed = PLAIN.duplicate()
+	multi_winner.players[1].concealed = PLAIN.duplicate()
+	multi_winner.players[2].ready = true
+	multi_winner.round_meta.winner = 0
+	multi_winner.round_meta.winners = [0, 1]
+	multi_winner.round_meta.self_draw = false
+	multi_winner.round_meta.discard_seat = 2
+	var multi_winner_result := ScoringEngine.settle(multi_winner)
+	var kill_to := {}
+	for transfer in multi_winner_result.transfers:
+		if str(transfer.get("reason", "")) == "杀报":
+			kill_to[int(transfer.get("to", -1))] = float(transfer.get("amount", 0.0))
+	t.expect(kill_to.get(0, 0.0) == 24.0 and kill_to.get(1, 0.0) == 24.0,
+		"一个报听放炮者向每个未报听赢家各付一份杀报24")
 	var dry := fixture(); dry.players[0].concealed = PLAIN.duplicate(); dry.players[1].concealed = WAIT.duplicate(); dry.players[1].discards = ["tiao1"]; dry.players[1].discard_ids = [0]
 	dry.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}
 	dry.round_meta.winner = 0; dry.round_meta.winners = [0]; dry.round_meta.self_draw = true
