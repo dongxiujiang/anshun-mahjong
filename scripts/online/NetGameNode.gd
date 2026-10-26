@@ -1227,7 +1227,7 @@ func set_opening_speed(value: String) -> void:
 		opening_speed = value
 		_apply_opening_delay()
 		_publish_lobby()
-	elif _client_joined and _owner_peer == _local_peer():
+	elif _client_joined:
 		rpc_id(1, "request_opening_speed", value)
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -1471,9 +1471,9 @@ func seat_assign(seat: int, issued_token: String = "") -> void:
 	_reconnecting = false
 	_reconnect_attempt = 0
 	my_seat = seat
-	# 房主入座时就同步开局速度，确保服务器第一次 start_round 前已经拿到。
-	if _owner_peer == _local_peer():
-		call_deferred("set_opening_speed", CONFIG.opening_animation_speed)
+	# 入座时就上报本机速度；服务器只接受房主发来的值。这样不依赖
+	# 客户端是否已经收到 owner 信息，也不会错过第一次 start_round。
+	call_deferred("set_opening_speed", CONFIG.opening_animation_speed)
 	room_ready.emit(seat)
 	if not _pending_snapshot.is_empty():
 		var state := _pending_snapshot
