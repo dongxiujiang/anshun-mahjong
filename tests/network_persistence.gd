@@ -77,7 +77,7 @@ func _run() -> void:
 	t.expect(net.lobby.seats[1].ready and net.lobby.seats[1].disconnected, "Lobby presents ready substitute without losing reservation")
 	net._orphaned[1].until = Time.get_ticks_msec() - 1
 	net._process(0.0)
-	t.expect(not net.has_reconnect_reservations(), "Five-minute deadline releases reserved seat")
+	t.expect(net.has_reconnect_reservations(), "Started game retains the reservation until settlement")
 	network.reset()
 	# Real lobby inputs persist without requiring Join/Create.
 	var lobby = load("res://scenes/Lobby.tscn").instantiate()

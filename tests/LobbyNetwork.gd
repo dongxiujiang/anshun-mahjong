@@ -98,13 +98,7 @@ func _run() -> void:
 		t.expect(await _wait_until(func(): return net.my_seat == 0), "Swapped seat synchronized")
 		t.expect(await _wait_until(func(): return bool(net.lobby.seats[3].ready)), "Moved host readied")
 		net.set_ready(true)
-		t.expect(await _wait_until(func(): return int(net.lobby.countdown) >= 0), "Countdown synchronized")
-		net.set_ready(false)
-		t.expect(await _wait_until(func(): return int(net.lobby.countdown) < 0), "Countdown cancelled")
-		net.rpc_id(1, "ack", "cancelled")
-		await get_tree().create_timer(0.2).timeout
-		net.set_ready(true)
-		t.expect(await _wait_until(func(): return net.game.phase != RoundState.Phase.IDLE), "Tiles arrive only after ready")
+		t.expect(await _wait_until(func(): return net.game.phase != RoundState.Phase.IDLE), "All ready immediately starts the game")
 		t.expect(net.game.dealer_seat == 0, "Dealer synchronized")
 		for seat in range(1, 4):
 			t.expect(net.game.players[seat].concealed.all(func(tile): return tile == "hidden0"), "Opponent tiles remain private")

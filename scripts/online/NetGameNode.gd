@@ -21,8 +21,6 @@ const PCM_VOICE := preload("res://scripts/online/OnlineVoiceChat.gd")
 const TEST_PATTERNS := preload("res://scripts/core/TestPatterns.gd")
 const CONFIG := preload("res://scripts/autoload/GameConfig.gd")
 const AUTO := "auto"
-const START_DELAY := 3.0
-const NEXT_ROUND_DELAY := 1.0
 # Phase one keeps the table paused for a short background check. When it
 # expires the AI plays on the player's behalf, but the authenticated seat
 # reservation survives until the room closes, so the player can always
@@ -326,14 +324,6 @@ func _process(delta: float) -> void:
 		_swap.clear()
 		_check_start()
 		_publish_lobby()
-	if _countdown >= 0.0:
-		var previous := ceili(_countdown)
-		_countdown -= delta
-		if _countdown <= 0.0:
-			if _started: _start_next_round()
-			else: start_net_game()
-		elif ceili(_countdown) != previous:
-			_publish_lobby()
 
 func _on_peer_connected(peer: int) -> void:
 	_pending_peers[peer] = Time.get_ticks_msec()
@@ -595,9 +585,13 @@ func _check_start() -> void:
 	var can_start := not _started or (game != null and game.phase == RoundState.Phase.SETTLED and _ready_round == round_number)
 	if not can_start or not all_ready():
 		_countdown = -1.0
-	elif _countdown < 0.0:
-		# 重复准备消息不能重置已经开始的倒计时。
-		_countdown = NEXT_ROUND_DELAY if _started else START_DELAY
+		return
+	# 所有人准备后直接开局/下一局，不再等固定倒计时。
+	_countdown = -1.0
+	if _started:
+		_start_next_round()
+	else:
+		start_net_game()
 
 func _publish_lobby() -> void:
 	var seats: Array = []

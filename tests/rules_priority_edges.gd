@@ -92,7 +92,11 @@ func _run() -> void:
 		if int(transfer.get("from", -1)) == 2 and int(transfer.get("to", -1)) == 0 \
 			and str(transfer.get("reason", "")) == "荒牌包鸡":
 			package_paid += float(transfer.get("amount", 0.0))
-	t.expect(is_equal_approx(package_paid, 12.0), "package includes called player's pong chicken")
+	for transfer in package.last_result.get("transfers", []):
+		if int(transfer.get("from", -1)) == 2 and int(transfer.get("to", -1)) == 0 \
+			and str(transfer.get("reason", "")) == "荒牌基础补付":
+			package_paid += float(transfer.get("amount", 0.0))
+	t.expect(is_equal_approx(package_paid, 12.0), "package includes called player's pong chicken and base fee")
 
 	var stable: RoundState = _fixture()
 	var before_prompt: int = stable.prompt_id

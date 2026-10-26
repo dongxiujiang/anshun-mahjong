@@ -327,7 +327,8 @@ func _test_kong_payments() -> void:
 		r.players[0].melds.append({"kind": "kong", "tile": tile, "concealed": true})
 	r.players[0].discards = ["tiao1"]
 	r.round_meta.charge_chickens = {"tiao1": {"owner": 0, "location": "discard", "discard_id": 0}}
-	check(settle(r).deltas == [120.0, -40.0, -40.0, -40.0], "四杠叫牌者按每组杠基础和杠中鸡收取")
+	var four_kong_result := settle(r)
+	check(four_kong_result.deltas == [180.0, -60.0, -60.0, -60.0], "四杠叫牌者按牌型分、每组杠基础和杠中鸡收取")
 
 func _test_multiplier() -> void:
 	var r := fixture()

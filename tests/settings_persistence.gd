@@ -3,7 +3,7 @@ const H := preload("res://tests/test_harness.gd")
 const STORE := preload("res://scripts/core/UserSettingsStore.gd")
 const GAME := "res://scripts/autoload/GameConfig.gd"
 const AUDIO := "res://scripts/autoload/AudioManager.gd"
-const CHOICES := {"ai_speed": "medium", "animation_speed": "fast", "draw_animation_speed": "slow", "discard_animation_speed": "fast", "settlement_speed": "detail"}
+const CHOICES := {"ai_speed": "medium", "animation_speed": "fast", "draw_animation_speed": "slow", "discard_animation_speed": "fast", "settlement_speed": "fast"}
 var t := H.new()
 var directory := "res://build/settings_persistence/%d" % OS.get_process_id()
 
@@ -42,12 +42,12 @@ func _test_defaults_and_recovery() -> void:
 	data.set_value("future", "keep", "from-newer-version")
 	data.set_value("game", "draw_animation_speed", {"invalid": true})
 	data.set_value("game", "discard_animation_speed", "obsolete")
-	data.set_value("game", "settlement_speed", "detail")
+	data.set_value("game", "settlement_speed", "fast")
 	data.erase_section_key("game", "animation_speed")
 	data.save(path)
 	var digest := FileAccess.get_sha256(path)
 	var loaded = _game(path)
-	t.expect(loaded.ai_speed == "slow" and loaded.settlement_speed == "detail", "valid choices survive invalid neighboring fields")
+	t.expect(loaded.ai_speed == "slow" and loaded.settlement_speed == "fast", "valid choices survive invalid neighboring fields")
 	t.expect(loaded.draw_animation_speed == "fast" and loaded.discard_animation_speed == "fast", "invalid type and obsolete key fall back individually")
 	t.expect(loaded.animation_speed == "standard", "a newly added setting uses its default")
 	loaded.set_ai_speed("invalid")
@@ -88,7 +88,7 @@ func _test_controls() -> void:
 	var settings = load("res://scripts/ui/SoundSettings.gd").new()
 	settings.table_mode = true
 	root.add_child(settings)
-	for pair in [["draw", "slow"], ["discard", "fast"], ["settlement", "detail"]]:
+	for pair in [["draw", "slow"], ["discard", "fast"], ["settlement", "fast"]]:
 		settings.get(pair[0] + "_speed_buttons")[pair[1]].pressed.emit()
 		var key: String = pair[0] + ("_speed" if pair[0] == "settlement" else "_animation_speed")
 		t.expect(STORE.read_config(config.settings_path).get_value("game", key) == pair[1], "UI choice saved immediately while panel is still open: " + key)
@@ -108,7 +108,7 @@ func _test_controls() -> void:
 	settings.persist_changes = false
 	settings.draw_speed_buttons.instant.pressed.emit()
 	settings.discard_speed_buttons.instant.pressed.emit()
-	settings.settlement_speed_buttons.instant.pressed.emit()
+	settings.settlement_speed_buttons.slow.pressed.emit()
 	settings.sliders.voice.value = 19
 	settings.voice_selector.item_selected.emit(1)
 	settings.close()
@@ -121,7 +121,7 @@ func _child(mode: String) -> void:
 	if mode == "patch":
 		t.expect(ProjectSettings.load_resource_pack(directory + "/new-defaults.pck", true), "mount updated defaults from a real PCK")
 		var defaults = ResourceLoader.load(GAME, "", ResourceLoader.CACHE_MODE_IGNORE).new()
-		t.expect(defaults.ai_speed == "slow" and defaults.settlement_speed == "instant", "updated script defaults really differ from the installed version")
+		t.expect(defaults.ai_speed == "slow" and defaults.settlement_speed == "fast", "updated script defaults really differ from the installed version")
 		defaults.free()
 	var config = _game(directory + "/restart_game.cfg")
 	var audio = _audio(directory + "/restart_audio.cfg")
@@ -158,7 +158,7 @@ func _test_restart_and_patch() -> void:
 	var game_hash := FileAccess.get_sha256(directory + "/restart_game.cfg")
 	var audio_hash := FileAccess.get_sha256(directory + "/restart_audio.cfg")
 	_run_child("read")
-	var game_source := FileAccess.get_file_as_string(GAME).replace('var ai_speed := "medium"', 'var ai_speed := "slow"').replace('var settlement_speed := "standard"', 'var settlement_speed := "instant"')
+	var game_source := FileAccess.get_file_as_string(GAME).replace('var ai_speed := "medium"', 'var ai_speed := "slow"').replace('var settlement_speed := "standard"', 'var settlement_speed := "fast"')
 	var audio_source := FileAccess.get_file_as_string(AUDIO).replace('{"music": 0.12, "voice": 0.8, "effects": 0.65}', '{"music": 0.5, "voice": 0.5, "effects": 0.5}')
 	var pack := PCKPacker.new()
 	t.expect(pack.pck_start(directory + "/new-defaults.pck") == OK, "create preference upgrade fixture")
@@ -188,3 +188,4 @@ func _run() -> void:
 	_test_controls()
 	_test_restart_and_patch()
 	quit(t.finish("settings_persistence"))
+

@@ -249,7 +249,7 @@ func _check_final(r: RoundState, context: String) -> void:
 	t.expect(c.has_started() and c.is_completed() and not c.is_active(), context + ": completed")
 	t.expect(c._tween == null or not c._tween.is_valid(), context + ": completion releases tween")
 	t.expect(c.current_pairs == r.last_result.pairwise, context + ": exact final payments")
-	t.expect(not c._skip_button.visible, context + ": skip hidden")
+	t.expect(c.layer.get_node_or_null("SkipSettlementAnimation") == null, context + ": no skip button")
 	for seat in 4:
 		for node in table.hand_box[seat].get_children():
 			if node is TileView:
@@ -403,7 +403,7 @@ func _prepare_timed(r: RoundState) -> Tween:
 	if not t.expect(tween != null and tween.is_valid(), "timed path owns a tween"): return null
 	tween.pause()
 	t.expect(c.is_active() and c.has_started() and not c.is_completed(), "prepared playback is active")
-	t.expect(c._skip_button.visible, "skip available during playback")
+	t.expect(c.layer.get_node_or_null("SkipSettlementAnimation") == null, "no skip button during playback")
 	t.expect(not table._settlement_card._post_controls.visible, "next round is unavailable during playback")
 	for node in _nodes(c.layer): t.expect(not node is Timer, "settlement has no timer nodes")
 	for seat in 4:
@@ -434,8 +434,8 @@ func _test_highlights() -> void:
 			c._end_stage()
 			for node in _nodes(table):
 				if node is TileView: t.expect(not node.score_highlight, "stage completion clears every highlight")
-		c._skip_button.pressed.emit()
-		_check_final(r, kind + "/skip button")
+		c.skip()
+		_check_final(r, kind + "/programmatic skip")
 		t.expect(_snapshot(r) == before, "highlight/skip presentation cannot change tiles or scoring")
 
 func _test_timed() -> void:
@@ -573,7 +573,8 @@ func _all_called_timeline(view) -> Tween:
 	tween.pause()
 	t.expect(c.is_active() and not c.is_completed(), "notice is active before its deadline")
 	t.expect(c.boards.is_empty() and c.payment_labels.is_empty() and c._flip_view == null, "notice creates no boards or flipped tile")
-	t.expect(not c._skip_button.visible and not view._post_controls.visible, "notice has neither skip nor next-round controls")
+	t.expect(c.layer.get_node_or_null("SkipSettlementAnimation") == null and not view._post_controls.visible,
+		"notice has neither skip nor next-round controls")
 	t.expect(c._notice != null and c._notice.is_visible_in_tree() and c._notice.text == "黄牌，下局鸡分 × 2", "all-called notice remains visible until its deadline")
 	for seat in 4:
 		t.expect(view.discard_scroll[seat].get_node("Tiles").visible, "all-called notice leaves rivers visible")
@@ -588,7 +589,7 @@ func _test_all_called_timeline() -> void:
 	if not t.expect(view_script.reload() == OK, "compile isolated GameTable subclass"): return
 	var config := root.get_node("GameConfig")
 	var previous_speed: String = config.settlement_speed
-	for speed in ["standard", "slow", "detail", "instant"]:
+	for speed in ["standard", "slow", "fast"]:
 		config.set_settlement_speed(speed)
 		var duration := 1.5 # An all-called notice is not a scoring animation.
 		for mode in ["", "client"]:
@@ -617,7 +618,9 @@ func _test_all_called_timeline() -> void:
 			tween.custom_step(0.002)
 			t.expect(c.is_completed() and not c.is_active() and c._notice == null, "notice is removed immediately after deadline")
 			t.expect(not tween.is_valid() and c._tween == null, "all-called natural completion releases its timeline")
-			t.expect(c.boards.is_empty() and c._flip_view == null and not c._skip_button.visible, "natural completion never creates a scoring animation")
+			t.expect(c.boards.is_empty() and c._flip_view == null
+				and c.layer.get_node_or_null("SkipSettlementAnimation") == null,
+				"natural completion never creates a scoring animation or skip button")
 			if mode == "":
 				t.expect(view.new_game_requests == 1, "offline natural completion dispatches real next-round handler exactly once")
 				t.expect(endpoint.ready_calls.is_empty(), "offline advance does not send readiness")
@@ -674,7 +677,7 @@ func _test_settlement_speed() -> void:
 	for general in ["instant", "fast", "standard"]:
 		config.set_animation_speed(general)
 		var general_duration: float = config.animation_duration(1.0)
-		for settlement in ["standard", "slow", "detail"]:
+		for settlement in ["standard", "slow", "fast"]:
 			config.set_settlement_speed(settlement)
 			t.expect(config.animation_speed == general and config.animation_duration(1.0) == general_duration, "settlement speed never changes play animation speed")
 			var duration: float = config.settlement_duration(UI.SETTLEMENT_FADE_SECONDS)
@@ -699,17 +702,16 @@ func _test_settlement_speed() -> void:
 	t.expect(settings.settlement_speed_buttons.slow.modulate != Color.WHITE, "selected settlement speed is marked")
 	tween.custom_step(0.1)
 	t.expect(is_equal_approx(c._river_alpha, 0.5), "live slow setting halves playback rate immediately")
-	settings.settlement_speed_buttons.detail.pressed.emit()
-	tween.custom_step(0.175)
-	t.expect(is_equal_approx(c._river_alpha, 0.25), "live detailed setting applies without restarting fade")
+	settings.settlement_speed_buttons.fast.pressed.emit()
+	tween.custom_step(0.2)
+	t.expect(c._river_alpha <= 0.25, "live fast setting accelerates the fade without restarting it")
 	t.expect(config.animation_speed == "instant", "settlement selection preserves instant play animation")
 	settings.draw_speed_buttons.fast.pressed.emit()
-	t.expect(config.settlement_speed == "detail", "general animation selection preserves detailed settlement")
-	settings.settlement_speed_buttons.instant.pressed.emit()
-	t.expect(not tween.is_valid() and c._tween == null, "instant selection immediately cancels active timeline")
-	_check_final(r, "live instant")
+	t.expect(config.settlement_speed == "fast", "general animation selection preserves fast settlement")
 	config.set_settlement_speed("invalid")
-	t.expect(config.settlement_speed == "instant", "invalid settlement speed is ignored")
+	t.expect(config.settlement_speed == "fast", "invalid settlement speed is ignored")
+	c.skip()
+	_check_final(r, "live fast")
 	t.expect(_snapshot(r) == snapshot, "all speed changes leave authoritative settlement immutable")
 	var groups: Array = [settings.speed_buttons, settings.draw_speed_buttons, settings.discard_speed_buttons, settings.settlement_speed_buttons]
 	var rectangles: Array[Rect2] = []
@@ -1021,3 +1023,4 @@ func _run() -> void:
 	await _test_exit()
 	AudioServer.set_bus_mute(master, was_muted)
 	await H.quit_cleanly(self, t.finish("settlement_animation_flow"))
+

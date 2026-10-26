@@ -14,7 +14,6 @@ var score_annotations
 var current_pairs: Array = []
 var plan: Dictionary = {}
 var _flip_view: TileView
-var _skip_button: Button
 var _notice: Label
 var _burn_badge: Label
 var _particles: Array = []
@@ -38,11 +37,6 @@ func build() -> void:
 	layer.size = UI.DESIGN_SIZE
 	layer.z_index = 200
 	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_skip_button = table._button("跳过动画", skip, Vector2(228, 72))
-	_skip_button.name = "SkipSettlementAnimation"
-	_skip_button.add_theme_font_size_override("font_size", 30)
-	layer.add_child(_skip_button)
-	_skip_button.hide()
 	score_annotations = ANNOTATIONS.new(table)
 	layer.add_child(score_annotations)
 	refresh_layout()
@@ -70,7 +64,6 @@ func reset() -> void:
 	_burn_badge = null
 	plan.clear()
 	current_pairs.clear()
-	if is_instance_valid(_skip_button): _skip_button.hide()
 	if is_instance_valid(table):
 		for label in table.net_labels.values():
 			label.hide()
@@ -88,7 +81,7 @@ func is_completed() -> bool:
 
 func start(immediate: bool = false) -> void:
 	if not _prepare(): return
-	if immediate or DisplayServer.get_name() == "headless" or (GameConfig.settlement_speed == "instant" and not plan.all_called_draw):
+	if immediate or DisplayServer.get_name() == "headless":
 		skip()
 	else:
 		_play()
@@ -124,7 +117,6 @@ func _prepare() -> bool:
 	else:
 		_build_boards()
 		_create_flip()
-		_skip_button.show()
 	refresh_layout()
 	apply_displays()
 	return true
@@ -167,9 +159,7 @@ func _play() -> void:
 
 func update_speed() -> void:
 	if not _active or plan.all_called_draw: return
-	if GameConfig.settlement_speed == "instant":
-		skip()
-	elif _tween != null and _tween.is_valid():
+	if _tween != null and _tween.is_valid():
 		# 更改速度只调整同一条时间线，不重播任何计分拍或重建累计分。
 		_tween.set_speed_scale(1.0 / GameConfig.settlement_duration(1.0))
 
@@ -200,7 +190,6 @@ func _complete() -> void:
 		_flip_view.set_card(_flip_tile, true)
 		_flip_view.scale = Vector2.ONE
 		_flip_view.show()
-	_skip_button.hide()
 	_active = false
 	_completed = true
 	# kill() also handles a skip during a callback; no deferred stage can reappear.
@@ -284,7 +273,6 @@ func _create_flip() -> void:
 func refresh_layout() -> void:
 	if not is_instance_valid(layer): return
 	layer.size = UI.DESIGN_SIZE
-	_skip_button.position = Vector2(UI.DESIGN_SIZE.x - UI.SETTINGS_BUTTON_SIZE.x - 272, UI.SETTINGS_TOP_GAP)
 	for seat in identity_labels:
 		var score: Label = table.center_labels[seat]
 		var label: Label = identity_labels[seat]

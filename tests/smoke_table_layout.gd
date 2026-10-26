@@ -25,6 +25,7 @@ func _run() -> void:
 	_test_ready()
 	_test_ready_frame()
 	_test_test_pattern_hidden()
+	_test_win_with_kong_actions()
 	_test_kong()
 	_test_kong_choices()
 	await _test_response_actions()
@@ -58,6 +59,7 @@ func _run() -> void:
 	await _test_draw_results()
 	await _test_landscape_stretch()
 	await _test_next_round()
+	_test_independent_settlement_counts()
 	if not failed:
 		print("[smoke_table_layout] selection, ready, kong, sync, layout, settlement passed")
 	table.queue_free()
@@ -178,6 +180,48 @@ func _test_test_pattern_hidden() -> void:
 		"正式模式不显示测试牌型按钮")
 	if config != null:
 		config.set_debug_enabled(was_debug, false)
+
+func _test_win_with_kong_actions() -> void:
+	_new_fixture()
+	var player: PlayerState = table.round.players[0]
+	player.concealed = ["wan1","wan1","wan1","wan1","wan2","wan2","wan3","wan3",
+		"wan4","wan4","wan5","wan5","wan6","wan6"]
+	player.just_drew = "wan1"
+	table.round.current_turn = 0
+	table.round.awaiting = true
+	table._table_actions._build_turn_options(player)
+	var labels: Array = []
+	for button in table._table_actions.action_bar.get_children():
+		if button is Button: labels.append(button.text)
+	_expect("自摸" in labels and "暗杠" in labels,
+		"winning draw still shows concealed kong: " + str(labels))
+	player.ready = true
+	table._table_actions._build_turn_options(player)
+	labels.clear()
+	for button in table._table_actions.action_bar.get_children():
+		if button is Button: labels.append(button.text)
+	_expect("自摸" in labels and "暗杠" not in labels and "加杠" not in labels,
+		"ready player can only self-win, no kong buttons: " + str(labels))
+	_new_fixture()
+	player = table.round.players[0]
+	player.concealed = ["wan1","wan2","wan3","wan4","wan4","wan4","wan5","wan5","wan5","wan6","wan6"]
+	player.melds = [{"kind": "pung", "tile": "wan1"}]
+	player.just_drew = "wan1"
+	table.round.current_turn = 0
+	table.round.awaiting = true
+	table._table_actions._build_turn_options(player)
+	labels.clear()
+	for button in table._table_actions.action_bar.get_children():
+		if button is Button: labels.append(button.text)
+	_expect("自摸" in labels and "加杠" in labels,
+		"winning draw still shows added kong: " + str(labels))
+	table._clear_actions()
+	table._on_require_response(0, 1, "wan5", {"can_win": true, "can_pong": true, "can_kong": true})
+	labels.clear()
+	for button in table._table_actions.action_bar.get_children():
+		if button is Button: labels.append(button.text)
+	_expect("胡" in labels and "碰" in labels and "杠" in labels and "过" in labels,
+		"win+pong+kong response shows all choices: " + str(labels))
 
 func _test_kong() -> void:
 	_new_fixture()
@@ -784,6 +828,34 @@ func _test_next_round() -> void:
 	_expect(table.round.phase == RoundState.Phase.PLAYING)
 	for seat in 4:
 		_expect(not table.ready_frames[seat].visible, "A new round clears the previous ready gold frame")
+
+func _test_independent_settlement_counts() -> void:
+	var network = root.get_node_or_null("Network")
+	if network == null or network.net_node == null:
+		_expect(false, "Network autoload is available for settlement count test")
+		return
+	_new_fixture()
+	table.human_seat = 0
+	table.round.phase = RoundState.Phase.SETTLED
+	var old_mode: String = network.mode
+	var old_lobby: Dictionary = network.net_node.lobby.duplicate(true)
+	var old_round: int = network.net_node.round_number
+	var seats := [
+		{"seat": 0, "ai": false, "ready": true},
+		{"seat": 1, "ai": false, "ready": false},
+		{"seat": 2, "ai": true, "ready": true},
+		{"seat": 3, "ai": true, "ready": true},
+	]
+	network.mode = "client"
+	network.net_node.round_number = 1
+	network.net_node.lobby = {"ready_round": 1, "seats": seats,
+		"return_vote": {"humans": [0, 1], "yes": {0: true, 1: false}}}
+	table._settlement_card._refresh_next_round_controls()
+	_expect(table._settlement_card._return_seat_button.text == "返回座位 1/2", "返回座位计数独立统计返回投票")
+	_expect(table._next_round_button.text.begins_with("准备下一局 1/2"), "准备下一局计数独立统计 ready")
+	network.mode = old_mode
+	network.net_node.lobby = old_lobby
+	network.net_node.round_number = old_round
 
 func _physical_rect(control: Control) -> Rect2:
 	return root.get_screen_transform() * _control_rect(control)

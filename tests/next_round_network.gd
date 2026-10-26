@@ -62,28 +62,10 @@ func _run() -> void:
 		await create_timer(1.2).timeout
 		t.expect(net.round_number == 1 and int(net.lobby.countdown) < 0, "Three ready cannot start without the fourth")
 		table._next_round_button.pressed.emit()
-	t.expect(await _wait_until(func(): return int(net.lobby.countdown) == 1), "All four ready synchronizes countdown")
-	t.expect(table._settlement_card._post_controls.visible and table._next_round_hint.text.contains("1 秒"), "Bottom controls show the synchronized countdown")
-	t.expect(table._next_round_status.text.contains("4 / 4"), "All four acknowledgements update the readiness summary")
-	if role == 3:
-		await create_timer(0.2).timeout
-		table._next_round_button.pressed.emit()
-	t.expect(await _wait_until(func(): return int(net.lobby.countdown) < 0), "Cancel readiness cancels countdown for everyone")
-	await create_timer(1.15).timeout
-	t.expect(net.round_number == 1, "Cancelled countdown never starts a round")
-	t.expect(settlement.is_completed() and settlement.boards.size() == board_count and table._settlement_card._post_controls.visible, "Cancelling readiness preserves tabletop settlement and controls")
-	t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Readiness updates keep the tabletop input layer non-blocking")
-	if role == 3:
-		await create_timer(0.15).timeout
-		net.next_round()
-	t.expect(await _wait_until(func(): return int(net.lobby.countdown) == 1), "Ready again creates a fresh countdown")
 	var ready_at := Time.get_ticks_msec()
-	if role == 0:
-		var remaining := net._countdown
-		net.next_round()
-		t.expect(net._countdown == remaining, "Duplicate readiness cannot extend countdown")
-	t.expect(await _wait_until(func(): return net.round_number == 2), "Four humans enter the second round together")
-	t.expect(Time.get_ticks_msec() - ready_at >= 850, "Authority waits one second after all ready")
+	t.expect(await _wait_until(func(): return net.round_number == 2), "All four ready immediately enter the second round")
+	t.expect(Time.get_ticks_msec() - ready_at < 850, "All-ready start does not wait for a countdown")
+	t.expect(int(net.lobby.countdown) < 0, "Immediate next round has no countdown")
 	t.expect(net.game.dealer_seat == dealer and net.game.players.map(func(player): return player.score) == scores, "Dealer and scores survive ready transition")
 	t.expect(not settlement.has_started() and settlement.boards.is_empty() and not table._settlement_card._post_controls.visible, "Second-round tiles replace settlement on all clients")
 	if role == 0:
@@ -110,7 +92,7 @@ func _run() -> void:
 	t.expect(await _wait_until(func(): return net.lobby.seats.any(func(seat): return seat.disconnected)), "Lost connection reserves a seat for reconnect")
 	var disconnected_at := Time.get_ticks_msec()
 	await create_timer(1.15).timeout
-	t.expect(net.round_number == 2 and int(net.lobby.countdown) < 0, "Reconnect reservation blocks next-round countdown")
+	t.expect(net.round_number == 2 and int(net.lobby.countdown) < 0, "Reconnect reservation blocks immediate next-round start")
 	t.expect(await _wait_until(func(): return net.lobby.seats.any(func(seat): return seat.ai and seat.ready), 35.0), "Expired reconnect reservation becomes a ready AI")
 	t.expect(Time.get_ticks_msec() - disconnected_at >= 27000, "Seat is held for the thirty-second reconnect window")
 	t.expect(await _wait_until(func(): return net.round_number == 3), "Ready AI substitute allows the remaining humans to continue")

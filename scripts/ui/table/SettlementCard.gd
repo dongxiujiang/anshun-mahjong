@@ -97,29 +97,29 @@ func _refresh_next_round_controls() -> void:
 	_next_round_button.disabled = not ready_round or not table._settlement_animation_done()
 	_next_round_button.add_theme_font_size_override("font_size", 30)
 	_next_round_button.text = "准备下一局"
-	if not ready_round:
-		_next_round_button.text = "准备下一局 --/4"
-		if is_instance_valid(_return_seat_button):
-			_return_seat_button.text = "返回座位 --/4"
-			_return_seat_button.disabled = true
-		_next_round_status.text = "下一局准备"
-		_next_round_hint.text = "等待房间同步…"
-		return
 	var ready_count := 0
 	var human_count := 0
 	for member in seats:
 		if bool(member.get("ai", false)): continue
 		human_count += 1
 		if bool(member.get("ready", false)): ready_count += 1
+	# 返回座位是独立投票，不能因为下一局还没进入 ready_round 就把计数
+	# 改成 --/4 或禁用按钮；两个计数必须各自更新。
 	var return_vote: Dictionary = state.get("return_vote", {})
 	var vote_humans: Array = return_vote.get("humans", [])
 	var vote_yes: Dictionary = return_vote.get("yes", {})
 	var returned := 0
 	for voter in vote_humans:
 		if bool(vote_yes.get(int(voter), false)): returned += 1
+	var return_total := maxi(1, vote_humans.size() if not vote_humans.is_empty() else human_count)
 	if is_instance_valid(_return_seat_button):
-		_return_seat_button.text = "返回座位 %d/%d" % [returned, maxi(1, vote_humans.size())]
-		_return_seat_button.disabled = vote_humans.is_empty()
+		_return_seat_button.text = "返回座位 %d/%d" % [returned, return_total]
+		_return_seat_button.disabled = human_count <= 0
+	if not ready_round:
+		_next_round_button.text = "准备下一局 %d/%d" % [ready_count, maxi(1, human_count)]
+		_next_round_status.text = "下一局准备 %d / %d" % [ready_count, maxi(1, human_count)]
+		_next_round_hint.text = "等待房间同步…"
+		return
 	var seconds := int(state.get("countdown", -1))
 	var ready := bool(seats[table.human_seat].get("ready", false))
 	var all_ready := human_count > 0 and ready_count >= human_count

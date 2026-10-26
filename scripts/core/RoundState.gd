@@ -88,6 +88,9 @@ var _awaiting_response := {}
 var _response_stage: ResponseStage = ResponseStage.NONE
 var _pending_kong := {}
 var _pending_wins: Array = []
+# 兼有胡/碰/杠的响应先记下放弃胡、改为碰杠的意图；等所有胡响应
+# 结束后再落账，避免碰杠抢走其他玩家仍可成立的胡。
+var _pending_claims: Array = []
 var _last_deltas: Array = [0.0, 0.0, 0.0, 0.0]
 var _last_lines: Array = []
 var _last_total := 0.0
@@ -208,6 +211,7 @@ func start_round(human_seat: int, die_override: int = -1) -> void:
 	last_discard = {}
 	_pending_kong = {}
 	_pending_wins.clear()
+	_pending_claims.clear()
 	_awaiting_response = {}
 	_response_stage = ResponseStage.NONE
 	_pending_responders.clear()
@@ -678,6 +682,7 @@ func _sorted_occurrence_index(sorted_cards: Array, tile: String, occurrence: int
 
 func _after_discard() -> void:
 	_response_stage = ResponseStage.WIN
+	_pending_claims.clear()
 	_pending_responders = _seat_order(int(last_discard.seat))
 	_ask_next_responder(last_discard.seat, last_discard.tile)
 
@@ -718,7 +723,11 @@ func _ask_next_responder(source: int, tile: String) -> void:
 			if not _pending_wins.is_empty():
 				_awaiting_response = {}
 				_response_stage = ResponseStage.NONE
+				_pending_claims.clear()
 				_finish_discard_wins(source, tile)
+				return
+			if not _pending_claims.is_empty():
+				_execute_deferred_claim(source, tile)
 				return
 			# 胡优先于杠/碰：先单独开放一轮杠响应，杠家全部过牌后
 			# 才进入碰牌阶段，避免先轮到的碰家抢走后面玩家的杠。
@@ -834,6 +843,12 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 	if not _pending_responders.is_empty() and _pending_responders[0] == seat:
 		_pending_responders.pop_front()
 	var player: PlayerState = players[seat]
+	if _response_stage == ResponseStage.WIN and action in ["pong", "kong"]:
+		# 放弃胡，先记录碰/杠意图；其他胡家的响应结束后再决定能否落账。
+		_pending_claims.append({"seat": seat, "source": source, "tile": tile, "action": action})
+		player.passed_win_until_draw = true
+		_ask_next_responder(source, tile)
+		return
 	if action == "pass":
 		if _response_stage in [ResponseStage.WIN, ResponseStage.ROB]:
 			player.passed_win_until_draw = true
@@ -869,6 +884,63 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		_emit_audio_event("pong", seat)
 		_ask_turn_actor()
 		return
+	_ask_next_responder(source, tile)
+
+func _execute_deferred_claim(source: int, tile: String) -> void:
+	if str(last_discard.get("tile", "")) != tile or int(last_discard.get("seat", -1)) != source:
+		_pending_claims.clear()
+		_ask_next_responder(source, tile)
+		return
+	var claims := _pending_claims.duplicate(true)
+	claims.sort_custom(func(a, b):
+		var ak := 1 if str(a.get("action", "")) == "kong" else 0
+		var bk := 1 if str(b.get("action", "")) == "kong" else 0
+		if ak != bk: return ak > bk
+		return _seat_order(source).find(int(a.seat)) < _seat_order(source).find(int(b.seat)))
+	for raw in claims:
+		var claim: Dictionary = raw
+		var seat := int(claim.get("seat", -1))
+		if seat < 0 or seat >= players.size(): continue
+		var action := str(claim.get("action", ""))
+		var claim_stage := ResponseStage.KONG if action == "kong" else ResponseStage.MELD
+		var options := legal_response_options(seat, source, tile, claim_stage)
+		if (action == "kong" and not options.can_kong) or (action == "pong" and not options.can_pong):
+			continue
+		var player: PlayerState = players[seat]
+		_pending_claims.clear()
+		_pending_responders.clear()
+		_awaiting_response = {}
+		_response_stage = ResponseStage.NONE
+		awaiting = false
+		var source_discard_id := _discard_id_for_tile(source, tile)
+		if action == "kong":
+			var hand_indices := _visual_hand_indices(player.concealed, tile, 3)
+			_remove_n(player.concealed, tile, 3)
+			player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
+			_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
+			current_turn = seat
+			_kong_draw_kind = KongKind.EXPOSED
+			_emit_audio_event("kong", seat)
+			_emit_visual_event("meld", {"seat": seat, "source": source, "source_discard_id": source_discard_id,
+				"hand_indices": hand_indices, "tile": tile, "kind": "kong", "index": player.melds.size() - 1})
+			_state_after_kong_draw()
+		else:
+			if options.can_kong and not player.add_kong_locked_tiles.has(tile):
+				player.add_kong_locked_tiles.append(tile)
+			var hand_indices := _visual_hand_indices(player.concealed, tile, 2)
+			_remove_n(player.concealed, tile, 2)
+			player.melds.append({"kind": "pung", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
+			_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
+			player.just_drew = ""
+			player.forbidden_discard_tile = tile
+			current_turn = seat
+			_kong_draw_turn = false
+			_emit_visual_event("meld", {"seat": seat, "source": source, "source_discard_id": source_discard_id,
+				"hand_indices": hand_indices, "tile": tile, "kind": "pung", "index": player.melds.size() - 1})
+			_emit_audio_event("pong", seat)
+			_ask_turn_actor()
+		return
+	_pending_claims.clear()
 	_ask_next_responder(source, tile)
 
 func _finish_discard_wins(source: int, tile: String) -> void:

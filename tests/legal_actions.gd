@@ -27,7 +27,8 @@ func _run() -> void:
 	t.expect(not round.legal_turn_options(0).discards.is_empty(), "调用方不能污染缓存")
 	player.ready = true
 	options = round.legal_turn_options(0)
-	t.expect(options.discards == ["wan9"] and options.kong_declares.is_empty() and options.add_kong.is_empty(), "报听只允许打刚摸的牌")
+	t.expect(options.discards == ["wan9"] and options.kong_declares.is_empty() and options.add_kong.is_empty(),
+		"报听只允许打刚摸的牌，不能改牌型")
 	t.expect(not round._valid_turn(0, {"discard": "wan1"}), "报听不能提交手中其他牌")
 	player.ready = false
 	round.wall.remaining = 0
@@ -50,7 +51,26 @@ func _run() -> void:
 	var response := round.legal_response_options(1, 0, "tiao1", RoundState.ResponseStage.MELD)
 	t.expect(response.can_pong and not response.can_kong, "牌墙为空时三张同牌可碰但不能杠（实际=%s）" % str(response))
 	response = round.legal_response_options(1, 0, "tiao1", RoundState.ResponseStage.WIN)
-	t.expect(not response.can_pong and not response.can_kong, "胡牌响应阶段不显示碰杠")
+	t.expect(not response.can_win and not response.can_pong and not response.can_kong,
+		"不能胡时胡牌响应阶段不显示碰杠")
+	# 有牌型时，胡、碰、杠可以同时出现在同一响应窗口；这里验证放弃胡
+	# 改碰会等胡响应结束后落账。
+	var choice := RoundState.new()
+	choice.start_round(0, 3)
+	choice.current_turn = 0
+	choice.awaiting = true
+	choice.players[0].concealed = ["wan9","tiao2","tiao3","tiao4","tong2","tong3","tong4","wan2","wan3","wan4","wan5","wan6","wan7","wan8"]
+	choice.players[1].concealed = ["wan9","wan9","wan1","wan1","wan1","wan2","wan2","wan2","wan3","wan3","wan3","wan4","wan4"]
+	choice.players[2].concealed = []
+	choice.players[3].concealed = []
+	t.expect(choice.submit_turn(0, {"discard": "wan9"}), "discard for win+pong choice")
+	var choice_options := choice.legal_response_options(1, 0, "wan9", RoundState.ResponseStage.WIN)
+	t.expect(choice_options.can_win and choice_options.can_pong and not choice_options.can_kong,
+		"winning response also offers pong")
+	t.expect(choice.submit_response(1, "wan9", {"action": "pong"}), "declining win for pong is accepted")
+	t.expect(choice.players[1].melds.any(func(meld): return meld.kind == "pung" and meld.tile == "wan9"),
+		"deferred pong executes after win window")
+	t.expect(choice.current_turn == 1, "ponger takes the turn")
 	response = round.legal_response_options(1, 0, "tiao1", RoundState.ResponseStage.ROB)
 	t.expect(not response.can_pong and not response.can_kong, "抢杠响应阶段不显示碰杠")
 	var invalid := round.legal_response_options(-1, 0, "tiao1", RoundState.ResponseStage.MELD)

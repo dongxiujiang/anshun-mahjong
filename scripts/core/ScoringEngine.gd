@@ -74,18 +74,34 @@ static func settle(round) -> Dictionary:
 			lines.append("四家叫牌流局，本局不计分；下局鸡分 ×2")
 			items = [[], [], [], []]
 		else:
-			PAY.pay_uncalled(deltas, transfers, called_seats, discard_points, true, pong_debt_points)
+			# 包鸡/鸡分仍按两两补付；叫牌补付改为“有牌型用牌型分，
+			# 无牌型用荒牌基础4”，不再额外叠加4。
+			PAY.pay_uncalled(deltas, transfers, called_seats, discard_points, false, pong_debt_points)
+			var called_fees := {}
+			var called_labels := {}
+			for receiver in 4:
+				if not called_seats[receiver]:
+					continue
+				var player: PlayerState = round.players[receiver]
+				var info: Dictionary = WIN.potential_pattern_info(player.concealed, player.melds)
+				var amount := float(info.get("score", 0.0))
+				called_fees[receiver] = amount if amount > 0.0 else CFG.SCORE_SELF_DRAW
+				called_labels[receiver] = str(info.get("label", "")) if amount > 0.0 else "荒牌基础分"
 			for payer in 4:
 				if called_seats[payer]:
 					continue
-				var called_count := 0
+				var huang_amount := 0.0
 				for receiver in 4:
-					if called_seats[receiver]:
-						called_count += 1
-				if called_count > 0:
-					var huang_amount := CFG.SCORE_SELF_DRAW * called_count
-					items[payer].append({"kind": "penalty", "label": "荒牌基础补付", "tile": "", "tiles": [],
-						"amount": -huang_amount, "own_amount": -huang_amount, "note": "未叫牌补给叫牌玩家"})
+					if not called_seats[receiver]:
+						continue
+					var fee := float(called_fees.get(receiver, CFG.SCORE_SELF_DRAW))
+					huang_amount += fee
+					PAY.transfer(deltas, transfers, payer, receiver, fee,
+						"荒牌牌型分" if called_labels[receiver] != "荒牌基础分" else "荒牌基础补付")
+				if not called_fees.is_empty():
+					items[payer].append({"kind": "penalty", "label": "荒牌补付", "tile": "", "tiles": [],
+						"amount": -huang_amount, "own_amount": -huang_amount,
+						"note": "未叫牌补给叫牌玩家（有牌型付牌型分，无牌型付4）"})
 			KONG.pay(round, deltas, transfers, called_seats, items, "", true)
 			_pay_uncalled_kong_income(round, called_seats, deltas, transfers)
 			lines.append("荒牌：未叫者补付后，下局鸡分仍 ×2")

@@ -132,6 +132,16 @@ static func _apply_extra(round, winner: int, amount: float, label: String, _chic
 	items[winner].append(_item("bonus", label, amount, ""))
 	lines.append("%s +%.0f" % [label, amount])
 
+## 流局补付：叫牌玩家可能听多张，取所有和牌张里最高的牌型。
+static func potential_pattern_info(concealed: Array, melds: Array) -> Dictionary:
+	var best: Dictionary = {}
+	for tile in RuleEngine.waiting_tiles(concealed, melds):
+		var info := _pattern_info(RuleEngine.analyze(concealed + [tile], melds, tile))
+		if float(info.get("score", 0.0)) > float(best.get("score", 0.0)):
+			best = info.duplicate()
+			best["tile"] = tile
+	return best
+
 static func _pattern_info(pattern: Dictionary) -> Dictionary:
 	var key := RuleEngine.special_pattern_key(pattern)
 	if key == "":

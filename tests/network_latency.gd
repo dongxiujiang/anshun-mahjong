@@ -50,7 +50,7 @@ func _run() -> void:
 	t.expect(not (root.multiplayer as SceneMultiplayer).server_relay, "Authoritative rooms do not relay client connections or disconnects")
 	host.set_wants_dealer(true)
 	host.set_ready(true)
-	t.expect(host.start_net_game(101), "Synchronization fixture starts")
+	t.expect(host._started, "All-ready synchronization fixture starts immediately")
 	for index in 10: host._host_broadcast()
 	await process_frame
 	t.expect(host._state_revision == 1 and host.state_metrics.coalesced >= 10, "Repeated state changes produce one final snapshot per frame")

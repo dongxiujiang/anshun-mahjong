@@ -146,7 +146,7 @@ func _ready() -> void:
 			draw_speed_buttons[key] = _button(item[0], Vector2(716 + draw_speed_buttons.size() * 94, 184), Vector2(86, 64), func(): _set_tile_speed("draw", key))
 			discard_speed_buttons[key] = _button(item[0], Vector2(716 + discard_speed_buttons.size() * 94, 296), Vector2(86, 64), func(): _set_tile_speed("discard", key))
 		_label("结算速度", Vector2(716, 366), Vector2(368, 38), 24)
-		for item in [["即时", "instant"], ["正常", "standard"], ["慢速", "slow"], ["细看", "detail"]]:
+		for item in [["快速", "fast"], ["正常", "standard"], ["慢速", "slow"]]:
 			var settlement_key: String = item[1]
 			var speed_button := _button(item[0], Vector2(716 + settlement_speed_buttons.size() * 94, 408), Vector2(86, 64), func(): _set_settlement_speed(settlement_key))
 			settlement_speed_buttons[settlement_key] = speed_button

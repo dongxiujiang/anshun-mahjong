@@ -7,7 +7,8 @@ static func turn_options(round, seat: int) -> Dictionary:
 	var player: PlayerState = round.players[seat]
 	options.self_win = player.just_drew != "" and RuleEngine.analyze(player.concealed, player.melds).win
 	if player.ready:
-		if player.just_drew != "" and player.concealed.has(player.just_drew): options.discards.append(player.just_drew)
+		if player.just_drew != "" and player.concealed.has(player.just_drew):
+			options.discards.append(player.just_drew)
 		return options
 	for tile in Tiles.to_counts(player.concealed).keys():
 		if tile != player.forbidden_discard_tile:
@@ -97,13 +98,18 @@ static func response_options(round, seat: int, source: int, tile: String, stage:
 	if seat < 0 or seat >= round.players.size() or source == seat or tile == "": return options
 	var player: PlayerState = round.players[seat]
 	options.can_win = can_win_on_discard(round, seat, source, tile, stage)
-	# During the KONG scan only the same player who can kong may also choose pong;
-	# two-copy players wait for the MELD stage after the kong decision.
+	# 有牌型（本张可胡）时，胡、碰、杠可以同时成立。玩家可以放弃胡，
+	# 选择碰/杠；真正落账时仍先等所有胡响应结束，避免碰杠抢走其他
+	# 玩家仍可成立的胡。不能胡的碰家仍按原顺序等杠阶段/碰阶段。
 	var copies := Tiles.count(player.concealed, tile)
-	options.can_pong = (stage == RoundState.ResponseStage.MELD or (stage == RoundState.ResponseStage.KONG and copies >= 3)) \
+	var win_stage_choice: bool = stage == RoundState.ResponseStage.WIN and options.can_win
+	options.can_pong = (stage == RoundState.ResponseStage.MELD
+		or (stage == RoundState.ResponseStage.KONG and copies >= 3)
+		or win_stage_choice) \
 		and not player.ready and not player.passed_pong_tiles.has(tile) and copies >= 2
-	options.can_kong = stage in [RoundState.ResponseStage.KONG, RoundState.ResponseStage.MELD] \
-		and not player.ready and round._wall_count() > 0 and Tiles.count(player.concealed, tile) >= 3
+	options.can_kong = (stage in [RoundState.ResponseStage.KONG, RoundState.ResponseStage.MELD]
+		or win_stage_choice) \
+		and not player.ready and round._wall_count() > 0 and copies >= 3
 	return options
 
 static func valid_response(options: Dictionary, decision: Dictionary) -> bool:

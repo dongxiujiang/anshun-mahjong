@@ -87,7 +87,7 @@ var draw_animation_speed := "fast"
 var discard_animation_speed := "fast"
 # 结算阅读节奏独立于摸牌、出牌等动画；慢速默认留足查看计分的时间。
 signal settlement_speed_changed
-const SETTLEMENT_SPEEDS := {"instant": 0.0, "standard": 1.0, "slow": 2.0, "detail": 3.5}
+const SETTLEMENT_SPEEDS := {"fast": 0.8, "standard": 1.0, "slow": 2.0}
 var settlement_speed := "standard"
 # 联机语音聊天：麦克风增益与其它玩家语音音量独立保存。
 signal voice_chat_settings_changed

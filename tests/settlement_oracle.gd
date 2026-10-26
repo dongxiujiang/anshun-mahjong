@@ -56,7 +56,7 @@ static func expected(round: RoundState) -> Dictionary:
 				continue
 			for receiver in 4:
 				if called[receiver]:
-					_credit(matrix, payer, receiver, float(discard_values[payer]) + float(discard_values[receiver]) + float(pong_values[payer]) + 4.0, burned)
+					_credit(matrix, payer, receiver, float(discard_values[payer]) + float(discard_values[receiver]) + float(pong_values[payer]) + _draw_called_fee(round, receiver), burned)
 
 	# 杠基础分是定向费用；杠中鸡在胡牌局已经进入鸡分比较，流局时
 	# 才向未叫牌者单独收取。未叫牌杠牌者的杠收入则反向记为其付款。
@@ -238,6 +238,14 @@ static func _is_post_kong_discard(last_discard: Dictionary) -> bool:
 	if not bool(last_discard.get("after_kong", false)):
 		return false
 	return int(last_discard.get("kong_kind", RoundState.KongKind.NONE)) in [RoundState.KongKind.CONCEALED, RoundState.KongKind.ADD_KONG]
+
+static func _draw_called_fee(round, seat: int) -> float:
+	var player: PlayerState = round.players[seat]
+	var best := 0.0
+	for tile in RuleEngine.waiting_tiles(player.concealed, player.melds):
+		var info := RuleEngine.analyze(player.concealed + [tile], player.melds, tile)
+		best = maxf(best, _pattern_fee(info))
+	return best if best > 0.0 else 4.0
 
 static func _pattern_fee(pattern: Dictionary) -> float:
 	if pattern.get("clean_dragon_seven_pairs", false): return 64.0

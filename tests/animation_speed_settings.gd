@@ -33,7 +33,7 @@ func _probe() -> Probe:
 func _config_and_controls() -> void:
 	var config = root.get_node("GameConfig")
 	config.set_animation_speed("standard")
-	config.set_settlement_speed("detail")
+	config.set_settlement_speed("fast")
 	var settings = load("res://scripts/ui/SoundSettings.gd").new()
 	settings.table_mode = true
 	settings.persist_changes = false
@@ -47,7 +47,7 @@ func _config_and_controls() -> void:
 				t.expect(config.animation_scale_for("draw") == config.TILE_ANIMATION_SPEEDS[draw], "draw speed survives independent discard and AI selections")
 				t.expect(config.animation_scale_for("discard") == config.TILE_ANIMATION_SPEEDS[discard], "discard speed survives independent draw and AI selections")
 				t.expect(config.animation_scale_for("meld") == 1.0 and config.animation_scale_for("sort_hand") == 1.0, "tile preferences cannot change meld/insert/sort")
-				t.expect(config.animation_scale_for("deal") == 1.0 and config.settlement_duration(1.0) == 3.5, "opening and settlement keep their own clocks")
+				t.expect(config.animation_scale_for("deal") == 1.0 and config.settlement_duration(1.0) == 0.8, "opening and settlement keep their own clocks")
 			t.expect(settings.draw_speed_buttons[draw].modulate != Color.WHITE and settings.discard_speed_buttons[discard].modulate != Color.WHITE, "both current selections are marked")
 	config.set_draw_animation_speed("invalid")
 	config.set_discard_animation_speed("invalid")
@@ -103,3 +103,4 @@ func _run() -> void:
 	_config_and_controls()
 	await _ai_waits()
 	quit(t.finish("animation_speed_settings"))
+

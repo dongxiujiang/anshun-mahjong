@@ -125,6 +125,104 @@ func _test_payments() -> void:
 	dry.round_meta.winner = 0; dry.round_meta.winners = [0]; dry.round_meta.self_draw = true
 	var dry_result := ScoringEngine.settle(dry)
 	t.expect(dry_result.items[0].any(func(v): return v.label == "干扣" and v.amount == 14.0), "另有叫牌玩家鸡分时普通无鸡自摸按干扣14")
+	var all_uncalled_dry := fixture()
+	all_uncalled_dry.players[0].concealed = PLAIN.duplicate()
+	for seat in [1, 2, 3]:
+		all_uncalled_dry.players[seat].concealed = ["wan1", "wan2", "wan9"]
+		all_uncalled_dry.players[seat].discards = ["tiao1", "tong8"]
+		all_uncalled_dry.players[seat].discard_ids = [0, 1]
+	all_uncalled_dry.round_meta.winner = 0
+	all_uncalled_dry.round_meta.winners = [0]
+	all_uncalled_dry.round_meta.self_draw = true
+	var all_uncalled_result := ScoringEngine.settle(all_uncalled_dry)
+	t.expect(all_uncalled_result.items[0].any(func(v): return v.label == "大干扣" and v.amount == 24.0),
+		"其他玩家都未叫牌时大干扣，即使他们各自有打出鸡")
+	var called_clean_dry := fixture()
+	called_clean_dry.players[0].concealed = PLAIN.duplicate()
+	called_clean_dry.players[1].concealed = WAIT.duplicate()
+	for seat in [2, 3]:
+		called_clean_dry.players[seat].concealed = ["wan1", "wan2", "wan9"]
+		called_clean_dry.players[seat].discards = ["tiao1", "tong8"]
+	called_clean_dry.round_meta.winner = 0
+	called_clean_dry.round_meta.winners = [0]
+	called_clean_dry.round_meta.self_draw = true
+	var called_clean_result := ScoringEngine.settle(called_clean_dry)
+	t.expect(called_clean_result.items[0].any(func(v): return v.label == "大干扣" and v.amount == 24.0),
+		"有叫牌玩家且叫牌玩家无鸡时，未叫牌玩家的鸡不阻止大干扣")
+	var called_chicken_dry := fixture()
+	called_chicken_dry.players[0].concealed = PLAIN.duplicate()
+	called_chicken_dry.players[1].concealed = WAIT.duplicate()
+	called_chicken_dry.players[1].discards = ["tong8"]
+	called_chicken_dry.round_meta.winner = 0
+	called_chicken_dry.round_meta.winners = [0]
+	called_chicken_dry.round_meta.self_draw = true
+	var called_chicken_result := ScoringEngine.settle(called_chicken_dry)
+	t.expect(called_chicken_result.items[0].any(func(v): return v.label == "干扣" and v.amount == 14.0),
+		"叫牌玩家有鸡时只能干扣14")
+	var draw_pattern := fixture()
+	draw_pattern.players[0].concealed = ["tiao1","tiao1","tiao2","tiao2","tiao3","tiao3","tiao4","tiao4","tiao5","tiao5","tiao6","tiao6","tiao9"]
+	for seat in [1, 2, 3]:
+		draw_pattern.players[seat].concealed = ["wan1", "wan2", "wan9"]
+	draw_pattern.round_meta.winner = -1
+	draw_pattern.round_meta.winners = []
+	draw_pattern.round_meta.self_draw = false
+	var draw_pattern_result := ScoringEngine.settle(draw_pattern)
+	var draw_fee := 0.0
+	for transfer in draw_pattern_result.transfers:
+		if int(transfer.get("from", -1)) == 1 and int(transfer.get("to", -1)) == 0 \
+			and str(transfer.get("reason", "")) == "荒牌牌型分":
+			draw_fee += float(transfer.get("amount", 0.0))
+	t.expect(is_equal_approx(draw_fee, 44.0), "流局叫牌清七对时未叫者付44，替代基础4")
+	t.expect(draw_pattern_result.deltas[0] == 132.0 and draw_pattern_result.deltas[1] == -44.0,
+		"流局牌型补付按每个未叫者分别支付")
+	var draw_no_pattern := fixture()
+	draw_no_pattern.players[0].concealed = WAIT.duplicate()
+	draw_no_pattern.players[1].concealed = ["wan1", "wan2", "wan9"]
+	draw_no_pattern.round_meta.winner = -1
+	draw_no_pattern.round_meta.winners = []
+	draw_no_pattern.round_meta.self_draw = false
+	var no_pattern_result := ScoringEngine.settle(draw_no_pattern)
+	var no_pattern_base := false
+	for transfer in no_pattern_result.transfers:
+		if int(transfer.get("from", -1)) == 1 and int(transfer.get("to", -1)) == 0 \
+			and str(transfer.get("reason", "")) == "荒牌基础补付" \
+			and is_equal_approx(float(transfer.get("amount", 0.0)), 4.0):
+			no_pattern_base = true
+	t.expect(no_pattern_base, "叫牌无牌型时流局仍付基础4")
+	var draw_multi := fixture()
+	draw_multi.players[0].concealed = ["tiao1","tiao1","tiao2","tiao2","tiao3","tiao3","tiao4","tiao4","tiao5","tiao5","tiao6","tiao6","tiao9"]
+	draw_multi.players[1].concealed = WAIT.duplicate()
+	draw_multi.players[2].concealed = ["wan1", "wan2", "wan9"]
+	draw_multi.round_meta.winner = -1
+	draw_multi.round_meta.winners = []
+	draw_multi.round_meta.self_draw = false
+	var draw_multi_result := ScoringEngine.settle(draw_multi)
+	var multi_fees := {}
+	for transfer in draw_multi_result.transfers:
+		if int(transfer.get("from", -1)) == 2:
+			multi_fees[int(transfer.get("to", -1))] = float(transfer.get("amount", 0.0))
+	t.expect(is_equal_approx(multi_fees.get(0, 0.0), 44.0) and is_equal_approx(multi_fees.get(1, 0.0), 4.0),
+		"多家叫牌时未叫者分别向叫牌者支付各自牌型分/基础4")
+	var chicken_sources := [
+		{"name": "手中幺鸡", "discards": [], "melds": [], "flip": "", "hand": ["tiao1"] + PLAIN.slice(1)},
+		{"name": "打出八筒", "discards": ["tong8"], "melds": [], "flip": "", "hand": PLAIN},
+		{"name": "暗杠幺鸡", "discards": [], "melds": [{"kind": "kong", "tile": "tiao1", "concealed": true}], "flip": "", "hand": PLAIN},
+		{"name": "明杠八筒", "discards": [], "melds": [{"kind": "kong", "tile": "tong8", "from_seat": 1}], "flip": "", "hand": PLAIN},
+		{"name": "加杠幺鸡", "discards": [], "melds": [{"kind": "add_kong", "tile": "tiao1", "from_seat": 1}], "flip": "", "hand": PLAIN},
+		{"name": "翻鸡万二", "discards": [], "melds": [], "flip": "wan2", "hand": PLAIN},
+	]
+	for source in chicken_sources:
+		var r := fixture()
+		r.players[0].concealed = source.hand.duplicate()
+		r.players[0].melds = source.melds.duplicate(true)
+		r.players[0].discards = source.discards.duplicate()
+		r.round_meta.winner = 0
+		r.round_meta.winners = [0]
+		r.round_meta.self_draw = true
+		r.round_meta.flip_tile = source.flip
+		var result := ScoringEngine.settle(r)
+		var dry_labels: Array = result.items[0].filter(func(v): return v.label in ["干扣", "大干扣"])
+		t.expect(dry_labels.is_empty(), "赢家有%s时不能干扣/大干扣" % source.name)
 
 func _test_draw_and_kong() -> void:
 	var r := fixture()

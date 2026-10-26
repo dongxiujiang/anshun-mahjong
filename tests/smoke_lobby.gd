@@ -19,11 +19,8 @@ func _run() -> void:
 	net.select_seat(3)
 	t.expect(net.my_seat == 3 and net._peer_seat[1] == 3, "Host can select AI seat")
 	t.expect(net.game.players.is_empty() and not net.all_ready(), "Seat selection does not deal")
-	net.set_ready(true)
-	t.expect(net.all_ready() and net._countdown == net.START_DELAY, "All ready starts countdown")
 	net.select_seat(1)
-	t.expect(net.my_seat == 1 and not net.all_ready() and net._countdown < 0, "Changing seat clears ready/countdown")
-	net.set_ready(true)
+	t.expect(net.my_seat == 1 and net._peer_seat[1] == 1, "Host returns to first seat before start")
 	net.set_wants_dealer(true)
 	t.expect(not net.all_ready(), "Dealer change clears own ready")
 	var rng := RandomNumberGenerator.new()
@@ -43,7 +40,8 @@ func _run() -> void:
 	net._members.erase(99)
 	net._peer_seat.erase(99)
 	net.set_ready(true)
-	t.expect(net.start_net_game(999), "Ready room starts")
+	t.expect(net.all_ready() and net._started and net._countdown < 0,
+		"All ready starts immediately without countdown")
 	t.expect(net.game.dealer_seat == 1 and net.game.players.size() == 4, "Actual chosen dealer gets tiles")
 	t.expect(net.game.players[1].is_human, "Moved host keeps local control")
 	var old := net.my_seat
@@ -82,16 +80,7 @@ func _run() -> void:
 	lobby.dealer_button.button_pressed = true
 	t.expect(network.net_node.lobby.seats[2].wants_dealer, "Dealer checkbox sends applicant")
 	lobby.ready_button.pressed.emit()
-	t.expect(network.net_node.all_ready() and lobby.ready_button.text == "取消准备", "Ready UI sends ready state")
-	lobby.ready_button.pressed.emit()
-	t.expect(not network.net_node.all_ready(), "Ready UI can cancel")
-	await process_frame
-	await process_frame
-	if DisplayServer.get_name() != "headless":
-		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png("res://build/lobby_waiting.png")
-	lobby._back()
-	t.expect(not lobby._in_room and network.mode == "", "Leave room returns to browser")
-	lobby.queue_free()
+	t.expect(network.net_node.all_ready() and network.net_node._started,
+		"Ready UI immediately starts the game")
 	await process_frame
 	quit(t.finish("smoke_lobby"))

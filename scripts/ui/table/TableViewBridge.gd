@@ -204,9 +204,6 @@ func _settlement_animation_started() -> bool:
 func _settlement_animation_done() -> bool:
 	return _settlement_animation_controller.is_completed()
 
-func _skip_settlement_animation() -> void:
-	_settlement_animation_controller.skip()
-
 func _animation_target_for_seat(seat: int) -> Vector2:
 	return _table_animation_controller._animation_target_for_seat(seat)
 

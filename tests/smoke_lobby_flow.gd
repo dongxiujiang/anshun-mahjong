@@ -32,10 +32,11 @@ func _run() -> void:
 	lobby.seat_buttons[2].pressed.emit()
 	lobby.dealer_button.button_pressed = true
 	lobby.ready_button.pressed.emit()
-	t.expect(lobby.waiting.visible, "Ready stays in lobby until countdown")
-	await create_timer(3.3).timeout
+	var table_deadline := Time.get_ticks_msec() + 5000
+	while current_scene == lobby and Time.get_ticks_msec() < table_deadline:
+		await process_frame
 	var table = current_scene
-	t.expect(table != null and table.has_method("_on_net_prompt"), "Countdown enters actual table scene")
+	t.expect(table != null and table.has_method("_on_net_prompt"), "All ready immediately enters actual table scene")
 	if table == null or not table.has_method("_on_net_prompt"):
 		quit(1)
 		return
@@ -70,12 +71,11 @@ func _run() -> void:
 	var scores: Array = table.round.players.map(func(player): return player.score)
 	var next_dealer: int = table.round.next_dealer_seat
 	table._next_round_button.pressed.emit()
-	t.expect(network.net_node.round_number == 1 and settlement.is_completed() and table._settlement_card._post_controls.visible, "Readying keeps tabletop settlement until countdown completes")
-	t.expect(table._next_round_button.text.contains("1 秒"), "Settlement shows one-second countdown")
-	# 固定等待在整组回归的高负载下会偶发抖动，改为轮询直到牌局真正推进并完成结算。
 	var advance_deadline := Time.get_ticks_msec() + 8000
 	while network.net_node.round_number != 2 and Time.get_ticks_msec() < advance_deadline:
 		await process_frame
+	t.expect(network.net_node.round_number == 2 and int(network.net_node.lobby.countdown) < 0,
+		"All-ready settlement immediately advances without countdown")
 	await process_frame
 	t.expect(network.net_node.round_number == 2, "Next-round table button advances network round")
 	t.expect(not settlement.has_started() and settlement.boards.is_empty() and not table._settlement_card._post_controls.visible, "New round clears tabletop settlement and readiness controls")

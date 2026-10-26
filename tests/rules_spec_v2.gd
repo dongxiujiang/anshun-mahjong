@@ -767,7 +767,7 @@ func _test_ledger_and_draws() -> void:
 			eq([296],"叫牌家之间无付款",result.transfers,[],"scripts/core/ScoringEngine.gd:10")
 		else:
 			# 用户2026-10-18确认：双方出牌鸡之外每对额外4，最后统一翻倍。
-			eq([297,300],"用户确认流局额外基础4整体翻倍",fee(result,2,0,"荒牌包鸡"),16.0,"scripts/core/PaymentLedger.gd:30")
+			eq([297,300],"用户确认流局额外基础4整体翻倍",fee(result,2,0,"荒牌包鸡") + fee(result,2,0,"荒牌基础补付"),16.0,"scripts/core/PaymentLedger.gd:30;scripts/core/ScoringEngine.gd:10")
 	var draw_unit := fixture()
 	begin("draw_chicken_unit",draw_unit,"PaymentLedger单元: called=[真,真,假,假],出牌鸡=[2,4,6,0]")
 	d = [0.0,0.0,0.0,0.0]
