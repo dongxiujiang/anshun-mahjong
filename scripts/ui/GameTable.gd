@@ -3,6 +3,7 @@ extends "res://scripts/ui/table/TableViewBridge.gd"
 signal quit_to_menu
 
 const CONNECTION_OVERLAY := preload("res://scripts/ui/ConnectionOverlay.gd")
+const TEST_PATTERNS := preload("res://scripts/core/TestPatterns.gd")
 
 
 ## 牌局与联机事件协调器。视觉状态由 table/ 组件持有。
@@ -20,7 +21,12 @@ var _audio_round: RoundState
 var _sound_button: Button
 var _settings_button: Button
 var _voice_button: Button
+var _test_pattern_button: Button
 var _ai_teach_button: Button
+var _test_popup: PopupMenu
+var _test_vote_panel: Panel
+var _test_vote_label: Label
+var _test_vote_buttons: HBoxContainer
 
 var _ai_teach_token := 0
 var _ai_assist_enabled := false
@@ -192,6 +198,78 @@ func _build_table_overlays() -> void:
 	_return_vote_status.z_index = 100
 	add_child(_return_vote_status)
 	_return_vote_status.hide()
+	_build_test_pattern_ui()
+
+func _build_test_pattern_ui() -> void:
+	_test_vote_panel = Panel.new()
+	_test_vote_panel.name = "TestPatternVote"
+	_test_vote_panel.size = Vector2(760, 170)
+	_test_vote_panel.position = Vector2((_design_size().x - 760.0) / 2.0, 130.0)
+	_test_vote_panel.z_index = 210
+	_test_vote_panel.add_theme_stylebox_override("panel", _style(Color("#102018f2"), UI.GOLD, 16, 2))
+	add_child(_test_vote_panel)
+	_test_vote_label = Label.new()
+	_test_vote_label.position = Vector2(24, 18)
+	_test_vote_label.size = Vector2(712, 64)
+	_test_vote_label.add_theme_font_override("font", TileView._font())
+	_test_vote_label.add_theme_font_size_override("font_size", 26)
+	_test_vote_label.add_theme_color_override("font_color", UI.INK)
+	_test_vote_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_test_vote_panel.add_child(_test_vote_label)
+	_test_vote_buttons = HBoxContainer.new()
+	_test_vote_buttons.position = Vector2(24, 96)
+	_test_vote_buttons.size = Vector2(712, 64)
+	_test_vote_buttons.add_theme_constant_override("separation", 20)
+	_test_vote_panel.add_child(_test_vote_buttons)
+	var agree := _button("同意", func(): _answer_test_vote(true), Vector2(220, 60), true)
+	agree.name = "AgreeTestPattern"
+	var reject := _button("拒绝", func(): _answer_test_vote(false), Vector2(220, 60))
+	reject.name = "RejectTestPattern"
+	_test_vote_buttons.add_child(agree)
+	_test_vote_buttons.add_child(reject)
+	_test_vote_panel.hide()
+
+func _on_test_pattern_pressed() -> void:
+	var net = _net_node()
+	if net == null or net.mode == "":
+		return
+	if _test_popup == null:
+		_test_popup = PopupMenu.new()
+		_test_popup.name = "TestPatternMenu"
+		for index in TEST_PATTERNS.CATALOG.size():
+			var entry: Dictionary = TEST_PATTERNS.CATALOG[index]
+			_test_popup.add_item("%s  %s" % [entry.name, entry.description], index)
+		_test_popup.id_pressed.connect(func(index: int):
+			if index >= 0 and index < TEST_PATTERNS.CATALOG.size():
+				net.propose_test_pattern(str(TEST_PATTERNS.CATALOG[index].id)))
+		add_child(_test_popup)
+	_test_popup.popup_centered(Vector2i(620, 210))
+
+func _answer_test_vote(agree: bool) -> void:
+	var net = _net_node()
+	if net != null:
+		net.answer_test_vote(agree)
+	_refresh_test_pattern_ui()
+
+func _refresh_test_pattern_ui() -> void:
+	if _test_vote_panel == null:
+		return
+	var net = _net_node()
+	var vote: Dictionary = net.lobby.get("test_vote", {}) if net != null else {}
+	if vote.is_empty():
+		_test_vote_panel.hide()
+		return
+	var pattern := str(vote.get("pattern", ""))
+	var entry: Dictionary = TEST_PATTERNS.get_entry(pattern)
+	var humans: Array = vote.get("humans", [])
+	var yes: Array = vote.get("yes", [])
+	var me := int(net.my_seat)
+	if me in yes:
+		_test_vote_label.text = "测试牌型：%s\n已同意，等待其他真人同意（%d/%d）" % [entry.get("name", pattern), yes.size(), humans.size()]
+	else:
+		_test_vote_label.text = "有玩家申请测试牌型：%s\n是否同意立即重开本局并给发起者发这套牌？" % entry.get("name", pattern)
+	_test_vote_buttons.visible = me not in yes
+	_test_vote_panel.show()
 
 func _on_voice_status(_enabled: bool, _message: String) -> void:
 	_refresh_voice_button()
@@ -563,6 +641,7 @@ func _on_net_lobby_updated() -> void:
 	var net = _net_node()
 	if net != null and net.lobby is Dictionary and net.lobby.has("return_vote"):
 		_on_return_vote_updated(net.lobby.get("return_vote", {}))
+	_refresh_test_pattern_ui()
 
 func _on_net_prompt(seat: int) -> void:
 	if seat != human_seat or seat >= round.players.size():
@@ -667,3 +746,4 @@ func _export_current_replay() -> void:
 
 func _confirm_quit() -> void:
 	_sound_settings.confirm_exit()
+

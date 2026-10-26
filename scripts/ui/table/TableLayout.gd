@@ -66,6 +66,14 @@ func _build_static_ui() -> void:
 	voice_button.visible = false
 	surface.add_child(voice_button)
 	table._voice_button = voice_button
+	var test_button: Button = table._button("测试", table._on_test_pattern_pressed,
+		Vector2(104, UI.SETTINGS_BUTTON_SIZE.y))
+	test_button.name = "TestPatternButton"
+	test_button.add_theme_font_size_override("font_size", UI.SETTINGS_FONT_SIZE - 8)
+	test_button.tooltip_text = "联机测试牌型，需要全部真人同意"
+	test_button.visible = false
+	surface.add_child(test_button)
+	table._test_pattern_button = test_button
 	var ai_teach: Button = table._button("AI教学", table._on_ai_assist_pressed, Vector2(148, UI.SETTINGS_BUTTON_SIZE.y))
 	ai_teach.name = "AITeachButton"
 	ai_teach.toggle_mode = true
@@ -144,6 +152,9 @@ func _layout() -> void:
 		table._voice_button.visible = table._net_mode() != ""
 		table._voice_button.position = table._ai_teach_button.position - Vector2(table._voice_button.size.x + 10.0, 0.0)
 		table._refresh_voice_button()
+	if table._test_pattern_button != null:
+		table._test_pattern_button.visible = table._net_mode() != ""
+		table._test_pattern_button.position = table._voice_button.position - Vector2(table._test_pattern_button.size.x + 10.0, 0.0)
 	# Actions sit immediately above the local player's draw slot.
 	table._layout_actions()
 	status_label.position = Vector2(60, design.y - 54)

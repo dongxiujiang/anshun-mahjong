@@ -18,6 +18,7 @@ signal voice_status(enabled, message)
 
 const VOICE_CHAT := preload("res://scripts/online/GMEVoiceChat.gd")
 const PCM_VOICE := preload("res://scripts/online/OnlineVoiceChat.gd")
+const TEST_PATTERNS := preload("res://scripts/core/TestPatterns.gd")
 const AUTO := "auto"
 const START_DELAY := 3.0
 const NEXT_ROUND_DELAY := 1.0
@@ -72,6 +73,8 @@ var _client_joined := false
 var _orphaned: Dictionary = {}
 var _background_until: Dictionary = {}
 var _background_vote_pending: Dictionary = {}
+var _test_vote: Dictionary = {}
+var _test_pending: Dictionary = {}
 var _return_vote_active := false
 var _return_vote_yes: Dictionary = {}
 var _return_vote_initiator := -1
@@ -473,6 +476,16 @@ func _on_peer_disconnected(peer: int) -> void:
 	_peer_last_seen.erase(peer)
 	_members.erase(peer)
 	_seat_peer[seat] = -1
+	if not _test_vote.is_empty():
+		var alive := _human_seats()
+		var valid := true
+		for human in _test_vote.get("humans", []):
+			if int(human) not in alive:
+				valid = false
+				break
+		if not valid:
+			_test_vote.clear()
+			_publish_lobby()
 	_background_until.erase(seat)
 	_background_vote_pending.erase(seat)
 	if retained:
@@ -588,7 +601,7 @@ func _publish_lobby() -> void:
 		# disconnected seats have an orphan record with the retained member.
 		if _orphaned.has(seat): member = _orphaned[seat].member
 		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": (not _waiting_for_reconnect(seat) and ai) if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
-	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "return_vote": _return_vote_data()}
+	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer): rpc_id(peer, "lobby_sync", lobby)
 	lobby_updated.emit()
@@ -674,6 +687,9 @@ func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 		return
 	if action == "return_vote":
 		_apply_return_vote_answer(peer, bool(data.get("agree", false)))
+		return
+	if action == "test_vote":
+		_apply_test_vote_answer(peer, bool(data.get("agree", false)))
 		return
 	if action == "ai_speed":
 		var speed_key := str(data.get("value", ""))
@@ -1002,6 +1018,90 @@ func _start_return_vote(initiator: int) -> void:
 			_background_vote_pending[int(seat)] = Time.get_ticks_msec() + BACKGROUND_VOTE_DELAY_MS
 	_publish_return_vote()
 	_check_return_vote()
+
+func propose_test_pattern(pattern: String) -> void:
+	if not _started or game == null:
+		return
+	var seat := _local_seat()
+	if seat < 0:
+		return
+	if host_mode:
+		_start_test_vote(seat, pattern)
+	elif _client_joined:
+		rpc_id(1, "request_test_pattern", pattern)
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_test_pattern(pattern: String) -> void:
+	if not host_mode or not _started or game == null:
+		return
+	var seat := int(_peer_seat.get(multiplayer.get_remote_sender_id(), -1))
+	_start_test_vote(seat, pattern)
+
+func _start_test_vote(initiator: int, pattern: String) -> void:
+	if not host_mode or game == null or pattern not in TEST_PATTERNS.ids():
+		return
+	var humans := _human_seats()
+	if initiator not in humans or humans.is_empty():
+		return
+	_test_vote = {"pattern": pattern, "seat": initiator, "humans": humans.duplicate(), "yes": [initiator]}
+	_publish_lobby()
+
+func answer_test_vote(agree: bool) -> void:
+	if host_mode:
+		_apply_test_vote_answer(_local_peer(), agree)
+	elif _client_joined:
+		rpc_id(1, "lobby_action", "test_vote", {"agree": agree})
+
+func _apply_test_vote_answer(peer: int, agree: bool) -> void:
+	if not host_mode or _test_vote.is_empty():
+		return
+	var seat := int(_peer_seat.get(peer, -1))
+	if seat not in _test_vote.get("humans", []):
+		return
+	if not agree:
+		var pattern := str(_test_vote.get("pattern", ""))
+		_test_vote.clear()
+		_publish_lobby()
+		lobby_notice.emit("测试牌型“%s”被拒绝" % TEST_PATTERNS.get_entry(pattern).get("name", pattern))
+		return
+	var yes: Array = _test_vote.get("yes", [])
+	if seat not in yes:
+		yes.append(seat)
+	_test_vote["yes"] = yes
+	var all_yes := true
+	for human in _test_vote.get("humans", []):
+		if int(human) not in yes:
+			all_yes = false
+			break
+	if not all_yes:
+		_publish_lobby()
+		return
+	_test_pending = {"pattern": str(_test_vote.get("pattern", "")), "seat": int(_test_vote.get("seat", -1))}
+	_test_vote.clear()
+	_restart_with_test_hand()
+
+func _restart_with_test_hand() -> void:
+	if not host_mode or game == null or _test_pending.is_empty():
+		return
+	var pattern := str(_test_pending.get("pattern", ""))
+	var seat := int(_test_pending.get("seat", -1))
+	_test_pending.clear()
+	var hand := TEST_PATTERNS.hand(pattern)
+	if seat not in range(4) or hand.size() != 13:
+		_publish_lobby()
+		return
+	game.test_hand_seat = seat
+	game.test_hand = hand.duplicate()
+	game.test_pattern = pattern
+	# 重开本局，不推进庄家；当前局未结算的分数自然保留。
+	game.next_dealer_seat = game.dealer_seat
+	_ready_round = -1
+	_invalidate_ready()
+	game.start_round(my_seat)
+	_apply_member_names()
+	_host_broadcast()
+	_publish_lobby()
+	lobby_notice.emit("测试牌型“%s”已生效" % TEST_PATTERNS.get_entry(pattern).get("name", pattern))
 
 @rpc("any_peer", "call_remote", "reliable")
 func return_to_lobby_request() -> void:
@@ -1475,3 +1575,4 @@ func ack(text: String) -> void:
 	if host_mode and _peer_seat.has(multiplayer.get_remote_sender_id()):
 		ack_flag = true
 		ack_text = text
+

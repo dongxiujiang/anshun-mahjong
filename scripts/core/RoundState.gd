@@ -114,6 +114,10 @@ var ai_apply_max_ms := 0.0
 var _ai_pending: Dictionary = {}
 var opening_delay_seconds := 0.0
 var _opening_generation := 0
+## 联机测试牌型：只覆盖指定座位，牌墙会先从完整牌库移除这些牌。
+var test_hand_seat := -1
+var test_hand: Array = []
+var test_pattern := ""
 var next_chicken_multiplier := 1
 const PRESENTATION := preload("res://scripts/core/RoundPresentation.gd")
 var _presentation := PRESENTATION.new()
@@ -267,9 +271,15 @@ func _initial_deal() -> void:
 	var info: Array = []
 	for player in players:
 		info.append({"seat": player.seat, "count": player.concealed.size()})
+	if test_hand_seat in SEATS and test_hand.size() == 13:
+		# 测试牌型覆盖指定座位；牌墙和总牌张数保持正常。
+		players[test_hand_seat].concealed = test_hand.duplicate()
 	dealt.emit({"players": info, "batches": batches})
 	for batch in batches:
 		_emit_visual_event("deal_batch", {"deals": batch})
+	# 只作用于本次发牌，下局必须没有测试手牌残留。
+	test_hand_seat = -1
+	test_hand.clear()
 
 func _begin_turn() -> void:
 	if phase != Phase.PLAYING:

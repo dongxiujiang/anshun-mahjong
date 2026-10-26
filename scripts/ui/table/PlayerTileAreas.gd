@@ -390,8 +390,9 @@ func _refresh_ready_frame(seat: int) -> void:
 		return
 	frame.position = bounds.position - Vector2(8, 8)
 	frame.size = bounds.size + Vector2(16, 16)
+	# 金边只画边框，必须压在手牌和新刷出的牌面之上。
+	frame.z_index = 5
 	frame.show()
-	# 金边只画边框，置于手牌之上，避免被新刷出的牌面盖住。
 	frame.move_to_front()
 
 func _refresh_exposed(seat: int) -> void:
