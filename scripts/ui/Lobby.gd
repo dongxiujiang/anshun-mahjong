@@ -363,7 +363,7 @@ func _create() -> void:
 		# A background list refresh must not swallow the create request.
 		Network.directory.cancel()
 		_message("正在创建在线房间…")
-		Network.directory.create_room(number, room_name_input.text)
+		Network.directory.create_room(number, room_name_input.text, GameConfig.opening_animation_speed)
 		return
 	_message("检查房间号…")
 	Network.discovery.search()
@@ -573,3 +573,4 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if update_panel != null and update_panel.is_open(): update_panel.close()
 		else: _back()
+

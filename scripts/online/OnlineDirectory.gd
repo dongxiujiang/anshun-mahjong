@@ -50,8 +50,9 @@ func cancel() -> void:
 	busy = false
 	_operation = ""
 
-func create_room(number: String, title: String) -> void:
-	_request("create", "/rooms", HTTPClient.METHOD_POST, {"number": number, "name": title})
+func create_room(number: String, title: String, opening_speed: String = "standard") -> void:
+	_request("create", "/rooms", HTTPClient.METHOD_POST,
+		{"number": number, "name": title, "opening_speed": opening_speed})
 
 func _request(operation: String, path: String, method: int, body: Dictionary = {}) -> void:
 	if busy: return
@@ -89,3 +90,4 @@ func _completed(result: int, code: int, _headers: PackedStringArray, body: Packe
 
 func _valid_room(room: Variant) -> bool:
 	return room is Dictionary and NetGameNode.valid_room_number(str(room.get("number", ""))) and str(room.get("host", "")) != "" and int(room.get("port", 0)) > 0 and int(room.get("port", 0)) <= 65535
+

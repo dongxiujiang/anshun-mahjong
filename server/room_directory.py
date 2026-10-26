@@ -262,7 +262,7 @@ class RoomDirectory:
             except (OSError, ValueError, KeyError, TypeError):
                 return False
 
-    def create(self, number, name, client_id=""):
+    def create(self, number, name, client_id="", opening_speed="standard"):
         if not isinstance(number, str) or not NUMBER.fullmatch(number):
             raise ValueError("房间号必须是 4～8 位数字")
         if not isinstance(name, str): raise ValueError("房间名称无效")
@@ -294,7 +294,8 @@ class RoomDirectory:
             args = [self.godot, "--headless", "--path", str(self.project),
                     "--script", "res://server/RoomServer.gd", "--",
                     f"--room-number={number}", f"--room-name={name.strip()[:24] or '在线麻将'}",
-                    f"--room-port={port}", f"--status-file={status}"]
+                    f"--room-port={port}", f"--status-file={status}",
+                    f"--opening-speed={opening_speed if opening_speed in ('fast', 'standard') else 'standard'}"]
             # Keep the owner bearer token out of the process command line,
             # where ps/procfs would expose it to other local users.
             child_env = os.environ.copy()
@@ -411,7 +412,7 @@ class Handler(BaseHTTPRequestHandler):
             if length <= 0 or length > 4096: raise ValueError("请求大小无效")
             data = json.loads(self.rfile.read(length))
             if not isinstance(data, dict): raise ValueError("请求格式无效")
-            room = self.server.directory.create(data.get("number"), data.get("name", "在线麻将"), client_id)
+            room = self.server.directory.create(data.get("number"), data.get("name", "在线麻将"), client_id, data.get("opening_speed", "standard"))
             self._reply(201, {"room": room})
         except PermissionError as error: self._reply(429, {"error": str(error)})
         except FileExistsError as error: self._reply(409, {"error": str(error)})
@@ -446,3 +447,4 @@ def main():
         directory.close()
 
 if __name__ == "__main__": main()
+

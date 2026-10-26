@@ -50,6 +50,7 @@ var _ctrl_hint: Dictionary = {}
 var _members: Dictionary = {}
 var _pending_peers: Dictionary = {}
 var _owner_peer := 1
+var _opening_speed_reported := ""
 var _owner_token := ""
 var _port := 7500
 var _host_ai_fill := true
@@ -1223,6 +1224,7 @@ func _apply_opening_delay() -> void:
 func set_opening_speed(value: String) -> void:
 	if value not in CONFIG.OPENING_SPEEDS:
 		return
+	_opening_speed_reported = ""
 	if host_mode:
 		opening_speed = value
 		_apply_opening_delay()
@@ -1471,9 +1473,8 @@ func seat_assign(seat: int, issued_token: String = "") -> void:
 	_reconnecting = false
 	_reconnect_attempt = 0
 	my_seat = seat
-	# 入座时就上报本机速度；服务器只接受房主发来的值。这样不依赖
-	# 客户端是否已经收到 owner 信息，也不会错过第一次 start_round。
-	call_deferred("set_opening_speed", CONFIG.opening_animation_speed)
+	# 入座/收到 lobby 时上报本机速度；服务器只接受房主发来的值。
+	call_deferred("_report_opening_speed")
 	room_ready.emit(seat)
 	if not _pending_snapshot.is_empty():
 		var state := _pending_snapshot
@@ -1486,7 +1487,16 @@ func lobby_sync(state: Dictionary) -> void:
 	room_number = str(state.number)
 	room_name = str(state.name)
 	if not bool(state.get("started", false)) and _client_joined: _resume_sync_pending = false
+	_report_opening_speed()
 	lobby_updated.emit()
+
+func _report_opening_speed() -> void:
+	if host_mode or not _client_joined or int(lobby.get("owner", -1)) != _local_peer():
+		return
+	var desired := CONFIG.opening_animation_speed
+	if str(lobby.get("opening_speed", "")) == desired:
+		return
+	rpc_id(1, "request_opening_speed", desired)
 
 @rpc("authority", "call_remote", "reliable")
 func join_rejected(message: String) -> void:
@@ -1612,5 +1622,6 @@ func ack(text: String) -> void:
 	if host_mode and _peer_seat.has(multiplayer.get_remote_sender_id()):
 		ack_flag = true
 		ack_text = text
+
 
 

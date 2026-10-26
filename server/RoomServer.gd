@@ -22,6 +22,7 @@ func _run() -> void:
 	if not _net.host(false, true, int(_argument("--room-port", "7600")), _argument("--room-number", "0000"), _argument("--room-name", "在线麻将"), true, owner_token):
 		quit(1)
 		return
+	_net.set_opening_speed(_argument("--opening-speed", "standard"))
 	_net.game.ai_delay_seconds = 1.0
 	_net.lobby_updated.connect(_write_status)
 	_net.room_empty.connect(func():
@@ -64,3 +65,4 @@ func _write_status() -> void:
 	file.close()
 	if DirAccess.rename_absolute(_status_path + ".tmp", _status_path) != OK:
 		push_error("无法更新房间状态文件")
+
