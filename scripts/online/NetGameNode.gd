@@ -1044,7 +1044,8 @@ func _start_test_vote(initiator: int, pattern: String) -> void:
 	var humans := _human_seats()
 	if initiator not in humans or humans.is_empty():
 		return
-	_test_vote = {"pattern": pattern, "seat": initiator, "humans": humans.duplicate(), "yes": [initiator]}
+	# 发起者也要明确点“同意”，避免只有发起者一个真人时看起来像没弹确认。
+	_test_vote = {"pattern": pattern, "seat": initiator, "humans": humans.duplicate(), "yes": []}
 	_publish_lobby()
 	_check_test_vote()
 
