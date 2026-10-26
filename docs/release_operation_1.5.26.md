@@ -24,3 +24,22 @@ run_suites.py：71 / 71
 远端验证：正式房拒绝测试牌型
 热补丁：1.5.25 基线加载 + 1.5.26 差分包加载通过
 ```
+
+## 产物
+
+```text
+APK 94,807,711 字节
+SHA-256 b792bee70bf3b86b9d24ca6f9edd3b43967b3b5381fc5906ca062a9dcceba075
+
+Android 热补丁 208,988 字节（基线 1.5.25）
+SHA-256 a377eb7ff75deb2f1dd69d5ea704a5cb9346e577c942b43682b43fb540e02b6f
+```
+
+## 发布
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.5.26
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+服务器镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-78e9947
+热补丁基线：1.5.25
+```
