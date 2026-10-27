@@ -77,9 +77,9 @@ const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
 # Claims use the same wait as an ordinary AI discard; the speed buttons control
 # both. Pass and win responses remain immediate.
 var ai_speed := "medium"
-# AI 强度入口先保留三档；当前仅弱档，后续再接中/强策略。
+# AI 强度三档；中档为加强防守、保留转换路线并兼顾报听速度的默认档。
 const AI_STRENGTHS := {"weak": "弱", "medium": "中", "strong": "强"}
-static var ai_strength := "weak"
+static var ai_strength := "medium"
 const ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0}
 const OPENING_SPEEDS := {"standard": 1.0, "fast": 0.5}
 const TILE_ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0, "slow": 1.8}

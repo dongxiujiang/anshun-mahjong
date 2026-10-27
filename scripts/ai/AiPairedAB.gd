@@ -50,6 +50,8 @@ static func _play(seed: int, level: String, focus_seat: int, focus_defense: floa
 	var decision_ms: Array[float] = []
 	var focus_ms: Array[float] = []
 	var discard_expected_loss := 0.0
+	var ready_declares := 0
+	var ready_step := -1
 	while round.phase == RoundState.Phase.PLAYING and steps < 500:
 		steps += 1
 		var started := Time.get_ticks_usec()
@@ -73,6 +75,9 @@ static func _play(seed: int, level: String, focus_seat: int, focus_defense: floa
 			var decision: Dictionary = actors[actor_seat].decide_turn(round, actor_seat)
 			discarded = decision.has("discard") and not bool(decision.get("self_win", false)) \
 				and decision.get("kong_declares", []).is_empty() and decision.get("add_kong", []).is_empty()
+			if actor_seat == focus_seat and bool(decision.get("ready", false)):
+				ready_declares += 1
+				if ready_step < 0: ready_step = steps
 			accepted = round.submit_turn(actor_seat, decision)
 		if not accepted:
 			return {"ok": false}
@@ -96,6 +101,8 @@ static func _play(seed: int, level: String, focus_seat: int, focus_defense: floa
 		"score": float(deltas[focus_seat]),
 		"discard_expected_loss": discard_expected_loss,
 		"discard_actual_loss": -float(deltas[focus_seat]) if (not bool(meta.get("self_draw", false)) and int(meta.get("discard_seat", -1)) == focus_seat and not winners.is_empty()) else 0.0,
+		"ready_declares": ready_declares,
+		"ready_step": ready_step,
 		"decision_ms": decision_ms,
 		"focus_ms": focus_ms,
 		"steps": steps,
@@ -106,6 +113,8 @@ static func summarize(pairs: Array, candidate_level: String, baseline_level: Str
 		"pairs": 0, "failed": 0, "candidate": candidate_level, "baseline": baseline_level,
 		"candidate_wins": 0, "baseline_wins": 0,
 		"candidate_deals": 0, "baseline_deals": 0,
+		"candidate_ready_declares": 0, "baseline_ready_declares": 0,
+		"candidate_ready_step_sum": 0, "baseline_ready_step_sum": 0,
 		"candidate_score": 0.0, "baseline_score": 0.0,
 		"candidate_expected_discard_loss": 0.0, "baseline_expected_discard_loss": 0.0,
 		"candidate_actual_discard_loss": 0.0, "baseline_actual_discard_loss": 0.0,
@@ -123,6 +132,12 @@ static func summarize(pairs: Array, candidate_level: String, baseline_level: Str
 		if bool(base.win): out.baseline_wins = int(out.baseline_wins) + 1
 		if bool(cand.deal_in): out.candidate_deals = int(out.candidate_deals) + 1
 		if bool(base.deal_in): out.baseline_deals = int(out.baseline_deals) + 1
+		out.candidate_ready_declares = int(out.candidate_ready_declares) + int(cand.get("ready_declares", 0))
+		out.baseline_ready_declares = int(out.baseline_ready_declares) + int(base.get("ready_declares", 0))
+		if int(cand.get("ready_step", -1)) >= 0:
+			out.candidate_ready_step_sum = int(out.candidate_ready_step_sum) + int(cand.ready_step)
+		if int(base.get("ready_step", -1)) >= 0:
+			out.baseline_ready_step_sum = int(out.baseline_ready_step_sum) + int(base.ready_step)
 		out.candidate_score = float(out.candidate_score) + float(cand.score)
 		out.baseline_score = float(out.baseline_score) + float(base.score)
 		out.deltas.append(float(pair.get("score_delta", 0.0)))

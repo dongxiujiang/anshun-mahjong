@@ -17,6 +17,11 @@ var last_risk_strength := 0.0
 var use_mcts := true
 var difficulty := "low"
 var defense_weight := 0.0
+var risk_inflation := 0.0
+var candidate_slack := 0
+var search_window := 0.35
+var safety_margin := 0.0
+var ready_bonus := 0.0
 var risk_calibrated := false
 var risk_aversion := 1.0
 
@@ -39,9 +44,32 @@ func set_difficulty(level: String) -> void:
 	difficulty = level
 	var factor := 1.0
 	match level:
-		"medium": factor = 1.5
-		"high": factor = 2.0
+		"medium":
+			factor = 1.0
+			# 保留已验证的轻度防守候选：不靠增加 MCTS 噪声，只加强危险牌权重。
+			defense_weight = 0.15
+			risk_inflation = 0.15
+			candidate_slack = 0
+			search_window = 0.35
+			ready_bonus = 0.5
+			safety_margin = 3.0
+			opponent_model.set_wait_model(true)
+		"high":
+			factor = 2.0
+			defense_weight = 0.65
+			risk_inflation = 0.45
+			candidate_slack = 1
+			ready_bonus = 1.0
+			opponent_model.set_wait_model(true)
+		_:
+			defense_weight = 0.0
+			risk_inflation = 0.0
+			candidate_slack = 0
+			search_window = 0.35
+			ready_bonus = 0.0
+			opponent_model.set_wait_model(false)
 	mcts.iterations = roundi(16.0 * factor)
+	mcts.defense_weight = defense_weight
 
 func decide_turn(round, seat: int) -> Dictionary:
 	last_discard_risk = 0.0
@@ -71,12 +99,14 @@ func _pick_discard(round, seat: int) -> Dictionary:
 	search_candidates.sort_custom(func(left, right): return float(left.merit) > float(right.merit))
 	if not search_candidates.is_empty():
 		var top_merit := float(search_candidates[0].merit)
-		# Only refine genuinely close alternatives. Running MCTS for every
-		# hand-selected candidate lets a speculative rollout overturn a clear
-		# value-model winner.
-		search_candidates = search_candidates.filter(func(candidate): return top_merit - float(candidate.merit) <= 0.35)
-	if search_candidates.size() > 6:
-		search_candidates = search_candidates.slice(0, 6)
+		# Only refine genuinely close alternatives. Medium keeps one more
+		# near-equal route so it is less likely to look mechanically locked
+		# onto a single discard.
+		var merit_window := search_window
+		search_candidates = search_candidates.filter(func(candidate): return top_merit - float(candidate.merit) <= merit_window)
+	var candidate_limit := 6 + (2 if difficulty == "medium" else 0)
+	if search_candidates.size() > candidate_limit:
+		search_candidates = search_candidates.slice(0, candidate_limit)
 	var tree: Dictionary = mcts.rank(round, seat, player.concealed, player.melds, seen, search_candidates, context, defense_weight) if use_mcts and search_candidates.size() > 1 else {}
 	for candidate in last_analysis:
 		var search: Dictionary = tree.get(candidate.tile, {})
@@ -88,6 +118,17 @@ func _pick_discard(round, seat: int) -> Dictionary:
 	var best: Dictionary = last_analysis[0]
 	for candidate in last_analysis:
 		if float(candidate.merit) > float(best.merit): best = candidate
+	# 后段高威胁时，在成本相近的牌中优先选择别家已经打过、场上
+	# 已见张数更多的牌，作为标定 wait 模型的补充。
+	if safety_margin > 0.0 and last_risk_strength >= 0.45 and round._wall_count() <= 28:
+		var seen_best := int(seen.get(str(best.tile), 0))
+		var safe_best := best
+		for candidate in last_analysis:
+			if float(candidate.merit) < float(best.merit) - safety_margin: continue
+			var seen_candidate := int(seen.get(str(candidate.tile), 0))
+			if seen_candidate >= seen_best + 1 and (safe_best == best or seen_candidate > int(seen.get(str(safe_best.tile), 0))):
+				safe_best = candidate
+		best = safe_best
 	last_discard_risk = float(best.get("discard_risk", 0.0))
 	# 机制指标保持 λ=1 的纯校准尺度，不能把风险厌恶系数混进损失口径。
 	last_calibrated_loss = RISK_CALIBRATION.expected_loss(last_discard_risk, last_risk_strength)
@@ -113,8 +154,11 @@ func _discard_options(round, seat: int, hand: Array, melds: Array, seen: Diction
 	# A distant, threatened hand may retreat one step. Otherwise preserve the
 	# fastest completion routes before comparing uncertain score estimates.
 	var retreat := 1 if threat >= 0.55 and lowest > 1 else 0
+	# 中档在对手明显听牌时允许再保留一条转换路线；低档保持严格最短
+	# 向听，避免为了“灵活”把明显更差的牌纳入选择。
+	var slack: int = candidate_slack if threat >= 0.35 else 0
 	for candidate in candidates:
-		if int(candidate.distance) > lowest + retreat: continue
+		if int(candidate.distance) > lowest + retreat + slack: continue
 		var ordinary := _evaluate_hand(round, seat, candidate.hand, melds, seen, context, candidate.tile, false, after_kong)
 		options.append(ordinary)
 		if allow_ready and int(ordinary.distance) == 0:
@@ -184,7 +228,12 @@ func _evaluate_hand(round, seat: int, hand: Array, melds: Array, seen: Dictionar
 		risk_loss = RISK_CALIBRATION.expected_loss(float(risk.probability), last_risk_strength) * risk_aversion
 	var merit := self_probability * self_value + (1.0 - self_probability) * ron_probability * ron_value
 	merit += (1.0 - win_probability) * (called_probability * called_balance + (1.0 - called_probability) * uncalled_balance)
-	merit -= risk_loss * inference_weight
+	# 中档的额外防守只在对手已经明显听牌时放大；无人听牌时仍按正常
+	# 速度做牌，避免整局都缩手缩脚、丢掉该拿的分。
+	var extra_defense := risk_inflation if last_risk_strength >= 0.50 else 0.0
+	merit -= risk_loss * inference_weight * (1.0 + extra_defense)
+	if declared:
+		merit += ready_bonus
 	var expected_net := merit
 	# Future hand probabilities are approximate. Preserve an attack-efficiency
 	# anchor so speculative pattern income cannot outweigh real live improvements.
@@ -337,3 +386,4 @@ func _pong_helps(round, seat: int, tile: String) -> bool:
 	var after_context := _claim_context(round, context, source, tile) if source >= 0 else context
 	var best := _best_option(_discard_options(round, seat, after, melds, seen, after_context))
 	return float(best.merit) > float(before.merit) + 0.5
+

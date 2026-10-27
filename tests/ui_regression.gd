@@ -26,7 +26,8 @@ func _run() -> void:
 	await process_frame
 	t.expect(settings.ai_strength_buttons.has("weak"), "AI strength weak button exists")
 	t.expect(not settings.ai_strength_buttons["weak"].disabled, "weak AI remains selectable")
-	t.expect(settings.ai_strength_buttons["medium"].disabled and settings.ai_strength_buttons["strong"].disabled, "unimplemented AI strengths are disabled")
+	t.expect(not settings.ai_strength_buttons["medium"].disabled, "medium AI is selectable")
+	t.expect(settings.ai_strength_buttons["strong"].disabled, "unimplemented strong AI remains disabled")
 	settings.queue_free()
 	await process_frame
 

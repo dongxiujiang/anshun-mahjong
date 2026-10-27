@@ -155,8 +155,9 @@ func _ready() -> void:
 			var strength_key: String = item[1]
 			var strength_button := _button(item[0], Vector2(716 + ai_strength_buttons.size() * 126, 524),
 				Vector2(116, 60), func(): _set_ai_strength(strength_key))
-			strength_button.disabled = strength_key != "weak"
-			strength_button.tooltip_text = "中、强 AI 策略后续接入；当前仅弱档可用"
+			strength_button.disabled = strength_key == "strong"
+			strength_button.tooltip_text = "中档已启用：加强防守，兼顾报听速度和得分" if strength_key == "medium" \
+				else ("强档策略后续接入" if strength_key == "strong" else "基础 AI")
 			ai_strength_buttons[strength_key] = strength_button
 		_label("开局发牌", Vector2(716, 610), Vector2(96, 30), 20)
 		for item in [["快", "fast"], ["正常", "standard"]]:
@@ -353,8 +354,6 @@ func _update_speed_buttons() -> void:
 		selected = str(network.net_node.lobby.get("ai_speed", "fast"))
 	for speed_key in speed_buttons:
 		speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == selected else Color.WHITE
-	if GameConfig.ai_strength != "weak":
-		GameConfig.set_ai_strength("weak", false)
 	for strength_key in ai_strength_buttons:
 		ai_strength_buttons[strength_key].modulate = Color("#f4df9f") if strength_key == GameConfig.ai_strength else Color.WHITE
 	for speed_key in draw_speed_buttons:

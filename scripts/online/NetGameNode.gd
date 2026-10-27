@@ -114,6 +114,11 @@ static func valid_room_number(value: String) -> bool:
 			return false
 	return true
 
+func _ai_level() -> String:
+	# 专用房间没有玩家设置，默认使用中档；本地/联机房主跟随设置。
+	if dedicated: return "medium"
+	return {"weak": "low", "medium": "medium", "strong": "high"}.get(CONFIG.ai_strength, "low")
+
 func _ai_turn_delay() -> float:
 	if not dedicated and DisplayServer.get_name() == "headless": return 0.0
 	return float(preload("res://scripts/autoload/GameConfig.gd").AI_SPEED_DELAYS.get(ai_speed, 0.8))
@@ -527,7 +532,7 @@ func _install_ai_for_seat(seat: int) -> void:
 		for peer in _peer_seat.keys():
 			if int(_peer_seat[peer]) == seat and _members.has(peer):
 				_members[peer].ready = true
-	var actor := AiPlayer.new("AI%d" % seat)
+	var actor := AiPlayer.new("AI%d" % seat, _ai_level())
 	game.controllers[seat] = actor
 	if game.awaiting:
 		if int(game._awaiting_response.get("seat", -1)) == seat:
@@ -811,7 +816,7 @@ func start_net_game(seed_value: int = -1) -> bool:
 		var has_peer := int(_seat_peer.get(seat, -1)) > 0
 		var use_ai: bool = _ctrl_hint[seat] == AUTO or not has_peer
 		if use_ai: _ctrl_hint[seat] = AUTO
-		var ai_actor := AiPlayer.new("AI%d" % seat) if use_ai else null
+		var ai_actor := AiPlayer.new("AI%d" % seat, _ai_level()) if use_ai else null
 		ctrls.append(ai_actor)
 	game.controllers = ctrls
 	game.ai_delay_seconds = _ai_turn_delay()

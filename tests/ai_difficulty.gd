@@ -10,8 +10,11 @@ func _initialize() -> void:
 	var medium := AI.new("medium", "medium")
 	var high := AI.new("high", "high")
 	t.expect(low.mcts.iterations == 16, "低难度保持 16 次搜索")
-	t.expect(medium.mcts.iterations == 24, "中难度是低的 1.5 倍搜索量")
+	t.expect(medium.mcts.iterations == 16, "中难度不靠盲目增加搜索量")
 	t.expect(high.mcts.iterations == 32, "高难度是低的 2 倍搜索量")
+	t.expect(medium.defense_weight > low.defense_weight and medium.risk_inflation > low.risk_inflation,
+		"中难度明显加强防守权重")
+	t.expect(medium.ready_bonus > 0.0, "中难度兼顾报听速度")
 	var report := BENCH.format_report({"games": 4, "levels": {
 		"low": {"games": 4, "wins": 1, "deal_ins": 1, "score": 8.0},
 		"medium": {"games": 8, "wins": 2, "deal_ins": 2, "score": 0.0},

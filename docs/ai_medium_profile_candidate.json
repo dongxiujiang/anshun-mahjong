@@ -1,0 +1,23 @@
+{
+  "name": "medium_2026-10-27_final_wait_model_safety",
+  "difficulty": "medium",
+  "mcts_iterations": 16,
+  "defense_weight": 0.15,
+  "risk_inflation": 0.15,
+  "candidate_slack": 0,
+  "search_window": 0.35,
+  "ready_bonus": 0.5,
+  "wait_model": true,
+  "wait_model_samples": 122024,
+  "safety_margin": 3.0,
+  "safety_threshold": 0.45,
+  "safety_wall_limit": 28,
+  "validation_pairs": 2000,
+  "validation_games": 4000,
+  "win_rate": 0.2530,
+  "baseline_win_rate": 0.2515,
+  "score_per_game": 1.893,
+  "baseline_score_per_game": 1.6195,
+  "avg_decision_ms": 74.97,
+  "notes": "两组独立 2000 局验证：得分和胜率均优于低档，平均决策时间 75ms 左右，低于 100ms。未发布，等待确认。"
+}

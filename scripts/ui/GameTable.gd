@@ -473,8 +473,9 @@ func new_game() -> void:
 	round.round_finished.connect(_on_round_finished)
 	round.state_update.connect(_refresh)
 	var controllers: Array = []
+	var ai_level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "low")
 	for seat in 4:
-		var table_ai := AiPlayer.new("AI%d" % seat) if seat != human_seat else null
+		var table_ai := AiPlayer.new("AI%d" % seat, ai_level) if seat != human_seat else null
 		controllers.append(table_ai)
 	round.controllers = controllers
 	round.ai_delay_seconds = GameConfig.ai_delay_seconds()

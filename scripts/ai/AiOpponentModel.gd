@@ -7,6 +7,35 @@ const SAMPLE_LIMIT := 16
 const ATTEMPT_LIMIT := 64
 var _cache_key := ""
 var _cached: Dictionary = {}
+## 用 122,024 个实际听牌牌张样本拟合的 tile-wait 概率模型。
+## 中档才启用；低档保留原采样模型作为基准。
+var use_wait_model := false
+const WAIT_COEF := [-1.5608709598575967, -0.29432841734207355, -0.09013543417140887,
+	0.17222128069077575, 0.06924954497829443, 0.24408553137002884, 0.1622245797505184,
+	0.1460945371717493, -0.040633131730585845, -0.28963032277408407, -0.35366729794925533,
+	-0.1217766799846469, -0.005317639848025524, -0.0318566258488055, 0.08939840600149647,
+	0.061330934718206484, 0.017661279624237056, -0.2160458263462794, -0.24329945325833421,
+	-0.16187381061608838, -0.18813387743675278, 0.16958314910708425, 0.06537384161541401,
+	0.021894335991348105, 0.015206004034571069, -0.1518219245862006, -0.1439680123402951,
+	-0.4627059306784862, -1.251137203243958, -1.6460851752995038, -0.34547680890281035,
+	0.05945829181655969, -1.0264914647786088]
+
+func set_wait_model(value: bool) -> void:
+	use_wait_model = value
+	_cache_key = ""
+	_cached = {}
+
+func _model_wait_base(spec: Dictionary, wall: int) -> float:
+	return WAIT_COEF[0] + WAIT_COEF[30] * float(spec.history.size()) / 20.0 \
+		+ WAIT_COEF[31] * float(spec.melds.size()) / 4.0 \
+		+ WAIT_COEF[32] * float(wall) / 55.0
+
+func _model_wait(spec: Dictionary, tile: String, visible: int, base: float, opp_discards: int) -> float:
+	var index := Tiles.value_index(tile)
+	var logit: float = base + WAIT_COEF[1 + index] \
+		+ WAIT_COEF[28] * float(visible) / 4.0 \
+		+ WAIT_COEF[29] * float(opp_discards) / 4.0
+	return clampf(1.0 / (1.0 + exp(-logit)), 0.002, 0.65)
 
 func observe(round, seat: int, seen: Dictionary) -> Dictionary:
 	var specs: Array = []
@@ -133,6 +162,22 @@ func _infer(round, spec: Dictionary, pool: Array[int], flips: Dictionary, random
 		for tile in Tiles.all_values(): result.waits[tile] = float(result.waits[tile]) / wait_total
 	if special_total > 1.0:
 		for tile in Tiles.all_values(): result.special_waits[tile] = float(result.special_waits[tile]) / special_total
+	if use_wait_model:
+		var model_total := 0.0
+		var wall: int = round._wall_count()
+		var base := _model_wait_base(spec, wall)
+		var opp_discards := {}
+		for discarded in spec.discards:
+			opp_discards[discarded] = int(opp_discards.get(discarded, 0)) + 1
+		for tile in Tiles.all_values():
+			var index := Tiles.value_index(tile)
+			result.waits[tile] = _model_wait(spec, tile, 4 - int(pool[index]), base, int(opp_discards.get(tile, 0)))
+			result.special_waits[tile] = result.waits[tile]
+			model_total += float(result.waits[tile])
+		if model_total > 1.0:
+			for tile in Tiles.all_values():
+				result.waits[tile] = float(result.waits[tile]) / model_total
+				result.special_waits[tile] = float(result.waits[tile])
 	return result
 
 func risk(context: Dictionary, tile: String, source_ready: bool = false, after_self_kong: bool = false, rob_kong: bool = false, source: int = -1, own_chickens: float = 0.0, own_called: bool = false) -> Dictionary:
@@ -301,3 +346,4 @@ func _likelihood(hand: Array, spec: Dictionary) -> float:
 		# A discard is soft evidence only; there is deliberately no furiten veto.
 		if counts.has(discarded): value *= 0.96 if spec.ready else 0.88
 	return maxf(0.15, value)
+
