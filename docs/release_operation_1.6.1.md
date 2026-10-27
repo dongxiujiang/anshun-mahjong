@@ -48,3 +48,18 @@ run_suites.py：71 / 71
 优化前中档备份：
 
 [docs/ai_medium_profile_baseline.json](ai_medium_profile_baseline.json)
+
+## 产物
+
+```text
+APK 94,813,343 字节
+SHA-256 134ab37eca4cbf27f16fc899200de81e73918da3cd4028f1f98a31689fc0a838
+```
+
+## 部署
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.6.1
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+服务器镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-0858e6a
+```
