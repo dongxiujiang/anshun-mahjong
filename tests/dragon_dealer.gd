@@ -30,13 +30,13 @@ func _fixture(dealer: int = 0) -> RoundState:
 	return game
 
 func _test_dragon() -> void:
-	var pattern := RuleEngine.analyze(DRAGON, [])
+	var pattern := RuleEngine.analyze(DRAGON, [], "tiao1")
 	t.expect(pattern.win and pattern.seven_pairs and pattern.dragon_seven_pairs, "四张同牌七对判龙七对")
 	var ordinary := ["tiao1", "tiao1", "wan2", "wan2", "wan5", "wan5", "tong3", "tong3", "tong6", "tong6", "tiao9", "tiao9", "wan8", "wan8"]
 	pattern = RuleEngine.analyze(ordinary, [])
 	t.expect(pattern.seven_pairs and not pattern.dragon_seven_pairs, "普通七对仍为24分")
 	var two_quads := ["tiao1", "tiao1", "tiao1", "tiao1", "tong3", "tong3", "tong3", "tong3", "wan2", "wan2", "wan5", "wan5", "tiao9", "tiao9"]
-	t.expect(RuleEngine.analyze(two_quads, []).dragon_seven_pairs, "多个四张仍识别龙七对")
+	t.expect(RuleEngine.analyze(two_quads, [], "tiao1").dragon_seven_pairs, "多个四张仍识别龙七对")
 	var invalid := DRAGON.duplicate()
 	invalid[4] = "tiao1"
 	t.expect(not RuleEngine.analyze(invalid, []).win, "五张同牌不能胡")
@@ -46,6 +46,7 @@ func _test_dragon() -> void:
 	game.players[0].concealed = DRAGON.duplicate()
 	game.round_meta.winner = 0
 	game.round_meta.self_draw = true
+	game.round_meta.win_tile = "tiao1"
 	var scored := ScoringEngine.settle(game)
 	t.expect(scored.deltas == [156.0, -52.0, -52.0, -52.0], "龙七对44含自摸基础，加手中鸡8，每家付52")
 	var pattern_items: Array = scored.items[0].filter(func(item): return item.kind == "pattern")
@@ -59,10 +60,12 @@ func _test_dragon() -> void:
 	t.expect(game.can_win_on_discard(0, 2, "tiao9"), "龙七对可直接胡别人")
 	t.expect(RuleEngine.waiting_tiles(game.players[0].concealed, []).has("tiao9"), "龙七对听牌等待正确")
 	game.players[0].concealed = ["wan1", "wan1", "wan1", "wan1", "wan2", "wan2", "wan4", "wan4", "wan6", "wan6", "wan8", "wan8", "wan9", "wan9"]
+	game.round_meta.win_tile = "wan1"
 	scored = ScoringEngine.settle(game)
 	pattern_items = scored.items[0].filter(func(item): return item.kind == "pattern")
 	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "清龙对" and scored.round_points[0] == 64, "清龙对只计64，不叠普通点炮基础")
 	game.players[0].concealed = two_quads
+	game.round_meta.win_tile = "tiao1"
 	scored = ScoringEngine.settle(game)
 	t.expect(scored.deltas == [68.0, -8.0, -52.0, -8.0], "两组四张龙七对仍按44分；放炮者付牌型分，三家各付鸡8")
 

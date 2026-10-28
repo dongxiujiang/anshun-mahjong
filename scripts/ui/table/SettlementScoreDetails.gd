@@ -239,14 +239,14 @@ static func _kongs(items: Array, transfers: Array, snapshot, groups: Dictionary,
 		var base_rows := _kong_rows(item, items, transfers, seat, ("查叫" if is_draw else "") + label, "base_amount", "payers", is_draw, called)
 		# Settlement always reveals every meld, including a draw, so the kong
 		# caption always names its tile.
-		var kong_name := "杠" + _tile_name(str(meld.get("tile", "")))
+		var kong_name := "鸡分·杠" + _tile_name(str(meld.get("tile", "")))
 		for row in base_rows:
 			# Direction is present only for an exposed kong, where the payer is
 			# unique. Own kongs are paid by all three, so their compact line is
 			# the per-payer unit "杠五万4分", not a 12-point aggregate.
 			var caption := kong_name
 			if label == "明杠":
-				caption = "杠" + _direction(int(row.from), seat) + _tile_name(str(meld.get("tile", "")))
+				caption = "鸡分·杠" + _direction(int(row.from), seat) + _tile_name(str(meld.get("tile", "")))
 			_part(group, str(group._base_stage), caption, float(row.amount), 1, float(row.amount), true)
 		if base_rows.size() != item.get("payers", []).size():
 			_combined(group, _rows(transfers, seat, ("查叫" if is_draw else "") + label, true))
@@ -396,14 +396,14 @@ static func _debt(groups: Dictionary, pool: Array, transfers: Array, seat: int, 
 				var kong_name := ""
 				if category == "kong" and not group.tiles.is_empty():
 					var hidden_kong := is_draw and str(group.get("_title", "")) == "暗杠"
-					kong_name = "杠" + ("" if hidden_kong else _tile_name(str(group.tiles[0])))
+					kong_name = "鸡分·杠" + ("" if hidden_kong else _tile_name(str(group.tiles[0])))
 					group["_simple"] = true
 				for row in group_rows:
 					if category == "kong" and kong_name != "":
 						var caption := kong_name
 						if str(group.get("_title", "")) == "明杠":
 							var source := int(group._from_seat)
-							caption = "杠" + _direction(source if source in range(4) else int(row.to), seat) + _tile_name(str(group.tiles[0]))
+							caption = "鸡分·杠" + _direction(source if source in range(4) else int(row.to), seat) + _tile_name(str(group.tiles[0]))
 						_part(group, stage, caption, -float(row.amount), 1, -float(row.amount), true)
 					else:
 						_part(group, stage, _tile_name(str(group.tiles[0])), -float(row.amount), 1, -float(row.amount), true)

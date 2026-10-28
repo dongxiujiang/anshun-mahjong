@@ -132,11 +132,11 @@ static func _pay_uncalled_kong_income(round, called: Array, deltas: Array, trans
 				continue
 			var exposed: bool = meld.get("kind", "") == "kong" and not meld.get("concealed", false)
 			if exposed:
-				# 未叫牌明杠只反向付给放杠者；不能把4分同时付给所有叫牌人。
+				# 未叫牌明杠只反向付给放杠者；放杠者必须已叫牌，
+				# 未叫牌玩家之间不互相付款。
 				var source := int(meld.get("from_seat", -1))
-				if source in range(4) and source != owner \
+				if source in range(4) and source != owner and called[source] \
 					and source != int(round.round_meta.get("burn_chicken_seat", -1)):
-					# 放杠人即使未叫牌，也是明杠基础分的唯一收款人。
 					PAY.transfer(deltas, transfers, owner, source, CFG.SCORE_DRAW_KONG, "未叫牌杠分")
 				continue
 			for payer in 4:

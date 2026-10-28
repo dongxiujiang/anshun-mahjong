@@ -137,7 +137,12 @@ static func analyze(concealed: Array, melds: Array, winning_tile: String = "") -
 	var all_triplets := false
 	if e == 0 and _is_seven_pairs(concealed):
 		seven_pairs = true
-		dragon_seven_pairs = counts.values().has(4)
+		# 龙七对：知道和牌张时，必须由它凑成第四张；不传和牌张（只看牌型潜力）时
+		# 仍按「手里有四张」判断。
+		if winning_tile == "":
+			dragon_seven_pairs = counts.values().has(4)
+		else:
+			dragon_seven_pairs = int(counts.get(winning_tile, 0)) == 4
 	else:
 		all_triplets = _is_all_triplets(concealed, melds, melds_needed)
 	var flush := _is_flush(concealed, melds)

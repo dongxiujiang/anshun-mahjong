@@ -226,7 +226,7 @@ func _test_snapshot_1024() -> void:
 		"charge_chickens": {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}}, true)
 	var result := ScoringEngine.settle(r)
 	t.expect(result.round_points == [0.0, -8.0, 0.0, 10.0], "snapshot signed individual scores include own uncalled kong base")
-	t.expect(result.deltas == [-6.0, -18.0, -10.0, 34.0], "snapshot formula pairwise payments")
+	t.expect(result.deltas == [-10.0, -14.0, -10.0, 34.0], "snapshot formula pairwise payments")
 	t.expect(result.pairwise[3] == [10.0, 14.0, 10.0, 0.0], "snapshot winner matrix")
 
 func _test_snapshot_1217() -> void:
@@ -276,7 +276,7 @@ func _test_signed_individual_scores() -> void:
 	var result := ScoringEngine.settle(r)
 	t.expect(result.round_points[1] == -12.0, "uncalled individual score includes its own kong base once")
 	t.expect(result.deltas[3] == 88.0, "winner receives called score from each opponent plus the paid discard debt")
-	t.expect(result.deltas[1] == -40.0, "uncalled pays winner score and its discard debt; own kong base is personal only")
+	t.expect(result.deltas[1] == -32.0, "uncalled pays winner score and its discard debt; own kong base is personal only")
 
 func _run() -> void:
 	_test_screenshot()

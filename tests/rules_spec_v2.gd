@@ -511,12 +511,12 @@ func _test_patterns() -> void:
 		["big",BIG,[],"wan2","all_triplets",14.0,[220,231]],
 		["big_single",["wan9","wan9"],four_mixed,"wan9","big_triplet_single_wait",24.0,[221,239]],
 		["seven",SEVEN,[],"tong7","seven_pairs",24.0,[222,232]],
-		["dragon",DRAGON,[],"tong7","dragon_seven_pairs",44.0,[223,233]],
+		["dragon",DRAGON,[],"wan1","dragon_seven_pairs",44.0,[223,233]],
 		["flush",FLUSH,[],"wan8","flush",24.0,[224,234]],
 		["clean_big",clean_big,[],"wan6","clean_big_triplets",34.0,[225,235]],
 		["clean_seven",clean_seven,[],"wan9","clean_seven_pairs",44.0,[226,236]],
 		["clean_single",["wan9","wan9"],four_clean,"wan9","clean_single_wait",54.0,[227,238]],
-		["clean_dragon",clean_dragon,[],"wan9","clean_dragon_seven_pairs",64.0,[228,237]]]
+		["clean_dragon",clean_dragon,[],"wan1","clean_dragon_seven_pairs",64.0,[228,237]]]
 	for s in specs:
 		var r := fixture()
 		r.players[0].concealed = s[1].duplicate()
@@ -994,7 +994,7 @@ func _test_confirmed_clarifications() -> void:
 			var r := fixture(seed_value)
 			r.players[0].concealed = SEVEN.duplicate()
 			r.players[1].concealed = SEVEN.duplicate() if tied else DRAGON.duplicate()
-			win_meta(r,0,2,"tong7")
+			win_meta(r,0,2,"wan1")
 			r.round_meta.winners = [0,1]
 			r.wall = null
 			begin("confirmed_multi_dealer_%s_%d" % [tied,seed_value],r,"0/1同时胡2；净得分最高赢家当庄，并列随机；墙空不翻鸡")

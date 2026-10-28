@@ -230,8 +230,8 @@ func _test_uncalled_kong_chicken_payments() -> void:
 	no_source_called.players[0].melds = [{"kind": "kong", "tile": "tiao1", "from_seat": 1, "concealed": false}]
 	no_source_called.players[2].concealed = WAIT.duplicate()
 	var no_source_result := settle(no_source_called)
-	check(no_source_result.pairwise[0][1] == -4.0 and no_source_result.pairwise[0][2] == -12.0,
-		"未叫牌明杠向放杠者1反向付4，另向叫牌者2补杠中鸡8和荒牌基础4")
+	check(no_source_result.pairwise[0][1] == 0.0 and no_source_result.pairwise[0][2] == -12.0,
+		"未叫牌明杠：放杠者1也没叫牌，未叫者之间不发生付款；只向叫牌者2补杠中鸡8和荒牌基础4")
 	var win := fixture()
 	win.round_meta.winner = 2
 	win.round_meta.winners = [2]
@@ -317,8 +317,8 @@ func _test_kong_payments() -> void:
 			if source_called:
 				uncalled_expected = [-8.0, 16.0, -4.0, -4.0] if kind in ["concealed", "add_kong", "kong"] else [-4.0, 12.0, -4.0, -4.0]
 			elif kind == "kong":
-				# 明杠的放杠者是未叫牌1时，只向1反向支付4。
-				uncalled_expected = [-4.0, 4.0, 0.0, 0.0]
+				# 明杠的放杠者1也没叫牌：未叫者之间不发生付款。
+				uncalled_expected = [0.0, 0.0, 0.0, 0.0]
 			check(settle(r).deltas == uncalled_expected.map(func(v): return v * 2.0), "未叫牌杠主反向支付基础杠分（倍率作用）")
 	# Four concealed kongs: per-group fees plus a discarded charge.
 	var r := fixture()

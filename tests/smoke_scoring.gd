@@ -136,12 +136,12 @@ func _test_pattern_discards() -> void:
 		["大对子", BIG, [], "wan2", "all_triplets", "大对子", 14.0],
 		["大对子单吊", ["wan9", "wan9"], _four_mixed(), "wan9", "big_triplet_single_wait", "大对子单吊", 24.0],
 		["小七对", SEVEN, [], "tong7", "seven_pairs", "小七对", 24.0],
-		["龙七对", DRAGON, [], "tong7", "dragon_seven_pairs", "龙七对", 44.0],
+		["龙七对", DRAGON, [], "wan1", "dragon_seven_pairs", "龙七对", 44.0],
 		["清一色", FLUSH, [], "wan8", "flush", "清一色", 24.0],
 		["清大对", CLEAN_BIG, [], "wan6", "clean_big_triplets", "清大对", 34.0],
 		["清七对", CLEAN_SEVEN, [], "wan9", "clean_seven_pairs", "清七对", 44.0],
 		["清单吊", ["wan9", "wan9"], _four_clean(), "wan9", "clean_single_wait", "清单吊", 54.0],
-		["清龙对", CLEAN_DRAGON, [], "wan9", "clean_dragon_seven_pairs", "清龙对", 64.0],
+		["清龙对", CLEAN_DRAGON, [], "wan1", "clean_dragon_seven_pairs", "清龙对", 64.0],
 	]
 	for entry in cases:
 		_check_pattern_discard(str(entry[0]), entry[1], entry[2], str(entry[3]), str(entry[4]), str(entry[5]), float(entry[6]))

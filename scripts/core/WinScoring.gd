@@ -30,11 +30,13 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		var primary_label := pattern_label
 		if primary_amount <= 0.0:
 			if not player.ready:
-				if CHICKEN.chicken_profile(round, winner, str(meta.get("flip_tile", ""))).total == 0.0:
+				# 干扣/大干扣：赢家不能有任何鸡分来源——幺鸡八筒、翻鸡、碰、以及明杠/暗杠/加杠。
+				if not _has_any_kong(player) and CHICKEN.chicken_profile(round, winner, str(meta.get("flip_tile", ""))).total == 0.0:
 					# 大干扣按最终参与比较的四家鸡分判断；未叫牌者的结算鸡分为 0。
+					# 其他玩家只要叫牌且有鸡分，或开过杠，就只算干扣。
 					var all_chickenless := true
 					for other in 4:
-						if float(chicken_points[other]) > 0.0:
+						if float(chicken_points[other]) > 0.0 or _has_any_kong(round.players[other]):
 							all_chickenless = false
 							break
 					primary_amount = CFG.SCORE_BIG_NO_CHICKEN if all_chickenless else CFG.SCORE_NO_CHICKEN
@@ -100,9 +102,11 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		if player.ready:
 			# 报听胡牌：点炮时只有点炮者支付
 			if source in range(4) and source != winner:
-				PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY, "报听胡牌")
-				items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "点炮者支付"))
-				lines.append("报听胡牌：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), CFG.SCORE_READY])
+				# 报听且有牌型只补 20（24 里的自摸 4 与牌型分重复）；无牌型保持 24。
+				var ready_amount := CFG.SCORE_READY_PATTERN if pattern_amount > 0.0 else CFG.SCORE_READY
+				PAY.transfer(deltas, transfers, source, winner, ready_amount, "报听胡牌")
+				items[winner].append(_item("ready", "报听胡牌", ready_amount, "点炮者支付"))
+				lines.append("报听胡牌：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), ready_amount])
 		elif source in range(4) and source != winner and round.players[source].ready:
 			# 杀报：赢家未报听，胡了报听者的弃牌，报听者额外付24。
 			PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_KILL_READY, "杀报")
@@ -166,3 +170,9 @@ static func _item(kind: String, label: String, amount: float, note: String) -> D
 
 static func _nm(seat: int, dealer: int = 0) -> String:
 	return SEAT_NAMES[posmod(seat - dealer, 4)] if seat >= 0 and seat < 4 else "-"
+
+static func _has_any_kong(player) -> bool:
+	for meld in player.melds:
+		if str(meld.get("kind", "")) in ["kong", "add_kong"]:
+			return true
+	return false

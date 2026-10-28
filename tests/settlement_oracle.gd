@@ -91,7 +91,8 @@ static func expected(round: RoundState) -> Dictionary:
 				continue
 			if meld.kind == "kong" and not meld.get("concealed", false):
 				var source := int(meld.get("from_seat", -1))
-				if source in range(4) and source != owner:
+				# 未叫者之间不互相付款：放杠者也必须已叫牌。
+				if source in range(4) and source != owner and called[source]:
 					_credit(matrix, owner, source, 4.0, burned)
 			else:
 				for payer in 4:
@@ -163,7 +164,7 @@ static func expected(round: RoundState) -> Dictionary:
 				if player.ready:
 					# 报听胡牌：点炮时只有点炮者支付
 					if source in range(4) and source != target_seat:
-						_credit(matrix, source, target_seat, 24.0, burned)
+						_credit(matrix, source, target_seat, 20.0 if pattern_fee > 0.0 else 24.0, burned)
 				elif source in range(4) and source != target_seat and round.players[source].ready:
 					# 杀报：赢家未报听，报听者放炮单独支付24。
 					_credit(matrix, source, target_seat, 24.0, burned)

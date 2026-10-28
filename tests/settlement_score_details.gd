@@ -92,17 +92,17 @@ func _test_exposed_kong() -> void:
 	var group := _find(_build(f), "1:meld_0")
 	_amount(group, "other", 4, "win round exposed base remains other")
 	_amount(group, "chicken", 8, "kong chicken contribution separate from base")
-	t.expect(group.detail.contains("杠对家幺鸡4分") and group.detail.contains("幺鸡8分")
+	t.expect(group.detail.contains("鸡分·杠对家幺鸡4分") and group.detail.contains("幺鸡8分")
 		and not group.detail.contains("12分"), "called exposed chicken kong never aggregates base+chicken into 12")
 	t.expect(not group.stages.has("kong"), "exposed base not moved to own-kong phase")
-	t.expect(group.detail.contains("杠对家幺鸡4分"), "payer relative to owner seat1, not human/dealer")
+	t.expect(group.detail.contains("鸡分·杠对家幺鸡4分"), "payer relative to owner seat1, not human/dealer")
 	t.expect(group.tiles.size() == 4, "whole kong node group")
 	var plain := _fixture()
 	plain.players[1].melds = [{"kind": "kong", "tile": "wan2", "from_seat": 3}]
 	plain.result.items[1] = [_kong("wan2", "明杠", 3, [3], 4, 0, 0, 1)]
 	_pay(plain, 3, 1, 4, "明杠")
 	var plain_group := _find(_build(plain), "1:meld_0")
-	t.expect(plain_group.detail == "杠对家2万4分", "plain exposed kong uses tile, direction and per-payer unit")
+	t.expect(plain_group.detail == "鸡分·杠对家2万4分", "plain exposed kong uses tile, direction and per-payer unit")
 	# The same from_seat on an added kong is NOT its sole base payer.
 	f.players[1].melds[0].kind = "add_kong"
 	f.result.items[1] = [_kong("tiao1", "加杠", 3, [0, 2, 3], 8, 16, 0, 1)]
@@ -110,7 +110,7 @@ func _test_exposed_kong() -> void:
 	for payer in [0, 2, 3]: _pay(f, payer, 1, 8, "加杠")
 	group = _find(_build(f), "1:meld_0")
 	_amount(group, "kong", 24, "added kong uses actual three payments")
-	t.expect(group.stages.kong.text == "杠幺鸡8分", "added kong payer count and scaled unit")
+	t.expect(group.stages.kong.text == "鸡分·杠幺鸡8分", "added kong payer count and scaled unit")
 
 func _test_multiple_same_kongs() -> void:
 	var f := _fixture()
@@ -122,7 +122,7 @@ func _test_multiple_same_kongs() -> void:
 	for index in 2:
 		var group := _find(groups, "0:meld_%d" % index)
 		_amount(group, "kong", 12, "complete same-rate rows match meld order")
-		t.expect(group.stages.kong.text == ("杠1万4分" if index == 0 else "杠2万4分"), "three real payers")
+		t.expect(group.stages.kong.text == ("鸡分·杠1万4分" if index == 0 else "鸡分·杠2万4分"), "three real payers")
 	# Truncated/aggregated row count is not enough to allocate payer1's money.
 	f.result.transfers.remove_at(3)
 	groups = _build(f)
@@ -270,14 +270,14 @@ func _test_uncalled_kong_captions() -> void:
 	for receiver in [0, 2, 3]:
 		_pay(f, 1, receiver, 4, "未叫牌杠分")
 	var group := _find(_build(f), "1:meld_0")
-	t.expect(group.stages.kong.text == "杠2万-4分" and group.detail == group.stages.kong.text, "uncalled own kong shows one negative tile line")
+	t.expect(group.stages.kong.text == "鸡分·杠2万-4分" and group.detail == group.stages.kong.text, "uncalled own kong shows one negative tile line")
 	t.expect(is_equal_approx(float(group.stages.kong.amount), -12.0), "negative kong short line keeps the real three-payer total")
 	var exposed := _fixture()
 	exposed.result.called = [true, false, true, true]
 	exposed.players[1].melds = [{"kind": "kong", "tile": "wan2", "from_seat": 0}]
 	_pay(exposed, 1, 0, 4, "未叫牌杠分")
 	group = _find(_build(exposed), "1:meld_0")
-	t.expect(group.stages.other.text == "杠上家2万-4分" and group.detail == group.stages.other.text, "uncalled exposed kong shows payer-relative direction")
+	t.expect(group.stages.other.text == "鸡分·杠上家2万-4分" and group.detail == group.stages.other.text, "uncalled exposed kong shows payer-relative direction")
 
 func _test_burn_robbed_and_normal_pung() -> void:
 	var f := _fixture()
@@ -403,7 +403,7 @@ func _test_requested_captions() -> void:
 			f.result.items[owner] = [_kong("wan2", "明杠", payer, [payer], 4, 0, 0, owner)]
 			_pay(f, payer, owner, 4, "明杠")
 			var group := _find(_build(f), "%d:meld_0" % owner)
-			t.expect(group.detail == "杠%s2万4分" % ["", "下家", "对家", "上家"][offset], "exposed kong direction is relative to owner in all seats")
+			t.expect(group.detail == "鸡分·杠%s2万4分" % ["", "下家", "对家", "上家"][offset], "exposed kong direction is relative to owner in all seats")
 	for kind in ["kong", "add_kong"]:
 		var label := "暗杠" if kind == "kong" else "加杠"
 		var f := _fixture()
@@ -411,7 +411,7 @@ func _test_requested_captions() -> void:
 		f.result.items[0] = [_kong("wan2", label, -1, [1, 2, 3])]
 		for payer in [1, 2, 3]: _pay(f, payer, 0, 4, label)
 		var group := _find(_build(f), "0:meld_0")
-		t.expect(group.detail == "杠2万4分" and group.stages.kong.text == group.detail, "kong caption reports per-payer base without formula")
+		t.expect(group.detail == "鸡分·杠2万4分" and group.stages.kong.text == group.detail, "kong caption reports per-payer base without formula")
 		t.expect(group.stages.kong.amount == 12.0, "short kong caption never changes the real three-payer income")
 
 func _test_kong_chicken_captions() -> void:
@@ -472,7 +472,7 @@ func _test_multiple_kong_debts() -> void:
 				var chicken_stage := "kong" if is_draw else ("flip" if index == 0 else "chicken")
 				if not is_draw: _amount(group, chicken_stage, -unit * 3.0, "each kong gets only its recorded chicken debt")
 				t.expect(group.detail.contains(name + str(-unit) + "分"), "multiple chicken kongs keep separate short tile debts")
-				t.expect(group.detail.contains("杠上家" + name + str(-4 * multiplier) + "分"), "exposed debt direction follows the source, across all receivers")
+				t.expect(group.detail.contains("鸡分·杠上家" + name + str(-4 * multiplier) + "分"), "exposed debt direction follows the source, across all receivers")
 				t.expect(not group.detail.contains("向") and not group.detail.contains("本组暂无"), "complete multiple kong debts need no flow or fallback")
 
 func _test_draw_chicken_debts() -> void:

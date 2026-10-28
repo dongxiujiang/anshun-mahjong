@@ -152,7 +152,9 @@ func _test_dragon_kong() -> void:
 	r.players[0].first_turn_done = true
 	var ai := AiPlayer.new()
 	t.expect(ai._kong_keeps_shape(r.players[0], "wan1", false), "Dragon regression has shape-preserving kong alternative")
-	t.expect(not ai._kong_helps(r, 0, "wan1", false), "Kong base income must not destroy a more valuable dragon-seven-pairs route")
+	# 新规则：手里四张不再自动等于龙七对（必须胡那张第四张才算），
+	# 所以开杠不再必然破坏牌型路线，这里按新规则期望「开杠有利」。
+	t.expect(ai._kong_helps(r, 0, "wan1", false), "四张在手不等于龙七对，开杠不再破坏牌型路线")
 	var started := Time.get_ticks_usec()
 	var decision := ai._pick_discard(r, 0)
 	var elapsed := (Time.get_ticks_usec() - started) / 1000.0

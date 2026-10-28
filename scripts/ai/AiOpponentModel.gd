@@ -201,7 +201,8 @@ func risk(context: Dictionary, tile: String, source_ready: bool = false, after_s
 
 static func _discard_win_primary_fee(pattern_fee: float, declared_ready: bool, source_called: bool = false) -> float:
 	# 估算放炮者对该赢家的付款：普通弃牌不收17/21，报听额外24。
-	return pattern_fee + (VALUE.CFG.SCORE_READY if declared_ready else 0.0)
+	var ready_fee: float = (VALUE.CFG.SCORE_READY_PATTERN if pattern_fee > 0.0 else VALUE.CFG.SCORE_READY) if declared_ready else 0.0
+	return pattern_fee + ready_fee
 
 func _tile_weights(spec: Dictionary) -> Array[float]:
 	var weights: Array[float] = []

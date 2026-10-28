@@ -6,6 +6,25 @@ import subprocess
 import sys
 import time
 
+# 引擎启动时会在 stderr 打印与测试无关的噪音（用户目录日志、证书库、插件注册），
+# 不能据此判定套件失败。
+BENIGN = (
+    "Failed to open 'user://logs",
+    "Failed to open log file",
+    "Failed to read the root certificate store",
+    "MCPRegistry",
+    "MCPRuntimeServer",
+)
+
+
+def real_errors(text):
+    return [
+        line for line in text.splitlines()
+        if ("SCRIPT ERROR:" in line or "ERROR:" in line)
+        and not any(marker in line for marker in BENIGN)
+    ]
+
+
 PROJECT = Path(__file__).resolve().parents[1]
 LOGS = PROJECT / "build" / "test_results"
 
@@ -25,7 +44,7 @@ def run_suite(godot, suite, timeout):
         try:
             while process.poll() is None:
                 errors = error_path.read_text(encoding="utf-8-sig", errors="replace")
-                if "SCRIPT ERROR:" in errors or "ERROR:" in errors:
+                if real_errors(errors):
                     failure = "Godot reported an error"
                     break
                 if time.monotonic() - started > timeout:
@@ -43,7 +62,7 @@ def run_suite(godot, suite, timeout):
         line.startswith(f"[{name}]") and any(word in line for word in ("passed", "通过", "0 failures"))
         for line in output.splitlines()
     )
-    if failure or process.returncode != 0 or not completed or "SCRIPT ERROR:" in errors or "ERROR:" in errors:
+    if failure or process.returncode != 0 or not completed or real_errors(errors):
         print(f"[FAIL] {name}: {failure or 'missing completion or nonzero exit'} (exit {process.returncode})\n{output}\n{errors}", flush=True)
         return False
     elapsed = time.monotonic() - started

@@ -202,7 +202,7 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 			# 报听费：只有点炮者支付；赢家未报听时，报听放炮者另付杀报24。
 			if payer == source:
 				if declared_ready:
-					total += CFG.SCORE_READY
+					total += CFG.SCORE_READY_PATTERN if points > 0.0 else CFG.SCORE_READY
 				elif bool(opponent.get("ready", false)):
 					total += CFG.SCORE_KILL_READY
 	return total * multiplier
