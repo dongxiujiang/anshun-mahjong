@@ -40,3 +40,11 @@ run_suites.py：71 / 71
 APK 83,778,744 字节
 SHA-256 735cac740886a34b42bf09adf544104c071c7c7281adbae3f20a3f331a929e83
 ```
+
+## 部署
+
+```text
+GitHub Release：https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.6.2
+自建清单：https://mj.dongxiu.fun/updates/update-manifest.json
+服务器镜像：ghcr.io/dongxiujiang/anshun-mahjong:sha-c3780b5
+``` 
