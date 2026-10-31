@@ -24,6 +24,12 @@ var safety_margin := 0.0
 var ready_bonus := 0.0
 var risk_calibrated := false
 var risk_aversion := 1.0
+## B18 test profile: 向听/进张权重与保叫牌门槛。
+var tenpai_weight := 8.0
+var distance_weight := -24.0
+var outs_weight := 0.60
+var keep_tenpai := false
+var keep_tenpai_slack := 0
 
 func _init(label := "AI", level := "low") -> void:
 	name = label
@@ -43,16 +49,37 @@ func set_defense_weight(weight: float) -> void:
 func set_difficulty(level: String) -> void:
 	difficulty = level
 	var factor := 1.0
+	tenpai_weight = 8.0
+	distance_weight = -24.0
+	outs_weight = 0.60
+	keep_tenpai = false
+	keep_tenpai_slack = 0
 	match level:
-		"medium":
+		"low":
+			# 测试包：低档使用 main 1.6.3 中档参数。
 			factor = 1.0
-			# 保留已验证的轻度防守候选：不靠增加 MCTS 噪声，只加强危险牌权重。
 			defense_weight = 0.15
 			risk_inflation = 0.15
 			candidate_slack = 0
 			search_window = 0.35
 			ready_bonus = 0.5
 			safety_margin = 3.0
+			opponent_model.set_wait_model(true)
+		"medium":
+			# 测试包：中档使用 B18。
+			factor = 1.0
+			defense_weight = 0.50
+			risk_inflation = 0.35
+			candidate_slack = 0
+			search_window = 0.20
+			ready_bonus = 1.5
+			safety_margin = 3.0
+			tenpai_weight = 40.0
+			distance_weight = -60.0
+			outs_weight = 1.80
+			keep_tenpai = true
+			keep_tenpai_slack = 2
+			risk_calibrated = true
 			opponent_model.set_wait_model(true)
 		"high":
 			factor = 2.0
@@ -62,12 +89,13 @@ func set_difficulty(level: String) -> void:
 			ready_bonus = 1.0
 			opponent_model.set_wait_model(true)
 		_:
-			defense_weight = 0.0
-			risk_inflation = 0.0
+			defense_weight = 0.15
+			risk_inflation = 0.15
 			candidate_slack = 0
 			search_window = 0.35
-			ready_bonus = 0.0
-			opponent_model.set_wait_model(false)
+			ready_bonus = 0.5
+			safety_margin = 3.0
+			opponent_model.set_wait_model(true)
 	mcts.iterations = roundi(16.0 * factor)
 	mcts.defense_weight = defense_weight
 
@@ -79,8 +107,10 @@ func decide_turn(round, seat: int) -> Dictionary:
 	if options.self_win: return {"self_win": true}
 	if player.ready: return {"discard": player.just_drew}
 	for tile in options.kong_declares:
+		if keep_tenpai and not _kong_keeps_tenpai(round, seat, tile, false): continue
 		if _kong_helps(round, seat, tile, false): return {"kong_declares": [tile]}
 	for tile in options.add_kong:
+		if keep_tenpai and not _add_kong_keeps_tenpai(round, seat, tile): continue
 		if _add_kong_helps(round, seat, tile): return {"add_kong": [tile]}
 	var choice := _pick_discard(round, seat)
 	return {"discard": choice.tile, "ready": choice.ready_capable and options.ready_discards.has(choice.tile)}
@@ -237,7 +267,7 @@ func _evaluate_hand(round, seat: int, hand: Array, melds: Array, seen: Dictionar
 	var expected_net := merit
 	# Future hand probabilities are approximate. Preserve an attack-efficiency
 	# anchor so speculative pattern income cannot outweigh real live improvements.
-	merit += 8.0 * called_probability - 24.0 * distance + 0.60 * outs + 0.10 * _shape_quality(hand, seen)
+	merit += tenpai_weight * called_probability + distance_weight * distance + outs_weight * outs + 0.10 * _shape_quality(hand, seen)
 	return {"tile": discard, "distance": distance, "outs": outs, "win_probability": win_probability,
 		"win_value": self_value, "called_probability": called_probability, "expected_loss": risk_loss,
 		"discard_risk": risk.probability, "declare_ready": declared, "expected_net": expected_net, "merit": merit}
@@ -317,6 +347,40 @@ func _claim_context(round, context: Dictionary, source: int, tile: String) -> Di
 		opponent.draw_discarded = maxf(0.0, float(opponent.draw_discarded) - draw_amount)
 	return updated
 
+func _pong_keeps_tenpai(round, seat: int, tile: String) -> bool:
+	var player: PlayerState = round.players[seat]
+	var after: Array = player.concealed.duplicate()
+	after.erase(tile); after.erase(tile)
+	var melds: Array = player.melds.duplicate(true)
+	melds.append({"kind": "pung", "tile": tile})
+	for discard in Tiles.to_counts(after).keys():
+		var hand := after.duplicate()
+		hand.erase(discard)
+		if Shanten.shanten(hand, melds) <= keep_tenpai_slack: return true
+	return false
+
+func _kong_keeps_tenpai(round, seat: int, tile: String, exposed: bool) -> bool:
+	var player: PlayerState = round.players[seat]
+	var after: Array = player.concealed.duplicate()
+	var amount := 3 if exposed else 4
+	for i in amount: after.erase(tile)
+	var melds: Array = player.melds.duplicate(true)
+	var meld := {"kind": "kong", "tile": tile}
+	if not exposed: meld["concealed"] = true
+	melds.append(meld)
+	return Shanten.shanten(after, melds) <= keep_tenpai_slack
+
+func _add_kong_keeps_tenpai(round, seat: int, tile: String) -> bool:
+	var player: PlayerState = round.players[seat]
+	var after: Array = player.concealed.duplicate()
+	after.erase(tile)
+	var melds: Array = player.melds.duplicate(true)
+	for meld in melds:
+		if str(meld.get("tile", "")) == tile and str(meld.get("kind", "")) == "pung":
+			meld["kind"] = "kong"
+			return Shanten.shanten(after, melds) <= keep_tenpai_slack
+	return false
+
 func _kong_helps(round, seat: int, tile: String, exposed: bool, source: int = -1) -> bool:
 	var player: PlayerState = round.players[seat]
 	if not _kong_keeps_shape(player, tile, exposed): return false
@@ -362,9 +426,13 @@ func decide_response(round, seat: int, source: int, tile: String, options: Dicti
 	var player: PlayerState = round.players[seat]
 	if player.ready or options.get("rob_kong", false):
 		return {"action": "pass"}
-	if options.get("can_kong", false) and _kong_helps(round, seat, tile, true, source):
+	if options.get("can_kong", false) \
+		and (not keep_tenpai or _kong_keeps_tenpai(round, seat, tile, true)) \
+		and _kong_helps(round, seat, tile, true, source):
 		return {"action": "kong"}
-	if options.get("can_pong", false) and _pong_helps(round, seat, tile):
+	if options.get("can_pong", false) \
+		and (not keep_tenpai or _pong_keeps_tenpai(round, seat, tile)) \
+		and _pong_helps(round, seat, tile):
 		return {"action": "pong"}
 	return {"action": "pass"}
 

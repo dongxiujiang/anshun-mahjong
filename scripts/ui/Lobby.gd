@@ -34,6 +34,8 @@ var _syncing_room_name := false
 var _in_room := false
 var _connecting := false
 var _creating := false
+var _create_auto_retry := 0
+const CREATE_AUTO_RETRY_LIMIT := 4
 var _resuming := false
 var _transitioning := false
 var _leaving := false
@@ -351,8 +353,9 @@ func _create() -> void:
 	if _creating or _connecting: return
 	var number := room_input.text.strip_edges()
 	if not NetGameNode.valid_room_number(number):
-		_message("房间号请输入 4～8 位数字")
-		return
+		number = _next_room_number(number)
+		room_input.text = number
+		_message("已自动生成房间号 %s" % number)
 	GameConfig.set_player_name(player_input.text)
 	_save_lobby_preferences()
 	_creating = true
@@ -371,6 +374,15 @@ func _create() -> void:
 	await get_tree().create_timer(1.8).timeout
 	if not is_inside_tree() or not _creating or creation != _creation_attempt: return
 	if Network.discovery.has_number(number):
+		if _create_auto_retry < CREATE_AUTO_RETRY_LIMIT:
+			_create_auto_retry += 1
+			var next := _next_room_number(number)
+			room_input.text = next
+			_save_lobby_preferences()
+			_creating = false
+			_message("房间号已被占用，自动更换为 %s 并重试…" % next)
+			await _create()
+			return
 		_creation_failed("这个房间号已在使用，请换一个")
 		return
 	Network.reset()
@@ -503,6 +515,7 @@ func _connection_failed(message: String) -> void:
 
 func _creation_failed(message: String) -> void:
 	_creating = false
+	_create_auto_retry = 0
 	create_button.disabled = false
 	_message(message)
 
@@ -513,12 +526,34 @@ func _online_rooms_updated() -> void:
 
 func _directory_error(message: String) -> void:
 	if online:
+		if _creating and _create_auto_retry < CREATE_AUTO_RETRY_LIMIT and _is_duplicate_room_error(message):
+			_create_auto_retry += 1
+			var next := _next_room_number(str(room_input.text))
+			room_input.text = next
+			_save_lobby_preferences()
+			Network.directory.cancel()
+			_message("房间号已被占用，自动更换为 %s 并重试…" % next)
+			Network.directory.create_room(next, room_name_input.text,
+				GameConfig.opening_animation_speed, GameConfig.debug_enabled)
+			return
 		_creation_failed(message)
 		_render_rooms()
+
+func _is_duplicate_room_error(message: String) -> bool:
+	return message.contains("已在使用") or message.contains("已使用") \
+		or message.contains("已存在") or message.contains("重复") or message.contains("占用")
+
+func _next_room_number(current: String) -> String:
+	for _attempt in 24:
+		var candidate := str(randi_range(100000, 999999))
+		if candidate != current and NetGameNode.valid_room_number(candidate):
+			return candidate
+	return str(randi_range(100000, 999999))
 
 func _online_created(room: Dictionary) -> void:
 	if not _creating or not online or _in_room: return
 	_creating = false
+	_create_auto_retry = 0
 	_join(room)
 
 func _message(message: String) -> void:

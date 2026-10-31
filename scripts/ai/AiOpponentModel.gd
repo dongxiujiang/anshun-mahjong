@@ -171,6 +171,12 @@ func _infer(round, spec: Dictionary, pool: Array[int], flips: Dictionary, random
 			opp_discards[discarded] = int(opp_discards.get(discarded, 0)) + 1
 		for tile in Tiles.all_values():
 			var index := Tiles.value_index(tile)
+			# A visible kong removes all four copies; no fifth copy can complete
+			# a pair/triplet/sequence wait, regardless of the logistic prior.
+			if not _can_wait(index, pool, spec.melds.size(), spec.melds):
+				result.waits[tile] = 0.0
+				result.special_waits[tile] = 0.0
+				continue
 			result.waits[tile] = _model_wait(spec, tile, 4 - int(pool[index]), base, int(opp_discards.get(tile, 0)))
 			result.special_waits[tile] = result.waits[tile]
 			model_total += float(result.waits[tile])
