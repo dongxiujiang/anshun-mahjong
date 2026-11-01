@@ -22,6 +22,10 @@ func _run() -> void:
 	root.add_child(lobby)
 	current_scene = lobby
 	await process_frame
+	t.expect(lobby.seat_buttons[0].position.x > 900.0, "东位固定在右侧")
+	t.expect(lobby.seat_buttons[1].position.y > 300.0, "南位固定在下方")
+	t.expect(lobby.seat_buttons[2].position.x < 100.0, "西位固定在左侧")
+	t.expect(lobby.seat_buttons[3].position.y < 120.0, "北位固定在上方")
 	if online_url != "": lobby._set_mode(true)
 	lobby.room_input.text = "998877"
 	lobby._create()

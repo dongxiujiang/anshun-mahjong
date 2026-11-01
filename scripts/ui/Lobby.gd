@@ -111,7 +111,8 @@ func _ready() -> void:
 	waiting.hide()
 	_panel(waiting, Vector2.ZERO, Vector2(1408, 530))
 	room_heading = _label(waiting, "", Vector2(28, 14), Vector2(1352, 48), 32)
-	var locations := [Vector2(484, 326), Vector2(936, 166), Vector2(484, 94), Vector2(32, 166)]
+	# 固定罗盘布局：上北、下南、左西、右东。
+	var locations := [Vector2(936, 166), Vector2(484, 326), Vector2(32, 166), Vector2(484, 94)]
 	for seat in 4:
 		var index := seat
 		var button := _button(waiting, "", locations[seat], Vector2(440, 168), func(): Network.net_node.select_seat(index))
