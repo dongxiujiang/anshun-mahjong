@@ -228,7 +228,9 @@ func _toggle_ready() -> void:
 	table._refresh_status()
 
 func _update_interactivity() -> void:
-	if not _selecting or input_locked(): _reset_press()
+	var syncing: bool = bool(table._awaiting_rejoin_snapshot)
+	var blocked: bool = input_locked() or syncing
+	if not _selecting or blocked: _reset_press()
 	if table.round == null or table.human_seat >= table.round.players.size():
 		return
 	if _selecting and str(table.round.allowed_actions(table.human_seat).get("kind", "")) != "turn":
@@ -237,15 +239,15 @@ func _update_interactivity() -> void:
 	var legal_discards: Array = table.round.legal_turn_options(table.human_seat).discards if _selecting else []
 	for box in [table.hand_box[table.human_seat], table.draw_box[table.human_seat]]:
 		for tile in box.get_children():
-			var enabled: bool = not input_locked() and _selecting and legal_discards.has(tile.tile) and (not player.ready or tile.get_meta("drawn", false))
+			var enabled: bool = not blocked and _selecting and legal_discards.has(tile.tile) and (not player.ready or tile.get_meta("drawn", false))
 			if _declaring_ready:
 				enabled = enabled and _ready_discards.has(tile.tile)
 			tile.set_interactive(enabled)
 			# Keep the hand visually calm while waiting for a draw/response; legal
 			# input is still controlled by interactive and the turn state.
 			tile.modulate = Color.WHITE
-	for button in action_bar.get_children(): button.disabled = input_locked()
-	action_bar.visible = action_bar.get_child_count() > 0 and not input_locked()
+	for button in action_bar.get_children(): button.disabled = blocked
+	action_bar.visible = action_bar.get_child_count() > 0 and not blocked
 
 func _safe_discard() -> String:
 	if is_instance_valid(_selected_tile):

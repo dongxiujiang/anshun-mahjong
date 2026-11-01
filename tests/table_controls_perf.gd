@@ -21,6 +21,7 @@ func _run() -> void:
 	t.expect(settings.confirm_exit_button.size.y >= 126 and settings.cancel_exit_button.size.y >= 126, "Exit confirmation has large buttons")
 	settings.cancel_exit_button.pressed.emit()
 	t.expect(not exited and table.is_inside_tree(), "Cancel exit preserves the table")
+	t.expect(not settings.is_open(), "Cancel exit returns directly to the table")
 	settings.close(false)
 	# 无牌面变化的重复同步应保留牌控件，包括当前选中的手牌。
 	table._refresh()

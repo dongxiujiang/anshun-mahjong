@@ -64,8 +64,10 @@ func _test_assets() -> void:
 		t.expect(stream.get_length() >= 0.2 and stream.get_length() <= 0.45, "结算短音效不拖尾：" + cue)
 		t.expect(stream.loop_mode == AudioStreamWAV.LOOP_DISABLED, "结算音效不循环：" + cue)
 
+const TEST_PACKS := ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"]
+
 func _voice_key(seat: int, word: String) -> String:
-	return ("voice/" if seat == 0 else "voice/seat%d/" % seat) + word
+	return "voice_packs/%s/%s" % [TEST_PACKS[clampi(seat, 0, 3)], word]
 
 func _fixture() -> RoundState:
 	var game := RoundState.new()
@@ -214,21 +216,30 @@ func _test_playback() -> void:
 		audio.set_enabled(channel, true, false)
 		audio.set_volume(channel, 0.5, false)
 	audio.begin_table()
+	t.expect(audio.seat_voice_packs == ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"], "默认座位音色按东南西北设置")
 	t.expect(audio.music_player == null, "入桌不再创建背景音乐")
+	var saved_packs: Array = audio.seat_voice_packs.duplicate()
+	audio.seat_voice_packs = ["usagi", "usagi", "weilong", "xiaohei"]
+	audio._ensure_unique_voice_packs()
+	t.expect(audio.seat_voice_packs[0] != audio.seat_voice_packs[1] and audio.seat_voice_packs.size() == 4, "四个座位音色自动去重")
+	audio.seat_voice_packs = saved_packs
+	audio.start_voice_test(["usagi"])
+	t.expect(audio._voice_test_active and audio._voice_test_queue.size() == 32, "测试按钮可以遍历一套全部语音")
+	audio.stop_voice_test()
 	played.clear()
 	var event := {"session": "test-a", "id": 1, "action": "discard", "seat": 0, "tile": "tiao1"}
 	audio.play_event(event)
 	t.expect(audio.voice_player.playing and audio.effects_player.playing, "出牌同时播放牌名和落桌音")
-	t.expect(audio.voice_player.stream == audio._stream("voice/tiao1"), "幺鸡使用正确音频")
+	t.expect(audio.voice_player.stream == audio._stream(_voice_key(0, "tiao1")), "幺鸡使用正确音频")
 	audio.play_event(event)
 	t.expect(played.size() == 1 and audio._voice_queue.is_empty(), "重复事件不会再次落桌或排队")
 	for id in range(2, 7):
 		audio.play_event({"session": "test-a", "id": id, "action": "discard", "seat": 1, "tile": "wan2"})
 	t.expect(audio._voice_queue.size() <= audio.VOICE_QUEUE_LIMIT, "快进积压语音限长")
 	audio.play_event({"session": "test-a", "id": 7, "action": "zimo", "seat": 2, "tile": "wan2"})
-	t.expect(audio.voice_player.stream == audio._stream("voice/seat2/zimo") and audio._voice_queue.is_empty() and audio._voice_seat_queue.is_empty(), "胡牌语音优先且使用胡牌者声音")
+	t.expect(audio.voice_player.stream == audio._stream(_voice_key(2, "zimo")) and audio._voice_queue.is_empty() and audio._voice_seat_queue.is_empty(), "胡牌语音优先且使用胡牌者声音")
 	audio.play_event({"session": "test-b", "id": 1, "action": "discard", "seat": 1, "tile": "tong8"})
-	t.expect(audio.voice_player.stream == audio._stream("voice/seat1/tong8"), "下一局清除上局优先状态并保持座位声音")
+	t.expect(audio.voice_player.stream == audio._stream(_voice_key(1, "tong8")), "下一局清除上局优先状态并保持座位声音")
 	# 首次图形初始化可能超过短语长度；单独测压低渐变时固定语音为播放中。
 	audio.voice_player.stream_paused = true
 	audio.voice_player.stream_paused = false
@@ -342,11 +353,10 @@ func _test_ui() -> void:
 	for channel in ["voice", "effects"]:
 		sound.sliders[channel].value = 42
 		t.expect(is_equal_approx(float(audio.volumes[channel]), 0.42) and sound.percentages[channel].text == "42%", "滑块即时调整音量和百分比")
-	t.expect(not sound.preview_button.disabled, "语音开启后允许试听")
+	t.expect(sound.get("preview_button") == null and sound.get("voice_selector") == null, "旧的语音下拉框和试听按钮已移除")
 	for seat in 4:
-		sound.voice_selector.select(seat)
-		sound.preview_button.pressed.emit()
-		t.expect(audio.voice_player.stream == audio._stream(_voice_key(seat, "tong8")), "设置面板可以试听四位玩家声音")
+		audio.preview_voice_pack(seat, TEST_PACKS[seat])
+		t.expect(audio.voice_player.stream == audio._stream(_voice_key(seat, "tong8")), "座位音色可以试听四位玩家声音")
 	for dimensions in [Vector2i(900, 950), Vector2i(1280, 720), Vector2i(960, 540), Vector2i(360, 640), Vector2i(640, 360), Vector2i(1080, 1920)]:
 		root.size = dimensions
 		await process_frame

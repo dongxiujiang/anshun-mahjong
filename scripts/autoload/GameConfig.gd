@@ -76,7 +76,7 @@ var online_mode := false
 const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
 # Claims use the same wait as an ordinary AI discard; the speed buttons control
 # both. Pass and win responses remain immediate.
-var ai_speed := "medium"
+var ai_speed := "fast"
 # AI 强度三档；中档为加强防守、保留转换路线并兼顾报听速度的默认档。
 const AI_STRENGTHS := {"weak": "弱", "medium": "中", "strong": "强"}
 static var ai_strength := "medium"
@@ -88,7 +88,7 @@ var discard_animation_speed := "fast"
 # 结算阅读节奏独立于摸牌、出牌等动画；慢速默认留足查看计分的时间。
 signal settlement_speed_changed
 const SETTLEMENT_SPEEDS := {"fast": 0.8, "standard": 1.0, "slow": 2.0}
-var settlement_speed := "standard"
+var settlement_speed := "fast"
 # 联机语音聊天：麦克风增益与其它玩家语音音量独立保存。
 signal voice_chat_settings_changed
 var voice_chat_mic_gain := 1.0
@@ -110,7 +110,7 @@ const OPENING_SORT_TILE_STAGGER := 0.012
 ## to the opening presentation, so the first turn cannot begin over it.
 const OPENING_WAIT_SECONDS := OPENING_DICE_SECONDS + OPENING_DICE_HOLD_SECONDS + 12 * (OPENING_DEAL_SECONDS + 3 * OPENING_DEAL_TILE_STAGGER) + 4 * OPENING_DEAL_SECONDS + OPENING_SORT_SECONDS + 13 * OPENING_SORT_TILE_STAGGER + 0.08
 var animation_speed := "standard"
-static var opening_animation_speed := "standard"
+static var opening_animation_speed := "fast"
 
 const SETTINGS_STORE := preload("res://scripts/core/UserSettingsStore.gd")
 const SETTINGS_PATH := "user://game_settings.cfg"

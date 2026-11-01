@@ -66,7 +66,23 @@ func set_difficulty(level: String) -> void:
 			safety_margin = 3.0
 			opponent_model.set_wait_model(true)
 		"medium":
-			# 测试包：中档使用 B18。
+			# 高档配置替换中档；原 B18 参数保留在 "b18" 档。
+			factor = 1.0
+			defense_weight = 0.55
+			risk_inflation = 0.40
+			candidate_slack = 0
+			search_window = 0.35
+			ready_bonus = 2.5
+			safety_margin = 4.0
+			tenpai_weight = 65.0
+			distance_weight = -85.0
+			outs_weight = 2.30
+			keep_tenpai = true
+			keep_tenpai_slack = 2
+			risk_calibrated = true
+			opponent_model.set_wait_model(true)
+		"b18":
+			# 保留的旧中档基准，便于后期切回或做 A/B。
 			factor = 1.0
 			defense_weight = 0.50
 			risk_inflation = 0.35
@@ -82,11 +98,19 @@ func set_difficulty(level: String) -> void:
 			risk_calibrated = true
 			opponent_model.set_wait_model(true)
 		"high":
-			factor = 2.0
-			defense_weight = 0.65
-			risk_inflation = 0.45
-			candidate_slack = 1
-			ready_bonus = 1.0
+			factor = 1.0
+			defense_weight = 0.55
+			risk_inflation = 0.40
+			candidate_slack = 0
+			search_window = 0.35
+			ready_bonus = 2.5
+			safety_margin = 4.0
+			tenpai_weight = 65.0
+			distance_weight = -85.0
+			outs_weight = 2.30
+			keep_tenpai = true
+			keep_tenpai_slack = 2
+			risk_calibrated = true
 			opponent_model.set_wait_model(true)
 		_:
 			defense_weight = 0.15
@@ -134,7 +158,7 @@ func _pick_discard(round, seat: int) -> Dictionary:
 		# onto a single discard.
 		var merit_window := search_window
 		search_candidates = search_candidates.filter(func(candidate): return top_merit - float(candidate.merit) <= merit_window)
-	var candidate_limit := 6 + (2 if difficulty == "medium" else 0)
+	var candidate_limit := 6 if difficulty == "low" else 8
 	if search_candidates.size() > candidate_limit:
 		search_candidates = search_candidates.slice(0, candidate_limit)
 	var tree: Dictionary = mcts.rank(round, seat, player.concealed, player.melds, seen, search_candidates, context, defense_weight) if use_mcts and search_candidates.size() > 1 else {}

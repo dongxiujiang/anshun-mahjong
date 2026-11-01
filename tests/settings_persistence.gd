@@ -26,7 +26,7 @@ func _audio(path: String):
 func _test_defaults_and_recovery() -> void:
 	var path := directory + "/validation.cfg"
 	var config = _game(path)
-	t.expect(config.ai_speed == "medium" and config.draw_animation_speed == "fast" and config.discard_animation_speed == "fast" and config.settlement_speed == "standard", "new installation uses defaults")
+	t.expect(config.ai_speed == "fast" and config.draw_animation_speed == "fast" and config.discard_animation_speed == "fast" and config.settlement_speed == "fast", "new installation uses fast defaults")
 	t.expect(not FileAccess.file_exists(path), "loading missing settings never writes defaults")
 	config.set_settlement_speed("slow")
 	t.expect(STORE.read_config(path).get_value("game", "settlement_speed") == "slow", "explicitly choosing the current default is still saved for future upgrades")
@@ -65,6 +65,7 @@ func _test_defaults_and_recovery() -> void:
 	data.set_value("effects", "volume", "invalid")
 	data.set_value("effects", "enabled", "invalid")
 	data.set_value("voice", "preview_seat", 99)
+	data.set_value("voice", "seat_packs", JSON.stringify(["usagi", "lubenwei", "weilong", "xiaohei"]))
 	data.set_value("future", "keep", 27)
 	data.save(audio_path)
 	digest = FileAccess.get_sha256(audio_path)
@@ -73,6 +74,7 @@ func _test_defaults_and_recovery() -> void:
 	t.expect(is_equal_approx(audio.volumes.voice, 0.9) and audio.enabled.voice, "legacy voice volume survives upgrade and obsolete mute flag is ignored")
 	t.expect(is_equal_approx(audio.volumes.effects, 0.65) and audio.enabled.effects, "invalid audio fields use safe individual defaults")
 	t.expect(audio.preview_voice_seat == 0, "invalid preview selection falls back")
+	t.expect(audio.seat_voice_packs == ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"], "old default seat voices migrate to the new mapping")
 	t.expect(FileAccess.get_sha256(audio_path) == digest, "startup reads old audio settings without modifying the file")
 	audio.set_volume("effects", 0.43)
 	t.expect(STORE.read_config(audio_path).get_value("future", "keep") == 27, "audio saves preserve unknown future settings")
@@ -93,16 +95,15 @@ func _test_controls() -> void:
 		var key: String = pair[0] + ("_speed" if pair[0] == "settlement" else "_animation_speed")
 		t.expect(STORE.read_config(config.settings_path).get_value("game", key) == pair[1], "UI choice saved immediately while panel is still open: " + key)
 	settings.sliders.voice.value = 37
-	settings.voice_selector.item_selected.emit(3)
 	var saved := STORE.read_config(audio.settings_path)
 	t.expect(is_equal_approx(saved.get_value("voice", "volume"), 0.37), "volume slider saves immediately")
 	t.expect(saved.get_value("voice", "enabled") == true, "obsolete voice mute flag is ignored when saving")
-	t.expect(saved.get_value("voice", "preview_seat") == 3, "last preview voice is remembered without changing players' voices")
+	t.expect(settings.get("voice_selector") == null, "legacy voice selector removed")
 	settings.free()
 	settings = load("res://scripts/ui/SoundSettings.gd").new()
 	settings.table_mode = true
 	root.add_child(settings)
-	t.expect(settings.voice_selector.selected == 3 and settings.sliders.voice.value == 37, "reopened settings reflect saved choices")
+	t.expect(settings.sliders.voice.value == 37, "reopened settings reflect saved choices")
 	var game_hash := FileAccess.get_sha256(config.settings_path)
 	var audio_hash := FileAccess.get_sha256(audio.settings_path)
 	settings.persist_changes = false
@@ -110,7 +111,6 @@ func _test_controls() -> void:
 	settings.discard_speed_buttons.instant.pressed.emit()
 	settings.settlement_speed_buttons.slow.pressed.emit()
 	settings.sliders.voice.value = 19
-	settings.voice_selector.item_selected.emit(1)
 	settings.close()
 	t.expect(FileAccess.get_sha256(config.settings_path) == game_hash and FileAccess.get_sha256(audio.settings_path) == audio_hash, "preview/test controls cannot overwrite saved preferences")
 	settings.free()
@@ -121,7 +121,7 @@ func _child(mode: String) -> void:
 	if mode == "patch":
 		t.expect(ProjectSettings.load_resource_pack(directory + "/new-defaults.pck", true), "mount updated defaults from a real PCK")
 		var defaults = ResourceLoader.load(GAME, "", ResourceLoader.CACHE_MODE_IGNORE).new()
-		t.expect(defaults.ai_speed == "slow" and defaults.settlement_speed == "fast", "updated script defaults really differ from the installed version")
+		t.expect(defaults.ai_speed == "slow" and defaults.settlement_speed == "standard", "updated script defaults really differ from the installed version")
 		defaults.free()
 	var config = _game(directory + "/restart_game.cfg")
 	var audio = _audio(directory + "/restart_audio.cfg")
@@ -158,7 +158,7 @@ func _test_restart_and_patch() -> void:
 	var game_hash := FileAccess.get_sha256(directory + "/restart_game.cfg")
 	var audio_hash := FileAccess.get_sha256(directory + "/restart_audio.cfg")
 	_run_child("read")
-	var game_source := FileAccess.get_file_as_string(GAME).replace('var ai_speed := "medium"', 'var ai_speed := "slow"').replace('var settlement_speed := "standard"', 'var settlement_speed := "fast"')
+	var game_source := FileAccess.get_file_as_string(GAME).replace('var ai_speed := "fast"', 'var ai_speed := "slow"').replace('var settlement_speed := "fast"', 'var settlement_speed := "standard"')
 	var audio_source := FileAccess.get_file_as_string(AUDIO).replace('{"music": 0.12, "voice": 0.8, "effects": 0.65}', '{"music": 0.5, "voice": 0.5, "effects": 0.5}')
 	var pack := PCKPacker.new()
 	t.expect(pack.pck_start(directory + "/new-defaults.pck") == OK, "create preference upgrade fixture")

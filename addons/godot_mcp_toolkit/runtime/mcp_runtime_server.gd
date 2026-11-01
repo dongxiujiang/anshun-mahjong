@@ -98,6 +98,12 @@ func _ready() -> void:
 	if "--check-only" in OS.get_cmdline_args():
 		set_process(false)
 		return
+	# Dedicated headless room servers must not start the developer MCP port
+	# scanner. It has no game purpose and adds startup/registry I/O on every
+	# room process.
+	if DisplayServer.get_name() == "headless":
+		set_process(false)
+		return
 	# Export gate: shipped games (debug OR release export templates) must not
 	# listen on 6570. has_feature("editor") is true only under an editor launch
 	# (F5/F6) and false in EVERY export template — stronger than is_debug_build()

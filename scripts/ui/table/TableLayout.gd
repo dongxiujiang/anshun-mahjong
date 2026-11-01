@@ -50,6 +50,8 @@ func _build_static_ui() -> void:
 	table.add_child(table._sound_settings)
 	table._speed_buttons = table._sound_settings.speed_buttons
 	table._sound_settings.ai_speed_selected.connect(table._set_ai_speed)
+	table._sound_settings.auto_test_requested.connect(table.start_auto_test)
+	table._sound_settings.voice_pack_open_requested.connect(table.open_voice_packs)
 	GameConfig.settlement_speed_changed.connect(table._on_settlement_speed_changed)
 	table._update_speed_buttons()
 	var sound_button: Button = table._button("设置", table._sound_settings.open, UI.SETTINGS_BUTTON_SIZE)
@@ -59,6 +61,13 @@ func _build_static_ui() -> void:
 	sound_button.position = Vector2(1287, 20)
 	surface.add_child(sound_button)
 	table._sound_button = sound_button
+	var ai_proxy_button: Button = table._button("AI代打", table.toggle_ai_proxy, Vector2(148, UI.SETTINGS_BUTTON_SIZE.y))
+	ai_proxy_button.name = "AiProxyButton"
+	ai_proxy_button.add_theme_font_size_override("font_size", UI.SETTINGS_FONT_SIZE - 6)
+	ai_proxy_button.tooltip_text = "AI 代替你操作当前座位"
+	ai_proxy_button.visible = false
+	surface.add_child(ai_proxy_button)
+	table._ai_proxy_button = ai_proxy_button
 	var voice_button: Button = table._button("麦克风 关", table._toggle_voice_chat, Vector2(164, UI.SETTINGS_BUTTON_SIZE.y))
 	voice_button.name = "VoiceChatButton"
 	voice_button.add_theme_font_size_override("font_size", UI.SETTINGS_FONT_SIZE - 6)
@@ -152,12 +161,17 @@ func _layout() -> void:
 		table._voice_button.visible = table._net_mode() != ""
 		table._voice_button.position = table._ai_teach_button.position - Vector2(table._voice_button.size.x + 10.0, 0.0)
 		table._refresh_voice_button()
+	if table._ai_proxy_button != null:
+		table._ai_proxy_button.visible = table._net_mode() != ""
+		table._ai_proxy_button.position = table._voice_button.position - Vector2(table._ai_proxy_button.size.x + 10.0, 0.0)
+		table._refresh_ai_proxy_button()
 	if table._test_pattern_button != null:
 		# 测试牌型只对调试构建/开启 debug 的测试环境开放，正式包不显示。
 		var test_net = table._net_node()
 		table._test_pattern_button.visible = table._net_mode() != "" and GameConfig.debug_enabled \
 			and test_net != null and bool(test_net.test_mode)
-		table._test_pattern_button.position = table._voice_button.position - Vector2(table._test_pattern_button.size.x + 10.0, 0.0)
+		var test_anchor = table._ai_proxy_button if table._ai_proxy_button.visible else table._voice_button
+		table._test_pattern_button.position = test_anchor.position - Vector2(table._test_pattern_button.size.x + 10.0, 0.0)
 	# Actions sit immediately above the local player's draw slot.
 	table._layout_actions()
 	status_label.position = Vector2(60, design.y - 54)

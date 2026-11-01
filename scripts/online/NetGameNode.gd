@@ -41,6 +41,11 @@ var game: RoundState
 var round_number := 0
 var room_number := "0000"
 var room_name := "麻将房间"
+const VOICE_PACKS := preload("res://scripts/core/VoicePackRegistry.gd")
+var voice_packs := ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"]
+var host_voice_packs := ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"]
+var _player_voice_prefs: Dictionary = {}
+var my_voice_pack := ""
 var lobby: Dictionary = {}
 var _seat_peer: Dictionary = {}
 var _peer_seat: Dictionary = {}
@@ -82,6 +87,9 @@ var _return_vote_yes: Dictionary = {}
 var _return_vote_initiator := -1
 var _return_vote_rejecter := -1
 var _state_queued := false
+var _state_flush_scheduled := false
+var _last_state_flush_ms := 0
+const STATE_SYNC_INTERVAL_MS := 80
 var _state_revision := 0
 var _received_revision := -1
 var ai_speed := "fast"
@@ -159,6 +167,15 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 		_ctrl_hint[0] = AUTO if host_auto else "human"
 		_members[1] = {"name": get_node("/root/GameConfig").player_name, "ready": host_auto, "wants_dealer": false}
 		my_seat = 0
+		my_voice_pack = ""
+		# 房主创建房间时先把本地四个座位音色上传为房间初始配置。
+		var audio = get_node_or_null("/root/AudioManager") if is_inside_tree() else null
+		if audio != null:
+			for index in 4:
+				voice_packs[index] = audio.get_seat_voice_pack(index)
+				host_voice_packs[index] = voice_packs[index]
+			_ensure_unique_voice_packs()
+			host_voice_packs = voice_packs.duplicate()
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	_publish_lobby()
@@ -385,10 +402,15 @@ func request_join(number: String, player_name: String, token: String = "", resum
 		_reject(peer, "该房间已开局，或重连座位已过期")
 		return
 	if not resumed:
-		for candidate in 4:
-			if int(_seat_peer.get(candidate, -1)) < 1 and not _orphaned.has(candidate):
-				seat = candidate
-				break
+		# 创建者进入自己创建的房间时固定坐东位，保证建房座位与音色设置一致。
+		var owner_joining := dedicated and _owner_peer == 0 and _owner_token != "" and token == _owner_token
+		if owner_joining and int(_seat_peer.get(0, -1)) < 1 and not _orphaned.has(0):
+			seat = 0
+		else:
+			for candidate in 4:
+				if int(_seat_peer.get(candidate, -1)) < 1 and not _orphaned.has(candidate):
+					seat = candidate
+					break
 	if seat < 0:
 		_reject(peer, "房间已满")
 		return
@@ -481,7 +503,9 @@ func _on_peer_disconnected(peer: int) -> void:
 	_voice_last_ms.erase(peer)
 	_peer_last_seen.erase(peer)
 	_members.erase(peer)
+	_player_voice_prefs.erase(peer)
 	_seat_peer[seat] = -1
+	_reconcile_voice_packs()
 	if not _test_vote.is_empty():
 		var alive := _human_seats()
 		var valid := true
@@ -611,7 +635,8 @@ func _publish_lobby() -> void:
 		# disconnected seats have an orphan record with the retained member.
 		if _orphaned.has(seat): member = _orphaned[seat].member
 		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": (not _waiting_for_reconnect(seat) and ai) if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
-	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "opening_speed": opening_speed, "test_mode": test_mode, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
+	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "opening_speed": opening_speed, "test_mode": test_mode, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "voice_packs": voice_packs.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
+	_sync_voice_packs_to_audio()
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer): rpc_id(peer, "lobby_sync", lobby)
 	lobby_updated.emit()
@@ -662,6 +687,97 @@ func _submit_lobby(action: String, data: Dictionary) -> void:
 func set_ready(value: bool) -> void:
 	_submit_lobby("ready", {"value": value, "round_number": round_number})
 
+func request_my_voice_pack(pack_id: String) -> void:
+	if my_seat < 0 or my_seat > 3: return
+	my_voice_pack = VOICE_PACKS.normalize(pack_id)
+	if host_mode:
+		_apply_voice_pack(1, {"seat": my_seat, "pack": my_voice_pack})
+	else:
+		_submit_lobby("voice_pack", {"seat": my_seat, "pack": my_voice_pack})
+
+func request_voice_pack(seat: int, pack_id: String) -> void:
+	var normalized := VOICE_PACKS.normalize(pack_id)
+	if seat == my_seat:
+		my_voice_pack = normalized
+	if host_mode:
+		_apply_voice_pack(1, {"seat": seat, "pack": normalized})
+	else:
+		_submit_lobby("voice_pack", {"seat": seat, "pack": normalized})
+
+func _apply_voice_pack(peer: int, data: Dictionary) -> void:
+	var seat := int(data.get("seat", -1))
+	if seat < 0 or seat > 3 or not _peer_seat.has(peer): return
+	var pack_id := VOICE_PACKS.normalize(data.get("pack", "default"))
+	if peer == _owner_peer:
+		# 房主保存每个座位的基准音色；玩家占用时仍以玩家音色优先。
+		host_voice_packs[seat] = pack_id
+	else:
+		if int(_peer_seat[peer]) != seat:
+			_notice(peer, "只能修改自己的音色")
+			return
+		_player_voice_prefs[peer] = pack_id
+	_reconcile_voice_packs()
+	_sync_voice_packs_to_audio()
+	_publish_lobby()
+
+func _reconcile_voice_packs() -> void:
+	var desired: Array[String] = []
+	for seat in 4:
+		var peer := int(_seat_peer.get(seat, -1))
+		if peer > 0 and _player_voice_prefs.has(peer):
+			desired.append(VOICE_PACKS.normalize(_player_voice_prefs[peer]))
+		else:
+			desired.append(VOICE_PACKS.normalize(host_voice_packs[seat]))
+	# 玩家优先，其次是房主，最后是空位/人机；重复的 AI/房主座位改随机未使用音色。
+	var order: Array[int] = []
+	for seat in 4:
+		var peer := int(_seat_peer.get(seat, -1))
+		if peer > 0 and peer != _owner_peer:
+			order.append(seat)
+	if _owner_peer > 0:
+		for seat in 4:
+			if int(_seat_peer.get(seat, -1)) == _owner_peer:
+				order.append(seat)
+	for seat in 4:
+		if seat not in order:
+			order.append(seat)
+	var used := {}
+	for seat in order:
+		var pack_id := desired[seat]
+		if used.has(pack_id):
+			pack_id = _random_unused_voice_pack(used)
+		voice_packs[seat] = pack_id
+		used[pack_id] = true
+
+func _random_unused_voice_pack(used: Dictionary) -> String:
+	var candidates: Array = []
+	for pack_id in VOICE_PACKS.ORDER:
+		if not used.has(pack_id):
+			candidates.append(pack_id)
+	if candidates.is_empty():
+		return VOICE_PACKS.DEFAULT
+	return str(candidates[randi_range(0, candidates.size() - 1)])
+
+func _ensure_unique_voice_packs() -> void:
+	var used := {}
+	for seat in 4:
+		var pack_id := VOICE_PACKS.normalize(voice_packs[seat])
+		if used.has(pack_id):
+			for candidate in VOICE_PACKS.ORDER:
+				if not used.has(candidate):
+					pack_id = candidate
+					break
+		voice_packs[seat] = pack_id
+		used[pack_id] = true
+
+func _sync_voice_packs_to_audio() -> void:
+	if not is_inside_tree():
+		return
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio == null: return
+	for seat in 4:
+		audio.set_seat_voice_pack(seat, voice_packs[seat])
+
 func set_ai_speed(speed_key: String) -> void:
 	_submit_lobby("ai_speed", {"value": speed_key})
 
@@ -703,6 +819,9 @@ func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 		return
 	if action == "test_propose":
 		_start_test_vote(int(_peer_seat.get(peer, -1)), str(data.get("pattern", "")))
+		return
+	if action == "voice_pack":
+		_apply_voice_pack(peer, data)
 		return
 	if action == "opening_speed":
 		if peer != _owner_peer: return
@@ -784,14 +903,30 @@ func _exchange(peer: int, target: int) -> void:
 		_peer_seat[other] = source
 		_assign(other, source)
 	_assign(peer, target)
+	_reconcile_voice_packs()
 	_invalidate_ready()
 
 func _assign(peer: int, seat: int) -> void:
 	if peer == 1:
 		my_seat = seat
 		room_ready.emit(seat)
+		call_deferred("_upload_my_seat_voice")
 	else:
 		rpc_id(peer, "seat_assign", seat)
+
+func _upload_my_seat_voice() -> void:
+	if not is_inside_tree() or my_seat < 0 or my_seat > 3:
+		return
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio == null:
+		return
+	if my_voice_pack == "":
+		my_voice_pack = str(audio.get_seat_voice_pack(my_seat))
+	var pack_id: String = my_voice_pack
+	if host_mode:
+		_apply_voice_pack(1, {"seat": my_seat, "pack": pack_id})
+	else:
+		_submit_lobby("voice_pack", {"seat": my_seat, "pack": pack_id})
 
 func _notice(peer: int, message: String) -> void:
 	if peer == 1: lobby_notice.emit(message)
@@ -864,11 +999,22 @@ func _host_broadcast() -> void:
 	if _state_queued:
 		state_metrics.coalesced += 1
 		return
+	var now := Time.get_ticks_msec()
+	var elapsed := now - _last_state_flush_ms
+	if elapsed < STATE_SYNC_INTERVAL_MS:
+		if not _state_flush_scheduled:
+			_state_flush_scheduled = true
+			var delay := float(STATE_SYNC_INTERVAL_MS - elapsed) / 1000.0
+			get_tree().create_timer(delay).timeout.connect(func():
+				_state_flush_scheduled = false
+				_host_broadcast())
+		return
 	_state_queued = true
 	call_deferred("_flush_host_state")
 
 func _flush_host_state() -> void:
 	_state_queued = false
+	_last_state_flush_ms = Time.get_ticks_msec()
 	if not host_mode or game == null or game.phase == RoundState.Phase.IDLE: return
 	_state_revision += 1
 	# 整局状态只从模型序列化一次；每个对手只复制需要遮牌的玩家/事件。
@@ -887,7 +1033,7 @@ func _flush_host_state() -> void:
 			state.audio_events = state.audio_events.filter(func(event): return int(event.id) > last_id)
 			_sent_audio[peer] = {"session": game.audio_session, "id": game.audio_event_id}
 			_send_state_frame(peer, state)
-			_last_sent_state[peer] = state.duplicate(true)
+			_last_sent_state[peer] = state
 
 func _send_state_frame(peer: int, state: Dictionary) -> void:
 	var raw := var_to_bytes(state)
@@ -1279,6 +1425,8 @@ func _apply_member_names() -> void:
 func client(ip: String, port: int = 0, number: String = "", player_name: String = "", owner_token: String = "", resume_token: String = "", resume_only: bool = false) -> bool:
 	_server_ip = ip
 	_server_port = port if port > 0 else 7500
+	if not resume_only:
+		my_voice_pack = ""
 	if resume_token != "": _resume_token = resume_token
 	# A fresh client starts without a token. The authority issues one in
 	# seat_assign after it has actually reserved a seat.
@@ -1465,7 +1613,7 @@ func _on_client_sync(state: Dictionary) -> void:
 	_received_revision = revision
 	var first := game.phase == RoundState.Phase.IDLE
 	round_number = int(state.get("round_number", 1))
-	_client_sync_cache = state.duplicate(true)
+	_client_sync_cache = state
 	game.apply_sync(state)
 	_resume_sync_pending = false
 	_sync_voice_room()
@@ -1484,6 +1632,8 @@ func seat_assign(seat: int, issued_token: String = "") -> void:
 	_reconnecting = false
 	_reconnect_attempt = 0
 	my_seat = seat
+	# 入座/换座后把本机音色上传到房间并立即同步。
+	call_deferred("_upload_my_seat_voice")
 	# 入座/收到 lobby 时上报本机速度；服务器只接受房主发来的值。
 	call_deferred("_report_opening_speed")
 	room_ready.emit(seat)
@@ -1498,6 +1648,11 @@ func lobby_sync(state: Dictionary) -> void:
 	room_number = str(state.number)
 	room_name = str(state.name)
 	test_mode = bool(state.get("test_mode", false))
+	var packs: Array = state.get("voice_packs", [])
+	for seat in 4:
+		voice_packs[seat] = VOICE_PACKS.normalize(packs[seat] if seat < packs.size() else "default")
+	_ensure_unique_voice_packs()
+	_sync_voice_packs_to_audio()
 	if not bool(state.get("started", false)) and _client_joined: _resume_sync_pending = false
 	_report_opening_speed()
 	lobby_updated.emit()

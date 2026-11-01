@@ -5,6 +5,7 @@ signal settings_changed
 signal event_played(event: Dictionary)
 signal discard_impact_played
 signal settlement_cue_played(cue: String)
+signal voice_test_progress(pack_id: String, key: String, index: int, total: int)
 
 const AUDIO_ROOT := "res://res/audio/"
 const SETTINGS_PATH := "user://audio_settings.cfg"
@@ -14,12 +15,21 @@ const BUSES := {"music": "Music", "voice": "Voice", "effects": "Effects"}
 const DEFAULT_VOLUMES := {"music": 0.12, "voice": 0.8, "effects": 0.65}
 const SETTINGS_VERSION := 2
 const ACTION_VOICES := ["pong", "kong", "ready", "hu", "zimo"]
+const VOICE_PACKS := preload("res://scripts/core/VoicePackRegistry.gd")
 const VOICE_QUEUE_LIMIT := 3
 const SETTLEMENT_CUES := ["flip", "chicken", "kong", "win", "other", "coins"]
 
 var volumes: Dictionary = DEFAULT_VOLUMES.duplicate()
 var enabled := {"music": true, "voice": true, "effects": true}
 var preview_voice_seat := 0
+var seat_voice_packs := ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"]
+const NEW_SEAT_DEFAULT_PACKS := ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"]
+const LEGACY_SEAT_DEFAULT_SETS := [
+	["usagi", "lubenwei", "weilong", "xiaohei"],
+	["usagi", "usagi", "usagi", "usagi"],
+	["default", "default", "default", "default"],
+]
+var _preview_pack_override := {}
 var settings_path := SETTINGS_PATH
 var persist_settings := DisplayServer.get_name() != "headless"
 var music_player: AudioStreamPlayer
@@ -35,6 +45,9 @@ var _playing_voice_seat := 0
 var _win_priority := false
 var _last_session := ""
 var _last_event_id := 0
+var _voice_test_active := false
+var _voice_test_queue: Array[Dictionary] = []
+var _voice_test_cursor := 0
 var _duck_tween: Tween
 var _application_paused := false
 
@@ -58,17 +71,13 @@ func _ready() -> void:
 	# 提前加载，首次喊牌不在出牌时读取磁盘。
 	_stream("effects/discard")
 	for cue in SETTLEMENT_CUES: _stream("effects/settlement_" + cue)
-	for suit in ["wan", "tiao", "tong"]:
-		for rank in range(1, 10):
-			_stream("voice/%s%d" % [suit, rank])
-	for action in ACTION_VOICES:
-		_stream("voice/" + action)
-	for seat in range(1, 4):
+	for seat in 4:
+		var pack_id := get_seat_voice_pack(seat)
 		for suit in ["wan", "tiao", "tong"]:
 			for rank in range(1, 10):
-				_stream("voice/seat%d/%s%d" % [seat, suit, rank])
+				_stream("voice_packs/%s/%s%d" % [pack_id, suit, rank])
 		for action in ACTION_VOICES:
-			_stream("voice/seat%d/%s" % [seat, action])
+			_stream("voice_packs/%s/%s" % [pack_id, action])
 
 func _player(node_name: String, bus_name: String) -> AudioStreamPlayer:
 	var player := AudioStreamPlayer.new()
@@ -216,10 +225,11 @@ func _queue_voice(key: String, priority: bool, seat: int = 0) -> void:
 
 func _play_voice(key: String, seat: int = 0) -> void:
 	_playing_voice_seat = clampi(seat, 0, 3)
-	var prefix := "voice/" if _playing_voice_seat == 0 else "voice/seat%d/" % _playing_voice_seat
-	var stream := _stream(prefix + key)
-	if stream == null and _playing_voice_seat != 0:
-		stream = _stream("voice/" + key)
+	var override := str(_preview_pack_override.get(_playing_voice_seat, ""))
+	if override != "":
+		_preview_pack_override.erase(_playing_voice_seat)
+	var pack_id := override if override != "" else get_seat_voice_pack(_playing_voice_seat)
+	var stream: AudioStream = _stream("voice_packs/%s/%s" % [pack_id, key])
 	if stream == null:
 		_on_voice_finished()
 		return
@@ -228,6 +238,10 @@ func _play_voice(key: String, seat: int = 0) -> void:
 	voice_player.play()
 
 func _on_voice_finished() -> void:
+	if _voice_test_active:
+		_voice_test_cursor += 1
+		_next_voice_test()
+		return
 	if not _voice_queue.is_empty():
 		var key: String = _voice_queue.pop_front()
 		var seat: int = _voice_seat_queue.pop_front() if not _voice_seat_queue.is_empty() else 0
@@ -280,6 +294,7 @@ func save_settings(path: String = "") -> Error:
 	var config := SETTINGS_STORE.read_config(target)
 	config.set_value("settings", "version", SETTINGS_VERSION)
 	config.set_value("voice", "preview_seat", preview_voice_seat)
+	config.set_value("voice", "seat_packs", JSON.stringify(seat_voice_packs))
 	for channel in CHANNELS:
 		config.set_value(channel, "volume", volumes[channel])
 		config.set_value(channel, "enabled", enabled[channel])
@@ -299,8 +314,50 @@ func _load_settings(path: String = "") -> void:
 	enabled["effects"] = true
 	var seat = config.get_value("voice", "preview_seat", 0)
 	preview_voice_seat = seat if seat is int and seat >= 0 and seat < 4 else 0
+	var saved_packs = JSON.parse_string(str(config.get_value("voice", "seat_packs", "[]")))
+	if saved_packs is Array:
+		for index in 4:
+			seat_voice_packs[index] = VOICE_PACKS.normalize(saved_packs[index] if index < saved_packs.size() else VOICE_PACKS.DEFAULT)
+		# 旧版本的默认四座位组合升级为新的默认组合；玩家自定义组合保持不变。
+		var legacy_default := false
+		for legacy in LEGACY_SEAT_DEFAULT_SETS:
+			if seat_voice_packs == legacy:
+				legacy_default = true
+				break
+		if legacy_default or _has_duplicate_voice_packs():
+			seat_voice_packs = NEW_SEAT_DEFAULT_PACKS.duplicate()
+	_ensure_unique_voice_packs()
 	# Loading is read-only: an older version's saved values always win over new
 	# defaults, including values that happen to equal an old default.
+
+func set_seat_voice_pack(seat: int, pack_id: String) -> void:
+	if seat < 0 or seat >= 4:
+		return
+	seat_voice_packs[seat] = VOICE_PACKS.normalize(pack_id)
+
+func _has_duplicate_voice_packs() -> bool:
+	var seen := {}
+	for seat in 4:
+		var pack_id := VOICE_PACKS.normalize(seat_voice_packs[seat])
+		if seen.has(pack_id):
+			return true
+		seen[pack_id] = true
+	return false
+
+func _ensure_unique_voice_packs() -> void:
+	var used := {}
+	for seat in 4:
+		var pack_id := VOICE_PACKS.normalize(seat_voice_packs[seat])
+		if used.has(pack_id):
+			for candidate in VOICE_PACKS.ORDER:
+				if not used.has(candidate):
+					pack_id = candidate
+					break
+		seat_voice_packs[seat] = pack_id
+		used[pack_id] = true
+
+func get_seat_voice_pack(seat: int) -> String:
+	return VOICE_PACKS.normalize(seat_voice_packs[clampi(seat, 0, 3)])
 
 func set_preview_voice_seat(seat: int, persist: bool = true) -> void:
 	if seat < 0 or seat >= 4: return
@@ -311,6 +368,55 @@ func set_preview_voice_seat(seat: int, persist: bool = true) -> void:
 func preview_voice(seat: int = 0) -> void:
 	if not _application_paused:
 		_queue_voice("tong8", true, seat)
+
+const TEST_VOICE_KEYS := [
+	"wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "wan7", "wan8", "wan9",
+	"tiao1", "tiao2", "tiao3", "tiao4", "tiao5", "tiao6", "tiao7", "tiao8", "tiao9",
+	"tong1", "tong2", "tong3", "tong4", "tong5", "tong6", "tong7", "tong8", "tong9",
+	"pong", "kong", "ready", "hu", "zimo",
+]
+
+func start_voice_test(pack_ids: Array = []) -> void:
+	stop_voice_test()
+	var ids: Array = pack_ids.duplicate() if not pack_ids.is_empty() else VOICE_PACKS.ORDER.duplicate()
+	for pack_id in ids:
+		var normalized := VOICE_PACKS.normalize(pack_id)
+		for key in TEST_VOICE_KEYS:
+			_voice_test_queue.append({"pack": normalized, "key": key})
+	_voice_test_active = true
+	_voice_test_cursor = 0
+	_next_voice_test()
+
+func stop_voice_test() -> void:
+	_voice_test_active = false
+	_voice_test_queue.clear()
+	_voice_test_cursor = 0
+	if voice_player != null:
+		voice_player.stop()
+	voice_test_progress.emit("", "", 0, 0)
+
+func _next_voice_test() -> void:
+	if not _voice_test_active:
+		return
+	while _voice_test_cursor < _voice_test_queue.size():
+		var item: Dictionary = _voice_test_queue[_voice_test_cursor]
+		var stream := _stream("voice_packs/%s/%s" % [item.pack, item.key])
+		if stream == null:
+			_voice_test_cursor += 1
+			continue
+		voice_player.stop()
+		voice_player.stream = stream
+		voice_player.play()
+		voice_test_progress.emit(item.pack, item.key, _voice_test_cursor + 1, _voice_test_queue.size())
+		return
+	_voice_test_active = false
+	_voice_test_queue.clear()
+	_voice_test_cursor = 0
+	voice_test_progress.emit("", "", 0, 0)
+
+func preview_voice_pack(seat: int, pack_id: String) -> void:
+	_preview_pack_override[clampi(seat, 0, 3)] = VOICE_PACKS.normalize(pack_id)
+	preview_voice(seat)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED:

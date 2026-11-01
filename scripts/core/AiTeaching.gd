@@ -6,7 +6,7 @@ extends RefCounted
 const AI_PLAYER := preload("res://scripts/ai/AiPlayer.gd")
 const CONFIG := preload("res://scripts/autoload/GameConfig.gd")
 
-static func recommend(round, seat: int) -> Dictionary:
+static func recommend(round, seat: int, level_override: String = "") -> Dictionary:
 	if round == null or seat < 0 or seat >= round.players.size():
 		return {}
 	if round.phase != RoundState.Phase.PLAYING or not round.awaiting or round.current_turn != seat:
@@ -26,10 +26,11 @@ static func recommend(round, seat: int) -> Dictionary:
 		return {"message": "AI教学：当前没有可分析的出牌"}
 	# 教打与正式 AI 共用同一套公开信息推理；刚摸到的牌已经在
 	# player.concealed 中，这里显式复制，避免后续误改权威手牌。
-	var level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(CONFIG.ai_strength, "low")
+	var level: String = level_override
+	if level == "":
+		level = {"weak": "low", "medium": "medium", "strong": "high"}.get(CONFIG.ai_strength, "low")
 	var ai := AI_PLAYER.new("AI教学", level)
-	# Teaching runs on the UI thread. Use the value model's bounded candidate
-	# analysis without an MCTS rollout so clicking 教打 cannot freeze a frame.
+	# 教打可选择工作线程执行；无 MCTS 的价值分析本身保持纯读快照。
 	ai.use_mcts = false
 	var decision: Dictionary = ai.decide_turn(round, seat)
 	var tile := str(decision.get("discard", ""))

@@ -21,6 +21,7 @@ var _audio_round: RoundState
 var _sound_button: Button
 var _settings_button: Button
 var _voice_button: Button
+var _ai_proxy_button: Button
 var _test_pattern_button: Button
 var _ai_teach_button: Button
 var _test_choice_panel: Panel
@@ -32,7 +33,22 @@ var _test_vote_id := ""
 var _test_mode_ui := false
 
 var _ai_teach_token := 0
+var _ai_teach_task := 0
+var _ai_teach_worker = null
 var _ai_assist_enabled := false
+var _auto_test_rounds := 0
+var _auto_test_completed := 0
+var _auto_test_online_ai: AiPlayer
+var _auto_test_prompt_seen := -1
+var _auto_test_settled_round := -1
+var _ai_proxy_active := false
+var _ai_proxy_ai: AiPlayer
+var _ai_proxy_worker = null
+var _ai_proxy_task := 0
+var _ai_proxy_response_tile := ""
+var _ai_proxy_response_pending := false
+var _voice_pack_dialog: Control
+var _voice_pack_layer: CanvasLayer
 var _settlement_round_id := 0
 var _settlement_session := ""
 var _settlement_round_number := -1
@@ -325,6 +341,42 @@ func _on_ai_assist_pressed() -> void:
 	if _is_ai_turn_now():
 		request_ai_teach()
 
+func open_voice_packs() -> void:
+	if _voice_pack_dialog == null:
+		_voice_pack_layer = CanvasLayer.new()
+		_voice_pack_layer.layer = 30
+		add_child(_voice_pack_layer)
+		_voice_pack_dialog = load("res://scripts/ui/VoicePackDialog.gd").new()
+		_voice_pack_layer.add_child(_voice_pack_dialog)
+		_voice_pack_dialog.pack_selected.connect(_on_voice_pack_selected)
+		_voice_pack_dialog.preview_requested.connect(_on_voice_pack_preview)
+		_voice_pack_dialog.test_all_requested.connect(func(): AudioManager.start_voice_test())
+	var net = _net_node()
+	var seat := human_seat
+	var is_host := false
+	if net != null and _net_mode() != "":
+		for index in 4:
+			AudioManager.set_seat_voice_pack(index, str(net.voice_packs[index]))
+		seat = net.my_seat
+		is_host = net.is_room_owner()
+	else:
+		is_host = true
+	var packs: Array = []
+	for index in 4:
+		packs.append(AudioManager.get_seat_voice_pack(index))
+	_voice_pack_dialog.open(packs, seat, is_host)
+
+func _on_voice_pack_selected(seat: int, pack_id: String) -> void:
+	# 本地先立即生效并保存，联机再交给房主权威同步。
+	AudioManager.set_seat_voice_pack(seat, pack_id)
+	AudioManager.save_settings()
+	var net = _net_node()
+	if net != null and _net_mode() != "":
+		net.request_voice_pack(seat, pack_id)
+
+func _on_voice_pack_preview(seat: int, pack_id: String) -> void:
+	AudioManager.preview_voice_pack(seat, pack_id)
+
 func _is_ai_turn_now() -> bool:
 	return round != null and round.players.size() == 4 \
 		and round.phase == RoundState.Phase.PLAYING \
@@ -339,6 +391,10 @@ func _refresh_ai_assist() -> void:
 
 func _clear_ai_teach() -> void:
 	_ai_teach_token += 1
+	var pending := _ai_teach_task
+	_ai_teach_task = 0
+	if pending > 0 and _ai_teach_worker != null:
+		_ai_teach_worker.cancel(pending)
 	if _player_tile_areas != null:
 		_player_tile_areas.clear_ai_teach_highlight()
 
@@ -347,11 +403,33 @@ func request_ai_teach() -> void:
 		return
 	if not _is_ai_turn_now():
 		return
-	var result: Dictionary = AiTeaching.recommend(round, human_seat)
+	_clear_ai_teach()
+	if _ai_teach_worker == null:
+		_ai_teach_worker = load("res://scripts/core/AiTeachingWorker.gd").new()
+	var level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "low")
+	var token: int = int(_ai_teach_worker.submit(round, human_seat, level))
+	if token <= 0:
+		return
+	_ai_teach_task = token
+	if status_label != null:
+		status_label.text = "AI分析中…"
+		status_label.show()
+
+func _poll_ai_teach() -> void:
+	if _ai_teach_task <= 0 or _ai_teach_worker == null:
+		return
+	var result: Dictionary = _ai_teach_worker.take_result(_ai_teach_task)
+	if result.is_empty():
+		return
+	_ai_teach_task = 0
 	var tile := str(result.get("tile", ""))
-	_player_tile_areas.clear_ai_teach_highlight()
+	if _player_tile_areas != null:
+		_player_tile_areas.clear_ai_teach_highlight()
 	if tile != "":
 		_player_tile_areas.highlight_ai_teach(tile)
+	if status_label != null and result.has("message"):
+		status_label.text = str(result.message)
+		status_label.show()
 
 func _refresh_voice_button() -> void:
 	if _voice_button == null:
@@ -381,10 +459,14 @@ func _remote_voice_enabled(seat: int) -> bool:
 func _process(_delta: float) -> void:
 	if round == null:
 		return
+	_poll_ai_teach()
+	_poll_ai_proxy()
 	# Online authority and clients already poll in NetGameNode._process.
 	var network = get_node_or_null("/root/Network")
 	if network == null or network.net_node == null or str(network.mode) == "":
 		round.poll_ai()
+	elif _auto_test_rounds > 0 or _ai_proxy_active:
+		_auto_test_poll_online()
 
 func _exit_tree() -> void:
 	var net = _net_node()
@@ -401,6 +483,20 @@ func _exit_tree() -> void:
 		else:
 			_ai_service.stop()
 		_ai_service = null
+	if _ai_teach_worker != null:
+		var teach_tree := get_tree()
+		if teach_tree != null:
+			_ai_teach_worker.stop_async(teach_tree)
+		else:
+			_ai_teach_worker.stop()
+		_ai_teach_worker = null
+	if _ai_proxy_worker != null:
+		var proxy_tree := get_tree()
+		if proxy_tree != null:
+			_ai_proxy_worker.stop_async(proxy_tree)
+		_ai_proxy_worker = null
+	_ai_proxy_active = false
+	_ai_proxy_task = 0
 	if round != null and _net_mode() == "": round.cancel_opening()
 	if _audio_round != null and _audio_round.audio_event.is_connected(_on_audio_event):
 		_audio_round.audio_event.disconnect(_on_audio_event)
@@ -443,6 +539,154 @@ func _emit_response(tile: String, decision: Dictionary) -> void:
 	else:
 		round.submit_response(human_seat, tile, decision)
 
+func start_auto_test(rounds: int = 100) -> void:
+	var online := _net_mode() != ""
+	if online:
+		var net = _net_node()
+		if net == null or net.game == null or net.game.phase == RoundState.Phase.IDLE:
+			return
+	_auto_test_rounds = maxi(1, rounds)
+	_auto_test_completed = 0
+	_auto_test_prompt_seen = -1
+	_auto_test_settled_round = -1
+	if online:
+		# 真实速度：不修改任何动画/人机延迟，只代替玩家点击。
+		_auto_test_online_ai = null
+		print("[auto-test] start rounds=%d mode=online real-speed" % _auto_test_rounds)
+		return
+	GameConfig.set_ai_speed("fast", false)
+	GameConfig.animation_speed = "instant"
+	GameConfig.draw_animation_speed = "instant"
+	GameConfig.discard_animation_speed = "instant"
+	GameConfig.settlement_speed = "fast"
+	GameConfig.opening_animation_speed = "fast"
+	_auto_test_online_ai = null
+	print("[auto-test] start rounds=", _auto_test_rounds)
+	new_game()
+
+func _auto_test_poll_online() -> void:
+	if round == null or (_auto_test_rounds <= 0 and not _ai_proxy_active):
+		return
+	if round.phase == RoundState.Phase.SETTLED:
+		var settled_round := int(_net_node().round_number) if _net_node() != null else 0
+		if _ai_proxy_active and _auto_test_rounds <= 0:
+			if _auto_test_settled_round != settled_round:
+				_auto_test_settled_round = settled_round
+				_auto_test_prompt_seen = -1
+				if _net_node() != null:
+					_net_node().next_round()
+			return
+		if _auto_test_settled_round != settled_round:
+			_auto_test_settled_round = settled_round
+			_auto_test_prompt_seen = -1
+			_auto_test_completed += 1
+			print("[auto-test] round=%d fps=%.1f nodes=%d static_mb=%.1f mode=online" % [
+				_auto_test_completed,
+				Performance.get_monitor(Performance.TIME_FPS),
+				Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
+				float(OS.get_static_memory_usage()) / (1024.0 * 1024.0),
+			])
+			if _auto_test_completed >= _auto_test_rounds:
+				print("[auto-test] done rounds=", _auto_test_completed)
+				_auto_test_rounds = 0
+				_auto_test_online_ai = null
+			else:
+				get_tree().create_timer(0.15).timeout.connect(_auto_test_next)
+		return
+	if round.phase != RoundState.Phase.PLAYING:
+		return
+	if not round._awaiting_response.is_empty():
+		var response_seat := int(round._awaiting_response.get("seat", -1))
+		if response_seat == human_seat and _auto_test_prompt_seen != round.prompt_id:
+			_auto_test_prompt_seen = round.prompt_id
+			_auto_test_online_response(response_seat, int(round._awaiting_response.get("disc_seat", -1)),
+				str(round._awaiting_response.get("tile", "")), round.legal_response_options(response_seat,
+					int(round._awaiting_response.get("disc_seat", -1)), str(round._awaiting_response.get("tile", "")),
+					int(round._awaiting_response.get("stage", RoundState.ResponseStage.NONE))))
+	elif round.awaiting and round.current_turn == human_seat and _auto_test_prompt_seen != round.prompt_id:
+		_auto_test_prompt_seen = round.prompt_id
+		_auto_test_online_turn(human_seat)
+
+func toggle_ai_proxy() -> void:
+	if _net_mode() == "":
+		return
+	_ai_proxy_active = not _ai_proxy_active
+	if _ai_proxy_active:
+		var level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "medium")
+		_ai_proxy_ai = AiPlayer.new("AI代打", level)
+		_ai_proxy_worker = load("res://scripts/core/AiTurnWorker.gd").new()
+		_ai_proxy_task = 0
+		_ai_proxy_response_pending = false
+		_auto_test_prompt_seen = -1
+		_auto_test_settled_round = -1
+	else:
+		_ai_proxy_ai = null
+		if _ai_proxy_worker != null:
+			var tree := get_tree()
+			if tree != null:
+				_ai_proxy_worker.stop_async(tree)
+			_ai_proxy_worker = null
+		_ai_proxy_task = 0
+	_refresh_ai_proxy_button()
+
+func _refresh_ai_proxy_button() -> void:
+	if _ai_proxy_button == null:
+		return
+	_ai_proxy_button.text = "AI代打 开" if _ai_proxy_active else "AI代打"
+	_ai_proxy_button.tooltip_text = "点击关闭 AI 代打" if _ai_proxy_active else "AI 代替你操作当前座位"
+
+func _submitted_proxy_level() -> String:
+	return {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "medium")
+
+func _poll_ai_proxy() -> void:
+	if _ai_proxy_task <= 0 or _ai_proxy_worker == null:
+		return
+	var decision: Dictionary = _ai_proxy_worker.take_result(_ai_proxy_task)
+	if decision.is_empty():
+		return
+	_ai_proxy_task = 0
+	if _ai_proxy_response_pending:
+		var tile := _ai_proxy_response_tile
+		_ai_proxy_response_pending = false
+		_ai_proxy_response_tile = ""
+		_emit_response(tile, decision)
+	else:
+		_emit_turn(decision)
+
+func _auto_test_online_turn(seat: int) -> void:
+	if round == null:
+		return
+	if _ai_proxy_active and _ai_proxy_worker != null:
+		if _ai_proxy_task > 0:
+			_ai_proxy_worker.cancel(_ai_proxy_task)
+		_ai_proxy_response_pending = false
+		_ai_proxy_task = int(_ai_proxy_worker.submit_turn(round, seat, _submitted_proxy_level()))
+		return
+	var options: Dictionary = round.legal_turn_options(seat)
+	if options.get("self_win", false):
+		_emit_turn({"self_win": true})
+		return
+	var player: PlayerState = round.players[seat]
+	var tile := str(player.just_drew)
+	if not options.get("discards", []).has(tile):
+		if options.get("discards", []).is_empty():
+			if _auto_test_online_ai != null:
+				_emit_turn(_auto_test_online_ai.decide_turn(round, seat))
+			return
+		tile = str(options.discards[0])
+	_emit_turn({"discard": tile})
+
+func _auto_test_online_response(seat: int, discarded_seat: int, tile: String, options: Dictionary) -> void:
+	if _ai_proxy_active and _ai_proxy_worker != null:
+		if _ai_proxy_task > 0:
+			_ai_proxy_worker.cancel(_ai_proxy_task)
+		_ai_proxy_response_pending = true
+		_ai_proxy_response_tile = tile
+		_ai_proxy_task = int(_ai_proxy_worker.submit_response(round, seat, discarded_seat, tile, options, _submitted_proxy_level()))
+		return
+	# Auto-play only measures the online/UI frame budget; human input is not AI work.
+	_emit_response(tile, {"action": "win"} if options.get("can_win", false) else {"action": "pass"})
+
 func new_game() -> void:
 	var scores: Array = []
 	var chicken_multiplier := round.next_chicken_multiplier if round != null else 1
@@ -475,13 +719,14 @@ func new_game() -> void:
 	var controllers: Array = []
 	var ai_level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "low")
 	for seat in 4:
-		var table_ai := AiPlayer.new("AI%d" % seat, ai_level) if seat != human_seat else null
+		var table_ai := AiPlayer.new("AI%d" % seat, ai_level) if _auto_test_rounds > 0 or seat != human_seat else null
 		controllers.append(table_ai)
 	round.controllers = controllers
-	round.ai_delay_seconds = GameConfig.ai_delay_seconds()
-	round.ai_response_delay_seconds = GameConfig.ai_response_delay_seconds()
-	round.opening_delay_seconds = GameConfig.OPENING_WAIT_SECONDS * GameConfig.opening_animation_scale() \
-		if DisplayServer.get_name() != "headless" else 0.0
+	round.ai_delay_seconds = 0.0 if _auto_test_rounds > 0 else GameConfig.ai_delay_seconds()
+	round.ai_response_delay_seconds = 0.0 if _auto_test_rounds > 0 else GameConfig.ai_response_delay_seconds()
+	round.opening_delay_seconds = 0.0 if _auto_test_rounds > 0 else (
+		GameConfig.OPENING_WAIT_SECONDS * GameConfig.opening_animation_scale() \
+		if DisplayServer.get_name() != "headless" else 0.0)
 	round.randomize_seed()
 	# 先带入累计分数，再让新庄家开始行动（AI 庄家也可能马上结算）。
 	if scores.size() == 4:
@@ -515,7 +760,10 @@ func _setup_client_view() -> void:
 	_awaiting_rejoin_snapshot = round.phase == RoundState.Phase.IDLE
 	network.room_ready.connect(func(seat):
 		human_seat = seat
-		if _connection_overlay != null: _connection_overlay.close()
+		if _awaiting_rejoin_snapshot:
+			if _connection_overlay != null: _connection_overlay.show_syncing()
+		elif _connection_overlay != null:
+			_connection_overlay.close()
 		_refresh())
 	network.state_updated.connect(_on_client_state_updated)
 	network.prompted.connect(_on_net_prompt)
@@ -708,6 +956,32 @@ func _on_round_finished(_result: Dictionary) -> void:
 	_response_disc = ""
 	_clear_actions()
 	_refresh()
+	if _auto_test_rounds > 0 and _net_mode() == "":
+		_auto_test_prompt_seen = -1
+		_auto_test_completed += 1
+		print("[auto-test] round=%d fps=%.1f nodes=%d static_mb=%.1f mode=%s" % [
+			_auto_test_completed,
+			Performance.get_monitor(Performance.TIME_FPS),
+			Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
+			float(OS.get_static_memory_usage()) / (1024.0 * 1024.0),
+			"online" if _net_mode() != "" else "offline",
+		])
+		if _auto_test_completed < _auto_test_rounds:
+			get_tree().create_timer(0.15).timeout.connect(_auto_test_next)
+		else:
+			print("[auto-test] done rounds=", _auto_test_completed)
+			_auto_test_rounds = 0
+			_auto_test_completed = 0
+			_auto_test_online_ai = null
+
+func _auto_test_next() -> void:
+	if _auto_test_rounds > 0 and is_inside_tree():
+		if _net_mode() != "":
+			var net = _net_node()
+			if net != null:
+				net.next_round()
+		else:
+			new_game()
 
 func _on_connection_error(message: String) -> void:
 	_selecting = false

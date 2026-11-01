@@ -152,11 +152,13 @@ func _refresh_identity(seat: int) -> void:
 	net_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	net_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var nickname: Label = name_labels[seat]
-	nickname.text = "人机" if not player.is_human else str(player.name_label).strip_edges()
-	if nickname.text == "": nickname.text = "玩家"
+	var player_text := "人机" if not player.is_human else str(player.name_label).strip_edges()
+	if player_text == "": player_text = "玩家"
+	var wind := str(UI.WINDS[seat])
+	nickname.text = player_text
 	nickname.size = Vector2(UI.CENTER_SCORE_SIZE.x, maxf(32.0, nickname.get_minimum_size().y))
 	nickname.position = label.position - Vector2(0, nickname.size.y + 4.0)
-	nickname.tooltip_text = nickname.text
+	nickname.tooltip_text = "%s位 · %s · 音色：%s" % [wind, player_text, AudioManager.get_seat_voice_pack(seat)]
 	nickname.visible = table._net_mode() != ""
 	var speaker: Button = voice_speaker_buttons.get(seat)
 	if speaker != null:
@@ -716,7 +718,8 @@ func _refresh_discards(seat: int) -> void:
 		var tile: TileView = table._make_tile(player.discards[index], true, UI.RIVER_TILE_UNIT)
 		tile.set_meta("discard_id", player.discard_ids[index] if index < player.discard_ids.size() else index)
 		var latest: bool = table.round.last_discard.get("seat", -1) == seat and table.round.last_discard.get("tile", "") == tile.tile and index == player.discards.size() - 1
-		tile.set_highlight(latest)
+		tile.set_highlight(false)
+		tile.set_latest_highlight(latest)
 		var row_index = regular_index / columns
 		table._put_tile(discard_box[seat][row_index], tile, Vector2(UI.RIVER_INSET + (regular_index % columns) * (width + UI.TILE_GAP), UI.RIVER_INSET + row_index * (height + UI.TILE_GAP)))
 		regular_index += 1

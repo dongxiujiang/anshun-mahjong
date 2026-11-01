@@ -7,6 +7,8 @@ signal exit_confirmed
 signal ai_speed_selected(speed_key: String)
 signal ai_strength_selected(strength_key: String)
 signal replay_export_requested
+signal auto_test_requested(rounds: int)
+signal voice_pack_open_requested
 ## 主菜单和牌桌共用的声音面板，独立于旋转、缩放的牌桌。
 
 const PANEL_SIZE := Vector2(680, 560)
@@ -20,8 +22,7 @@ var panel: Panel
 var sliders := {}
 var switches := {}
 var percentages := {}
-var preview_button: Button
-var voice_selector: OptionButton
+
 var persist_changes := true
 var speed_buttons := {}
 var ai_strength_buttons := {}
@@ -43,6 +44,8 @@ var mic_gain_percent: Label
 var remote_volume_percent: Label
 var continue_button: Button
 var debug_button: Button
+var auto_test_button: Button
+var auto_test_500_button: Button
 var exit_room_button: Button
 var replay_exporter: Node
 
@@ -119,17 +122,18 @@ func _ready() -> void:
 		remote_volume_slider.value_changed.connect(_on_remote_volume_changed)
 		panel.add_child(remote_volume_slider)
 		remote_volume_percent = _label("", Vector2(574, remote_y + 12), Vector2(78, 42), 24)
-	voice_selector = OptionButton.new()
-	voice_selector.position = Vector2(36, 604 if table_mode else 422)
-	voice_selector.size = Vector2(172, 62)
-	for title in ["柔和女声", "轻朗男声", "清柔女声", "沉稳男声"]:
-		voice_selector.add_item(title)
-	voice_selector.item_selected.connect(func(seat: int): AudioManager.set_preview_voice_seat(seat, persist_changes))
-	panel.add_child(voice_selector)
-	preview_button = _button("试听语音", Vector2(220, 604 if table_mode else 422), Vector2(172, 62), _preview_voice)
 	debug_button = _button("关闭debug" if GameConfig.debug_enabled else "开启debug",
-		Vector2(36, 500 if table_mode else 320), Vector2(300, 64), _toggle_debug)
+		Vector2(36, 540 if table_mode else 320), Vector2(300, 64), _toggle_debug)
 	debug_button.name = "DebugToggleButton"
+	auto_test_button = _button("自动跑100局", Vector2(348, 540 if table_mode else 320), Vector2(145, 64), func(): auto_test_requested.emit(100))
+	auto_test_button.name = "AutoTestButton"
+	auto_test_button.visible = table_mode and GameConfig.debug_enabled
+	auto_test_500_button = _button("自动跑500局", Vector2(503, 540 if table_mode else 320), Vector2(145, 64), func(): auto_test_requested.emit(500))
+	var voice_pack_button := _button("座位音色", Vector2(36, 470 if table_mode else 320), Vector2(300, 64), func(): voice_pack_open_requested.emit())
+	voice_pack_button.name = "VoicePackButton"
+	voice_pack_button.visible = table_mode
+	auto_test_500_button.name = "AutoTest500Button"
+	auto_test_500_button.visible = table_mode and GameConfig.debug_enabled
 	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 682) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
 	continue_button.name = "ContinueGameButton"
 	if table_mode:
@@ -197,7 +201,7 @@ func _ready() -> void:
 		confirm_exit_button = _button("退出房间", Vector2(48, 176), Vector2(288, 126), func(): exit_confirmed.emit())
 		confirm_exit_button.reparent(dialog, false)
 		var return_label := "继续游戏"
-		cancel_exit_button = _button(return_label, Vector2(384, 176), Vector2(288, 126), func(): exit_confirmation.hide())
+		cancel_exit_button = _button(return_label, Vector2(384, 176), Vector2(288, 126), _cancel_exit)
 		cancel_exit_button.reparent(dialog, false)
 		exit_confirmation.hide()
 	AudioManager.settings_changed.connect(_sync)
@@ -288,11 +292,9 @@ func _layout() -> void:
 	panel.position = available.position + (available.size - dimensions * panel.scale) / 2.0
 
 func _sync() -> void:
-	voice_selector.select(AudioManager.preview_voice_seat)
 	for channel in sliders:
 		sliders[channel].set_value_no_signal(roundf(float(AudioManager.volumes[channel]) * 100.0))
 		percentages[channel].text = "%d%%" % roundi(float(AudioManager.volumes[channel]) * 100.0)
-	preview_button.disabled = float(AudioManager.volumes.voice) <= 0.0
 	_sync_voice_settings()
 
 func _sync_voice_settings() -> void:
@@ -314,13 +316,14 @@ func _on_remote_volume_changed(value: float) -> void:
 func _on_slider(value: float, channel: String) -> void:
 	AudioManager.set_volume(channel, value / 100.0, persist_changes)
 
-func _preview_voice() -> void:
-	AudioManager.preview_voice(voice_selector.selected)
-
 func _toggle_debug() -> void:
 	GameConfig.set_debug_enabled(not GameConfig.debug_enabled, persist_changes)
 	if debug_button != null:
 		debug_button.text = "关闭debug" if GameConfig.debug_enabled else "开启debug"
+	if auto_test_button != null:
+		auto_test_button.visible = table_mode and GameConfig.debug_enabled
+	if auto_test_500_button != null:
+		auto_test_500_button.visible = table_mode and GameConfig.debug_enabled
 
 func _set_speed(speed_key: String) -> void:
 	if not table_mode: GameConfig.set_ai_speed(speed_key, persist_changes)
@@ -371,7 +374,6 @@ func open() -> void:
 	_layout()
 	MOTION.appear(overlay)
 	MOTION.slide_in(panel)
-	preview_button.grab_focus()
 
 func confirm_exit() -> void:
 	open()
@@ -396,6 +398,12 @@ func close(persist: bool = true) -> void:
 	MOTION.stop(panel)
 	overlay.hide()
 	if exit_confirmation != null: exit_confirmation.hide()
+
+func _cancel_exit() -> void:
+	# 取消退出时直接回牌桌，不再停留在设置页。
+	if exit_confirmation != null:
+		exit_confirmation.hide()
+	close()
 
 func is_open() -> bool:
 	return overlay != null and overlay.visible

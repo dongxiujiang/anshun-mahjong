@@ -107,6 +107,21 @@ class RoomDirectory:
         self.max_log_bytes = 5 * 1024 * 1024
         self._maintenance_stop = threading.Event()
         self._maintenance_thread = None
+        self._start_warmup()
+
+    def _start_warmup(self):
+        """Warm the Godot binary/project cache without hosting a room."""
+        if os.environ.get("MAHJONG_WARMUP", "1") == "0":
+            return
+        try:
+            subprocess.Popen(
+                [self.godot, "--headless", "--path", str(self.project),
+                 "--script", "res://server/Warmup.gd"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+        except OSError:
+            pass
 
     def start_maintenance(self, interval=10.0):
         """Reap dead rooms even when no HTTP request happens to call _cleanup."""

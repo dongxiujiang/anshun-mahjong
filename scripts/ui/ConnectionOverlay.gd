@@ -113,6 +113,20 @@ func show_error(message: String) -> void:
 		if MOTION.enabled():
 			MOTION.slide_in(_panel)
 
+func show_syncing(message: String = "座位已恢复，正在同步最新牌局…") -> void:
+	var was_visible := visible
+	show()
+	_title.text = "正在恢复牌局"
+	_body.text = message + "\n同步完成前牌桌暂不响应操作，避免点击丢失。"
+	_progress.text = "等待最新牌局…"
+	_retry_button.hide()
+	_leave_button.text = "取消并返回大厅"
+	_layout()
+	if not was_visible:
+		MOTION.appear(self)
+		if MOTION.enabled():
+			MOTION.slide_in(_panel)
+
 func show_connecting(message: String = "正在连接房间…") -> void:
 	var was_visible := visible
 	show()
