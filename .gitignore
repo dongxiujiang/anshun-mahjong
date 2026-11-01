@@ -49,3 +49,8 @@ __pycache__/
 # 用户提供的原始录音、切分预览与旧语音备份
 /wav/
 
+
+# RL 训练产物（权重、导出 checkpoint）不入库
+rl_env/*.pt
+rl_env/*_weights.json
+
