@@ -235,7 +235,7 @@ func _test_requested_kong_clicks() -> void:
 					var name := "幺鸡" if index == 0 else "八筒"
 					var unit := 16 if not is_draw and tile == gold else 8
 					var chicken := name + str(unit if called_owner else -unit) + "分"
-					var base := "杠上家" + name + ("4分" if called_owner else "-4分")
+					var base := "杠下家" + name + ("4分" if called_owner else "-4分")
 					var button: Button = a.hit_buttons[str(a._tiles_for(group)[0].get_instance_id())]
 					button.pressed.emit()
 					t.expect(a.labels[group.id].text.contains(chicken), "live click shows the requested signed chicken kong tile rate")

@@ -53,7 +53,7 @@ func _layout_actions() -> void:
 	# next player's river may sit underneath, as requested, but our tiles stay clear.
 	var metrics: Dictionary = table._seat_metrics(table.human_seat)
 	var river = Rect2(table._table_center() + Vector2(metrics.river_position), Vector2(metrics.river_size))
-	var next_hand_left: float = table._table_center().x + table._seat_metrics(posmod(table.human_seat + 1, 4)).hand_y
+	var next_hand_left: float = table._table_center().x + table._seat_metrics(posmod(table.human_seat - 1, 4)).hand_y
 	var right_limit = minf(table._table_bounds().end.x - UI.ACTION_EDGE_GAP, next_hand_left - UI.ACTION_EDGE_GAP)
 	var left = minf(maxf(right - row_size.x, river.end.x + UI.ACTION_EDGE_GAP), right_limit - row_size.x)
 	var row_top = top - row_size.y - UI.ACTION_HAND_GAP

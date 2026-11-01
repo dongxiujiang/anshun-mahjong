@@ -187,7 +187,7 @@ func build_players(human_seat: int) -> void:
 	players.clear()
 	for seat in SEATS:
 		var player := PlayerState.new()
-		player.init_seat(seat, seat == human_seat, seat == dealer_seat, ["庄家", "下家", "对家", "上家"][posmod(seat - dealer_seat, 4)])
+		player.init_seat(seat, seat == human_seat, seat == dealer_seat, ["庄家", "上家", "对家", "下家"][posmod(seat - dealer_seat, 4)])
 		player.score = CFG.START_SCORE
 		players.append(player)
 

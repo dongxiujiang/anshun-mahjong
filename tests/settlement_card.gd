@@ -237,7 +237,7 @@ func _test_kong_ui() -> void:
 						if kind != "exposed": t.expect(is_zero_approx(tile.rotation), "Concealed/added kong keeps all four upright")
 					t.expect(sideways == (1 if kind == "exposed" else 0), "Only exposed kong has a source tile sideways")
 					if kind == "exposed":
-						var expected_index: int = {1: 3, 2: 3, 3: 0}[offset]
+						var expected_index: int = {1: 0, 2: 3, 3: 3}[offset]
 						t.expect(not is_zero_approx(tiles[expected_index].rotation), "Exposed kong sideways index follows its owner's source direction")
 				t.expect(var_to_bytes([r.serialize(), r.last_result]) == before, "Tabletop kong rendering does not alter payment metadata")
 

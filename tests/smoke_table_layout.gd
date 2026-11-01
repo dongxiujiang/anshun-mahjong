@@ -641,7 +641,7 @@ func _test_meld_markers() -> void:
 			player.melds = [{"kind": "kong" if kind == "concealed" else kind, "tile": "tong8", "from_seat": source, "concealed": kind == "concealed"}]
 			table._refresh()
 			var rotated := 0
-			var expected_index: int = {1: 3, 2: 3, 3: 0}.get(source) if kind == "kong" else -1
+			var expected_index: int = {1: 0, 2: 3, 3: 3}.get(source) if kind == "kong" else -1
 			for index in table.meld_box[0].get_child_count():
 				var tile: TileView = table.meld_box[0].get_child(index)
 				if not is_zero_approx(tile.rotation):
@@ -653,7 +653,7 @@ func _test_meld_markers() -> void:
 	for owner in 4:
 		table.round.players[owner].melds = []
 		for offset in [1, 2, 3]:
-			table.round.players[owner].melds.append({"kind": "kong", "tile": "wan%d" % offset, "from_seat": posmod(owner + offset, 4)})
+			table.round.players[owner].melds.append({"kind": "kong", "tile": "wan%d" % offset, "from_seat": posmod(owner - offset, 4)})
 		table.round.players[owner].concealed = ["tong3", "tong4", "tong5", "tong9", "tong9"]
 		table.round.players[owner].just_drew = "tong9"
 	for human in 4:
@@ -670,7 +670,7 @@ func _test_meld_markers() -> void:
 	table.human_seat = 0
 	for entry in [[0, 1], [3, 3], [2, 2]]:
 		var owner: int = entry[0]
-		table.round.players[owner].melds = [{"kind": "kong", "tile": "tong2", "from_seat": posmod(owner + int(entry[1]), 4)}]
+		table.round.players[owner].melds = [{"kind": "kong", "tile": "tong2", "from_seat": posmod(owner - int(entry[1]), 4)}]
 		table.round.players[owner].concealed = ["wan1", "wan2", "wan3", "tiao2", "tiao3", "tiao4", "tong7", "tong8", "tong9", "wan9", "wan9"]
 		table.round.players[owner].just_drew = "wan9"
 	table.round.players[1].melds = [{"kind": "kong", "tile": "tiao9", "concealed": true}, {"kind": "add_kong", "tile": "wan7", "from_seat": 2}]

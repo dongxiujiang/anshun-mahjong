@@ -465,7 +465,7 @@ static func _flow(row: Dictionary, seat: int) -> String:
 	return "向%s%s%s分" % [direction, "收" if incoming else "付", _number(float(row.amount))]
 
 static func _direction(other: int, seat: int) -> String:
-	return ["本家", "下家", "对家", "上家"][posmod(other - seat, 4)]
+	return ["本家", "下家", "对家", "上家"][posmod(seat - other, 4)]
 
 static func _number(value: float) -> String:
 	return "%.0f" % value if is_equal_approx(value, roundf(value)) else str(value)

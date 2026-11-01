@@ -129,7 +129,7 @@ func _test_multiple_same_kongs() -> void:
 	for index in 2:
 		var group := _find(groups, "0:meld_%d" % index)
 		_amount(group, "kong", 8, "only complete payer2/3 partitions remain")
-		t.expect(group.detail.contains("该家合计向下家收4分"), "ambiguous payer money is explicitly family total")
+		t.expect(group.detail.contains("该家合计向上家收4分"), "ambiguous payer money is explicitly family total")
 
 func _test_draw() -> void:
 	var f := _fixture()
@@ -153,7 +153,7 @@ func _test_draw() -> void:
 	_amount(_find(groups, "0:meld_0"), "kong", 24, "draw kong includes base and actual chicken payments")
 	var discard := _find(groups, "0:chicken_tong8")
 	_amount(discard, "other", 2, "draw discarded chicken composition goes other")
-	t.expect(not discard.detail.contains("向下家收"), "called seat1 never invented as payer")
+	t.expect(not discard.detail.contains("向上家收"), "called seat1 never invented as payer")
 	f.result.called = [true, true, true, true]
 	t.expect(_build(f).is_empty(), "four-called draw returns no details")
 
@@ -179,7 +179,7 @@ func _test_uncalled_debts() -> void:
 	for id in ["1:chicken_tong8", "1:chicken_tiao1", "1:meld_0", "1:meld_1"]:
 		var group := _find(groups, id)
 		t.expect(group.stages.is_empty(), "ambiguous debt not divided by tile count " + id)
-		t.expect(group.detail.contains("该家合计向上家付"), "ambiguous group retains real family payment " + id)
+		t.expect(group.detail.contains("该家合计向下家付"), "ambiguous group retains real family payment " + id)
 
 func _test_short_chicken_labels() -> void:
 	var f := _fixture()
@@ -277,7 +277,7 @@ func _test_uncalled_kong_captions() -> void:
 	exposed.players[1].melds = [{"kind": "kong", "tile": "wan2", "from_seat": 0}]
 	_pay(exposed, 1, 0, 4, "未叫牌杠分")
 	group = _find(_build(exposed), "1:meld_0")
-	t.expect(group.stages.other.text == "鸡分·杠上家2万-4分" and group.detail == group.stages.other.text, "uncalled exposed kong shows payer-relative direction")
+	t.expect(group.stages.other.text == "鸡分·杠下家2万-4分" and group.detail == group.stages.other.text, "uncalled exposed kong shows payer-relative direction")
 
 func _test_burn_robbed_and_normal_pung() -> void:
 	var f := _fixture()
@@ -397,7 +397,7 @@ func _test_requested_captions() -> void:
 		t.expect(group.detail == "翻鸡%d分" % count and group.stages.flip.text == group.detail, "flip group uses its exact recorded total")
 	for owner in 4:
 		for offset in [1, 2, 3]:
-			var payer: int = (owner + offset) % 4
+			var payer: int = (owner - offset + 4) % 4
 			var f := _fixture()
 			f.players[owner].melds = [{"kind": "kong", "tile": "wan2", "from_seat": payer}]
 			f.result.items[owner] = [_kong("wan2", "明杠", payer, [payer], 4, 0, 0, owner)]
@@ -460,7 +460,7 @@ func _test_multiple_kong_debts() -> void:
 				f.meta.winner = -1
 				f.meta.winners = []
 			for tile in ["tiao1", "tong8"]:
-				f.players[1].melds.append({"kind": "kong", "tile": tile, "from_seat": 0})
+				f.players[1].melds.append({"kind": "kong", "tile": tile, "from_seat": 2})
 				var chicken := 16 if tile == "tiao1" and not is_draw else 8
 				for receiver in [0, 2, 3]:
 					_pay(f, 1, receiver, 4 * multiplier, "未叫牌杠分")
@@ -508,8 +508,20 @@ func _test_draw_chicken_debts() -> void:
 			t.expect(pung.detail == "碰幺鸡" + str(-6 * multiplier) + "分", "draw package pung follows the same short debt caption")
 			t.expect(var_to_bytes(f) == before, "draw component display never changes package ledger amounts")
 
+func _test_relative_direction() -> void:
+	var r := RoundState.new()
+	r.dealer_seat = 0
+	r.build_players(1)
+	t.expect(r.players[1].name_label == "上家" and r.players[3].name_label == "下家",
+		"逆时针：庄家东的上家是南、下家是北")
+	t.expect(DETAILS._direction(0, 1) == "下家" and DETAILS._direction(2, 1) == "上家",
+		"南位观察东位是下家、西位是上家")
+	t.expect(DETAILS._direction(1, 0) == "上家" and DETAILS._direction(3, 0) == "下家",
+		"东位观察南位是上家、北位是下家")
+
 func _run() -> void:
 	DETAILS.set_debug_enabled(true)
+	_test_relative_direction()
 	_test_grouped_sources()
 	_test_gold_charge_and_multiplier()
 	_test_exposed_kong()

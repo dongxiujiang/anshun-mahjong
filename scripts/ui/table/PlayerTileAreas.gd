@@ -461,10 +461,9 @@ func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> 
 	var count = 3 if kind == "pung" else 4
 	var source = posmod(int(meld.get("from_seat", -1)) - seat, 4)
 	var exposed: bool = kind == "kong" and not meld.get("concealed", false) and int(meld.get("from_seat", -1)) in range(4)
-	# 明杠的横牌槽位按“来源相对于自己的方向”固定：
-	# 上家(3) 横放最左；下家(1) 横放最右；对家(2) 单独走下方
-	# 的对家分支，三竖牌加顶部横牌，也以右侧槽位表示。
-	var sideways = int({1: 3, 2: 3, 3: 0}.get(source, -1)) if exposed else -1
+	# 逆时针回合下，来源差值 1 是上家、3 是下家：
+	# 上家横放最左，下家横放最右；对家单独走顶部横牌分支。
+	var sideways = int({1: 0, 2: 3, 3: 3}.get(source, -1)) if exposed else -1
 	# 碰牌没有来源标记：即使碰到幺鸡，三张牌也全部竖放。
 	var positions: Array = []
 	if exposed and source == 2:

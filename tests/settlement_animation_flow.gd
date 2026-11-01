@@ -181,7 +181,7 @@ func _test_plan(r: RoundState, context: String, human: int) -> void:
 		t.expect(keys.slice(0, 3) == ["flip", "chicken", "kong"], "flip, ordinary chicken and kong stages preserve order")
 		t.expect(stage_winners == plan.winners, "one separate win stage per winner")
 	if context == "multi_win":
-		var expected_winners: Array = [0, 2] if human in [0, 3] else [2, 0]
+		var expected_winners: Array = [0, 2] if human in [0, 1] else [2, 0]
 		t.expect(plan.winners == expected_winners, "multi-winner order follows viewing seat, without mutating metadata")
 	if context in ["zero", "all_called_draw"]:
 		t.expect(plan.final == _zero(), context + ": fixture really has zero payments")
@@ -727,16 +727,16 @@ func _test_settlement_speed() -> void:
 func _test_settlement_identities(render: bool = true) -> void:
 	for sample in [["self_draw", "自摸 +4", "", 1],
 		["ready_self", "报听自摸 +24", "", 1],
-		["ready_ron", "报听胡对家 +24", "", 1], ["ron", "下家放炮", "", 1],
-		["rob_kong", "抢杠下家 +12", "", 1], ["dry", "自摸", "干扣 +14", 1],
+		["ready_ron", "报听胡对家 +24", "", 1], ["ron", "上家放炮", "", 1],
+		["rob_kong", "抢杠上家 +12", "", 1], ["dry", "自摸", "干扣 +14", 1],
 		["big_dry", "自摸", "大干扣 +24", 1], ["triplets", "自摸", "大对子 +14", 1],
 		["flush", "自摸", "清一色 +24", 1],
 		["ready_flush", "报听自摸 +20", "清一色 +24", 1],
-		["ready_rob_kong", "抢杠下家 +12", "报听 +24", 1],
+		["ready_rob_kong", "抢杠上家 +12", "报听 +24", 1],
 		["self_draw", "自摸 +8", "", 2],
 		["ready_self", "报听自摸 +48", "", 2],
 		["ready_ron", "报听胡对家 +48", "", 2],
-		["ready_rob_kong", "抢杠下家 +24", "报听 +48", 2],
+		["ready_rob_kong", "抢杠上家 +24", "报听 +48", 2],
 		["ready_flush", "报听自摸 +40", "清一色 +48", 2],
 		["dry", "自摸", "干扣 +28", 2], ["big_dry", "自摸", "大干扣 +48", 2],
 		["triplets", "自摸", "大对子 +28", 2]]:
@@ -774,8 +774,8 @@ func _test_settlement_identities(render: bool = true) -> void:
 		var c = table._settlement_animation_controller
 		for seat in 4: table._player_tile_areas.name_labels[seat].show()
 		_check_layout()
-		t.expect(c.identity_labels[0].text == "下家放炮", "multi-win source is relative to winner zero, not viewer")
-		t.expect(c.identity_labels[2].text == "报听胡上家 +24", "reconnected second winner retains ready/source metadata and item amount")
+		t.expect(c.identity_labels[0].text == "上家放炮", "multi-win source is relative to winner zero, not viewer")
+		t.expect(c.identity_labels[2].text == "报听胡下家 +24", "reconnected second winner retains ready/source metadata and item amount")
 		t.expect(c.identity_labels[3].text == "叫牌", "nonwinning called player has no potential win pattern")
 	t.expect(_snapshot(multi) == before, "reconnected identity rendering leaves host unchanged")
 	_test_identity_item_amounts()
@@ -827,7 +827,7 @@ func _test_identity_item_amounts() -> void:
 				("清龙七对" if pattern == "清龙对" else pattern) + suffix + " · 杠开" + suffix + " · 海底捞" + suffix)
 	for seat in 4:
 		for offset in [1, 2, 3]:
-			var plan := PLAN.build({"items": [[], [], [], []]}, {"winner": seat, "discard_seat": (seat + offset) % 4, "robbed_kong": true}, [])
+			var plan := PLAN.build({"items": [[], [], [], []]}, {"winner": seat, "discard_seat": (seat - offset + 4) % 4, "robbed_kong": true}, [])
 			t.expect(plan.identities[seat].title == "抢杠" + ["", "下家", "对家", "上家"][offset], "robbed source is correct at every absolute seat")
 	var self_meta := {"winner": 0, "self_draw": true, "chicken_multiplier": 2}
 	var ron_meta := {"winner": 0, "discard_seat": 2}
@@ -843,10 +843,10 @@ func _test_identity_item_amounts() -> void:
 	_expect_identity_items([], ron_meta, "报听胡对家", "", true)
 	_expect_identity_items([ready, {"kind": "pattern", "label": "清一色", "amount": 24.0}], self_meta,
 		"报听自摸 +24", "清一色 +24")
-	_expect_identity_items([robbed, ready], rob_meta, "抢杠下家 +12", "报听 +24")
-	_expect_identity_items([ready, robbed], rob_meta, "抢杠下家 +12", "报听 +24")
-	_expect_identity_items([ready], rob_meta, "抢杠下家", "报听 +24")
-	_expect_identity_items([robbed], rob_meta, "报听抢杠下家 +12", "", true)
+	_expect_identity_items([robbed, ready], rob_meta, "抢杠上家 +12", "报听 +24")
+	_expect_identity_items([ready, robbed], rob_meta, "抢杠上家 +12", "报听 +24")
+	_expect_identity_items([ready], rob_meta, "抢杠上家", "报听 +24")
+	_expect_identity_items([robbed], rob_meta, "报听抢杠上家 +12", "", true)
 	for sample in [["点炮基础分（叫牌）", 17], ["点炮基础分（未叫牌）", 21]]:
 		var entry := {"kind": "win", "label": sample[0], "amount": sample[1]}
 		_expect_identity_items([entry], ron_meta, "对家放炮 +%d" % sample[1], "")

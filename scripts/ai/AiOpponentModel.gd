@@ -191,7 +191,7 @@ func risk(context: Dictionary, tile: String, source_ready: bool = false, after_s
 	var expected_loss := 0.0
 	var opponents: Array = context.opponents.duplicate()
 	if source >= 0:
-		opponents.sort_custom(func(a, b): return posmod(int(a.seat) - source, 4) < posmod(int(b.seat) - source, 4))
+		opponents.sort_custom(func(a, b): return posmod(source - int(a.seat), 4) < posmod(source - int(b.seat), 4))
 	for opponent in opponents:
 		var unrestricted := source_ready or after_self_kong or rob_kong
 		var waits: Dictionary = opponent.waits if unrestricted else opponent.special_waits

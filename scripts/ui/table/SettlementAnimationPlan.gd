@@ -137,7 +137,7 @@ static func _identities(result: Dictionary, meta: Dictionary, players: Array, wi
 				if str(item.get("kind", "")) == "ready":
 					ready = true
 					has_ready_item = true
-			var direction: String = ["", "下家", "对家", "上家"][posmod(source - seat, 4)] if source in range(4) else ""
+			var direction: String = ["", "下家", "对家", "上家"][posmod(seat - source, 4)] if source in range(4) else ""
 			var origin := "胡牌"
 			if self_draw:
 				origin = "报听自摸" if ready else "自摸"
@@ -206,7 +206,7 @@ static func _winners(result: Dictionary, meta: Dictionary, human_seat: int) -> A
 		var seat := int(value)
 		if seat in range(4) and seat not in winners:
 			winners.append(seat)
-	winners.sort_custom(func(a, b): return posmod(int(a) - human_seat, 4) < posmod(int(b) - human_seat, 4))
+	winners.sort_custom(func(a, b): return posmod(human_seat - int(a), 4) < posmod(human_seat - int(b), 4))
 	return winners
 
 static func _called(result: Dictionary, winners: Array) -> Array:
