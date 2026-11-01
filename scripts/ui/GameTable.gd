@@ -385,11 +385,11 @@ func _is_ai_turn_now() -> bool:
 		and round.awaiting and round.current_turn == human_seat
 
 func _refresh_ai_assist() -> void:
-	if not _ai_assist_enabled:
+	if not _ai_assist_enabled or _ai_proxy_active:
 		return
 	# 把教打分析从摸牌/刷新手牌那一帧挪开，避免 120Hz 下多一次主线程尖峰。
 	await get_tree().create_timer(0.10).timeout
-	if not _ai_assist_enabled or not _is_ai_turn_now():
+	if not _ai_assist_enabled or _ai_proxy_active or not _is_ai_turn_now():
 		return
 	request_ai_teach()
 
@@ -409,7 +409,14 @@ func request_ai_teach() -> void:
 	if not _is_ai_turn_now():
 		return
 	_clear_ai_teach()
-	# 轻量向听/进张分析在主线程完成，不再为一次教打启动线程和整局快照。
+	if _ai_proxy_active:
+		# 两个开关同时开时，教打必须展示代打真正会提交的牌，不能再独立算一套。
+		_ai_teach_message = "AI代打分析中…"
+		if status_label != null:
+			status_label.text = _ai_teach_message
+			status_label.show()
+		return
+	# 轻量向听分析在主线程完成，不再为一次教打启动线程和整局快照。
 	_apply_ai_teach_result(AiTeaching.recommend_fast(round, human_seat))
 
 func _apply_ai_teach_result(result: Dictionary) -> void:
@@ -656,7 +663,27 @@ func _poll_ai_proxy() -> void:
 		_ai_proxy_response_tile = ""
 		_emit_response(tile, decision)
 	else:
+		_apply_proxy_teach(decision)
 		_emit_turn(decision)
+
+func _apply_proxy_teach(decision: Dictionary) -> void:
+	if not _ai_assist_enabled:
+		return
+	var result := {}
+	var tile := str(decision.get("discard", decision.get("tile", "")))
+	if bool(decision.get("self_win", false)):
+		result = {"message": "AI教学：建议自摸；与 AI 代打一致"}
+	elif not decision.get("kong_declares", []).is_empty():
+		result = {"tile": str(decision.kong_declares[0]),
+			"message": "AI教学：建议暗杠；与 AI 代打一致"}
+	elif not decision.get("add_kong", []).is_empty():
+		result = {"tile": str(decision.add_kong[0]),
+			"message": "AI教学：建议加杠；与 AI 代打一致"}
+	elif tile != "":
+		result = {"tile": tile,
+			"message": "AI教学：建议打%s；与 AI 代打一致" % AiTeaching._display(tile)}
+	if not result.is_empty():
+		_apply_ai_teach_result(result)
 
 func _auto_test_online_turn(seat: int) -> void:
 	if round == null:

@@ -118,6 +118,13 @@ func _compute(job: Dictionary) -> Dictionary:
 	var decision: Dictionary
 	if str(job.get("kind", "")) == "turn":
 		decision = ai.decide_turn(clone, int(job.get("seat", 0)))
+		# AiPlayer returns "tile"; RoundState commits "discard". Without this
+		# mapping every proxy turn fell back to discards[0].
+		if not decision.has("discard") and decision.has("tile"):
+			decision["discard"] = str(decision.tile)
+		if bool(decision.get("ready_capable", false)):
+			decision["ready"] = true
+		decision.erase("ready_capable")
 	else:
 		decision = ai.decide_response(clone, int(job.get("seat", 0)), int(job.get("source", -1)),
 			str(job.get("tile", "")), job.get("options", {}))

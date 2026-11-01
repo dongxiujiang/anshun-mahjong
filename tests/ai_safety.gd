@@ -75,6 +75,13 @@ func _run() -> void:
 		{"can_win": false, "can_pong": true, "can_kong": false})
 	t.expect(str(fast_response.get("label", "")) == "碰", "fast response does not build a full AI")
 
+	var proxy_worker = load("res://scripts/core/AiTurnWorker.gd").new()
+	var proxy_decision: Dictionary = proxy_worker._compute({
+		"kind": "turn", "snapshot": round.serialize_for_seat(0), "seat": 0, "level": "low"})
+	t.expect(proxy_decision.has("discard") and
+		round.legal_turn_options(0).discards.has(str(proxy_decision.get("discard", ""))),
+		"AI proxy maps its chosen tile to the discard action")
+
 	t.expect(AiPlayer.new().use_mcts, "normal AI retains MCTS")
 	t.expect(not ai.use_mcts, "teaching mode disables MCTS")
 
