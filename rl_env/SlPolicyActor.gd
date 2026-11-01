@@ -39,7 +39,9 @@ func _load() -> Dictionary:
 	return out
 
 func _forward(x: PackedFloat32Array) -> Array:
-	if _weights.is_empty() or not _weights.has("policy.weight") or not _weights.has("value.weight"):
+	if _weights.is_empty() or not _weights.has("value.weight"):
+		return []
+	if not _weights.has("policy.weight") and not _weights.has("turn_policy.weight"):
 		return []
 	var w1: Array = _weights["trunk.0.weight"]
 	var b1: PackedFloat32Array = _weights["trunk.0.bias"]
@@ -57,14 +59,32 @@ func _forward(x: PackedFloat32Array) -> Array:
 		var w: PackedFloat32Array = w2[row]
 		for c in h1.size(): s += w[c] * h1[c]
 		h2[row] = maxf(0.0, s)
-	var w3: Array = _weights["policy.weight"]
-	var b3: PackedFloat32Array = _weights["policy.bias"]
-	var policy := PackedFloat32Array(); policy.resize(w3.size())
-	for row in w3.size():
-		var s := b3[row]
-		var w: PackedFloat32Array = w3[row]
-		for c in h2.size(): s += w[c] * h2[c]
-		policy[row] = s
+	var policy := PackedFloat32Array()
+	if _weights.has("policy.weight"):
+		var w3: Array = _weights["policy.weight"]
+		var b3: PackedFloat32Array = _weights["policy.bias"]
+		policy.resize(w3.size())
+		for row in w3.size():
+			var s := b3[row]
+			var w: PackedFloat32Array = w3[row]
+			for c in h2.size(): s += w[c] * h2[c]
+			policy[row] = s
+	else:
+		policy.resize(113)
+		var wt: Array = _weights["turn_policy.weight"]
+		var bt: PackedFloat32Array = _weights["turn_policy.bias"]
+		for row in wt.size():
+			var s := bt[row]
+			var w: PackedFloat32Array = wt[row]
+			for c in h2.size(): s += w[c] * h2[c]
+			policy[row] = s
+		var wr: Array = _weights["resp_policy.weight"]
+		var br: PackedFloat32Array = _weights["resp_policy.bias"]
+		for row in wr.size():
+			var s := br[row]
+			var w: PackedFloat32Array = wr[row]
+			for c in h2.size(): s += w[c] * h2[c]
+			policy[109 + row] = s
 	var vw: Array = _weights["value.weight"]
 	var vb: PackedFloat32Array = _weights["value.bias"]
 	var value := vb[0]
