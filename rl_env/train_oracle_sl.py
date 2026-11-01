@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--epochs", type=int, default=20)
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--soft", action="store_true", help="使用 Oracle 动作分布做软标签")
     p.add_argument("--seed", type=int, default=20261101)
     return p.parse_args()
 
@@ -44,15 +45,22 @@ def load_split(root: Path, split: str) -> tuple[np.ndarray, ...]:
     npz = root / f"{split}.npz"
     if npz.exists():
         d = np.load(npz)
-        return d["X"], d["M"], d["A"], d["V"], d["G"]
+        prob = d["P"] if "P" in d.files else np.zeros((len(d["A"]), 113), dtype=np.float32)
+        return d["X"], d["M"], d["A"], d["V"], d["G"], prob
     import pyarrow.parquet as pq
     table = pq.read_table(root / f"{split}.parquet").to_pydict()
+    prob = np.zeros((len(table["action"]), 113), dtype=np.float32)
+    for i, raw in enumerate(table.get("probs", [])):
+        for code, value in json.loads(raw).items():
+            if 0 <= int(code) < 113:
+                prob[i, int(code)] = float(value)
     return (
         np.asarray(table["x"], dtype=np.float32),
         np.asarray(table["mask"], dtype=np.uint8),
         np.asarray(table["action"], dtype=np.int64),
         np.asarray(table["value"], dtype=np.float32),
         np.asarray(table["game"], dtype=np.int64),
+        prob,
     )
 
 
@@ -77,22 +85,24 @@ def main() -> None:
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     root = Path(args.data)
-    Xtr, Mtr, Atr, Vtr, Gtr = load_split(root, "train")
-    Xv, Mv, Av, Vv, Gv = load_split(root, "val")
+    Xtr, Mtr, Atr, Vtr, Gtr, Ptr = load_split(root, "train")
+    Xv, Mv, Av, Vv, Gv, Pv = load_split(root, "val")
     assert Xtr.shape[1] in (521, 584) and Mtr.shape[1] == 113, (Xtr.shape, Mtr.shape)
     assert Av.size > 0, "empty validation split"
 
     Xtr_t = torch.from_numpy(Xtr)
     Mtr_t = torch.from_numpy(Mtr).bool()
     Atr_t = torch.from_numpy(Atr)
+    Ptr_t = torch.from_numpy(Ptr)
     Xv_t = torch.from_numpy(Xv)
     Mv_t = torch.from_numpy(Mv).bool()
     Av_t = torch.from_numpy(Av)
+    Pv_t = torch.from_numpy(Pv)
 
     model = OracleNet(Xtr.shape[1], Mtr.shape[1])
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     dl = torch.utils.data.DataLoader(
-        torch.utils.data.TensorDataset(Xtr_t, Mtr_t, Atr_t),
+        torch.utils.data.TensorDataset(Xtr_t, Mtr_t, Atr_t, Ptr_t),
         batch_size=args.batch_size, shuffle=True,
     )
     best = None
@@ -102,11 +112,16 @@ def main() -> None:
         model.train()
         total = 0.0
         seen = 0
-        for xb, mb, ab in dl:
+        for xb, mb, ab, pb in dl:
             opt.zero_grad(set_to_none=True)
             logits, value = model(xb)
             logits = masked_logits(logits, mb)
-            loss = F.cross_entropy(logits, ab) + 0.25 * F.mse_loss(value, torch.zeros_like(value))
+            if args.soft and float(pb.sum()) > 0.0:
+                log_probs = F.log_softmax(logits, dim=-1)
+                loss = -(pb * log_probs).sum(dim=-1).mean()
+            else:
+                loss = F.cross_entropy(logits, ab)
+            loss = loss + 0.25 * F.mse_loss(value, torch.zeros_like(value))
             loss.backward()
             opt.step()
             total += float(loss.item()) * len(xb)

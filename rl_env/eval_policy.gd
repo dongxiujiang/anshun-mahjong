@@ -55,6 +55,8 @@ func _run() -> void:
 	var count := int(_arg("count", "20"))
 	var policy_path := _arg("policy", "")
 	var all_seats := _arg("all", "0") == "1"
+	var sample := _arg("sample", "0") == "1"
+	var heuristic_response := _arg("heuristic-response", "0") == "1"
 	var level := _arg("level", "low")
 	var actor = SL.new(policy_path, 2) if policy_path != "" else SL.new("", 2)
 	var results: Array = []
@@ -81,8 +83,16 @@ func _run() -> void:
 			if actions.is_empty():
 				break
 			var code := -1
-			if all_seats or seat == focus_seat:
-				code = int(actor.choose_policy(env, seat).get("code", -1))
+			var use_policy := all_seats or seat == focus_seat
+			if use_policy and heuristic_response and env.current_kind() == "response":
+				use_policy = false
+			if use_policy:
+				if sample:
+					var rng := RandomNumberGenerator.new()
+					rng.seed = seed * 131 + seat + steps
+					code = int(actor.sample_action(env, seat, rng, 0.0).get("code", -1))
+				else:
+					code = int(actor.choose_policy(env, seat).get("code", -1))
 			else:
 				var kind := env.current_kind()
 				var allowed: Dictionary = env.round.allowed_actions(seat)

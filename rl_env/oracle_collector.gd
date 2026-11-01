@@ -7,6 +7,7 @@ extends SceneTree
 const ENV := preload("res://rl_env/RlEnv.gd")
 const OBS := preload("res://rl_env/ObservationCodec.gd")
 const AI := preload("res://scripts/ai/AiPlayer.gd")
+const SL := preload("res://rl_env/SlPolicyActor.gd")
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -60,6 +61,8 @@ func _run() -> void:
 	var rollout_limit := int(_arg("rollout-limit", "80"))
 	var min_steps := int(_arg("min-steps", "20"))
 	var output := _arg("out", "user://oracle.jsonl")
+	var policy_path := _arg("policy", "")
+	var policy_actor = SL.new(policy_path, 2) if policy_path != "" else null
 	var file := FileAccess.open(output, FileAccess.WRITE)
 	if file == null:
 		push_error("cannot write " + output)
@@ -124,16 +127,21 @@ func _run() -> void:
 					}
 					game_rows.append(row)
 					oracle_samples += 1
-			var decision: Dictionary
-			if kind == "response":
-				var prompt: Dictionary = env.round._awaiting_response
-				decision = actors[actor_seat].decide_response(env.round, actor_seat,
-					int(prompt.get("disc_seat", -1)), str(prompt.get("tile", "")),
-					env.round.legal_response_options(actor_seat, int(prompt.get("disc_seat", -1)),
-						str(prompt.get("tile", "")), int(prompt.get("stage", 0))))
-			else:
-				decision = actors[actor_seat].decide_turn(env.round, actor_seat)
-			var code := _decision_code(decision, kind, actions)
+			var code := -1
+			if actor_seat == oracle_seat and policy_actor != null:
+				# DAgger 模式：用当前策略制造偏离状态，Oracle 仍只给标签。
+				code = int(policy_actor.choose_policy(env, actor_seat).get("code", -1))
+			if code < 0:
+				var decision: Dictionary
+				if kind == "response":
+					var prompt: Dictionary = env.round._awaiting_response
+					decision = actors[actor_seat].decide_response(env.round, actor_seat,
+						int(prompt.get("disc_seat", -1)), str(prompt.get("tile", "")),
+						env.round.legal_response_options(actor_seat, int(prompt.get("disc_seat", -1)),
+							str(prompt.get("tile", "")), int(prompt.get("stage", 0))))
+				else:
+					decision = actors[actor_seat].decide_turn(env.round, actor_seat)
+				code = _decision_code(decision, kind, actions)
 			if code < 0:
 				code = int(actions[0].code)
 			var result: Dictionary = env.step(code)
@@ -162,6 +170,7 @@ func _run() -> void:
 			file.store_line(JSON.stringify(row))
 			rows += 1
 		games += 1
+		file.flush()
 	file.close()
 	print("[oracle] games=", games, " rows=", rows, " failed=", failed, " out=", output)
 	quit(0)

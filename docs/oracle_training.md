@@ -181,35 +181,58 @@ clip = 0.2
 
 导出 `ppo.pt`、`ppo_weights.json`，下一轮 collector 用 `--policy` 指向它。
 
+## DAgger（可选）
+
+用当前策略制造偏离状态，但 Oracle 仍然只给标签：
+
+```powershell
+Godot_v4.7.2-stable_win64.exe --headless --path . `
+  --script rl_env/oracle_collector.gd -- `
+  --start=30000 --count=200 `
+  --policy=res://build/ai_high/oracle_sl/oracle_sl_weights.json `
+  --out=res://build/dagger.jsonl
+```
+
+策略动作只负责推进对局，Oracle 不执行；生成的数据可以与启发 AI 数据混合训练。
+
 ## 现状
 
 已完整跑通小样本链路：
 
 ```text
-Oracle 数据 20 局 / 172 条
-parquet + npz 转换
-SL 训练
+Oracle 数据 400 局 / 4296 条
+DAgger 400 局 / ~4400 条
+parquet + npz + soft-label 训练
 SL 权重导出
 PPO collector
 PPO 小样本更新
 ```
 
-验证：
+最近一次试验：
 
 ```text
-oracle_tests.gd       6/6
-oracle_actor_test.gd  3/3
-prepare_oracle_dataset.py  172 行 / 18 局
-train_oracle_sl.py         可导出 oracle_sl.pt / weights
-ppo_collector.gd           可生成策略座位转移
-train_oracle_ppo.py        GAE + PPO 更新可运行
+Oracle 直接对局：10 局 5 胜，+31 分
+SL（400 局 + DAgger）验证 top1 ≈ 37.6%
+SL 对低档 20 局：1 胜，-418 分
+PPO 20 局更新后：0 胜，-576 分
 ```
 
-当前样本量太小，不能评估强度，也不能替换线上 AI。需要先扩大数据量、做整局验证，再谈模型上线。
+这说明 Oracle 标签本身有信号，但当前 SL/PPO 规模仍不足以替换线上 AI，需要继续扩大数据、改特征/模型和评估。
+
+## 验证
+
+```text
+oracle_tests.gd              6/6
+oracle_actor_test.gd         5/5
+prepare_oracle_dataset.py    574 局 / 6478 行（含 DAgger）
+train_oracle_sl.py            可导出 oracle_sl.pt / weights
+ppo_collector.gd              可生成策略座位转移
+train_oracle_ppo.py           GAE + PPO 更新可运行
+```
 
 ## 限制
 
 - Oracle 当前是完美信息启发估值，不是 MCTS 最优标签；
-- PPO collector 目前是“一个策略座位 + 三个启发对手”，还不是完整对手池快照自博弈；
+- PPO collector 目前是“一个策略座位 + 三个启发/快照对手”，还不是完整多策略自博弈；
 - 响应动作与出牌动作共用 113 类头；
 - 还没有 500/2000 局强度评估。

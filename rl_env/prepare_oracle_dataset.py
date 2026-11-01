@@ -79,6 +79,15 @@ def write_split(rows: list[dict], path: Path, with_npz: bool) -> None:
     })
     pq.write_table(table, path.with_suffix(".parquet"), compression="zstd")
     if with_npz:
+        probs = np.zeros((len(rows), 113), dtype=np.float32)
+        for index, row in enumerate(rows):
+            for code, prob in (row.get("probs") or {}).items():
+                code = int(code)
+                if 0 <= code < 113:
+                    probs[index, code] = float(prob)
+            total = float(probs[index].sum())
+            if total > 0.0:
+                probs[index] /= total
         np.savez_compressed(
             path.with_suffix(".npz"),
             X=np.asarray([r["x"] for r in rows], dtype=np.float32),
@@ -86,6 +95,7 @@ def write_split(rows: list[dict], path: Path, with_npz: bool) -> None:
             A=np.asarray([r["action"] for r in rows], dtype=np.int64),
             V=np.asarray([r["value"] for r in rows], dtype=np.float32),
             G=np.asarray([int(r["game"]) for r in rows], dtype=np.int64),
+            P=probs,
         )
 
 
