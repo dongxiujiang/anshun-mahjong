@@ -10,7 +10,9 @@ signal status_changed(enabled: bool, message: String)
 signal speaker_changed(seat: int, enabled: bool)
 
 const AUTH_URL_DEFAULT := "https://mj.dongxiu.fun/gme-auth"
-const ROOM_TYPE := 1  # fluency voice room
+# 3 = high-quality voice room, 2 = standard, 1 = fluency. Prefer HD for
+# intelligible speech, but fall back so an older/limited server never loses mic.
+const ROOM_TYPES := [3, 2, 1]
 
 var owner_node: Node
 var enabled := false
@@ -166,14 +168,21 @@ func _join_room(room_number: String, auth: PackedByteArray) -> void:
 		_fail("GME GetAudioCtrl 返回空")
 		return
 	_context.call("Poll")
-	# GME Android 2.9.17 signature: EnterRoom(String, int, byte[]).
-	var enter_ret = int(_context.call("EnterRoom", room_number, ROOM_TYPE, auth))
+	# GME Android signature: EnterRoom(String, int, byte[]). Try HD first.
+	var enter_ret := -1
+	var selected_type := 1
+	for room_type in ROOM_TYPES:
+		enter_ret = int(_context.call("EnterRoom", room_number, int(room_type), auth))
+		print("[gme] EnterRoom type=%d ret=%d" % [int(room_type), enter_ret])
+		if enter_ret == 0:
+			selected_type = int(room_type)
+			break
 	if enter_ret != 0:
 		_fail("GME EnterRoom 失败 code=%d" % enter_ret)
 		return
 	_enter_started_ms = Time.get_ticks_msec()
 	_enter_timeout_reported = false
-	_status = "GME Init=0 EnterRoom=0 openid=%s，等待 IsRoomEntered…" % _open_id
+	_status = "GME Init=0 EnterRoom=0 type=%d openid=%s，等待 IsRoomEntered…" % [selected_type, _open_id]
 	status_changed.emit(false, _status)
 
 func OnEvent(_event_type, _data) -> void:
@@ -200,7 +209,7 @@ func _process(_delta: float) -> void:
 			_enter_timeout_reported = true
 			_status = "GME 进房超时 IsRoomEntered=false"
 			status_changed.emit(false, _status)
-	elif _want_mic and not enabled:
+	elif _want_mic and not enabled and not permission_pending and _has_record_permission():
 		_start_mic()
 
 func set_enabled(want: bool) -> bool:
@@ -238,6 +247,9 @@ func set_enabled(want: bool) -> bool:
 	return enabled
 
 func _start_mic() -> void:
+	if OS.has_feature("android") and not _has_record_permission():
+		permission_pending = true
+		return
 	if not _in_room or _audio == null or (not _want_mic and not enabled):
 		return
 	var mic_ret = int(_audio.call("EnableMic", true))
