@@ -36,6 +36,9 @@ var _ai_teach_token := 0
 var _ai_teach_task := 0
 var _ai_teach_worker = null
 var _ai_teach_message := ""
+var _ai_teach_response_pending := false
+var _ai_teach_response_tile := ""
+var _ai_teach_response_options: Dictionary = {}
 var _refresh_queued := false
 var _ai_assist_enabled := false
 var _auto_test_rounds := 0
@@ -396,6 +399,9 @@ func _refresh_ai_assist() -> void:
 func _clear_ai_teach() -> void:
 	_ai_teach_token += 1
 	_ai_teach_message = ""
+	_ai_teach_response_pending = false
+	_ai_teach_response_tile = ""
+	_ai_teach_response_options = {}
 	var pending := _ai_teach_task
 	_ai_teach_task = 0
 	if pending > 0 and _ai_teach_worker != null:
@@ -428,6 +434,25 @@ func request_ai_teach() -> void:
 		status_label.text = _ai_teach_message
 		status_label.show()
 
+func request_ai_response_teach(source: int, tile: String, options: Dictionary) -> void:
+	if not _ai_assist_enabled or _ai_proxy_active or round == null:
+		return
+	if not _is_ai_turn_now() and round._awaiting_response.is_empty():
+		return
+	if _ai_teach_worker == null:
+		_ai_teach_worker = load("res://scripts/core/AiTurnWorker.gd").new()
+	if _ai_teach_task > 0:
+		_ai_teach_worker.cancel(_ai_teach_task)
+	_ai_teach_response_pending = true
+	_ai_teach_response_tile = tile
+	_ai_teach_response_options = options.duplicate(true)
+	_ai_teach_task = int(_ai_teach_worker.submit_response(round, human_seat, source, tile,
+		options, _submitted_proxy_level()))
+	_ai_teach_message = "AI分析中…"
+	if status_label != null:
+		status_label.text = _ai_teach_message
+		status_label.show()
+
 func _apply_ai_teach_result(result: Dictionary) -> void:
 	if result.is_empty():
 		return
@@ -449,6 +474,18 @@ func _poll_ai_teach() -> void:
 	if result.is_empty():
 		return
 	_ai_teach_task = 0
+	if _ai_teach_response_pending:
+		_ai_teach_response_pending = false
+		_ai_teach_response_tile = ""
+		_ai_teach_response_options = {}
+		var action := str(result.get("action", "pass"))
+		var label: String = {"win": "胡", "kong": "杠", "pong": "碰", "pass": "过"}.get(action, "过")
+		var text: String = {"win": "胡", "kong": "杠", "pong": "碰", "pass": "过"}.get(action, "过")
+		_ai_teach_message = "AI教学：建议%s；当前强度：%s" % [text, _strength_label()]
+		_apply_ai_teach_result({"message": _ai_teach_message})
+		if _table_actions != null:
+			_table_actions._highlight_ai_action_buttons("" if action == "pass" else label)
+		return
 	var tile := str(result.get("discard", result.get("tile", "")))
 	var message := ""
 	if bool(result.get("self_win", false)):
@@ -686,10 +723,21 @@ func _poll_ai_proxy() -> void:
 		var tile := _ai_proxy_response_tile
 		_ai_proxy_response_pending = false
 		_ai_proxy_response_tile = ""
+		_apply_proxy_response_teach(tile, decision)
 		_emit_response(tile, decision)
 	else:
 		_apply_proxy_teach(decision)
 		_emit_turn(decision)
+
+func _apply_proxy_response_teach(tile: String, decision: Dictionary) -> void:
+	if not _ai_assist_enabled:
+		return
+	var action := str(decision.get("action", "pass"))
+	var label: String = {"win": "胡", "kong": "杠", "pong": "碰", "pass": "过"}.get(action, "过")
+	_ai_teach_message = "AI教学：建议%s；与 AI 代打一致" % label
+	_apply_ai_teach_result({"message": _ai_teach_message})
+	if _table_actions != null:
+		_table_actions._highlight_ai_action_buttons("" if action == "pass" else label)
 
 func _apply_proxy_teach(decision: Dictionary) -> void:
 	if not _ai_assist_enabled:

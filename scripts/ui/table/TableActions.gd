@@ -296,6 +296,7 @@ func _on_require_response(seat: int, discarded_seat: int, tile: String, options:
 	if bool(table._ai_assist_enabled):
 		ai_label = str(AI_TEACH.recommend_response_fast(table.round, table.human_seat,
 			discarded_seat, tile, options).get("label", ""))
+		table.request_ai_response_teach(discarded_seat, tile, options)
 	_highlight_ai_action_buttons(ai_label)
 
 func _highlight_ai_action_buttons(label: String) -> void:
