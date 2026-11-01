@@ -3,6 +3,7 @@ extends RefCounted
 
 const TEACHING := preload("res://scripts/core/AiTeaching.gd")
 const ROUND := preload("res://scripts/core/RoundState.gd")
+const VISIBLE := preload("res://scripts/core/AiVisibleSnapshot.gd")
 
 var _thread: Thread
 var _mutex := Mutex.new()
@@ -18,7 +19,7 @@ func submit(round, seat: int, level: String) -> int:
 	if _stopping or round == null: return 0
 	if not _start():
 		return 0
-	var snapshot: Dictionary = _visible_snapshot(round, seat)
+	var snapshot: Dictionary = VISIBLE.build(round, seat)
 	_mutex.lock()
 	_next_token += 1
 	_job = {"token": _next_token, "snapshot": snapshot, "seat": seat, "level": level}

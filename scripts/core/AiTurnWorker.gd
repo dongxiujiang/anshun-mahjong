@@ -3,6 +3,7 @@ extends RefCounted
 
 const AI := preload("res://scripts/ai/AiPlayer.gd")
 const ROUND := preload("res://scripts/core/RoundState.gd")
+const VISIBLE := preload("res://scripts/core/AiVisibleSnapshot.gd")
 
 var _thread: Thread
 var _mutex := Mutex.new()
@@ -19,14 +20,14 @@ func submit_turn(round, seat: int, level: String) -> int:
 		return 0
 	if not _start():
 		return 0
-	return _submit({"kind": "turn", "snapshot": round.serialize_for_seat(seat), "seat": seat, "level": level})
+	return _submit({"kind": "turn", "snapshot": VISIBLE.build(round, seat), "seat": seat, "level": level})
 
 func submit_response(round, seat: int, source: int, tile: String, options: Dictionary, level: String) -> int:
 	if _stopping or round == null:
 		return 0
 	if not _start():
 		return 0
-	return _submit({"kind": "response", "snapshot": round.serialize_for_seat(seat), "seat": seat,
+	return _submit({"kind": "response", "snapshot": VISIBLE.build(round, seat), "seat": seat,
 		"source": source, "tile": tile, "options": options.duplicate(true), "level": level})
 
 func _submit(job: Dictionary) -> int:
@@ -61,6 +62,17 @@ func cancel(token: int) -> void:
 		_result = {}
 		_result_token = 0
 	_mutex.unlock()
+
+func stop() -> void:
+	_mutex.lock()
+	_stopping = true
+	_job = {}
+	_result = {}
+	_mutex.unlock()
+	_wake.post()
+	if _thread != null:
+		_thread.wait_to_finish()
+		_thread = null
 
 func stop_async(tree: SceneTree) -> void:
 	_mutex.lock()

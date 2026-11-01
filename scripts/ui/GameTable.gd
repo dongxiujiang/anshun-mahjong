@@ -416,8 +416,17 @@ func request_ai_teach() -> void:
 			status_label.text = _ai_teach_message
 			status_label.show()
 		return
-	# 轻量向听分析在主线程完成，不再为一次教打启动线程和整局快照。
-	_apply_ai_teach_result(AiTeaching.recommend_fast(round, human_seat))
+	if _ai_teach_worker == null:
+		_ai_teach_worker = load("res://scripts/core/AiTurnWorker.gd").new()
+	# 教打和代打使用同一套完整 AI；只传公开快照并在线程中计算。
+	var token: int = int(_ai_teach_worker.submit_turn(round, human_seat, _submitted_proxy_level()))
+	if token <= 0:
+		return
+	_ai_teach_task = token
+	_ai_teach_message = "AI分析中…"
+	if status_label != null:
+		status_label.text = _ai_teach_message
+		status_label.show()
 
 func _apply_ai_teach_result(result: Dictionary) -> void:
 	if result.is_empty():
@@ -434,13 +443,28 @@ func _apply_ai_teach_result(result: Dictionary) -> void:
 			status_label.show()
 
 func _poll_ai_teach() -> void:
-	if _ai_teach_task <= 0 or _ai_teach_worker == null:
+	if _ai_proxy_active or _ai_teach_task <= 0 or _ai_teach_worker == null:
 		return
 	var result: Dictionary = _ai_teach_worker.take_result(_ai_teach_task)
 	if result.is_empty():
 		return
 	_ai_teach_task = 0
-	_apply_ai_teach_result(result)
+	var tile := str(result.get("discard", result.get("tile", "")))
+	var message := ""
+	if bool(result.get("self_win", false)):
+		message = "AI教学：建议自摸；当前强度：%s" % _strength_label()
+	elif not result.get("kong_declares", []).is_empty():
+		tile = str(result.kong_declares[0])
+		message = "AI教学：建议暗杠；当前强度：%s" % _strength_label()
+	elif not result.get("add_kong", []).is_empty():
+		tile = str(result.add_kong[0])
+		message = "AI教学：建议加杠；当前强度：%s" % _strength_label()
+	elif tile != "":
+		message = "AI教学：建议打%s；当前强度：%s" % [AiTeaching._display(tile), _strength_label()]
+	_apply_ai_teach_result({"tile": tile, "message": message})
+
+func _strength_label() -> String:
+	return {"weak": "弱", "medium": "中", "strong": "强"}.get(GameConfig.ai_strength, "中")
 
 func _refresh_voice_button() -> void:
 	if _voice_button == null:
@@ -623,6 +647,7 @@ func toggle_ai_proxy() -> void:
 	if _net_mode() == "":
 		return
 	_ai_proxy_active = not _ai_proxy_active
+	_clear_ai_teach()
 	if _ai_proxy_active:
 		var level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "medium")
 		_ai_proxy_ai = AiPlayer.new("AI代打", level)

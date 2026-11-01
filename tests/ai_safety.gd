@@ -3,6 +3,7 @@ extends SceneTree
 ## boundaries that can otherwise silently make the AI cheat or stall a seat.
 const H := preload("res://tests/test_harness.gd")
 const VALUE := preload("res://scripts/ai/AiValueModel.gd")
+const VISIBLE := preload("res://scripts/core/AiVisibleSnapshot.gd")
 var t := H.new()
 
 func _initialize() -> void:
@@ -77,7 +78,7 @@ func _run() -> void:
 
 	var proxy_worker = load("res://scripts/core/AiTurnWorker.gd").new()
 	var proxy_decision: Dictionary = proxy_worker._compute({
-		"kind": "turn", "snapshot": round.serialize_for_seat(0), "seat": 0, "level": "low"})
+		"kind": "turn", "snapshot": VISIBLE.build(round, 0), "seat": 0, "level": "low"})
 	t.expect(proxy_decision.has("discard") and
 		round.legal_turn_options(0).discards.has(str(proxy_decision.get("discard", ""))),
 		"AI proxy maps its chosen tile to the discard action")
