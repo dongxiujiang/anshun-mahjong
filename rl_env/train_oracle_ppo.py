@@ -43,6 +43,8 @@ def parse_args():
     p.add_argument("--epochs", type=int, default=4)
     p.add_argument("--batch-size", type=int, default=128)
     p.add_argument("--clip", type=float, default=0.2)
+    p.add_argument("--target-kl", type=float, default=0.03,
+                   help="近似 KL 超过此值时提前停止，防止策略崩塌")
     p.add_argument("--gamma", type=float, default=0.99)
     p.add_argument("--lam", type=float, default=0.95)
     p.add_argument("--lr", type=float, default=1e-4)
@@ -110,6 +112,8 @@ def main():
     for epoch in range(args.epochs):
         order = torch.randperm(n)
         total = 0.0
+        kl_total = 0.0
+        batches = 0
         for start in range(0, n, args.batch_size):
             idx = order[start:start + args.batch_size]
             logits, values = model(X[idx])
@@ -121,13 +125,20 @@ def main():
             policy_loss = -torch.min(pg1, pg2).mean()
             value_loss = F.mse_loss(values, returns[idx])
             entropy = -(F.softmax(logits, -1) * F.log_softmax(logits, -1)).sum(-1).mean()
+            approx_kl = ((ratio - 1.0) - torch.log(ratio.clamp_min(1e-6))).mean()
             loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
+            kl_total += float(approx_kl.item())
+            batches += 1
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             opt.step()
             total += float(loss.item()) * len(idx)
-        print(f"ppo epoch {epoch+1}: loss={total/n:.4f} rows={n}", flush=True)
+        mean_kl = kl_total / max(1, batches)
+        print(f"ppo epoch {epoch+1}: loss={total/n:.4f} kl={mean_kl:.5f} rows={n}", flush=True)
+        if mean_kl > args.target_kl:
+            print(f"early stop: kl={mean_kl:.5f} > {args.target_kl}", flush=True)
+            break
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

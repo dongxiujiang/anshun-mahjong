@@ -170,6 +170,7 @@ GAE：
 gamma = 0.99
 lambda = 0.95
 clip = 0.2
+target_kl = 0.03，超过时提前停止
 ```
 
 奖励：
