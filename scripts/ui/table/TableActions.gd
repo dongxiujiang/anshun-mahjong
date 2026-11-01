@@ -294,7 +294,7 @@ func _on_require_response(seat: int, discarded_seat: int, tile: String, options:
 	table._update_interactivity()
 	var ai_label := ""
 	if bool(table._ai_assist_enabled):
-		ai_label = str(AI_TEACH.recommend_response(table.round, table.human_seat,
+		ai_label = str(AI_TEACH.recommend_response_fast(table.round, table.human_seat,
 			discarded_seat, tile, options).get("label", ""))
 	_highlight_ai_action_buttons(ai_label)
 

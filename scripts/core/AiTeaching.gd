@@ -76,6 +76,18 @@ static func recommend_fast(round, seat: int) -> Dictionary:
 	return {"action": "discard", "tile": best_tile,
 		"message": "AI教学：建议打%s；向听%d" % [_display(best_tile), best_distance]}
 
+## 碰杠响应只在动作条出现时使用；优先级判断足够，不要启动完整 AI 评估。
+static func recommend_response_fast(round, seat: int, source: int, tile: String, options: Dictionary) -> Dictionary:
+	if round == null or seat < 0 or seat >= round.players.size():
+		return {}
+	if options.get("can_win", false):
+		return {"action": "win", "label": "胡", "message": "AI教学：建议胡 %s" % _display(tile)}
+	if options.get("can_kong", false):
+		return {"action": "kong", "label": "杠", "message": "AI教学：建议杠 %s" % _display(tile)}
+	if options.get("can_pong", false):
+		return {"action": "pong", "label": "碰", "message": "AI教学：建议碰 %s" % _display(tile)}
+	return {"action": "pass", "label": "", "message": "AI教学：建议过"}
+
 static func recommend_response(round, seat: int, source: int, tile: String, options: Dictionary) -> Dictionary:
 	if round == null or seat < 0 or seat >= round.players.size():
 		return {}

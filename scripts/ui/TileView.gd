@@ -26,6 +26,7 @@ const BASE_W := 48.0
 const BASE_H := 64.0
 
 static var _tex_cache := {}
+static var _style_cache := {}
 
 func _ready() -> void:
 	_apply_size()
@@ -188,11 +189,17 @@ func _draw_badge(center: Vector2, color: Color, text: String) -> void:
 	draw_string(_font(), center + Vector2(-4.0 * unit, 3.5 * unit), text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(8.0 * unit), Color("#fff7dc"))
 
 func _tile_style(color: Color, border: Color) -> StyleBoxFlat:
+	# 动画/结算会反复重绘同一批牌；缓存只读 StyleBox，避免每帧分配。
+	var radius := maxi(1, int(3 * unit))
+	var key := (int(color.to_rgba32()) * 73856093) ^ (int(border.to_rgba32()) * 19349663) ^ radius
+	if _style_cache.has(key):
+		return _style_cache[key]
 	var style := StyleBoxFlat.new()
 	style.bg_color = color
 	style.border_color = border
-	style.set_corner_radius_all(maxi(1, int(3 * unit)))
+	style.set_corner_radius_all(radius)
 	style.set_border_width_all(1)
+	_style_cache[key] = style
 	return style
 
 ## ---- 程序化牌背（无素材） ----

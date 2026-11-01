@@ -71,6 +71,9 @@ func _run() -> void:
 	var fast: Dictionary = AiTeaching.recommend_fast(round, 0)
 	t.expect(str(fast.get("message", "")).begins_with("AI教学") and round.legal_turn_options(0).discards.has(str(fast.get("tile", ""))),
 		"fast teaching recommends a legal tile without a worker")
+	var fast_response: Dictionary = AiTeaching.recommend_response_fast(round, 0, 1, "tong8",
+		{"can_win": false, "can_pong": true, "can_kong": false})
+	t.expect(str(fast_response.get("label", "")) == "碰", "fast response does not build a full AI")
 
 	t.expect(AiPlayer.new().use_mcts, "normal AI retains MCTS")
 	t.expect(not ai.use_mcts, "teaching mode disables MCTS")

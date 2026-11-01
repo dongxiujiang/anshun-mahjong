@@ -305,6 +305,11 @@ func apply_displays() -> void:
 	if not has_started() or _display_scores.size() != 4: return
 	refresh_layout()
 	_render_pairs()
+	_apply_score_labels()
+	if _rivers_hidden: _set_river_alpha(0.0)
+	if _active and _stage_key != "": _highlight_stage(_stage_key)
+
+func _apply_score_labels() -> void:
 	for seat in 4:
 		var label: Label = table.center_labels[seat]
 		label.text = "%.0f分" % float(_display_scores[seat])
@@ -318,8 +323,6 @@ func apply_displays() -> void:
 		net.visible = _net_visible
 		if _net_visible: table.dealer_badges[seat].hide()
 		if _completed: net.modulate = Color.WHITE
-	if _rivers_hidden: _set_river_alpha(0.0)
-	if _active and _stage_key != "": _highlight_stage(_stage_key)
 
 func _set_river_alpha(value: float) -> void:
 	_river_alpha = value
@@ -404,7 +407,9 @@ func _roll_final(progress: float) -> void:
 		var net: Label = table.net_labels[seat]
 		net.modulate.a = lerpf(0.25, 1.0, clampf(elapsed / UI.SETTLEMENT_PARTICLE_SECONDS, 0.0, 1.0))
 	_animate_particles(clampf(elapsed / UI.SETTLEMENT_PARTICLE_SECONDS, 0.0, 1.0))
-	apply_displays()
+	# Count-up only changes score labels; a full layout/pair redraw every frame
+	# caused the settlement FPS dip.
+	_apply_score_labels()
 
 static func counted_score(from: float, to: float, progress: float) -> float:
 	if progress >= 1.0: return to
