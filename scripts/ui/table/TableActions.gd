@@ -3,7 +3,6 @@ extends "res://scripts/ui/table/TableComponent.gd"
 
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
 const LEGAL := preload("res://scripts/core/LegalActions.gd")
-const AI_TEACH := preload("res://scripts/core/AiTeaching.gd")
 
 var action_bar: HBoxContainer
 var auto_ready_enabled := DisplayServer.get_name() != "headless"
@@ -188,10 +187,7 @@ func _build_turn_options(player: PlayerState) -> void:
 	_ready_discards = options.ready_discards.duplicate()
 	if not _ready_discards.is_empty():
 		_ready_button = table._add_action("报听", table._toggle_ready)
-	var ai_label := ""
-	if bool(table._ai_assist_enabled):
-		ai_label = str(AI_TEACH.recommend(table.round, player.seat).get("label", ""))
-	_highlight_ai_action_buttons(ai_label)
+	# 教打的完整 AI 建议由 GameTable 异步返回，避免在主线程再算一遍。
 
 func _add_kong_choices(title: String, decision_key: String, cards: Array) -> void:
 	if cards.is_empty():
@@ -292,12 +288,9 @@ func _on_require_response(seat: int, discarded_seat: int, tile: String, options:
 		table._add_action("杠", func(): table._commit_response("kong"), true)
 	table._add_action("过", func(): table._commit_response("pass"))
 	table._update_interactivity()
-	var ai_label := ""
 	if bool(table._ai_assist_enabled):
-		ai_label = str(AI_TEACH.recommend_response_fast(table.round, table.human_seat,
-			discarded_seat, tile, options).get("label", ""))
+		# 等完整强度的 AI 返回后再高亮，避免先显示快速判断又改口。
 		table.request_ai_response_teach(discarded_seat, tile, options)
-	_highlight_ai_action_buttons(ai_label)
 
 func _highlight_ai_action_buttons(label: String) -> void:
 	if label == "" or not bool(table._ai_assist_enabled):
