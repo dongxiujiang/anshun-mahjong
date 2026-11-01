@@ -1,5 +1,8 @@
 extends SceneTree
 ## 穷举报听相关的结算分支，打印每家净分和逐笔转账。
+##
+## 只包含真实对局能出现的组合：报听者不能暗杠/加杠（RoundState.gd:1006,1020），
+## 所以「被抢杠者报听」「杠后放炮的放炮者报听」不可能出现，这里不列。
 
 const PLAIN := ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tong1", "tong2",
 	"tong3", "tiao2", "tiao3", "tiao4", "tong9", "tong9"]
@@ -36,11 +39,10 @@ func _case(name: String, build: Callable) -> void:
 	var cells: PackedStringArray = []
 	for t in result.transfers:
 		cells.append("%d→%d %s %.0f" % [int(t.from), int(t.to), str(t.reason), float(t.amount)])
-	print("%-42s | 净分 %s | %s" % [name, str(result.deltas), "；".join(cells)])
+	print("%-40s | 净分 %s | %s" % [name, str(result.deltas), "；".join(cells)])
 
 
 func _run() -> void:
-	# A 赢家报听
 	_case("A1 报听自摸·无牌型", func(r: RoundState) -> void:
 		r.players[0].concealed = PLAIN.duplicate()
 		r.players[0].ready = true
@@ -75,7 +77,6 @@ func _run() -> void:
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
 			"discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9",
 			"burn_chicken_seat": 1}, true))
-	# B 赢家没报听，别人报了
 	_case("B1 自摸·座位1报听（杀报）", func(r: RoundState) -> void:
 		r.players[0].concealed = PLAIN.duplicate()
 		r.players[1].ready = true
@@ -97,13 +98,6 @@ func _run() -> void:
 		r.players[1].discards = ["wan6"]
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
 			"discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true))
-	_case("B5 抢杠·被抢者报听（杀报）", func(r: RoundState) -> void:
-		r.players[0].concealed = PLAIN.duplicate()
-		r.players[1].ready = true
-		r.players[1].melds = [{"kind": "pung", "tile": "wan6", "from_seat": 2, "robbed": true}]
-		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
-			"robbed_kong": true, "discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true))
-	# C 两边都报听
 	_case("C1 双方都报听·点炮", func(r: RoundState) -> void:
 		r.players[0].concealed = PATTERN.duplicate()
 		r.players[0].ready = true
@@ -116,22 +110,24 @@ func _run() -> void:
 		r.players[0].ready = true
 		r.players[2].ready = true
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": true, "flip_tile": "tiao9"}, true))
-	# D 报听 + 倍率
 	_case("D1 报听自摸·倍率2", func(r: RoundState) -> void:
 		r.players[0].concealed = PATTERN.duplicate()
 		r.players[0].ready = true
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": true,
 			"flip_tile": "tiao9", "chicken_multiplier": 2}, true))
-	# E 报听 + 烧鸡
 	_case("E1 报听自摸·赢家烧鸡", func(r: RoundState) -> void:
 		r.players[0].concealed = PATTERN.duplicate()
 		r.players[0].ready = true
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": true,
 			"flip_tile": "tiao9", "burn_chicken_seat": 0}, true))
-	# F 流局：报听者算叫牌
 	_case("F1 流局·只有座位0报听", func(r: RoundState) -> void:
 		r.players[0].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6",
 			"tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
+		r.players[0].ready = true
+		r.round_meta.merge({"winner": -1, "winners": [], "self_draw": false, "flip_tile": ""}, true))
+	_case("F2 流局·座位0报听且听牌型", func(r: RoundState) -> void:
+		r.players[0].concealed = ["wan1", "wan1", "wan1", "wan2", "wan2", "wan2",
+			"wan3", "wan3", "wan3", "wan9", "wan9", "wan9", "wan5"]
 		r.players[0].ready = true
 		r.round_meta.merge({"winner": -1, "winners": [], "self_draw": false, "flip_tile": ""}, true))
 	_case("B6 自摸有牌型·座位1报听", func(r: RoundState) -> void:
@@ -154,35 +150,9 @@ func _run() -> void:
 		r.players[1].melds = [{"kind": "pung", "tile": "wan6", "from_seat": 2, "robbed": true}]
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
 			"robbed_kong": true, "discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true))
-	_case("F2 流局·座位0报听且听牌型", func(r: RoundState) -> void:
-		r.players[0].concealed = ["wan1", "wan1", "wan1", "wan2", "wan2", "wan2",
-			"wan3", "wan3", "wan3", "wan9", "wan9", "wan9", "wan5"]
-		r.players[0].ready = true
-		r.round_meta.merge({"winner": -1, "winners": [], "self_draw": false, "flip_tile": ""}, true))
 	_case("B8 自摸无牌型有鸡·座位1报听", func(r: RoundState) -> void:
 		r.players[0].concealed = ["tiao1", "tiao1", "tiao1", "wan1", "wan2", "wan3",
 			"wan4", "wan5", "wan6", "tong4", "tong5", "tong6", "tong9", "tong9"]
 		r.players[1].ready = true
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": true, "flip_tile": "tiao6"}, true))
-	_case("B9 抢杠有牌型·被抢者报听", func(r: RoundState) -> void:
-		r.players[0].concealed = PATTERN.duplicate()
-		r.players[1].ready = true
-		r.players[1].melds = [{"kind": "pung", "tile": "wan6", "from_seat": 2, "robbed": true}]
-		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
-			"robbed_kong": true, "discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true))
-	_case("C3 抢杠·双方都报听且有牌型", func(r: RoundState) -> void:
-		r.players[0].concealed = PATTERN.duplicate()
-		r.players[0].ready = true
-		r.players[1].ready = true
-		r.players[1].melds = [{"kind": "pung", "tile": "wan6", "from_seat": 2, "robbed": true}]
-		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
-			"robbed_kong": true, "discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true))
-	_case("C4 杠后放炮·双方都报听", func(r: RoundState) -> void:
-		r.players[0].concealed = PLAIN.duplicate()
-		r.players[0].ready = true
-		r.players[1].ready = true
-		r.players[1].discards = ["wan6"]
-		r.last_discard = {"after_kong": true, "kong_kind": RoundState.KongKind.ADD_KONG, "tile": "wan6"}
-		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
-			"discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9", "burn_chicken_seat": 1}, true))
 	quit()
