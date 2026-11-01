@@ -20,7 +20,7 @@ var _close: Button
 var _hint: Label
 var _my_seat := 0
 var _is_host := false
-var _packs := ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"]
+var _packs := ["luoxiaohei", "wuyuanzhao", "wenrounv", "nvyou"]
 var _picker: Control
 var _picker_panel: Panel
 var _picker_grid: GridContainer

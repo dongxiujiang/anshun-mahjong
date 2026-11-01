@@ -2,6 +2,7 @@ extends SceneTree
 ## 真实出牌/胡牌、公共联机事件去重、离线素材、独立音量和多尺寸设置面板。
 
 const H := preload("res://tests/test_harness.gd")
+const REGISTRY := preload("res://scripts/core/VoicePackRegistry.gd")
 const HAND13 := ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "wan7", "wan8", "wan9", "tong2", "tong3", "tong4", "tiao5"]
 var t := H.new()
 var audio
@@ -64,7 +65,7 @@ func _test_assets() -> void:
 		t.expect(stream.get_length() >= 0.2 and stream.get_length() <= 0.45, "结算短音效不拖尾：" + cue)
 		t.expect(stream.loop_mode == AudioStreamWAV.LOOP_DISABLED, "结算音效不循环：" + cue)
 
-const TEST_PACKS := ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"]
+const TEST_PACKS := ["luoxiaohei", "wuyuanzhao", "wenrounv", "nvyou"]
 
 func _voice_key(seat: int, word: String) -> String:
 	return "voice_packs/%s/%s" % [TEST_PACKS[clampi(seat, 0, 3)], word]
@@ -210,13 +211,17 @@ func _test_sync() -> void:
 		t.expect(events.size() == count, "重复同步不重喊动作")
 
 func _test_playback() -> void:
+	t.expect(REGISTRY.ORDER.size() == 17 and not REGISTRY.ORDER.has("jiejie") \
+		and not REGISTRY.ORDER.has("mingliangnv"), "remove 姐姐 and old 明亮女 packs")
+	t.expect(REGISTRY.label("nvyou") == "明亮女" and REGISTRY.normalize("mingliangnv") == "nvyou" \
+		and REGISTRY.normalize("jiejie") == "nvyou", "legacy voice ids migrate to retained packs")
 	# 前面的规则计算耗时不应计入刚开始的音轨和渐变。
 	await process_frame
 	for channel in ["voice", "effects"]:
 		audio.set_enabled(channel, true, false)
 		audio.set_volume(channel, 0.5, false)
 	audio.begin_table()
-	t.expect(audio.seat_voice_packs == ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"], "默认座位音色按东南西北设置")
+	t.expect(audio.seat_voice_packs == ["luoxiaohei", "wuyuanzhao", "wenrounv", "nvyou"], "默认座位音色按东南西北设置")
 	t.expect(audio.music_player == null, "入桌不再创建背景音乐")
 	var saved_packs: Array = audio.seat_voice_packs.duplicate()
 	audio.seat_voice_packs = ["luoxiaohei", "luoxiaohei", "weilong", "xiaohei"]
