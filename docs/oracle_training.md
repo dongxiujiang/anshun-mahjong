@@ -262,6 +262,18 @@ ppo_collector.gd              可生成策略座位转移
 train_oracle_ppo.py           GAE + PPO 更新可运行
 ```
 
+## 训练逻辑验收
+
+```text
+Step1  step(state, action) / oracle_advise     已实现并通过测试
+Step2  Oracle 标签采集 + parquet/npz 转换       已实现并生成数据
+Step3  584 维特征 + 113 动作 SL                 已实现并导出权重
+Step4  安顺捉鸡结算分差 + 向听 shaping 的 PPO   已实现
+Step5  启发/旧快照对手池 + 过滤 + 统一动作空间   已实现
+```
+
+模型强度尚未达到线上替换标准，这是模型质量限制，不是训练接口缺失。
+
 ## 限制
 
 - Oracle 当前是完美信息启发估值，不是 MCTS 最优标签；
