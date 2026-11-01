@@ -36,6 +36,7 @@ var _ai_teach_token := 0
 var _ai_teach_task := 0
 var _ai_teach_worker = null
 var _ai_teach_message := ""
+var _refresh_queued := false
 var _ai_assist_enabled := false
 var _auto_test_rounds := 0
 var _auto_test_completed := 0
@@ -719,7 +720,7 @@ func new_game() -> void:
 	round.require_turn.connect(_on_require_turn)
 	round.require_response.connect(_on_require_response)
 	round.round_finished.connect(_on_round_finished)
-	round.state_update.connect(_refresh)
+	round.state_update.connect(_queue_refresh)
 	var controllers: Array = []
 	var ai_level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "low")
 	for seat in 4:
@@ -748,7 +749,7 @@ func _setup_host_view() -> void:
 	round.require_turn.connect(_on_require_turn)
 	round.require_response.connect(_on_require_response)
 	round.round_finished.connect(_on_round_finished)
-	round.state_update.connect(_refresh)
+	round.state_update.connect(_queue_refresh)
 	if round.phase != RoundState.Phase.IDLE:
 		_prime_opening_visuals()
 		_on_net_prompt(human_seat)
@@ -802,6 +803,16 @@ func _prime_opening_visuals() -> void:
 			return
 	_opening_primed = true
 	for event in round.visual_events: _on_visual_event(event)
+
+func _queue_refresh() -> void:
+	if _refresh_queued:
+		return
+	_refresh_queued = true
+	call_deferred("_flush_refresh")
+
+func _flush_refresh() -> void:
+	_refresh_queued = false
+	_refresh()
 
 func _refresh() -> void:
 	if round == null or _awaiting_rejoin_snapshot:
