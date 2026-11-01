@@ -21,6 +21,10 @@ var _hint: Label
 var _my_seat := 0
 var _is_host := false
 var _packs := ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"]
+var _picker: Control
+var _picker_panel: Panel
+var _picker_grid: GridContainer
+var _picker_seat := 0
 
 func _ready() -> void:
 	name = "VoicePackDialog"
@@ -61,35 +65,14 @@ func _ready() -> void:
 		label.add_theme_color_override("font_color", STYLE.INK)
 		_panel.add_child(label)
 		_seat_labels[seat] = label
-		var select := OptionButton.new()
+		var select := Button.new()
 		select.position = Vector2(170, 122 + seat * 82)
 		select.size = Vector2(390, 58)
+		select.custom_minimum_size = Vector2(390, 58)
 		select.add_theme_font_override("font", TileView._font())
 		select.add_theme_font_size_override("font_size", 24)
-		var popup := select.get_popup()
-		popup.add_theme_font_override("font", TileView._font())
-		# 19 套音色；缩小行高和字号，保证最后几项在手机屏幕内可点。
-		popup.add_theme_font_size_override("font_size", 18)
-		popup.add_theme_constant_override("v_separation", 2)
-		popup.add_theme_constant_override("item_start_padding", 10)
-		# 19 项一次显示完，避免只看到前十几项还要滚动。
-		popup.max_size = Vector2i(430, 640)
-		select.custom_minimum_size = Vector2(390, 58)
-		for id in REGISTRY.ORDER:
-			select.add_item(REGISTRY.label(id))
-			select.set_item_metadata(select.item_count - 1, id)
-		select.item_selected.connect(func(index: int):
-			if select.disabled: return
-			var chosen := str(select.get_item_metadata(index))
-			if _used_by_other(seat, chosen):
-				select.select(REGISTRY.ORDER.find(_packs[seat]))
-				_hint.text = "这个音色已被其他座位使用，请换一个。"
-				return
-			_packs[seat] = chosen
-			_refresh_usage()
-			_hint.text = "房主可独立设置每个座位，四个座位不能重复。" if _is_host \
-				else "只能修改自己的座位，四个座位不能重复。"
-			pack_selected.emit(seat, chosen))
+		STYLE.button(select, false)
+		select.pressed.connect(func(): _open_picker(seat))
 		_panel.add_child(select)
 		_selects[seat] = select
 		var preview := Button.new()
@@ -99,10 +82,10 @@ func _ready() -> void:
 		preview.add_theme_font_override("font", TileView._font())
 		preview.add_theme_font_size_override("font_size", 24)
 		STYLE.button(preview, false)
-		preview.pressed.connect(func():
-			preview_requested.emit(seat, str(select.get_item_metadata(select.selected))))
+		preview.pressed.connect(func(): preview_requested.emit(seat, str(_packs[seat])))
 		_panel.add_child(preview)
 		_previews[seat] = preview
+	_build_picker()
 	_close = Button.new()
 	_close.text = "关闭"
 	_close.position = Vector2(700, 520)
@@ -153,12 +136,12 @@ func open(packs: Array, my_seat: int, is_host: bool) -> void:
 	for seat in 4:
 		var relative := posmod(seat - _my_seat, 4)
 		_seat_labels[seat].text = "%s·%s位" % [roles[relative], WINDS[seat]]
-		var select: OptionButton = _selects[seat]
-		select.select(REGISTRY.ORDER.find(_packs[seat]))
+		var select: Button = _selects[seat]
 		select.disabled = not is_host and seat != _my_seat
 	_refresh_usage()
 	_hint.text = "房主可独立设置每个座位，四个座位不能重复。" if is_host \
 		else "只能修改自己的座位，四个座位不能重复。"
+	_picker.hide()
 	show()
 	_layout()
 
@@ -170,15 +153,101 @@ func _used_by_other(seat: int, pack_id: String) -> bool:
 
 func _refresh_usage() -> void:
 	for seat in 4:
-		var select: OptionButton = _selects[seat]
-		for index in select.item_count:
-			var id := str(select.get_item_metadata(index))
-			select.set_item_disabled(index, _used_by_other(seat, id))
+		var select: Button = _selects[seat]
+		select.text = REGISTRY.label(_packs[seat])
+
+func _build_picker() -> void:
+	_picker = Control.new()
+	_picker.name = "VoicePackPicker"
+	_picker.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_picker.mouse_filter = Control.MOUSE_FILTER_STOP
+	_picker.z_index = 340
+	add_child(_picker)
+	var shade := ColorRect.new()
+	shade.color = Color(0.02, 0.06, 0.04, 0.88)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	_picker.add_child(shade)
+	_picker_panel = Panel.new()
+	_picker_panel.size = Vector2(760, 760)
+	_picker_panel.add_theme_stylebox_override("panel", STYLE.panel())
+	_picker.add_child(_picker_panel)
+	var title := Label.new()
+	title.text = "选择音色"
+	title.position = Vector2(28, 18)
+	title.size = Vector2(500, 42)
+	title.add_theme_font_override("font", TileView._font())
+	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_color_override("font_color", STYLE.GOLD)
+	_picker_panel.add_child(title)
+	_picker_grid = GridContainer.new()
+	_picker_grid.columns = 2
+	_picker_grid.position = Vector2(24, 78)
+	_picker_grid.size = Vector2(712, 600)
+	_picker_grid.add_theme_constant_override("h_separation", 16)
+	_picker_grid.add_theme_constant_override("v_separation", 8)
+	_picker_panel.add_child(_picker_grid)
+	var close := Button.new()
+	close.text = "关闭"
+	close.position = Vector2(540, 664)
+	close.size = Vector2(190, 66)
+	close.add_theme_font_override("font", TileView._font())
+	close.add_theme_font_size_override("font_size", 24)
+	STYLE.button(close, false)
+	close.pressed.connect(_close_picker)
+	_picker_panel.add_child(close)
+	_picker.hide()
+
+func _open_picker(seat: int) -> void:
+	if bool(_selects[seat].disabled):
+		return
+	_picker_seat = seat
+	for child in _picker_grid.get_children():
+		child.queue_free()
+	for id in REGISTRY.ORDER:
+		var button := Button.new()
+		button.text = ("✓ " if id == _packs[seat] else "") + REGISTRY.label(id)
+		button.custom_minimum_size = Vector2(340, 52)
+		button.size = Vector2(340, 52)
+		button.add_theme_font_override("font", TileView._font())
+		button.add_theme_font_size_override("font_size", 24)
+		button.disabled = _used_by_other(seat, id)
+		STYLE.button(button, id == _packs[seat])
+		button.pressed.connect(_choose_picker.bind(id))
+		_picker_grid.add_child(button)
+	_picker.show()
+	_layout_picker()
+
+func _choose_picker(pack_id: String) -> void:
+	if _used_by_other(_picker_seat, pack_id):
+		_hint.text = "这个音色已被其他座位使用，请换一个。"
+		return
+	_packs[_picker_seat] = pack_id
+	_refresh_usage()
+	_hint.text = "房主可独立设置每个座位，四个座位不能重复。" if _is_host \
+		else "只能修改自己的座位，四个座位不能重复。"
+	pack_selected.emit(_picker_seat, pack_id)
+	_close_picker()
+
+func _close_picker() -> void:
+	if _picker != null:
+		_picker.hide()
+
+func _layout_picker() -> void:
+	if _picker_panel == null or not _picker.visible:
+		return
+	var bounds := STYLE.usable_rect(self)
+	if not bounds.has_area():
+		bounds = Rect2(Vector2.ZERO, get_viewport_rect().size)
+	var factor := minf(1.0, minf((bounds.size.x - 32.0) / 760.0, (bounds.size.y - 32.0) / 760.0))
+	_picker_panel.scale = Vector2.ONE * maxf(0.1, factor)
+	_picker_panel.position = bounds.position + (bounds.size - Vector2(760, 760) * _picker_panel.scale) * 0.5
 
 func close() -> void:
 	var audio := get_node_or_null("/root/AudioManager")
 	if audio != null:
 		audio.stop_voice_test()
+	_close_picker()
 	hide()
 
 func _on_test_progress(pack_id: String, key: String, index: int, total: int) -> void:
@@ -196,3 +265,4 @@ func _layout() -> void:
 	var factor := minf(1.0, minf((bounds.size.x - 32.0) / SIZE.x, (bounds.size.y - 32.0) / SIZE.y))
 	_panel.scale = Vector2.ONE * maxf(0.1, factor)
 	_panel.position = bounds.position + (bounds.size - SIZE * _panel.scale) * 0.5
+	_layout_picker()
