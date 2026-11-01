@@ -408,17 +408,22 @@ func request_ai_teach() -> void:
 	if not _is_ai_turn_now():
 		return
 	_clear_ai_teach()
-	if _ai_teach_worker == null:
-		_ai_teach_worker = load("res://scripts/core/AiTeachingWorker.gd").new()
-	var level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "low")
-	var token: int = int(_ai_teach_worker.submit(round, human_seat, level))
-	if token <= 0:
+	# 轻量向听/进张分析在主线程完成，不再为一次教打启动线程和整局快照。
+	_apply_ai_teach_result(AiTeaching.recommend_fast(round, human_seat))
+
+func _apply_ai_teach_result(result: Dictionary) -> void:
+	if result.is_empty():
 		return
-	_ai_teach_task = token
-	_ai_teach_message = "AI分析中…"
-	if status_label != null:
-		status_label.text = _ai_teach_message
-		status_label.show()
+	var tile := str(result.get("tile", ""))
+	if _player_tile_areas != null:
+		_player_tile_areas.clear_ai_teach_highlight()
+		if tile != "":
+			_player_tile_areas.highlight_ai_teach(tile)
+	if result.has("message"):
+		_ai_teach_message = str(result.message)
+		if status_label != null:
+			status_label.text = _ai_teach_message
+			status_label.show()
 
 func _poll_ai_teach() -> void:
 	if _ai_teach_task <= 0 or _ai_teach_worker == null:
@@ -427,16 +432,7 @@ func _poll_ai_teach() -> void:
 	if result.is_empty():
 		return
 	_ai_teach_task = 0
-	var tile := str(result.get("tile", ""))
-	if _player_tile_areas != null:
-		_player_tile_areas.clear_ai_teach_highlight()
-	if tile != "":
-		_player_tile_areas.highlight_ai_teach(tile)
-	if result.has("message"):
-		_ai_teach_message = str(result.message)
-		if status_label != null:
-			status_label.text = _ai_teach_message
-			status_label.show()
+	_apply_ai_teach_result(result)
 
 func _refresh_voice_button() -> void:
 	if _voice_button == null:
@@ -468,6 +464,7 @@ func _process(_delta: float) -> void:
 		return
 	_poll_ai_teach()
 	_poll_ai_proxy()
+
 	# Online authority and clients already poll in NetGameNode._process.
 	var network = get_node_or_null("/root/Network")
 	if network == null or network.net_node == null or str(network.mode) == "":

@@ -45,6 +45,37 @@ static func recommend(round, seat: int, level_override: String = "") -> Dictiona
 			break
 	return {"action": "discard", "tile": tile, "message": "AI教学：建议打%s%s" % [_display(tile), detail]}
 
+## 高频教打：只做出牌向听/进张分析，不启动 AI 决策线程，避免 120Hz 掉帧。
+static func recommend_fast(round, seat: int) -> Dictionary:
+	if round == null or seat < 0 or seat >= round.players.size():
+		return {}
+	if round.phase != RoundState.Phase.PLAYING or not round.awaiting or round.current_turn != seat:
+		return {"message": "AI教学：当前不是你的出牌回合"}
+	var player: PlayerState = round.players[seat]
+	var options: Dictionary = round.legal_turn_options(seat)
+	if options.get("self_win", false):
+		return {"action": "win", "label": "自摸", "message": "AI教学：建议自摸；当前手牌已经满足胡牌条件"}
+	if not options.get("kong_declares", []).is_empty():
+		return {"action": "kong", "label": "暗杠", "tile": str(options.kong_declares[0]),
+			"message": "AI教学：建议暗杠 %s；完成后从牌尾补牌" % _display(str(options.kong_declares[0]))}
+	if not options.get("add_kong", []).is_empty():
+		return {"action": "kong", "label": "加杠", "tile": str(options.add_kong[0]),
+			"message": "AI教学：建议加杠 %s；注意可能被抢杠" % _display(str(options.add_kong[0]))}
+	var discards: Array = options.get("discards", [])
+	if discards.is_empty():
+		return {"message": "AI教学：当前没有可分析的出牌"}
+	var best_tile := str(discards[0])
+	var best_distance := 99
+	for tile in discards:
+		var hand: Array = player.concealed.duplicate()
+		hand.erase(str(tile))
+		var distance := Shanten.shanten(hand, player.melds)
+		if distance < best_distance:
+			best_distance = distance
+			best_tile = str(tile)
+	return {"action": "discard", "tile": best_tile,
+		"message": "AI教学：建议打%s；向听%d" % [_display(best_tile), best_distance]}
+
 static func recommend_response(round, seat: int, source: int, tile: String, options: Dictionary) -> Dictionary:
 	if round == null or seat < 0 or seat >= round.players.size():
 		return {}

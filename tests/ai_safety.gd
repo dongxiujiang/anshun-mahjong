@@ -68,6 +68,9 @@ func _run() -> void:
 	t.expect(not teaching.is_empty() and str(teaching.get("message", "")).begins_with("AI教学"), "AI teaching returns a bounded recommendation")
 	var teaching_tile := str(teaching.get("tile", ""))
 	t.expect(teaching_tile == "" or round.legal_turn_options(0).discards.has(teaching_tile), "AI teaching recommends a legal tile")
+	var fast: Dictionary = AiTeaching.recommend_fast(round, 0)
+	t.expect(str(fast.get("message", "")).begins_with("AI教学") and round.legal_turn_options(0).discards.has(str(fast.get("tile", ""))),
+		"fast teaching recommends a legal tile without a worker")
 
 	t.expect(AiPlayer.new().use_mcts, "normal AI retains MCTS")
 	t.expect(not ai.use_mcts, "teaching mode disables MCTS")
