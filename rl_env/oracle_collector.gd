@@ -77,6 +77,7 @@ func _run() -> void:
 		var styles := ["balanced", "conservative", "aggressive"]
 		for seat in 4:
 			var actor = AI.new("OracleHeuristic%d" % seat, level)
+			actor.use_mcts = _arg("mcts", "0") == "1"
 			actor.rng.seed = seed * 17 + seat + 1
 			match styles[(seed + seat) % styles.size()]:
 				"conservative":
@@ -110,7 +111,8 @@ func _run() -> void:
 				var advice: Dictionary = env.oracle_advise(visible, rollout_limit)
 				if int(advice.get("best", -1)) >= 0:
 					var row := {
-						"x": OBS.encode(visible),
+						"x": OBS.encode_v2(visible),
+						"feature_version": 2,
 						"mask": Array(env.action_mask(actor_seat)),
 						"action": int(advice.best),
 						"probs": advice.probs,

@@ -101,7 +101,7 @@ def main():
     adv = torch.tensor([r["advantage"] for r in rows], dtype=torch.float32)
     adv = (adv - adv.mean()) / (adv.std() + 1e-8)
 
-    model = PolicyNet()
+    model = PolicyNet(int(X.shape[1]), int(M.shape[1]))
     if args.init:
         state = torch.load(args.init, map_location="cpu")
         model.load_state_dict(state)
@@ -137,7 +137,7 @@ def main():
     metadata = {
         "rows": n,
         "games": len({int(r["game"]) for r in rows}),
-        "architecture": "521->256->256->113",
+        "architecture": f"{X.shape[1]}->256->256->{M.shape[1]}",
         "clip": args.clip,
         "gamma": args.gamma,
         "lam": args.lam,

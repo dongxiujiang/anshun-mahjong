@@ -68,7 +68,7 @@ func _run() -> void:
 		push_error("cannot write " + out)
 		quit(2)
 		return
-	var actor = SL.new(policy_path) if policy_path != "" else SL.new()
+	var actor = SL.new(policy_path, 2) if policy_path != "" else SL.new("", 2)
 	var games := 0
 	var rows := 0
 	for seed in range(start, start + count):
@@ -81,6 +81,7 @@ func _run() -> void:
 		var snapshots_by_seat: Array = [null, null, null, null]
 		for seat in 4:
 			var ai = AI.new("PPOHeuristic%d" % seat, "medium")
+			ai.use_mcts = false
 			ai.rng.seed = seed * 19 + seat + 5
 			if seat % 3 == 0:
 				ai.set_defense_weight(1.0)
@@ -91,7 +92,7 @@ func _run() -> void:
 			opponents.append(ai)
 			if seat != policy_seat and not snapshot_paths.is_empty() and rng.randf() < 0.35:
 				var snapshot_path: String = str(snapshot_paths[rng.randi_range(0, snapshot_paths.size() - 1)])
-				snapshots_by_seat[seat] = SL.new(snapshot_path)
+				snapshots_by_seat[seat] = SL.new(snapshot_path, 2)
 		var done := false
 		var steps := 0
 		var game_rows: Array = []
@@ -137,7 +138,8 @@ func _run() -> void:
 			done = bool(result.get("done", false))
 			if seat == policy_seat:
 				game_rows.append({
-					"x": OBS.encode(visible),
+					"x": OBS.encode_v2(visible),
+					"feature_version": 2,
 					"mask": mask_before,
 					"action": code,
 					"logprob": logprob,

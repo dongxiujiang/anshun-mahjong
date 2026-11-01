@@ -233,6 +233,10 @@ func step(state_or_code, action_code: int = -1) -> Dictionary:
 	var seat := current_actor()
 	if not state_visible.is_empty() and int(state_visible.get("actor", seat)) != seat:
 		return {"ok": false, "error": "stale_visible_state", "actor": seat}
+	var before_shanten := 99
+	if seat >= 0 and seat < round.players.size():
+		var before_player: PlayerState = round.players[seat]
+		before_shanten = SHANTEN.shanten(before_player.concealed, before_player.melds)
 	var kind := current_kind()
 	var actions := legal_actions(seat)
 	var action := ACTIONS.action_for_code(code, actions)
@@ -250,11 +254,23 @@ func step(state_or_code, action_code: int = -1) -> Dictionary:
 		return {"ok": false, "error": "native_rejected", "actor": seat, "decision": decision}
 	_last_action = {"code": code, "seat": seat, "kind": kind, "decision": decision}
 	var done := is_done()
-	return {"ok": true, "done": done, "actor": seat, "code": code,
+	var result := {"ok": true, "done": done, "actor": seat, "code": code,
 		"observation": observation(-1 if done else current_actor()),
 		"action_mask": action_mask(-1 if done else current_actor()),
 		"info": {"actor": seat, "kind": kind, "decision": decision,
 			"score": score_deltas() if done else []}}
+	if not state_visible.is_empty():
+		var reward := 0.0
+		if seat >= 0 and seat < round.players.size():
+			var after_player: PlayerState = round.players[seat]
+			reward += float(before_shanten - SHANTEN.shanten(after_player.concealed, after_player.melds)) * 0.1
+		if done:
+			var scores := score_deltas()
+			if seat >= 0 and seat < scores.size():
+				reward += float(scores[seat]) / 100.0
+		result["state"] = result.observation
+		result["reward"] = reward
+	return result
 
 ## 仅返回行动者可见信息。对手暗牌和牌墙永远不在这里。
 func observation(seat: int = -1) -> Dictionary:

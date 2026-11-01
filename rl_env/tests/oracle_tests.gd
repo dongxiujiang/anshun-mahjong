@@ -26,7 +26,7 @@ func _run() -> void:
 
 	var state: Dictionary = env.observation(env.current_actor())
 	var code := int(legal[0].code)
-	var step: Dictionary = env.step_state(state, code)
+	var step: Dictionary = env.step(state, code)
 	t.expect(bool(step.get("ok", false)), "step(state, action) accepts a legal action")
 	t.expect(step.has("state") and step.has("reward") and step.has("done"), "step returns state/reward/done")
 	await H.quit_cleanly(self, t.finish("oracle_tests"))

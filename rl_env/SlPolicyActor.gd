@@ -7,11 +7,13 @@ static var _cache: Dictionary = {}
 var _weights: Dictionary = {}
 var _loaded_path := ""
 var weights_path := WEIGHTS_PATH
+var feature_version := 1
 var last_value := 0.0
 
-func _init(path: String = "") -> void:
+func _init(path: String = "", version: int = 1) -> void:
 	if path != "":
 		weights_path = path
+	feature_version = version
 	if _weights.is_empty() or _loaded_path != weights_path:
 		if _cache.has(weights_path):
 			_weights = _cache[weights_path]
@@ -73,7 +75,8 @@ func policy_for(env, seat: int) -> Dictionary:
 	var legal: Array = env.legal_actions(seat)
 	if legal.is_empty():
 		return {}
-	var result := _forward(PackedFloat32Array(OBS.encode(env.observation(seat))))
+	var features := OBS.encode_v2(env.observation(seat)) if feature_version >= 2 else OBS.encode(env.observation(seat))
+	var result := _forward(PackedFloat32Array(features))
 	if result.is_empty():
 		return {"actions": legal, "probs": [], "value": 0.0}
 	var logits: PackedFloat32Array = result[0]
@@ -121,6 +124,18 @@ func sample_action(env, seat: int, rng: RandomNumberGenerator, epsilon: float = 
 		"probs": probs,
 	}
 
+func choose_policy(env, seat: int) -> Dictionary:
+	var policy: Dictionary = policy_for(env, seat)
+	var legal: Array = policy.get("actions", [])
+	if legal.is_empty():
+		return {}
+	var probs: Array = policy.get("probs", [])
+	var best := 0
+	for i in range(1, legal.size()):
+		if float(probs[i]) > float(probs[best]):
+			best = i
+	return legal[best]
+
 func choose(env, seat: int) -> Dictionary:
 	var legal: Array = env.legal_actions(seat)
 	if legal.is_empty(): return {}
@@ -132,7 +147,8 @@ func choose(env, seat: int) -> Dictionary:
 		for action in legal:
 			if int(action.code) == 112: return action
 		return legal[0]
-	var x := PackedFloat32Array(OBS.encode(env.observation(seat)))
+	var features := OBS.encode_v2(env.observation(seat)) if feature_version >= 2 else OBS.encode(env.observation(seat))
+	var x := PackedFloat32Array(features)
 	var result := _forward(x)
 	if result.is_empty(): return legal[0]
 	var policy: PackedFloat32Array = result[0]
