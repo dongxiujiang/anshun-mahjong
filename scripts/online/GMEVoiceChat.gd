@@ -10,9 +10,9 @@ signal status_changed(enabled: bool, message: String)
 signal speaker_changed(seat: int, enabled: bool)
 
 const AUTH_URL_DEFAULT := "https://mj.dongxiu.fun/gme-auth"
-# 3 = high-quality voice room, 2 = standard, 1 = fluency. Prefer HD for
-# intelligible speech, but fall back so an older/limited server never loses mic.
-const ROOM_TYPES := [3, 2, 1]
+# Reverted to the original fluency room: the HD profile made live voices
+# noticeably worse on real devices. Keep the single enum for rollback safety.
+const ROOM_TYPES := [1]
 
 var owner_node: Node
 var enabled := false
@@ -173,7 +173,6 @@ func _join_room(room_number: String, auth: PackedByteArray) -> void:
 	var selected_type := 1
 	for room_type in ROOM_TYPES:
 		enter_ret = int(_context.call("EnterRoom", room_number, int(room_type), auth))
-		print("[gme] EnterRoom type=%d ret=%d" % [int(room_type), enter_ret])
 		if enter_ret == 0:
 			selected_type = int(room_type)
 			break
