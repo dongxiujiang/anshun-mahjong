@@ -200,8 +200,8 @@ Godot_v4.7.2-stable_win64.exe --headless --path . `
 已完整跑通小样本链路：
 
 ```text
-Oracle 数据 400 局 / 4296 条
-DAgger 400 局 / ~4400 条
+Oracle 数据约 1,100 局 / 12,355 条
+其中启发 AI 数据 + DAgger 数据
 parquet + npz + soft-label 训练
 SL 权重导出
 PPO collector
@@ -212,9 +212,9 @@ PPO 小样本更新
 
 ```text
 Oracle 直接对局：10 局 5 胜，+31 分
-SL（400 局 + DAgger）验证 top1 ≈ 37.6%
-SL 对低档 20 局：1 胜，-418 分
-PPO 20 局更新后：0 胜，-576 分
+SL（约 1,100 局）验证 top1 ≈ 42.5%
+SL 对低档 20 局：2 胜，-407 分
+PPO 20 局更新后：0 胜，-576 分（早前小样本）
 ```
 
 这说明 Oracle 标签本身有信号，但当前 SL/PPO 规模仍不足以替换线上 AI，需要继续扩大数据、改特征/模型和评估。
