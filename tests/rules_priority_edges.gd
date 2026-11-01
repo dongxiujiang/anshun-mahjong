@@ -57,8 +57,8 @@ func _run() -> void:
 		multi.players[seat].ready = true
 		multi.players[seat].announced_ready = true
 	t.expect(multi.submit_turn(0, {"discard": "wan9"}), "multi-win discard accepted")
-	t.expect(multi.submit_response(1, "wan9", {"action": "win"}), "first winner accepted")
-	t.expect(multi.submit_response(2, "wan9", {"action": "win"}), "second winner accepted")
+	t.expect(multi.submit_response(2, "wan9", {"action": "win"}), "first winner accepted")
+	t.expect(multi.submit_response(1, "wan9", {"action": "win"}), "second winner accepted")
 	t.expect(multi.phase == RoundState.Phase.SETTLED and (multi.round_meta.get("winners", []) as Array).size() == 2, "both winners settle")
 	t.expect(is_equal_approx(multi.players.reduce(func(acc, p): return acc + p.score, 0.0), 800.0), "multi-win preserves 800 total")
 

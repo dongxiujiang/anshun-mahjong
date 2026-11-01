@@ -103,7 +103,7 @@ func test_chickens_and_parallel() -> void:
 			var target: TileView = table.chicken_box[seat].get_child(0)
 			t.expect(target.get_meta("charge_chicken", false), "first chicken retains charge identity: " + label)
 			t.expect(is_equal_approx(target.rotation, -PI/2), "charge chicken lands sideways: " + label)
-			t.expect(table.round.current_turn == (seat+1)%4, "authority has already advanced to next seat: " + label)
+			t.expect(table.round.current_turn == posmod(seat + GameConfig.TURN_DIRECTION, 4), "authority has already advanced to next seat: " + label)
 			if graphical:
 				var task := task_for(seat)
 				t.expect(not task.is_empty(), "discard owns an independent lane: " + label)

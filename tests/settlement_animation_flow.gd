@@ -277,7 +277,7 @@ func _check_final(r: RoundState, context: String) -> void:
 		var labels: Array = c.payment_labels[seat]
 		t.expect(board.is_visible_in_tree() and board.get_child_count() == 3 and labels.size() == 3, context + ": exactly three visible rows, no extra total")
 		for index in 3:
-			var other: int = posmod(seat + [3, 2, 1][index], 4)
+			var other: int = posmod(seat + [1, 2, 3][index], 4)
 			var value := float(r.last_result.pairwise[seat][other])
 			var label: Label = labels[index]
 			var row := label.get_parent()
@@ -332,7 +332,7 @@ func _check_layout() -> void:
 			t.expect(row.get_parent() == board and Rect2(Vector2.ZERO, board.size).grow(1).encloses(row.get_rect()), "three rows fit board")
 			for other in rows: t.expect(not row.get_rect().grow(-0.1).intersects(other.grow(-0.1)), "relative rows do not overlap")
 			rows.append(row.get_rect())
-		var relative: int = posmod(seat - table.human_seat, 4)
+		var relative: int = posmod(table.human_seat - seat, 4)
 		var order: Array = [2, 1, 0] if relative in [1, 2] else [0, 1, 2]
 		var directions: Array = [["上", "对", "下"], ["下", "对", "上"], ["下", "对", "上"], ["上", "对", "下"]][relative]
 		for slot in 3:

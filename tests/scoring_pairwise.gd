@@ -196,7 +196,7 @@ func _test_result_ui() -> void:
 			t.expect(settlement.boards[seat].is_visible_in_tree(), "每家桌面结算板可见")
 			t.expect(table.center_labels[seat].text.contains("%.0f分" % r.players[seat].score), "桌面累计分显示真实入账后的分数")
 			for index in 3:
-				var other := posmod(seat + [3, 2, 1][index], 4)
+				var other := posmod(seat + [1, 2, 3][index], 4)
 				var text: String = "+28" if seat == 3 else ("-28" if other == 3 else "0")
 				t.expect(settlement.payment_labels[seat][index].text == text, "四个视角桌面按本人的上/对/下家显示真实28分补差")
 				t.expect(settlement.payment_labels[seat][index].get_parent().get_node("Direction").text == ["上", "对", "下"][index], "收付金额与该玩家自己的方向标签对应")

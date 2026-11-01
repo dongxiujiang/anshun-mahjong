@@ -1,7 +1,7 @@
 class_name ScoringEngine
 ## 四家鸡分、杠分和逐赢家胡牌费统一写入付款流水。
 const CFG := preload("res://scripts/autoload/GameConfig.gd")
-const SEAT_NAMES := ["庄家", "下家", "对家", "上家"]
+const SEAT_NAMES := ["庄家", "上家", "对家", "下家"]
 const CHICKEN := preload("res://scripts/core/ChickenScoring.gd")
 const KONG := preload("res://scripts/core/KongScoring.gd")
 const WIN := preload("res://scripts/core/WinScoring.gd")
@@ -195,7 +195,7 @@ static func _win_status(seat: int, winners: Array, self_draw: bool, discard_seat
 			if spec.get("key", "") == key:
 				labels.append(str(spec.get("label", "")))
 				break
-		var how: String = "自摸" if self_draw else ("胡" + (["-", "下家", "对家", "上家"][posmod(discard_seat - seat, 4)] if discard_seat >= 0 and discard_seat < 4 else "点炮"))
+		var how: String = "自摸" if self_draw else ("胡" + (["-", "上家", "对家", "下家"][posmod(discard_seat - seat, 4)] if discard_seat >= 0 and discard_seat < 4 else "点炮"))
 		if round.round_meta.get("robbed_kong", false): how = "抢杠胡"
 		return "叫牌（%s%s）" % [how, (" " + " ".join(labels)) if not labels.is_empty() else ""]
 	var text := "叫牌" if called[seat] else "未叫牌"

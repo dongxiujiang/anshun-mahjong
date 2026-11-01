@@ -57,7 +57,7 @@ static func pairwise_payments(transfers: Array) -> Array:
 
 static func relative_payments(matrix: Array, seat: int) -> Array:
 	var out: Array = []
-	for offset in [3, 2, 1]:
+	for offset in [1, 2, 3]:
 		out.append(matrix[seat][posmod(seat + offset, 4)])
 	return out
 

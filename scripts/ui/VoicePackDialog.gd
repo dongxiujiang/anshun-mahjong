@@ -134,7 +134,7 @@ func open(packs: Array, my_seat: int, is_host: bool) -> void:
 		_packs.append(pack_id)
 	var roles := ["自己", "下家", "对家", "上家"]
 	for seat in 4:
-		var relative := posmod(seat - _my_seat, 4)
+		var relative := posmod(_my_seat - seat, 4)
 		_seat_labels[seat].text = "%s·%s位" % [roles[relative], WINDS[seat]]
 		var select: Button = _selects[seat]
 		select.disabled = not is_host and seat != _my_seat

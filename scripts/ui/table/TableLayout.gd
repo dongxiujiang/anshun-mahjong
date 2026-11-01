@@ -264,4 +264,5 @@ func _draw_die(value: int, pos: Vector2) -> void:
 		table.draw_circle(pos + point, 3.0, UI.DICE_RED if value == 1 else UI.DICE_DOT)
 
 func _relative_seat(seat: int) -> int:
-	return posmod(seat - table.human_seat, 4)
+	# 逆时针回合：本地座位的下家是编号 -1 的座位，显示在右侧。
+	return posmod(table.human_seat - seat, 4)

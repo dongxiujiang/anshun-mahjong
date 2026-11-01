@@ -55,10 +55,9 @@ const PATTERNS := [
 	{"key": "clean_dragon_seven_pairs", "label": "清龙对", "score": SCORE_CLEAN_DRAGON_SEVEN_PAIRS},
 ]
 
-# 方向统一为座位编号递增方向：起手发牌、普通回合和响应顺序都使用 +1。
-# 只保留一个方向源，避免起手和普通回合再次出现分叉配置。
-# 逻辑方向与牌桌画面位置分离，座位映射由 UI 单独处理。
-const ROUND_DIRECTION := 1
+# 固定罗盘座位为：东右、南底、西左、北顶；麻将成为逆时针，
+# 起手发牌、普通回合和响应顺序统一使用 -1（东→北→西→南）。
+const ROUND_DIRECTION := -1
 const DEAL_DIRECTION := ROUND_DIRECTION
 const TURN_DIRECTION := ROUND_DIRECTION
 

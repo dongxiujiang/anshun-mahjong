@@ -153,7 +153,7 @@ func _reference_transfers() -> Array:
 func _test_reference() -> void:
 	var pairs := ScoringEngine.pairwise_payments(_reference_transfers())
 	for seat in 4:
-		var expected: Array = [[2.0, 13.0, 17.0], [-17.0, -15.0, -8.0], [8.0, -13.0, -11.0], [11.0, 15.0, -2.0]][seat]
+		var expected: Array = [[17.0, 13.0, 2.0], [-8.0, -15.0, -17.0], [-11.0, -13.0, 8.0], [-2.0, 15.0, 11.0]][seat]
 		t.expect(ScoringEngine.relative_payments(pairs, seat) == expected, "Reference 上/对/下 payments remain unchanged")
 
 func _bind(r: RoundState, human: int) -> void:

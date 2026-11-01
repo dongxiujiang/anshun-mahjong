@@ -147,8 +147,8 @@ func _test_deck_wall_deal() -> void:
 		eq([8, 13], tile + "合法点数花色", Tiles.rank(tile) in range(1, 10) and Tiles.suit(tile) in ["wan", "tiao", "tong"], true, "scripts/core/Tiles.gd:20")
 	for i in 4:
 		eq([19+i], "座位%d" % i, [CFG.SEAT_DEALER, CFG.SEAT_RIGHT, CFG.SEAT_ACROSS, CFG.SEAT_LEFT][i], i, "scripts/autoload/GameConfig.gd:62")
-	eq([25, 28, 31, 34], "回合方向", CFG.TURN_DIRECTION, 1, "scripts/autoload/GameConfig.gd:57")
-	eq([26, 30], "发牌方向", CFG.DEAL_DIRECTION, 1, "scripts/autoload/GameConfig.gd:57")
+	eq([25, 28, 31, 34], "回合方向", CFG.TURN_DIRECTION, -1, "scripts/autoload/GameConfig.gd:57")
+	eq([26, 30], "发牌方向", CFG.DEAL_DIRECTION, -1, "scripts/autoload/GameConfig.gd:57")
 	for dealer in 4:
 		var wall := WallRing.new(deck, dealer)
 		for seat in 4:
@@ -189,7 +189,7 @@ func _test_deck_wall_deal() -> void:
 		for b in 3:
 			for offset in 4:
 				eq([26,56], "轮%d座%d四张" % [b,offset], batches[b][offset].cards.size(), 4, "scripts/core/RoundState.gd:233")
-				eq([26,56], "轮%d发牌方向%d" % [b,offset], batches[b][offset].seat, posmod(dealer+offset,4), "scripts/core/RoundState.gd:238")
+				eq([26,56], "轮%d发牌方向%d" % [b,offset], batches[b][offset].seat, posmod(dealer + CFG.TURN_DIRECTION * offset, 4), "scripts/core/RoundState.gd:238")
 		for offset in 4:
 			eq([57], "座%d三轮共12张" % offset, batches[0][offset].cards.size()+batches[1][offset].cards.size()+batches[2][offset].cards.size(), 12, "scripts/core/RoundState.gd:235")
 			eq([58], "座%d补1张" % offset, batches[3+offset][0].cards.size(), 1, "scripts/core/RoundState.gd:246")
@@ -231,10 +231,10 @@ func _test_actions() -> void:
 	eq([88], "过胡锁被设置", r.players[2].passed_win_until_draw, true, "scripts/core/RoundState.gd:638")
 	eq([88], "过胡不能再胡", r.can_win_on_discard(2,3,"wan9"), false, "scripts/core/LegalActions.gd:116")
 	r.submit_response(1,"wan9",{"action":"pass"})
-	eq([28,72,85], "下家摸牌", r.current_turn, 1, "scripts/core/RoundState.gd:547")
+	eq([28,72,85], "下家摸牌", r.current_turn, posmod(CFG.TURN_DIRECTION, 4), "scripts/core/RoundState.gd:547")
 	eq([66,85], "摸且只摸一张", r.wall.remaining, before-1, "scripts/core/RoundState.gd:267")
 	for source in 4:
-		eq([87], "响应座位顺序%d" % source, r._seat_order(source), [posmod(source+1,4),posmod(source+2,4),posmod(source+3,4)], "scripts/core/RoundState.gd:497")
+		eq([87], "响应座位顺序%d" % source, r._seat_order(source), [posmod(source+CFG.TURN_DIRECTION,4),posmod(source+CFG.TURN_DIRECTION*2,4),posmod(source+CFG.TURN_DIRECTION*3,4)], "scripts/core/RoundState.gd:497")
 	r.current_turn = 2
 	r._begin_turn()
 	eq([88], "本人摸牌解除过胡", r.players[2].passed_win_until_draw, false, "scripts/core/RoundState.gd:273")
@@ -306,12 +306,12 @@ func _test_actions() -> void:
 	for seat in [1,2]:
 		multi.players[seat].concealed = waiting()
 		multi.players[seat].ready = true
-	begin("multi_win", multi, "0打wan9 → 1胡 → 2胡")
+	begin("multi_win", multi, "0打wan9 → 2胡 → 1胡")
 	multi.submit_turn(0,{"discard":"wan9"})
-	multi.submit_response(1,"wan9",{"action":"win"})
-	eq([86], "首胡后继续问第二家", multi._awaiting_response.get("seat",-1), 2, "scripts/core/RoundState.gd:629")
 	multi.submit_response(2,"wan9",{"action":"win"})
-	eq([86], "一炮两响", multi.round_meta.winners, [1,2], "scripts/core/RoundState.gd:669")
+	eq([86], "首胡后继续问第二家", multi._awaiting_response.get("seat",-1), 1, "scripts/core/RoundState.gd:629")
+	multi.submit_response(1,"wan9",{"action":"win"})
+	eq([86], "一炮两响", multi.round_meta.winners, [2,1], "scripts/core/RoundState.gd:669")
 	conservation(multi.last_result, multi.players.map(func(p): return p.score))
 
 func _test_passports() -> void:

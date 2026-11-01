@@ -64,7 +64,7 @@ func _run() -> void:
 		for turn in 4:
 			game.current_turn = turn
 			table._refresh()
-			t.expect(table._table_layout.turn_indicator.active_side == posmod(turn-viewer,4), "Active light follows the current player relative to the local viewer")
+			t.expect(table._table_layout.turn_indicator.active_side == posmod(viewer-turn,4), "Active light follows the current player relative to the local viewer")
 		_check_positions()
 		for name in table._player_tile_areas.name_labels.values(): t.expect(not name.visible, "Single-player dashboard displays scores only")
 	table.human_seat = 0
