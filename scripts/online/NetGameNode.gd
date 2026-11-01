@@ -172,7 +172,7 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 		var audio = get_node_or_null("/root/AudioManager") if is_inside_tree() else null
 		if audio != null:
 			for index in 4:
-				voice_packs[index] = audio.get_seat_voice_pack(index)
+				voice_packs[index] = audio.get_preferred_seat_voice_pack(index)
 				host_voice_packs[index] = voice_packs[index]
 			_ensure_unique_voice_packs()
 			host_voice_packs = voice_packs.duplicate()
@@ -776,7 +776,7 @@ func _sync_voice_packs_to_audio() -> void:
 	var audio := get_node_or_null("/root/AudioManager")
 	if audio == null: return
 	for seat in 4:
-		audio.set_seat_voice_pack(seat, voice_packs[seat])
+		audio.set_seat_voice_pack(seat, voice_packs[seat], false)
 
 func set_ai_speed(speed_key: String) -> void:
 	_submit_lobby("ai_speed", {"value": speed_key})
@@ -921,7 +921,7 @@ func _upload_my_seat_voice() -> void:
 	if audio == null:
 		return
 	if my_voice_pack == "":
-		my_voice_pack = str(audio.get_seat_voice_pack(my_seat))
+		my_voice_pack = str(audio.get_preferred_seat_voice_pack(my_seat))
 	var pack_id: String = my_voice_pack
 	if host_mode:
 		_apply_voice_pack(1, {"seat": my_seat, "pack": pack_id})

@@ -35,6 +35,7 @@ var _test_mode_ui := false
 var _ai_teach_token := 0
 var _ai_teach_task := 0
 var _ai_teach_worker = null
+var _ai_teach_message := ""
 var _ai_assist_enabled := false
 var _auto_test_rounds := 0
 var _auto_test_completed := 0
@@ -356,7 +357,7 @@ func open_voice_packs() -> void:
 	var is_host := false
 	if net != null and _net_mode() != "":
 		for index in 4:
-			AudioManager.set_seat_voice_pack(index, str(net.voice_packs[index]))
+			AudioManager.set_seat_voice_pack(index, str(net.voice_packs[index]), false)
 		seat = net.my_seat
 		is_host = net.is_room_owner()
 	else:
@@ -368,7 +369,7 @@ func open_voice_packs() -> void:
 
 func _on_voice_pack_selected(seat: int, pack_id: String) -> void:
 	# 本地先立即生效并保存，联机再交给房主权威同步。
-	AudioManager.set_seat_voice_pack(seat, pack_id)
+	AudioManager.set_seat_voice_pack(seat, pack_id, seat == human_seat)
 	AudioManager.save_settings()
 	var net = _net_node()
 	if net != null and _net_mode() != "":
@@ -385,12 +386,15 @@ func _is_ai_turn_now() -> bool:
 func _refresh_ai_assist() -> void:
 	if not _ai_assist_enabled:
 		return
-	if not _is_ai_turn_now():
+	# 把教打分析从摸牌/刷新手牌那一帧挪开，避免 120Hz 下多一次主线程尖峰。
+	await get_tree().create_timer(0.10).timeout
+	if not _ai_assist_enabled or not _is_ai_turn_now():
 		return
 	request_ai_teach()
 
 func _clear_ai_teach() -> void:
 	_ai_teach_token += 1
+	_ai_teach_message = ""
 	var pending := _ai_teach_task
 	_ai_teach_task = 0
 	if pending > 0 and _ai_teach_worker != null:
@@ -411,8 +415,9 @@ func request_ai_teach() -> void:
 	if token <= 0:
 		return
 	_ai_teach_task = token
+	_ai_teach_message = "AI分析中…"
 	if status_label != null:
-		status_label.text = "AI分析中…"
+		status_label.text = _ai_teach_message
 		status_label.show()
 
 func _poll_ai_teach() -> void:
@@ -427,9 +432,11 @@ func _poll_ai_teach() -> void:
 		_player_tile_areas.clear_ai_teach_highlight()
 	if tile != "":
 		_player_tile_areas.highlight_ai_teach(tile)
-	if status_label != null and result.has("message"):
-		status_label.text = str(result.message)
-		status_label.show()
+	if result.has("message"):
+		_ai_teach_message = str(result.message)
+		if status_label != null:
+			status_label.text = _ai_teach_message
+			status_label.show()
 
 func _refresh_voice_button() -> void:
 	if _voice_button == null:
@@ -905,6 +912,10 @@ func _seat_name(seat: int) -> String:
 	return ["你", "下家", "对家", "上家"][_relative_seat(seat)]
 
 func _refresh_status() -> void:
+	if _ai_assist_enabled and _ai_teach_message != "":
+		status_label.text = _ai_teach_message
+		status_label.show()
+		return
 	status_label.text = ""
 	status_label.hide()
 

@@ -71,5 +71,16 @@ func _run() -> void:
 
 	t.expect(AiPlayer.new().use_mcts, "normal AI retains MCTS")
 	t.expect(not ai.use_mcts, "teaching mode disables MCTS")
+
+	var worker = load("res://scripts/core/AiTeachingWorker.gd").new()
+	var token: int = int(worker.submit(round, 0, "low"))
+	var worker_result: Dictionary = {}
+	var deadline := Time.get_ticks_msec() + 5000
+	while worker_result.is_empty() and Time.get_ticks_msec() < deadline:
+		await process_frame
+		worker_result = worker.take_result(token)
+	t.expect(not worker_result.is_empty() and str(worker_result.get("message", "")).begins_with("AI教学"),
+		"compact teaching snapshot still produces advice")
+	worker.stop()
 	await H.quit_cleanly(self, t.finish("ai_safety"))
 

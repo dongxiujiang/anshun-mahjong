@@ -23,6 +23,8 @@ var volumes: Dictionary = DEFAULT_VOLUMES.duplicate()
 var enabled := {"music": true, "voice": true, "effects": true}
 var preview_voice_seat := 0
 var seat_voice_packs := ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"]
+# 玩家本机偏好。联机房间会同步 seat_voice_packs 用于展示，但不能覆盖这里。
+var preferred_seat_voice_packs := ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"]
 const NEW_SEAT_DEFAULT_PACKS := ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"]
 const LEGACY_SEAT_DEFAULT_SETS := [
 	["gaoxiaonv", "luoxiaohei", "nvyou", "wuyuanzhao"],
@@ -294,7 +296,7 @@ func save_settings(path: String = "") -> Error:
 	var config := SETTINGS_STORE.read_config(target)
 	config.set_value("settings", "version", SETTINGS_VERSION)
 	config.set_value("voice", "preview_seat", preview_voice_seat)
-	config.set_value("voice", "seat_packs", JSON.stringify(seat_voice_packs))
+	config.set_value("voice", "seat_packs", JSON.stringify(preferred_seat_voice_packs))
 	for channel in CHANNELS:
 		config.set_value(channel, "volume", volumes[channel])
 		config.set_value(channel, "enabled", enabled[channel])
@@ -317,23 +319,52 @@ func _load_settings(path: String = "") -> void:
 	var saved_packs = JSON.parse_string(str(config.get_value("voice", "seat_packs", "[]")))
 	if saved_packs is Array:
 		for index in 4:
-			seat_voice_packs[index] = VOICE_PACKS.normalize(saved_packs[index] if index < saved_packs.size() else VOICE_PACKS.DEFAULT)
+			preferred_seat_voice_packs[index] = VOICE_PACKS.normalize(
+				saved_packs[index] if index < saved_packs.size() else VOICE_PACKS.DEFAULT)
 		# 旧版本的默认四座位组合升级为新的默认组合；玩家自定义组合保持不变。
 		var legacy_default := false
 		for legacy in LEGACY_SEAT_DEFAULT_SETS:
-			if seat_voice_packs == legacy:
+			if preferred_seat_voice_packs == legacy:
 				legacy_default = true
 				break
-		if legacy_default or _has_duplicate_voice_packs():
-			seat_voice_packs = NEW_SEAT_DEFAULT_PACKS.duplicate()
-	_ensure_unique_voice_packs()
+		if legacy_default or _preferred_has_duplicates():
+			preferred_seat_voice_packs = NEW_SEAT_DEFAULT_PACKS.duplicate()
+	_ensure_unique_preferred_voice_packs()
+	seat_voice_packs = preferred_seat_voice_packs.duplicate()
 	# Loading is read-only: an older version's saved values always win over new
 	# defaults, including values that happen to equal an old default.
 
-func set_seat_voice_pack(seat: int, pack_id: String) -> void:
+func _preferred_has_duplicates() -> bool:
+	var seen := {}
+	for pack_id in preferred_seat_voice_packs:
+		var normalized := VOICE_PACKS.normalize(pack_id)
+		if seen.has(normalized):
+			return true
+		seen[normalized] = true
+	return false
+
+func _ensure_unique_preferred_voice_packs() -> void:
+	var used := {}
+	for seat in 4:
+		var pack_id := VOICE_PACKS.normalize(preferred_seat_voice_packs[seat])
+		if used.has(pack_id):
+			for candidate in VOICE_PACKS.ORDER:
+				if not used.has(candidate):
+					pack_id = candidate
+					break
+		preferred_seat_voice_packs[seat] = pack_id
+		used[pack_id] = true
+
+func set_seat_voice_pack(seat: int, pack_id: String, persist_local: bool = true) -> void:
 	if seat < 0 or seat >= 4:
 		return
-	seat_voice_packs[seat] = VOICE_PACKS.normalize(pack_id)
+	var normalized := VOICE_PACKS.normalize(pack_id)
+	seat_voice_packs[seat] = normalized
+	if persist_local:
+		preferred_seat_voice_packs[seat] = normalized
+
+func get_preferred_seat_voice_pack(seat: int) -> String:
+	return VOICE_PACKS.normalize(preferred_seat_voice_packs[clampi(seat, 0, 3)])
 
 func _has_duplicate_voice_packs() -> bool:
 	var seen := {}

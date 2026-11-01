@@ -223,6 +223,11 @@ func _test_playback() -> void:
 	audio._ensure_unique_voice_packs()
 	t.expect(audio.seat_voice_packs[0] != audio.seat_voice_packs[1] and audio.seat_voice_packs.size() == 4, "四个座位音色自动去重")
 	audio.seat_voice_packs = saved_packs
+	var preferred_before: String = audio.preferred_seat_voice_packs[0]
+	audio.set_seat_voice_pack(0, "wuyuanzhao", false)
+	t.expect(audio.seat_voice_packs[0] == "wuyuanzhao" and audio.preferred_seat_voice_packs[0] == preferred_before,
+		"联机房间音色同步不会覆盖本机偏好")
+	audio.set_seat_voice_pack(0, preferred_before, true)
 	audio.start_voice_test(["luoxiaohei"])
 	t.expect(audio._voice_test_active and audio._voice_test_queue.size() == 32, "测试按钮可以遍历一套全部语音")
 	audio.stop_voice_test()
