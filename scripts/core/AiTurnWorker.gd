@@ -30,6 +30,26 @@ func submit_response(round, seat: int, source: int, tile: String, options: Dicti
 	return _submit({"kind": "response", "snapshot": VISIBLE.build(round, seat), "seat": seat,
 		"source": source, "tile": tile, "options": options.duplicate(true), "level": level})
 
+func _recommendations(ai) -> Array:
+	var sorted: Array = ai.last_analysis.duplicate()
+	sorted.sort_custom(func(left, right): return float(left.get("merit", 0.0)) > float(right.get("merit", 0.0)))
+	var result: Array = []
+	var seen := {}
+	for candidate in sorted:
+		var tile := str(candidate.get("tile", ""))
+		if tile == "" or seen.has(tile):
+			continue
+		seen[tile] = true
+		result.append({
+			"tile": tile,
+			"distance": int(candidate.get("distance", 0)),
+			"outs": int(candidate.get("outs", 0)),
+			"merit": float(candidate.get("merit", 0.0)),
+		})
+		if result.size() >= 4:
+			break
+	return result
+
 func _submit(job: Dictionary) -> int:
 	_mutex.lock()
 	_next_token += 1
@@ -137,6 +157,8 @@ func _compute(job: Dictionary) -> Dictionary:
 		if bool(decision.get("ready_capable", false)):
 			decision["ready"] = true
 		decision.erase("ready_capable")
+		if decision.has("discard"):
+			decision["recommendations"] = _recommendations(ai)
 	else:
 		decision = ai.decide_response(clone, int(job.get("seat", 0)), int(job.get("source", -1)),
 			str(job.get("tile", "")), job.get("options", {}))

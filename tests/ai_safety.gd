@@ -82,6 +82,10 @@ func _run() -> void:
 	t.expect(proxy_decision.has("discard") and
 		round.legal_turn_options(0).discards.has(str(proxy_decision.get("discard", ""))),
 		"AI proxy maps its chosen tile to the discard action")
+	var recommendations: Array = proxy_decision.get("recommendations", [])
+	t.expect(not recommendations.is_empty() and
+		recommendations.any(func(item): return str(item.get("tile", "")) == str(proxy_decision.get("discard", ""))),
+		"AI decision exposes the chosen tile among its recommendations")
 
 	t.expect(AiPlayer.new().use_mcts, "normal AI retains MCTS")
 	t.expect(not ai.use_mcts, "teaching mode disables MCTS")
