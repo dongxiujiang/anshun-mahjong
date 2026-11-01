@@ -64,6 +64,7 @@ func _run() -> void:
 	var feature_version := int(_arg("features", "2"))
 	var policy_path := _arg("policy", "")
 	var policy_actor = SL.new(policy_path, feature_version) if policy_path != "" else null
+	var teacher_mode := _arg("teacher", "0") == "1"
 	var file := FileAccess.open(output, FileAccess.WRITE)
 	if file == null:
 		push_error("cannot write " + output)
@@ -111,9 +112,11 @@ func _run() -> void:
 				failed += 1
 				break
 			var visible: Dictionary = env.observation(actor_seat)
+			var oracle_code := -1
 			if actor_seat == oracle_seat:
 				var advice: Dictionary = env.oracle_advise(visible, rollout_limit)
-				if int(advice.get("best", -1)) >= 0:
+				oracle_code = int(advice.get("best", -1))
+				if oracle_code >= 0:
 					var row := {
 						"x": OBS.encode_v3(visible) if feature_version >= 3 else OBS.encode_v2(visible),
 						"feature_version": feature_version,
@@ -129,7 +132,9 @@ func _run() -> void:
 					game_rows.append(row)
 					oracle_samples += 1
 			var code := -1
-			if actor_seat == oracle_seat and policy_actor != null:
+			if actor_seat == oracle_seat and teacher_mode:
+				code = oracle_code
+			elif actor_seat == oracle_seat and policy_actor != null:
 				# DAgger 模式：用当前策略制造偏离状态，Oracle 仍只给标签。
 				code = int(policy_actor.choose_policy(env, actor_seat).get("code", -1))
 			if code < 0:
