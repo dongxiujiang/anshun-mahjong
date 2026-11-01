@@ -581,7 +581,7 @@ func _test_ready_and_win_fees() -> void:
 		for payer in [1,2,3]:
 			eq([160,165 if payer==2 else (166 if payer==1 else 167),269,279],"座%d定向报听付款" % payer,fee(result,payer,0,"报听胡牌"),24.0 if payer==2 else 0.0,"scripts/core/WinScoring.gd:9")
 		eq([161],"无额外杀报",fee(result,2,0,"杀报"),0.0,"scripts/core/WinScoring.gd:9")
-		eq([161],"放炮者是否报听不改变24",result.pairwise[0][2],24.0,"scripts/core/WinScoring.gd:9")
+		eq([161],"放炮者也报听时补20",result.pairwise[0][2],44.0 if source_ready else 24.0,"scripts/core/WinScoring.gd:9")
 		eq([161],"没有44杀报流水",result.transfers.any(func(x): return x.reason=="杀报" and x.amount==44.0),false,"scripts/core/WinScoring.gd:9")
 	for source_ready in [false, true]:
 		var r := fixture()

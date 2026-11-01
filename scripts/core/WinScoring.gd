@@ -102,11 +102,20 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		if player.ready:
 			# 报听胡牌：点炮时只有点炮者支付
 			if source in range(4) and source != winner:
-				# 报听且有牌型只补 20（24 里的自摸 4 与牌型分重复）；无牌型保持 24。
-				var ready_amount := CFG.SCORE_READY_PATTERN if pattern_amount > 0.0 else CFG.SCORE_READY
-				PAY.transfer(deltas, transfers, source, winner, ready_amount, "报听胡牌")
-				items[winner].append(_item("ready", "报听胡牌", ready_amount, "点炮者支付"))
-				lines.append("报听胡牌：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), ready_amount])
+				var source_ready: bool = bool(round.players[source].ready)
+				if source_ready:
+					# 双方都报听：赢家报听 24 + 输家报听补 20，牌型分另算。
+					PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY, "报听胡牌")
+					PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY_PATTERN, "输家报听")
+					items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "点炮者支付"))
+					items[winner].append(_item("ready", "输家报听", CFG.SCORE_READY_PATTERN, "放炮者也报听，另补"))
+					lines.append("报听胡牌：%s付 24，另补输家报听 20" % _nm(source, int(meta.get("dealer_seat", 0))))
+				else:
+					# 报听且有牌型只补 20（24 里的自摸 4 与牌型分重复）；无牌型保持 24。
+					var ready_amount := CFG.SCORE_READY_PATTERN if pattern_amount > 0.0 else CFG.SCORE_READY
+					PAY.transfer(deltas, transfers, source, winner, ready_amount, "报听胡牌")
+					items[winner].append(_item("ready", "报听胡牌", ready_amount, "点炮者支付"))
+					lines.append("报听胡牌：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), ready_amount])
 		elif source in range(4) and source != winner and round.players[source].ready:
 			# 杀报：赢家未报听，胡了报听者的弃牌，报听者额外付24。
 			PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_KILL_READY, "杀报")

@@ -164,7 +164,11 @@ static func expected(round: RoundState) -> Dictionary:
 				if player.ready:
 					# 报听胡牌：点炮时只有点炮者支付
 					if source in range(4) and source != target_seat:
-						_credit(matrix, source, target_seat, 20.0 if pattern_fee > 0.0 else 24.0, burned)
+						if round.players[source].ready:
+							# 双方都报听：赢家 24 + 输家报听补 20。
+							_credit(matrix, source, target_seat, 44.0, burned)
+						else:
+							_credit(matrix, source, target_seat, 20.0 if pattern_fee > 0.0 else 24.0, burned)
 				elif source in range(4) and source != target_seat and round.players[source].ready:
 					# 杀报：赢家未报听，报听者放炮单独支付24。
 					_credit(matrix, source, target_seat, 24.0, burned)

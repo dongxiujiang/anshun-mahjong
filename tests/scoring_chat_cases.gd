@@ -105,6 +105,7 @@ func _run() -> void:
 	_test_chicken()
 	_test_patterns()
 	_test_settlements()
+	_test_ready()
 	await H.quit_cleanly(self, t.finish("scoring_chat_cases"))
 
 
@@ -307,3 +308,70 @@ func _test_settlements() -> void:
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": true,
 			"flip_tile": "tiao6", "chicken_multiplier": 2}, true),
 		[60.0, -20.0, -20.0, -20.0])
+
+const READY_PLAIN := ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tong1", "tong2",
+	"tong3", "tiao2", "tiao3", "tiao4", "tong9", "tong9"]
+const READY_PATTERN := ["wan1", "wan1", "wan1", "tong2", "tong2", "tong2", "tiao4", "tiao4",
+	"tiao4", "wan6", "wan6", "wan6", "tong9", "tong9"]
+
+
+func _test_ready() -> void:
+	_settle("53 报听自摸无牌型", func(r: RoundState) -> void:
+		r.players[0].concealed = READY_PLAIN.duplicate()
+		r.players[0].ready = true
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": true, "flip_tile": "tiao9"}, true),
+		[72.0, -24.0, -24.0, -24.0])
+	_settle("54 报听自摸有牌型", func(r: RoundState) -> void:
+		r.players[0].concealed = READY_PATTERN.duplicate()
+		r.players[0].ready = true
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": true, "flip_tile": "tiao9"}, true),
+		[102.0, -34.0, -34.0, -34.0])
+	_settle("55 报听点炮无牌型", func(r: RoundState) -> void:
+		r.players[0].concealed = READY_PLAIN.duplicate()
+		r.players[0].ready = true
+		r.players[1].discards = ["wan6"]
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
+			"discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true),
+		[24.0, -24.0, 0.0, 0.0])
+	_settle("56 报听点炮有牌型", func(r: RoundState) -> void:
+		r.players[0].concealed = READY_PATTERN.duplicate()
+		r.players[0].ready = true
+		r.players[1].discards = ["wan6"]
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
+			"discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true),
+		[34.0, -34.0, 0.0, 0.0])
+	_settle("57 双方都报听开炮有牌型", func(r: RoundState) -> void:
+		r.players[0].concealed = READY_PATTERN.duplicate()
+		r.players[0].ready = true
+		r.players[1].ready = true
+		r.players[1].discards = ["wan6"]
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
+			"discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true),
+		[58.0, -58.0, 0.0, 0.0])
+	_settle("58 赢家没报听放炮者报听", func(r: RoundState) -> void:
+		r.players[0].concealed = READY_PLAIN.duplicate()
+		r.players[1].ready = true
+		r.players[1].discards = ["wan6"]
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
+			"discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true),
+		[24.0, -24.0, 0.0, 0.0])
+	_settle("59 赢家没报听放炮者报听有牌型", func(r: RoundState) -> void:
+		r.players[0].concealed = READY_PATTERN.duplicate()
+		r.players[1].ready = true
+		r.players[1].discards = ["wan6"]
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
+			"discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true),
+		[38.0, -38.0, 0.0, 0.0])
+	_settle("60 自摸有牌型对方报听", func(r: RoundState) -> void:
+		r.players[0].concealed = READY_PATTERN.duplicate()
+		r.players[1].ready = true
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": true, "flip_tile": "tiao9"}, true),
+		[66.0, -38.0, -14.0, -14.0])
+	_settle("61 抢杠双方都报听有牌型", func(r: RoundState) -> void:
+		r.players[0].concealed = READY_PATTERN.duplicate()
+		r.players[0].ready = true
+		r.players[1].ready = true
+		r.players[1].melds = [{"kind": "pung", "tile": "wan6", "from_seat": 2, "robbed": true}]
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
+			"robbed_kong": true, "discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true),
+		[70.0, -70.0, 0.0, 0.0])
