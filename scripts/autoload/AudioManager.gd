@@ -22,10 +22,10 @@ const SETTLEMENT_CUES := ["flip", "chicken", "kong", "win", "other", "coins"]
 var volumes: Dictionary = DEFAULT_VOLUMES.duplicate()
 var enabled := {"music": true, "voice": true, "effects": true}
 var preview_voice_seat := 0
-var seat_voice_packs := ["luoxiaohei", "wuyuanzhao", "wenrounv", "nvyou"]
+var seat_voice_packs := ["luoxiaohei", "wuyuanzhao", "wangye", "nvyou"]
 # 玩家本机偏好。联机房间会同步 seat_voice_packs 用于展示，但不能覆盖这里。
-var preferred_seat_voice_packs := ["luoxiaohei", "wuyuanzhao", "wenrounv", "nvyou"]
-const NEW_SEAT_DEFAULT_PACKS := ["luoxiaohei", "wuyuanzhao", "wenrounv", "nvyou"]
+var preferred_seat_voice_packs := ["luoxiaohei", "wuyuanzhao", "wangye", "nvyou"]
+const NEW_SEAT_DEFAULT_PACKS := ["luoxiaohei", "wuyuanzhao", "wangye", "nvyou"]
 const LEGACY_SEAT_DEFAULT_SETS := [
 	["gaoxiaonv", "luoxiaohei", "nvyou", "wuyuanzhao"],
 	["luoxiaohei", "lubenwei", "weilong", "xiaohei"],

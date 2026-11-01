@@ -74,7 +74,7 @@ func _test_defaults_and_recovery() -> void:
 	t.expect(is_equal_approx(audio.volumes.voice, 0.9) and audio.enabled.voice, "legacy voice volume survives upgrade and obsolete mute flag is ignored")
 	t.expect(is_equal_approx(audio.volumes.effects, 0.65) and audio.enabled.effects, "invalid audio fields use safe individual defaults")
 	t.expect(audio.preview_voice_seat == 0, "invalid preview selection falls back")
-	t.expect(audio.seat_voice_packs == ["luoxiaohei", "wuyuanzhao", "wenrounv", "nvyou"], "old default seat voices migrate to the new mapping")
+	t.expect(audio.seat_voice_packs == ["luoxiaohei", "wuyuanzhao", "wangye", "nvyou"], "old default seat voices migrate to the new mapping")
 	t.expect(FileAccess.get_sha256(audio_path) == digest, "startup reads old audio settings without modifying the file")
 	audio.set_volume("effects", 0.43)
 	t.expect(STORE.read_config(audio_path).get_value("future", "keep") == 27, "audio saves preserve unknown future settings")
