@@ -225,13 +225,36 @@ PPO 100 局复核：7 胜，-2169 分（平均 -21.7 分）
 
 这说明 Oracle 标签本身有信号，但当前 SL/PPO 规模仍不足以替换线上 AI，需要继续扩大数据、改特征/模型和评估。
 
+## 双头实验
+
+新增 `train_oracle_dual.py`：
+
+```text
+turn 头 109 类
+response 头 4 类
+共享 trunk / value
+```
+
+小样本结果：
+
+```text
+综合 top1 ≈ 35.1%
+turn top1 ≈ 29.2%
+response top1 ≈ 83.3%
+对低档 20 局：0 胜，-543 分
+```
+
+双头没有超过单头 113 类模型，暂不设为默认。
+
 ## 验证
 
 ```text
 oracle_tests.gd              6/6
 oracle_actor_test.gd         5/5
+actor_parity.gd              3/3
 prepare_oracle_dataset.py    574 局 / 6478 行（含 DAgger）
 train_oracle_sl.py            可导出 oracle_sl.pt / weights
+train_oracle_dual.py          双头实验可训练/导出
 ppo_collector.gd              可生成策略座位转移
 train_oracle_ppo.py           GAE + PPO 更新可运行
 ```
