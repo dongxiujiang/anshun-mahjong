@@ -64,7 +64,7 @@ func _test_assets() -> void:
 		t.expect(stream.get_length() >= 0.2 and stream.get_length() <= 0.45, "结算短音效不拖尾：" + cue)
 		t.expect(stream.loop_mode == AudioStreamWAV.LOOP_DISABLED, "结算音效不循环：" + cue)
 
-const TEST_PACKS := ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"]
+const TEST_PACKS := ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"]
 
 func _voice_key(seat: int, word: String) -> String:
 	return "voice_packs/%s/%s" % [TEST_PACKS[clampi(seat, 0, 3)], word]
@@ -216,14 +216,14 @@ func _test_playback() -> void:
 		audio.set_enabled(channel, true, false)
 		audio.set_volume(channel, 0.5, false)
 	audio.begin_table()
-	t.expect(audio.seat_voice_packs == ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"], "默认座位音色按东南西北设置")
+	t.expect(audio.seat_voice_packs == ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"], "默认座位音色按东南西北设置")
 	t.expect(audio.music_player == null, "入桌不再创建背景音乐")
 	var saved_packs: Array = audio.seat_voice_packs.duplicate()
-	audio.seat_voice_packs = ["usagi", "usagi", "weilong", "xiaohei"]
+	audio.seat_voice_packs = ["luoxiaohei", "luoxiaohei", "weilong", "xiaohei"]
 	audio._ensure_unique_voice_packs()
 	t.expect(audio.seat_voice_packs[0] != audio.seat_voice_packs[1] and audio.seat_voice_packs.size() == 4, "四个座位音色自动去重")
 	audio.seat_voice_packs = saved_packs
-	audio.start_voice_test(["usagi"])
+	audio.start_voice_test(["luoxiaohei"])
 	t.expect(audio._voice_test_active and audio._voice_test_queue.size() == 32, "测试按钮可以遍历一套全部语音")
 	audio.stop_voice_test()
 	played.clear()

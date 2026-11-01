@@ -20,7 +20,7 @@ var _close: Button
 var _hint: Label
 var _my_seat := 0
 var _is_host := false
-var _packs := ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"]
+var _packs := ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"]
 
 func _ready() -> void:
 	name = "VoicePackDialog"

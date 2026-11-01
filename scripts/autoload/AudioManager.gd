@@ -22,12 +22,12 @@ const SETTLEMENT_CUES := ["flip", "chicken", "kong", "win", "other", "coins"]
 var volumes: Dictionary = DEFAULT_VOLUMES.duplicate()
 var enabled := {"music": true, "voice": true, "effects": true}
 var preview_voice_seat := 0
-var seat_voice_packs := ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"]
-const NEW_SEAT_DEFAULT_PACKS := ["gaoxiaonv", "usagi", "nvyou", "wuyuanzhao"]
+var seat_voice_packs := ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"]
+const NEW_SEAT_DEFAULT_PACKS := ["luoxiaohei", "wuyuanzhao", "wenrounv", "jiejie"]
 const LEGACY_SEAT_DEFAULT_SETS := [
-	["usagi", "lubenwei", "weilong", "xiaohei"],
-	["usagi", "usagi", "usagi", "usagi"],
-	["default", "default", "default", "default"],
+	["gaoxiaonv", "luoxiaohei", "nvyou", "wuyuanzhao"],
+	["luoxiaohei", "lubenwei", "weilong", "xiaohei"],
+	["luoxiaohei", "luoxiaohei", "luoxiaohei", "luoxiaohei"],
 ]
 var _preview_pack_override := {}
 var settings_path := SETTINGS_PATH
