@@ -457,11 +457,11 @@ func request_ai_response_teach(source: int, tile: String, options: Dictionary) -
 func _apply_ai_teach_result(result: Dictionary) -> void:
 	if result.is_empty():
 		return
-	var tile := str(result.get("tile", ""))
+	var tiles: Array = result.get("tiles", [])
+	if tiles.is_empty() and str(result.get("tile", "")) != "":
+		tiles = [str(result.get("tile", ""))]
 	if _player_tile_areas != null:
-		_player_tile_areas.clear_ai_teach_highlight()
-		if tile != "":
-			_player_tile_areas.highlight_ai_teach(tile)
+		_player_tile_areas.highlight_ai_teach_tiles(tiles)
 	if result.has("message"):
 		_ai_teach_message = str(result.message)
 		if status_label != null:
@@ -502,7 +502,15 @@ func _poll_ai_teach() -> void:
 		if tiles.is_empty():
 			tiles = [tile]
 		message = "AI教学：建议打%s；当前强度：%s" % [" / ".join(tiles), _strength_label()]
-	_apply_ai_teach_result({"tile": tile, "message": message})
+	_apply_ai_teach_result({"tile": tile, "tiles": _recommendation_ids(result), "message": message})
+
+func _recommendation_ids(result: Dictionary) -> Array:
+	var output: Array = []
+	for item in result.get("recommendations", []):
+		var tile := str(item.get("tile", "")) if item is Dictionary else str(item)
+		if tile != "" and not output.has(tile):
+			output.append(tile)
+	return output
 
 func _recommendation_tiles(result: Dictionary) -> Array:
 	var output: Array = []
@@ -770,7 +778,7 @@ func _apply_proxy_teach(decision: Dictionary) -> void:
 		var tiles := _recommendation_tiles(decision)
 		if tiles.is_empty():
 			tiles = [AiTeaching._display(tile)]
-		result = {"tile": tile,
+		result = {"tile": tile, "tiles": _recommendation_ids(decision),
 			"message": "AI教学：建议打%s；当前强度：%s" % [" / ".join(tiles), _strength_label()]}
 	if not result.is_empty():
 		_apply_ai_teach_result(result)

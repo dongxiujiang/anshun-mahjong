@@ -68,9 +68,12 @@ func _ready() -> void:
 		select.add_theme_font_size_override("font_size", 24)
 		var popup := select.get_popup()
 		popup.add_theme_font_override("font", TileView._font())
-		popup.add_theme_font_size_override("font_size", 26)
-		popup.add_theme_constant_override("v_separation", 14)
-		popup.add_theme_constant_override("item_start_padding", 18)
+		# 19 套音色；缩小行高和字号，保证最后几项在手机屏幕内可点。
+		popup.add_theme_font_size_override("font_size", 18)
+		popup.add_theme_constant_override("v_separation", 2)
+		popup.add_theme_constant_override("item_start_padding", 10)
+		# 19 项一次显示完，避免只看到前十几项还要滚动。
+		popup.max_size = Vector2i(430, 640)
 		select.custom_minimum_size = Vector2(390, 58)
 		for id in REGISTRY.ORDER:
 			select.add_item(REGISTRY.label(id))

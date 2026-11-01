@@ -25,7 +25,7 @@ var _seat_visual_keys := {}
 var _pending_ready_round := 0
 var _pending_ready_session := ""
 var _pending_ready_seat := -1
-var _ai_teach_tile := ""
+var _ai_teach_tiles := {}
 var _exposed_keys := {}
 var _river_keys := {}
 
@@ -205,7 +205,12 @@ func _hand_key(seat: int) -> PackedByteArray:
 		controller.opening_active(), controller.dealt_count(seat), controller.holds_draw_slot(seat)])
 
 func highlight_ai_teach(tile: String) -> void:
-	_ai_teach_tile = tile
+	highlight_ai_teach_tiles([tile] if tile != "" else [])
+
+func highlight_ai_teach_tiles(tiles: Array) -> void:
+	_ai_teach_tiles.clear()
+	for tile in tiles:
+		_ai_teach_tiles[str(tile)] = true
 	_apply_ai_teach_highlight()
 
 func _apply_ai_teach_highlight() -> void:
@@ -215,7 +220,7 @@ func _apply_ai_teach_highlight() -> void:
 			continue
 		for child in box.get_children():
 			if child is TileView:
-				var mark: bool = _ai_teach_tile != "" and child.face_up and child.tile == _ai_teach_tile
+				var mark: bool = child.face_up and _ai_teach_tiles.has(str(child.tile))
 				# 只清掉上一轮 AI 标记，不能把报听/鸡牌等其它金边一起清掉。
 				if mark:
 					child.set_ai_teach_highlight(true)
@@ -225,7 +230,7 @@ func _apply_ai_teach_highlight() -> void:
 					child.set_meta("ai_teach", false)
 
 func clear_ai_teach_highlight() -> void:
-	_ai_teach_tile = ""
+	_ai_teach_tiles.clear()
 	_apply_ai_teach_highlight()
 
 func cache_current_hand(seat: int) -> void:
