@@ -87,7 +87,7 @@ def main() -> None:
     root = Path(args.data)
     Xtr, Mtr, Atr, Vtr, Gtr, Ptr = load_split(root, "train")
     Xv, Mv, Av, Vv, Gv, Pv = load_split(root, "val")
-    assert Xtr.shape[1] in (521, 584) and Mtr.shape[1] == 113, (Xtr.shape, Mtr.shape)
+    assert Xtr.shape[1] in (521, 584, 811) and Mtr.shape[1] == 113, (Xtr.shape, Mtr.shape)
     assert Av.size > 0, "empty validation split"
 
     Xtr_t = torch.from_numpy(Xtr)
@@ -152,7 +152,7 @@ def main() -> None:
         "best_val": best,
         "history": history,
         "architecture": f"{Xtr.shape[1]}->256->256->113",
-        "feature_version": 2 if Xtr.shape[1] == 584 else 1,
+        "feature_version": 3 if Xtr.shape[1] == 811 else (2 if Xtr.shape[1] == 584 else 1),
     }
     (out / "metadata.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
