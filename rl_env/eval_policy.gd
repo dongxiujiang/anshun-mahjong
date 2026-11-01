@@ -3,6 +3,7 @@ extends SceneTree
 
 const ENV := preload("res://rl_env/RlEnv.gd")
 const SL := preload("res://rl_env/SlPolicyActor.gd")
+const BLENDED := preload("res://rl_env/BlendedActor.gd")
 const AI := preload("res://scripts/ai/AiPlayer.gd")
 
 func _initialize() -> void:
@@ -59,8 +60,10 @@ func _run() -> void:
 	var heuristic_response := _arg("heuristic-response", "0") == "1"
 	var oracle_check := _arg("oracle-check", "0") == "1"
 	var feature_version := int(_arg("features", "2"))
+	var blend := _arg("blend", "0") == "1"
+	var confidence := float(_arg("confidence", "0.45"))
 	var level := _arg("level", "low")
-	var actor = SL.new(policy_path, feature_version) if policy_path != "" else SL.new("", feature_version)
+	var actor = BLENDED.new(policy_path, confidence, feature_version) if blend and policy_path != "" else (SL.new(policy_path, feature_version) if policy_path != "" else SL.new("", feature_version))
 	var results: Array = []
 	var policy_score := 0.0
 	var policy_wins := 0
