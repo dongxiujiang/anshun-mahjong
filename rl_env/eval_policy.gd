@@ -57,6 +57,7 @@ func _run() -> void:
 	var all_seats := _arg("all", "0") == "1"
 	var sample := _arg("sample", "0") == "1"
 	var heuristic_response := _arg("heuristic-response", "0") == "1"
+	var oracle_check := _arg("oracle-check", "0") == "1"
 	var feature_version := int(_arg("features", "2"))
 	var level := _arg("level", "low")
 	var actor = SL.new(policy_path, feature_version) if policy_path != "" else SL.new("", feature_version)
@@ -64,6 +65,8 @@ func _run() -> void:
 	var policy_score := 0.0
 	var policy_wins := 0
 	var games := 0
+	var oracle_checked := 0
+	var oracle_matches := 0
 	for seed in range(start, start + count):
 		var env = ENV.new()
 		env.reset(seed)
@@ -94,6 +97,11 @@ func _run() -> void:
 					code = int(actor.sample_action(env, seat, rng, 0.0).get("code", -1))
 				else:
 					code = int(actor.choose_policy(env, seat).get("code", -1))
+				if oracle_check:
+					var oracle_code := int(env.oracle_advise(env.observation(seat)).get("best", -1))
+					if oracle_code >= 0:
+						oracle_checked += 1
+						if oracle_code == code: oracle_matches += 1
 			else:
 				var kind := env.current_kind()
 				var allowed: Dictionary = env.round.allowed_actions(seat)
@@ -131,6 +139,8 @@ func _run() -> void:
 		"games": games,
 		"policy_score": policy_score,
 		"wins": policy_wins,
+		"oracle_checked": oracle_checked,
+		"oracle_matches": oracle_matches,
 		"results": results,
 	}))
 	quit(0)

@@ -15,14 +15,18 @@ import torch.nn.functional as F
 
 
 class OracleNet(nn.Module):
-    def __init__(self, feature_dim: int = 521, action_dim: int = 113):
+    def __init__(self, feature_dim: int = 521, action_dim: int = 113, hidden: int = 256,
+                 dropout: float = 0.0):
         super().__init__()
-        self.trunk = nn.Sequential(
-            nn.Linear(feature_dim, 256), nn.ReLU(),
-            nn.Linear(256, 256), nn.ReLU(),
-        )
-        self.policy = nn.Linear(256, action_dim)
-        self.value = nn.Linear(256, 1)
+        layers = [nn.Linear(feature_dim, hidden), nn.ReLU()]
+        if dropout > 0.0:
+            layers.append(nn.Dropout(dropout))
+        layers += [nn.Linear(hidden, hidden), nn.ReLU()]
+        if dropout > 0.0:
+            layers.append(nn.Dropout(dropout))
+        self.trunk = nn.Sequential(*layers)
+        self.policy = nn.Linear(hidden, action_dim)
+        self.value = nn.Linear(hidden, 1)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         h = self.trunk(x)
@@ -37,6 +41,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--soft", action="store_true", help="使用 Oracle 动作分布做软标签")
+    p.add_argument("--hidden", type=int, default=256)
+    p.add_argument("--dropout", type=float, default=0.0)
     p.add_argument("--seed", type=int, default=20261101)
     return p.parse_args()
 
@@ -99,7 +105,7 @@ def main() -> None:
     Av_t = torch.from_numpy(Av)
     Pv_t = torch.from_numpy(Pv)
 
-    model = OracleNet(Xtr.shape[1], Mtr.shape[1])
+    model = OracleNet(Xtr.shape[1], Mtr.shape[1], args.hidden, args.dropout)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     dl = torch.utils.data.DataLoader(
         torch.utils.data.TensorDataset(Xtr_t, Mtr_t, Atr_t, Ptr_t),
