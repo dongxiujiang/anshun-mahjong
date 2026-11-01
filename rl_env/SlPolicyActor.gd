@@ -75,7 +75,7 @@ func policy_for(env, seat: int) -> Dictionary:
 	var legal: Array = env.legal_actions(seat)
 	if legal.is_empty():
 		return {}
-	var features := OBS.encode_v2(env.observation(seat)) if feature_version >= 2 else OBS.encode(env.observation(seat))
+	var features := OBS.encode_v3(env.observation(seat)) if feature_version >= 3 else (OBS.encode_v2(env.observation(seat)) if feature_version >= 2 else OBS.encode(env.observation(seat)))
 	var result := _forward(PackedFloat32Array(features))
 	if result.is_empty():
 		return {"actions": legal, "probs": [], "value": 0.0}
@@ -147,7 +147,7 @@ func choose(env, seat: int) -> Dictionary:
 		for action in legal:
 			if int(action.code) == 112: return action
 		return legal[0]
-	var features := OBS.encode_v2(env.observation(seat)) if feature_version >= 2 else OBS.encode(env.observation(seat))
+	var features := OBS.encode_v3(env.observation(seat)) if feature_version >= 3 else (OBS.encode_v2(env.observation(seat)) if feature_version >= 2 else OBS.encode(env.observation(seat)))
 	var x := PackedFloat32Array(features)
 	var result := _forward(x)
 	if result.is_empty(): return legal[0]

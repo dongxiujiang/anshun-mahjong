@@ -5,6 +5,7 @@ extends RefCounted
 const FEATURE_DIM := 521
 const TURN_FEATURE_DIM := 522
 const FEATURE_DIM_V2 := 584
+const FEATURE_DIM_V3 := 811
 
 static func _counts(tiles: Array) -> Array:
 	var out: Array = []
@@ -85,6 +86,50 @@ static func encode_v2(obs: Dictionary) -> Array:
 		for meld in p.get("melds", []):
 			if str(meld.get("kind", "")) in ["kong", "add_kong"]: kongs += 1.0
 		x.append(kongs / 4.0)
+	return x
+
+## v3：在 v2 上加入相对座位顺序、自手向听/可见进张，减少绝对座位偏置。
+static func encode_v3(obs: Dictionary) -> Array:
+	var x := encode_v2(obs)
+	var players: Array = obs.get("players", [])
+	var seat := int(obs.get("seat", 0))
+	for rel in 4:
+		var index := posmod(seat + rel, 4)
+		var p: Dictionary = players[index] if index < players.size() else {}
+		x.append_array(_counts(p.get("discards", [])))
+	for rel in 4:
+		var index := posmod(seat + rel, 4)
+		var p: Dictionary = players[index] if index < players.size() else {}
+		var meld_tiles: Array = []
+		for meld in p.get("melds", []):
+			if str(meld.get("tile", "")) != "": meld_tiles.append(str(meld.get("tile", "")))
+		x.append_array(_counts(meld_tiles))
+	var own: Dictionary = players[seat] if seat < players.size() else {}
+	var current := Shanten.shanten(obs.get("hand", []), obs.get("own_melds", []))
+	x.append(float(current) / 8.0)
+	var known := _counts(obs.get("hand", []))
+	for meld in obs.get("own_melds", []):
+		if str(meld.get("tile", "")) != "": known[Tiles.value_index(str(meld.get("tile", "")))] += 1.0
+	for p in players:
+		for tile in p.get("discards", []): known[Tiles.value_index(str(tile))] += 1.0
+		for meld in p.get("melds", []):
+			if str(meld.get("tile", "")) != "": known[Tiles.value_index(str(meld.get("tile", "")))] += 1.0
+	var ukeire := 0
+	for tile in Tiles.all_values():
+		if 4.0 - float(known[Tiles.value_index(str(tile))]) <= 0.0: continue
+		var candidate: Array = (obs.get("hand", []) as Array).duplicate()
+		candidate.append(str(tile))
+		if Shanten.shanten(candidate, obs.get("own_melds", [])) < current: ukeire += 1
+	x.append(float(ukeire) / 27.0)
+	x.append(float(own.get("discards", []).size()) / 20.0)
+	for rel in 4:
+		var index := posmod(seat + rel, 4)
+		var p: Dictionary = players[index] if index < players.size() else {}
+		x.append(1.0 if bool(p.get("ready", false)) else 0.0)
+	for rel in 4:
+		var index := posmod(seat + rel, 4)
+		var p: Dictionary = players[index] if index < players.size() else {}
+		x.append(float(p.get("score", 0.0)) / 100.0)
 	return x
 
 ## turn-only 对照专用：在公共特征后追加向听数。

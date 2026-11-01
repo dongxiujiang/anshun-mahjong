@@ -17,9 +17,10 @@ func _arg(name: String, fallback: String) -> String:
 func _run() -> void:
 	var seed := int(_arg("seed", "700"))
 	var policy_path := _arg("policy", "")
+	var feature_version := int(_arg("features", "2"))
 	var env = ENV.new()
 	env.reset(seed)
-	var actor = SL.new(policy_path, 2)
+	var actor = SL.new(policy_path, feature_version)
 	var focus: int = int(abs(seed)) % 4
 	var steps := 0
 	var shown := 0

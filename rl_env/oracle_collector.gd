@@ -61,8 +61,9 @@ func _run() -> void:
 	var rollout_limit := int(_arg("rollout-limit", "80"))
 	var min_steps := int(_arg("min-steps", "20"))
 	var output := _arg("out", "user://oracle.jsonl")
+	var feature_version := int(_arg("features", "2"))
 	var policy_path := _arg("policy", "")
-	var policy_actor = SL.new(policy_path, 2) if policy_path != "" else null
+	var policy_actor = SL.new(policy_path, feature_version) if policy_path != "" else null
 	var file := FileAccess.open(output, FileAccess.WRITE)
 	if file == null:
 		push_error("cannot write " + output)
@@ -114,8 +115,8 @@ func _run() -> void:
 				var advice: Dictionary = env.oracle_advise(visible, rollout_limit)
 				if int(advice.get("best", -1)) >= 0:
 					var row := {
-						"x": OBS.encode_v2(visible),
-						"feature_version": 2,
+						"x": OBS.encode_v3(visible) if feature_version >= 3 else OBS.encode_v2(visible),
+						"feature_version": feature_version,
 						"mask": Array(env.action_mask(actor_seat)),
 						"action": int(advice.best),
 						"probs": advice.probs,

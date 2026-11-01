@@ -56,6 +56,7 @@ func _run() -> void:
 	var start := int(_arg("start", "0"))
 	var count := int(_arg("count", "20"))
 	var policy_path := _arg("policy", "")
+	var feature_version := int(_arg("features", "2"))
 	var epsilon := float(_arg("epsilon", "0.02"))
 	var snapshots := _arg("snapshots", "")
 	var snapshot_paths: Array = []
@@ -68,7 +69,7 @@ func _run() -> void:
 		push_error("cannot write " + out)
 		quit(2)
 		return
-	var actor = SL.new(policy_path, 2) if policy_path != "" else SL.new("", 2)
+	var actor = SL.new(policy_path, feature_version) if policy_path != "" else SL.new("", feature_version)
 	var games := 0
 	var rows := 0
 	for seed in range(start, start + count):
@@ -92,7 +93,7 @@ func _run() -> void:
 			opponents.append(ai)
 			if seat != policy_seat and not snapshot_paths.is_empty() and rng.randf() < 0.35:
 				var snapshot_path: String = str(snapshot_paths[rng.randi_range(0, snapshot_paths.size() - 1)])
-				snapshots_by_seat[seat] = SL.new(snapshot_path, 2)
+				snapshots_by_seat[seat] = SL.new(snapshot_path, feature_version)
 		var done := false
 		var steps := 0
 		var game_rows: Array = []
@@ -138,8 +139,8 @@ func _run() -> void:
 			done = bool(result.get("done", false))
 			if seat == policy_seat:
 				game_rows.append({
-					"x": OBS.encode_v2(visible),
-					"feature_version": 2,
+					"x": OBS.encode_v3(visible) if feature_version >= 3 else OBS.encode_v2(visible),
+					"feature_version": feature_version,
 					"mask": mask_before,
 					"action": code,
 					"logprob": logprob,
