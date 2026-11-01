@@ -177,4 +177,12 @@ func _run() -> void:
 		r.players[1].melds = [{"kind": "pung", "tile": "wan6", "from_seat": 2, "robbed": true}]
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
 			"robbed_kong": true, "discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true))
+	_case("C4 杠后放炮·双方都报听", func(r: RoundState) -> void:
+		r.players[0].concealed = PLAIN.duplicate()
+		r.players[0].ready = true
+		r.players[1].ready = true
+		r.players[1].discards = ["wan6"]
+		r.last_discard = {"after_kong": true, "kong_kind": RoundState.KongKind.ADD_KONG, "tile": "wan6"}
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
+			"discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9", "burn_chicken_seat": 1}, true))
 	quit()

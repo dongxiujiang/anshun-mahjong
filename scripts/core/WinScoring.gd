@@ -4,7 +4,7 @@ const CFG := preload("res://scripts/autoload/GameConfig.gd")
 const PAY := preload("res://scripts/core/PaymentLedger.gd")
 const CHICKEN := preload("res://scripts/core/ChickenScoring.gd")
 const ACTIONS := preload("res://scripts/core/LegalActions.gd")
-const SEAT_NAMES := ["庄家", "下家", "对家", "上家"]
+const SEAT_NAMES := ["庄家", "上家", "对家", "下家"]
 
 static func settle_winner(round, winner: int, chicken_points: Array, winner_seats: Array, deltas: Array, transfers: Array, items: Array, lines: Array) -> Dictionary:
 	var meta: Dictionary = round.round_meta
@@ -17,6 +17,7 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		return pattern
 	var pattern_info := _pattern_info(pattern)
 	var pattern_amount: float = float(pattern_info.get("score", 0.0))
+	var pattern_paid := pattern_amount
 	var pattern_label := str(pattern_info.get("label", ""))
 	var base_payers: Array = []
 	for payer in 4:
@@ -104,7 +105,10 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 			if source in range(4) and source != winner:
 				var source_ready: bool = bool(round.players[source].ready)
 				if source_ready:
-					# 双方都报听：赢家报听 24 + 输家报听补 20，牌型分另算。
+					# 双方都报听：赢家报听 24 + 输家报听补 20。
+					# 牌型分里含一个自摸 4，报听 24 里也含一个 4，只保留一个，
+					# 所以此时牌型只算 牌型分 − 4。
+					pattern_paid = maxf(0.0, pattern_amount - CFG.SCORE_SELF_DRAW)
 					PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY, "报听胡牌")
 					PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY_PATTERN, "输家报听")
 					items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "点炮者支付"))
@@ -125,12 +129,12 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 			# 放炮牌型分只由放炮者支付；一炮多响时，放炮者向每位赢家
 			# 分别支付各自的牌型分。其他两家不付牌型分。
 			if source in range(4) and source != winner:
-				PAY.transfer(deltas, transfers, source, winner, pattern_amount, pattern_label)
-				items[winner].append(_item("pattern", pattern_label, pattern_amount, "放炮者支付"))
+				PAY.transfer(deltas, transfers, source, winner, pattern_paid, pattern_label)
+				items[winner].append(_item("pattern", pattern_label, pattern_paid, "放炮者支付"))
 				lines.append("%s：%s付 %.0f" % [
 					pattern_label,
 					_nm(source, int(meta.get("dealer_seat", 0))),
-					pattern_amount
+					pattern_paid
 				])
 	if self_draw and int(meta.get("kong_draw_seat", -1)) == winner:
 		_apply_extra(round, winner, CFG.SCORE_KONG_DRAW, "杠开", chicken_points, winner_seats, deltas, transfers, items, lines)

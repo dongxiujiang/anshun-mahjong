@@ -347,7 +347,7 @@ func _test_ready() -> void:
 		r.players[1].discards = ["wan6"]
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
 			"discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true),
-		[58.0, -58.0, 0.0, 0.0])
+		[54.0, -54.0, 0.0, 0.0])
 	_settle("58 赢家没报听放炮者报听", func(r: RoundState) -> void:
 		r.players[0].concealed = READY_PLAIN.duplicate()
 		r.players[1].ready = true
@@ -374,4 +374,4 @@ func _test_ready() -> void:
 		r.players[1].melds = [{"kind": "pung", "tile": "wan6", "from_seat": 2, "robbed": true}]
 		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
 			"robbed_kong": true, "discard_seat": 1, "win_tile": "wan6", "flip_tile": "tiao9"}, true),
-		[70.0, -70.0, 0.0, 0.0])
+		[66.0, -66.0, 0.0, 0.0])

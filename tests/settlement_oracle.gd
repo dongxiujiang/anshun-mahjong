@@ -174,8 +174,12 @@ static func expected(round: RoundState) -> Dictionary:
 					_credit(matrix, source, target_seat, 24.0, burned)
 				# 放炮牌型分只由放炮者支付；一炮多响时每位赢家
 				# 分别向放炮者收取自己的牌型分，赢家之间不互付差额。
+				# 双方都报听时，牌型分里的自摸 4 与报听 24 已含的 4 只保留一个。
 				if pattern_fee > 0.0 and source in range(4) and source != target_seat:
-					_credit(matrix, source, target_seat, pattern_fee, burned)
+					var pattern_credit: float = pattern_fee
+					if player.ready and round.players[source].ready:
+						pattern_credit = maxf(0.0, pattern_fee - 4.0)
+					_credit(matrix, source, target_seat, pattern_credit, burned)
 				var own_kong: bool = player.melds.any(func(meld): return meld.kind == "add_kong" or (meld.kind == "kong" and meld.get("concealed", false)))
 				if not robbed_kong and own_kong and pattern_fee <= 0.0 and not player.ready \
 					and not pattern.get("all_triplets", false) and not pattern.get("seven_pairs", false) \
