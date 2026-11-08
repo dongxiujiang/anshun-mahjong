@@ -524,7 +524,7 @@ func restore_human_control(seat: int) -> void:
 	if int(_ai_pending.get("seat", -1)) == seat:
 		cancel_ai()
 	controllers[seat] = null
-	if phase != Phase.PLAYING or awaiting:
+	if phase != Phase.PLAYING or awaiting or pause_after_opening:
 		return
 	# Reissue an AI prompt immediately; the old timer is invalidated by its controller/prompt guards.
 	if _response_stage == ResponseStage.NONE:

@@ -105,7 +105,36 @@ func _ai_waits() -> void:
 		t.expect(is_equal_approx(host._ai_turn_delay(), seconds) and is_equal_approx(host._ai_response_delay(), seconds), "dedicated room uses numeric wait for AI turns and claims")
 	host.free()
 
+func _opening_ready_gate() -> void:
+	var net := NetGameNode.new()
+	root.add_child(net)
+	net.host_mode = true
+	net.round_number = 7
+	net._members = {2: {}, 3: {}}
+	net._opening_waiters = {2: true, 3: true}
+	net.game = RoundState.new()
+	net.game.controllers = [null, null, null, null]
+	net.game.pause_after_opening = true
+	net.game.start_round(1, 2, 3)
+	var session: String = net.game.audio_session
+	t.expect(net.game.wall.remaining == 56 and net.game.phase == RoundState.Phase.PLAYING,
+		"authority waits with thirteen tiles per player even after its opening timer")
+	net.game.restore_human_control(net.game.current_turn)
+	t.expect(not net.game.awaiting, "rejoining during the opening cannot prompt an undrawn hand")
+	net._accept_opening_ready(2, 6, session)
+	net._accept_opening_ready(2, 7, "stale")
+	net._accept_opening_ready(99, 7, session)
+	t.expect(net._opening_waiters.size() == 2, "stale and nonmember confirmations cannot release the gate")
+	net._accept_opening_ready(2, 7, session)
+	t.expect(net.game.pause_after_opening and net.game.wall.remaining == 56, "one fast client cannot start play before the slow client")
+	net._accept_opening_ready(3, 7, session)
+	t.expect(not net.game.pause_after_opening and net.game.wall.remaining == 55, "last confirmation releases exactly the first draw")
+	net._accept_opening_ready(3, 7, session)
+	t.expect(net.game.wall.remaining == 55, "duplicate confirmations never draw again")
+	net.free()
+
 func _run() -> void:
+	_opening_ready_gate()
 	_config_and_controls()
 	await _ai_waits()
 	quit(t.finish("animation_speed_settings"))

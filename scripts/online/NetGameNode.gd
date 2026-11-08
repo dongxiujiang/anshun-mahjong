@@ -55,6 +55,8 @@ var _members: Dictionary = {}
 var _pending_peers: Dictionary = {}
 var _owner_peer := 1
 var _opening_speed_reported := ""
+var _opening_waiters: Dictionary = {}
+var _opening_ack_session := ""
 var _owner_token := ""
 var _port := 7500
 var _host_ai_fill := true
@@ -434,6 +436,9 @@ func request_join(number: String, player_name: String, token: String = "", resum
 		assigned_token = new_resume_token()
 	_members[peer] = saved if resumed else {"name": member_name, "ready": false, "wants_dealer": false}
 	_members[peer]["resume_token"] = assigned_token
+	if _started and game != null and (game.pause_after_opening or game.phase == RoundState.Phase.DEALING):
+		_opening_waiters[peer] = true
+		game.pause_after_opening = true
 	if was_owner:
 		# A reconnecting owner gets a new ENet peer id; bind ownership to it.
 		_owner_peer = peer
@@ -544,6 +549,8 @@ func _on_peer_disconnected(peer: int) -> void:
 	_check_start()
 	_publish_lobby()
 	_host_broadcast()
+	_opening_waiters.erase(peer)
+	_resume_opening_if_ready()
 
 func _install_ai_for_seat(seat: int) -> void:
 	if game == null or seat < 0 or seat > 3:
@@ -555,6 +562,9 @@ func _install_ai_for_seat(seat: int) -> void:
 				_members[peer].ready = true
 	var actor := AiPlayer.new("AI%d" % seat, _ai_level())
 	game.controllers[seat] = actor
+	for peer in _peer_seat:
+		if int(_peer_seat[peer]) == seat: _opening_waiters.erase(peer)
+	_resume_opening_if_ready()
 	if game.awaiting:
 		if int(game._awaiting_response.get("seat", -1)) == seat:
 			var request: Dictionary = game._awaiting_response
@@ -1382,6 +1392,35 @@ func _apply_opening_delay() -> void:
 	game.opening_speed = opening_speed
 	game.opening_delay_seconds = CONFIG.opening_wait_seconds(opening_speed) \
 		if dedicated or DisplayServer.get_name() != "headless" else 0.0
+	_opening_waiters.clear()
+	for peer in _members:
+		if int(peer) > 1 or (not dedicated and DisplayServer.get_name() != "headless"):
+			_opening_waiters[int(peer)] = true
+	game.pause_after_opening = not _opening_waiters.is_empty()
+
+func report_opening_finished() -> void:
+	if game == null or game.players.size() != 4 or game.audio_session == "": return
+	if _opening_ack_session == game.audio_session: return
+	if host_mode:
+		_opening_ack_session = game.audio_session
+		_accept_opening_ready(1, round_number, game.audio_session)
+	elif _client_joined and multiplayer.multiplayer_peer != null and multiplayer.get_unique_id() > 1:
+		_opening_ack_session = game.audio_session
+		opening_ready.rpc_id(1, round_number, game.audio_session)
+
+@rpc("any_peer", "call_remote", "reliable")
+func opening_ready(number: int, session: String) -> void:
+	_accept_opening_ready(multiplayer.get_remote_sender_id(), number, session)
+
+func _accept_opening_ready(peer: int, number: int, session: String) -> void:
+	if not host_mode or game == null or number != round_number or session != game.audio_session: return
+	if not _opening_waiters.has(peer) or not _members.has(peer): return
+	_opening_waiters.erase(peer)
+	_resume_opening_if_ready()
+
+func _resume_opening_if_ready() -> void:
+	if game != null and game.pause_after_opening and _opening_waiters.is_empty():
+		game.resume_after_opening()
 
 func set_opening_speed(value: String) -> void:
 	if not CONFIG.is_opening_speed(value):
@@ -1614,11 +1653,13 @@ func _on_client_sync(state: Dictionary) -> void:
 	_sync_voice_room()
 	state_updated.emit()
 	if first: game_started.emit()
+	if DisplayServer.get_name() == "headless": report_opening_finished()
 	if game.awaiting and (game.current_turn == my_seat or game._awaiting_response.get("seat", -1) == my_seat): prompted.emit(my_seat)
 
 @rpc("authority", "call_remote", "reliable")
 func seat_assign(seat: int, issued_token: String = "") -> void:
 	_client_joined = true
+	_opening_ack_session = ""
 	_client_sync_cache.clear()
 	if issued_token != "":
 		_resume_token = issued_token

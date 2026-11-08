@@ -612,6 +612,19 @@ func _rejoin_live_hand():
 		"An existing table restores its dealt baseline before unlocking after transport reconnect")
 	t.expect(table._new_areas.hand_boxes[1].get_child_count() == 4,
 		"An existing table immediately redraws the shortened hand after reconnect")
+	var active_round := RoundState.new()
+	active_round.controllers = [null, null, null, null]
+	active_round.start_round(1, 2, 3)
+	table.round = active_round
+	table._connect_audio_round()
+	table._opening_primed = false
+	table._table_animation_controller.cancel()
+	table._prime_opening_visuals()
+	table._refresh()
+	t.expect(not table._table_animation_controller.deal_sequence_active(),
+		"Joining after the first draw never replays the initial deal over a running round")
+	t.expect(table._new_areas.draw_boxes[active_round.dealer_seat].get_child_count() == 1,
+		"A late join before the first discard preserves the dealer's already drawn tile")
 	if table._ai_service != null: table._ai_service.stop()
 	table.queue_free()
 	await process_frame

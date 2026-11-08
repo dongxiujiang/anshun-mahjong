@@ -1144,6 +1144,8 @@ func _on_visual_animation_finished() -> void:
 		_sorting = false
 		_opening = false
 		_animation_busy = false
+		if table.has_method("_on_opening_visual_finished"):
+			table.call_deferred("_on_opening_visual_finished")
 		table._update_interactivity()
 		# The physical nodes have just reached their sorted slots.  Rebuild the
 		# authoritative hand once so metadata, selection and hit areas match the

@@ -2548,7 +2548,10 @@ func _finish_hand_sort() -> void:
 	refresh()
 	if is_instance_valid(table) and table.round != null:
 		# 等这一帧手牌重排落地，再开始庄家摸牌。
-		table.round.call_deferred("resume_after_opening")
+		if table.has_method("_on_opening_visual_finished"):
+			table.call_deferred("_on_opening_visual_finished")
+		else:
+			table.round.call_deferred("resume_after_opening")
 
 func _build_wall_debug() -> void:
 	if not show_wall_debug or not _opening_mode() or round == null or round.wall == null: return

@@ -41,6 +41,7 @@ func _run():
 	var url := _arg("--directory")
 	if not url.begins_with("http://127.0.0.1:"): quit(2); return
 	baseline = OS.get_cmdline_user_args().has("--baseline")
+	Engine.max_fps = 12
 	root.get_node("UpdateManager").auto_check = false
 	root.get_node("GameConfig").set_tile_animation_seconds(1.0, false)
 	var network = root.get_node("Network")
@@ -68,6 +69,7 @@ func _run():
 		started = Time.get_ticks_msec()
 	t.expect(await _wait(func(): return first_action, 55.0), "first draw arrives after the opening")
 	t.expect(not premature, "server action never overtakes client dealing or sorting")
+	t.expect(net._opening_ack_session == net.game.audio_session, "first authoritative action follows the client's rendered-opening confirmation")
 	await create_timer(0.5).timeout
 	table.queue_free()
 	await network.leave_room()

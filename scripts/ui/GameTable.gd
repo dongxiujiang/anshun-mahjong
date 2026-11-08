@@ -1295,7 +1295,8 @@ func _prime_opening_visuals() -> void:
 			_opening_primed = true
 			_table_animation_controller.recover_after_resume()
 			return
-	if round.phase == RoundState.Phase.PLAYING and not round.visual_events.any(func(event): return event.get("type", "") == "deal_batch"):
+	if round.phase == RoundState.Phase.PLAYING and (not round.visual_events.any(func(event): return event.get("type", "") == "deal_batch") \
+			or round.visual_events.any(func(event): return event.get("type", "") == "draw")):
 		_opening_primed = true
 		_table_animation_controller.recover_after_resume()
 		return
@@ -1454,6 +1455,7 @@ func _on_client_state_updated() -> void:
 	# its untouched opening before the hand refresh exposes the final deal.
 	_prime_opening_visuals()
 	_refresh()
+	_on_opening_visual_finished()
 
 func _on_net_lobby_updated() -> void:
 	if _sound_settings != null: _sound_settings.sync_timing_controls()
@@ -1466,6 +1468,18 @@ func _on_net_lobby_updated() -> void:
 	if net != null and net.lobby is Dictionary and net.lobby.has("return_vote"):
 		_on_return_vote_updated(net.lobby.get("return_vote", {}))
 	_refresh_test_pattern_ui()
+
+func _on_opening_visual_finished() -> void:
+	if round == null or _new_areas == null or not _new_areas._sort_started \
+			or _new_areas._sort_animating or _table_animation_controller.deal_sequence_active(): return
+	var session := round.audio_session
+	if DisplayServer.get_name() != "headless": await RenderingServer.frame_post_draw
+	if round == null or round.audio_session != session: return
+	if _net_mode() != "":
+		var net = _net_node()
+		if net != null: net.report_opening_finished()
+	else:
+		round.resume_after_opening()
 
 func _on_net_prompt(seat: int) -> void:
 	if seat != human_seat or seat >= round.players.size():
@@ -1575,8 +1589,7 @@ func _arm_resume_animation_recovery(generation: int) -> void:
 		if _new_areas != null and _new_areas.has_method("recover_after_resume"):
 			_new_areas.recover_after_resume()
 		_table_animation_controller.recover_after_resume()
-		if round.phase == RoundState.Phase.PLAYING and round.pause_after_opening:
-			round.resume_after_opening()
+		_on_opening_visual_finished()
 		_refresh()
 		_on_net_prompt(human_seat)
 		_update_interactivity()
