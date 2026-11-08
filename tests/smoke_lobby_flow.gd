@@ -84,6 +84,7 @@ func _run() -> void:
 	t.expect(table._next_round_button.get_parent() == table._settlement_card._post_controls and not table._next_round_button.disabled, "Lobby player can ready from the bottom control")
 	var scores: Array = table.round.players.map(func(player): return player.score)
 	var next_dealer: int = table.round.next_dealer_seat
+	network.net_node.game.set_rng_seed(20261018)
 	table._next_round_button.pressed.emit()
 	var advance_deadline := Time.get_ticks_msec() + 8000
 	while network.net_node.round_number != 2 and Time.get_ticks_msec() < advance_deadline:

@@ -656,6 +656,22 @@ func _online_opening_wall():
 		"A legacy draw without a slot appears directly in the draw area")
 	await _cleanup(host)
 
+func _held_draw_envelope():
+	for seat in 4:
+		var host = _fixture()
+		var deck = host._new_areas
+		var centers: Array = []
+		# 暗杠来自原有手牌，而上一次刚摸的牌仍留在原摸牌位置。
+		for slot in range(4,13): centers.append(G.hand_slot_center(seat,slot,1,13))
+		centers.append(G.draw_slot_center(seat,1,13))
+		deck._held_hand_centers[seat] = centers
+		var target: Vector2 = deck._draw_center(seat,10)
+		var direction: Vector2 = [Vector2.RIGHT,Vector2.UP,Vector2.LEFT,Vector2.DOWN][G.relative_seat(1,seat)]
+		t.expect(target.dot(direction) <= G.draw_slot_center(seat,1,13).dot(direction), "second replacement draw stays within the original hand envelope")
+		for center: Vector2 in centers:
+			t.expect(absf((target-center).dot(direction)) >= G.hand_tile_size(seat,1).x + 19.9, "replacement draw cannot cover any retained hand tile")
+		await _cleanup(host)
+
 func _held_after_meld():
 	var config = root.get_node("GameConfig")
 	for seconds in [0.0, 0.2]:
@@ -728,6 +744,7 @@ func _run():
 		if arg.begins_with("--case="): selected_case=arg.substr(7)
 	if selected_case in ["all","lifecycle"]: await _lifecycle()
 	if selected_case in ["all","kong_draw"]: await _kong_draw()
+	if selected_case in ["all","held_draw_envelope"]: await _held_draw_envelope()
 	if selected_case in ["all","held_after_meld"]: await _held_after_meld()
 	if selected_case in ["all","kong_sources"]: await _kong_sources()
 	if selected_case in ["all","discard_sources"]: await _discard_sources()

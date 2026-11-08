@@ -777,7 +777,15 @@ func _draw_center(seat: int, count: int) -> Vector2:
 	var edge: Vector2 = held[0]
 	for center: Vector2 in held:
 		if center.dot(direction) > edge.dot(direction): edge = center
-	return edge + direction * (G.hand_tile_size(seat, human_seat).x + 20.0)
+	var separation := G.hand_tile_size(seat, human_seat).x + 20.0
+	var target := edge + direction * separation
+	if target.dot(direction) <= G.draw_slot_center(seat, human_seat, 13).dot(direction): return target
+	# 原摸牌未参与暗杠时，补牌利用杠牌腾出的空位，避免伸入邻家区域。
+	for slot in range(12, -1, -1):
+		var candidate := G.hand_slot_center(seat, slot, human_seat, 13)
+		if held.all(func(center): return absf((candidate - Vector2(center)).dot(direction)) >= separation):
+			return candidate
+	return G.draw_slot_center(seat, human_seat, count)
 
 func _current_hand_count(seat: int) -> int:
 	if round == null or seat < 0 or seat >= round.players.size(): return 13
@@ -787,7 +795,11 @@ func _current_hand_count(seat: int) -> int:
 func action_bar_rect(row_size: Vector2) -> Rect2:
 	var count := _current_hand_count(human_seat)
 	var size := G.hand_tile_size(human_seat, human_seat)
-	var right := _draw_center(human_seat, count).x - size.x / 2.0 - 20.0
+	var right := G.hand_slot_center(human_seat, count - 1, human_seat, count).x + size.x / 2.0
+	var held: Array = _held_hand_centers.get(human_seat, [])
+	if not held.is_empty():
+		right = -INF
+		for center: Vector2 in held: right = maxf(right, center.x + size.x / 2.0)
 	var top := G.hand13_rect(human_seat, human_seat).position.y - 12.0 - row_size.y
 	var placement := Rect2(Vector2(right - row_size.x, top), row_size)
 	var obstacles: Array[Rect2] = []
