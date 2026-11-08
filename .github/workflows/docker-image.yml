@@ -51,6 +51,18 @@ jobs:
             type=sha,format=short
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
 
+      - name: Resolve official Godot asset
+        id: godot
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          name="Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          url=$(gh api "repos/godotengine/godot/releases/tags/${GODOT_VERSION}-stable" --jq ".assets[] | select(.name == \"$name\") | .url")
+          test -n "$url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -62,6 +74,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             GODOT_VERSION=${{ env.GODOT_VERSION }}
+            GODOT_DOWNLOAD_URL=${{ steps.godot.outputs.url }}
+          secrets: |
+            github_token=${{ github.token }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

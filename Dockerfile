@@ -3,6 +3,7 @@
 FROM ubuntu:24.04
 
 ARG GODOT_VERSION=4.7.2
+ARG GODOT_DOWNLOAD_URL=""
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -42,8 +43,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libmpg123-0t64 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/godot.zip \
-        "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
+RUN --mount=type=secret,id=github_token \
+    if [ -n "$GODOT_DOWNLOAD_URL" ] && [ -f /run/secrets/github_token ]; then \
+        curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 \
+            -H "Authorization: Bearer $(cat /run/secrets/github_token)" \
+            -H "Accept: application/octet-stream" -o /tmp/godot.zip "$GODOT_DOWNLOAD_URL"; \
+    else \
+        curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"; \
+    fi \
     && unzip -q /tmp/godot.zip -d /opt/godot \
     && mv "/opt/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" /opt/godot/godot \
     && chmod 0755 /opt/godot/godot \
