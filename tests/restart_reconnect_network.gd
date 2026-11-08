@@ -42,7 +42,8 @@ func _run() -> void:
 		network.save_lobby_preferences(false, "4321", "重启测试桌")
 		net.room_ready.connect(func(_seat): net.set_ready(true))
 		t.expect(network.start_client("127.0.0.1", 7594, "4321"), "Initial client joins")
-		if not await _wait(func(): return net.game != null and net.game.players.size() == 4 and net.game.players[0].score == -12, "Initial private state received"): return
+		if not await _wait(func(): return net.game != null and net.game.players.size() == 4 \
+				and net.game.players[0].score == -12 and net.game.prompt_id > 0, "Initial playing prompt received after opening confirmation"): return
 		t.expect(network.has_saved_session(), "Token persisted before forced process termination")
 		_marker("first_ready", {"seat": net.my_seat, "hand": net.game.players[net.my_seat].concealed, "score": net.game.players[net.my_seat].score, "prompt": net.game.prompt_id})
 		# The Python driver terminates this process without running cleanup.
