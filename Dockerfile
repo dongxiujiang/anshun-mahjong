@@ -62,8 +62,8 @@ RUN sed -i '/^driver\/enable_input=/d' /app/project.godot
 # the GME Android AAR is only used by client exports and is harmless here.
 RUN rm -rf /app/addons/godot-livekit
 # Bake the import cache into the image so room startup does not race imports.
-RUN /opt/godot/godot --headless --editor --path /app --import \
-    && chown -R mahjong:mahjong /app
+RUN chown -R mahjong:mahjong /app \
+    && gosu mahjong /opt/godot/godot --headless --editor --path /app --import
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod 0755 /entrypoint.sh
