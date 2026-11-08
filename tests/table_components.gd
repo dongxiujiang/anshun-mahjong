@@ -32,7 +32,7 @@ func _run() -> void:
 			table._new_areas._frozen_hands.clear()
 			table._new_areas.deal_animation_active = false
 			table._new_areas._sort_animating = false
-			table._new_areas._draw_animating = false
+			table._new_areas._draw_flights.clear()
 		for player in table.round.players:
 			if player.concealed.is_empty():
 				player.concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6",
@@ -46,7 +46,7 @@ func _run() -> void:
 			table._new_areas.test_frozen = false
 			table._new_areas.deal_animation_active = false
 			table._new_areas._sort_animating = false
-			table._new_areas._draw_animating = false
+			table._new_areas._draw_flights.clear()
 	first._animation_layer.set_skip(true)
 	second._animation_layer.set_skip(true)
 	first.round.awaiting = true
@@ -72,7 +72,7 @@ func _run() -> void:
 		first._new_areas.test_frozen = false
 		first._new_areas.deal_animation_active = false
 		first._new_areas._sort_animating = false
-		first._new_areas._draw_animating = false
+		first._new_areas._draw_flights.clear()
 	first._on_visual_event({"id": 1, "type": "draw", "seat": first.human_seat, "tile": "wan1"})
 	await process_frame
 	await process_frame

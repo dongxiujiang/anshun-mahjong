@@ -42,7 +42,7 @@ func _run() -> void:
 		network.save_lobby_preferences(false, "4321", "重启测试桌")
 		net.room_ready.connect(func(_seat): net.set_ready(true))
 		t.expect(network.start_client("127.0.0.1", 7594, "4321"), "Initial client joins")
-		if not await _wait(func(): return net.game != null and net.game.players.size() == 4 and net.game.players[1].score == -12, "Initial private state received"): return
+		if not await _wait(func(): return net.game != null and net.game.players.size() == 4 and net.game.players[0].score == -12, "Initial private state received"): return
 		t.expect(network.has_saved_session(), "Token persisted before forced process termination")
 		_marker("first_ready", {"seat": net.my_seat, "hand": net.game.players[net.my_seat].concealed, "score": net.game.players[net.my_seat].score, "prompt": net.game.prompt_id})
 		# The Python driver terminates this process without running cleanup.
@@ -61,9 +61,9 @@ func _run() -> void:
 	if not await _wait(func(): return current_scene != null and current_scene.has_method("_on_net_prompt"), "Startup restores through lobby into real table"): return
 	net = network.net_node
 	var table = current_scene
-	t.expect(net.my_seat == 1 and table.human_seat == 1, "Restart keeps original seat")
+	t.expect(net.my_seat == 0 and table.human_seat == 0, "Restart keeps original seat")
 	t.expect(not net._resume_sync_pending and not table._awaiting_rejoin_snapshot, "Only authoritative snapshot unlocks restored table")
-	t.expect(net.game.players[1].name_label == "重启小明", "Restored table keeps player name")
+	t.expect(net.game.players[0].name_label == "重启小明", "Restored table keeps player name")
 	var total := 0.0
 	for player in net.game.players:
 		total += player.score
@@ -72,8 +72,8 @@ func _run() -> void:
 	t.expect(is_equal_approx(total, 800.0), "Restart preserves score conservation")
 	if role == "resume":
 		var expected: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(folder + "/first_ready.json"))
-		t.expect(net.game.players[1].concealed == expected.hand, "No redeal during restart")
-		t.expect(net.game.players[1].score == -12, "Negative cumulative score survives restart")
+		t.expect(net.game.players[0].concealed == expected.hand, "No redeal during restart")
+		t.expect(net.game.players[0].score == -12, "Negative cumulative score survives restart")
 		t.expect(net.game.prompt_id == int(expected.prompt), "Current prompt survives restart")
 		net.rpc_id(1, "ack", "resumed-playing")
 		if not await _wait(func(): return net.game.phase == RoundState.Phase.SETTLED, "Client receives settlement before second process termination"): return
@@ -100,12 +100,12 @@ func _host() -> void:
 	net.set_wants_dealer(true)
 	net.set_ready(true)
 	if not await _wait(func(): return net._started, "Ready humans start the restart fixture"): return
-	net.game.players[0].score = 412
-	net.game.players[1].score = -12
+	net.game.players[1].score = 412
+	net.game.players[0].score = -12
 	net._host_broadcast()
 	if not await _wait(func(): return net.ack_text == "resumed-playing", "New process restores playing round", 25.0): return
 	t.expect(net._members.size() == 2 and net._peer_seat.size() == 2, "Restart creates no duplicate membership")
-	t.expect(net.game.controllers[1] == null, "Restart hands control back to human")
+	t.expect(net.game.controllers[0] == null, "Restart hands control back to human")
 	t.expect(net._orphaned.is_empty(), "Restart consumes seat reservation")
 	net.game._finish()
 	if not await _wait(func(): return net.ack_text == "resumed-settled", "Second new process restores settlement", 25.0): return

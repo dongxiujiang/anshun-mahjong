@@ -69,17 +69,19 @@ func _layout_actions_v2() -> void:
 	var count := action_bar.get_child_count()
 	action_bar.visible = count > 0 and not input_locked()
 	if count == 0: return
-	var row_size := Vector2(0, UI.ACTION_BUTTON_SIZE.y)
-	for button in action_bar.get_children():
-		row_size.x += button.custom_minimum_size.x
-		row_size.y = maxf(row_size.y, button.custom_minimum_size.y)
-	row_size.x += maxi(0, count - 1) * action_bar.get_theme_constant("separation")
-	action_bar.size = row_size
+	var row_size := Vector2(
+		count * UI.DISCARD_BUTTON_SIZE.x + (count - 1) * action_bar.get_theme_constant("separation"),
+		UI.DISCARD_BUTTON_SIZE.y)
 	var center: Vector2 = table._new_areas.draw_slot_center(table.human_seat)
 	var tile_size := Vector2(TileView.BASE_W, TileView.BASE_H) * UI.OWN_HAND_TILE_UNIT
 	var right := center.x + tile_size.x * 0.5
 	var top := center.y - tile_size.y * 0.5 - 12.0
-	action_bar.position = table._new_areas.action_bar_position(row_size, Vector2(right - row_size.x, top - row_size.y))
+	var placement: Rect2 = table._new_areas.action_bar_rect(row_size, Vector2(right - row_size.x, top - row_size.y))
+	for button in action_bar.get_children():
+		button.custom_minimum_size.y = placement.size.y
+	action_bar.size = placement.size
+	action_bar.position = placement.position
+
 
 func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
 	# Cancellation is not a completed tap, even when the pointer is still over

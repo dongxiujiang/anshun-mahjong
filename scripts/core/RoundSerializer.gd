@@ -129,7 +129,7 @@ static func mask_for_seat(state: Dictionary, round_state, seat: int) -> Dictiona
 		var hidden_event := false
 		if event_type in ["draw", "deal"] and int(event.get("seat", -1)) != seat:
 			hidden_event = true
-		elif event_type == "discard" and int(event.get("seat", -1)) != seat and event.has("draw_tile"):
+		elif event_type == "discard" and int(event.get("seat", -1)) != seat and str(event.get("draw_tile", "")) != "":
 			hidden_event = true
 		elif event_type == "deal_batch":
 			hidden_event = event.get("deals", []).any(func(deal): return int(deal.get("seat", -1)) != seat)

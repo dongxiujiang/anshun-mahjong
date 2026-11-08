@@ -410,8 +410,12 @@ func _dispatch_visual_event(event: Dictionary) -> void:
 	if event_type == "discard" and DisplayServer.get_name() != "headless" \
 			and table._new_areas != null and table._new_areas.has_method("animate_draw_insert"):
 		var discard_seat := int(event.get("seat", 0))
+		if int(_pending_draw_after_meld.get("seat", -1)) == discard_seat:
+			_pending_draw_after_meld.clear()
 		var from_draw := bool(event.get("discard_from_draw", false))
 		var draw_card := str(event.get("draw_tile", _draw_cards.get(discard_seat, "")))
+		# Older servers also masked an empty draw after a pung as hidden0.
+		if int(event.get("drawn_source_index", 0)) < 0: draw_card = ""
 		if from_draw:
 			table._new_areas.animate_draw_discard(discard_seat, func():
 				_draw_cards[discard_seat] = ""

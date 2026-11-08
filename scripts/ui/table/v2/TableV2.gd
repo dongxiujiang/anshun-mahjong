@@ -75,8 +75,9 @@ var _sort_started := false
 var _sort_animating := false
 var _deal_tween: Tween
 var _sort_tween: Tween
-var _draw_hidden_seat := -1
-var _draw_animating := false
+var _draw_flights: Dictionary = {}
+var _draw_animating: bool:
+	get: return not _draw_flights.is_empty()
 var _pending_draws := {0: "", 1: "", 2: "", 3: ""}
 var _deal_done_callback := Callable()
 var _deal_moving: Array = []
@@ -220,10 +221,44 @@ func adopt_action_bar(bar: Control) -> void:
 	if bar.get_parent() != _action_layer:
 		bar.reparent(_action_layer)
 
+func _settlement_result_title() -> String:
+	var winners: Array = _settlement_plan.winners
+	if winners.is_empty():
+		return "四家叫牌流局" if _settlement_plan.all_called_draw else "本局流局"
+	var meta: Dictionary = round.round_meta
+	var relative := ["你", "上家", "对家", "下家"]
+	var source := int(meta.get("discard_seat", -1))
+	var source_name: String = relative[posmod(source - human_seat, 4)] if source in range(4) else ""
+	var titles: Array[String] = []
+	for winner in winners:
+		var title: String = relative[posmod(int(winner) - human_seat, 4)]
+		if round.players[winner].ready: title += "报听"
+		if bool(meta.get("self_draw", false)):
+			if int(meta.get("kong_draw_seat", -1)) == winner: title += "杠开"
+			if int(meta.get("last_four_self_draw_seat", -1)) == winner: title += "海底"
+			title += "自摸"
+		elif bool(meta.get("robbed_kong", false)):
+			title += "抢" + source_name + "的杠胡牌" if source_name != "" else "抢杠胡"
+		else:
+			title += "胡" + source_name if source_name != "" else "胡牌"
+		titles.append(title)
+	return "、".join(titles)
+
+func _settlement_multiplier_title() -> String:
+	var meta: Dictionary = round.round_meta
+	if int(meta.get("chicken_multiplier", 1)) <= 1: return ""
+	var dice := bool(meta.get("dice_double", false))
+	# Legacy snapshots only identify the previous draw if the dice differ.
+	var previous_draw := bool(meta.get("previous_draw_double", not dice))
+	if previous_draw and dice: return "上局流局、双骰同点 · 本局双倍"
+	if dice: return "双骰同点 · 本局双倍"
+	if previous_draw: return "上局流局 · 本局双倍"
+	return "本局双倍"
+
 func _build_native_settlement_panel() -> void:
 	var panel := Panel.new()
 	panel.name = "V2PersonalSettlement"
-	panel.size = Vector2(1020, 312)
+	panel.size = Vector2(1020, 386)
 	panel.position = G.CENTER - panel.size / 2.0
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
@@ -236,13 +271,18 @@ func _build_native_settlement_panel() -> void:
 	_native_settlement = panel
 	get_node("/root/FpsOverlay").hide_during_settlement(panel)
 
-	var header_y := 16.0
+	var title := _table_text(panel, _settlement_result_title(), 30, UI.GOLD)
+	title.name = "ResultTitle"
+	title.position = Vector2(28, 8)
+	title.size = Vector2(964, 44)
+	var multiplier := _table_text(panel, _settlement_multiplier_title(), 24, UI.GOLD)
+	multiplier.name = "MultiplierTitle"
+	multiplier.position = Vector2(28, 50)
+	multiplier.size = Vector2(964, 34)
+	var header_y := 90.0
 	var column_start := 188.0
 	var column_width := 184.0
 	var row_height := 70.0
-	var title := _table_text(panel, "本局结算", 28, UI.GOLD)
-	title.position = Vector2(28, header_y)
-	title.size = Vector2(148, 58)
 	for index in 3:
 		var direction := _table_text(panel, ["上", "对", "下"][index], 36, UI.GOLD)
 		direction.position = Vector2(column_start + index * column_width, header_y)
@@ -250,7 +290,7 @@ func _build_native_settlement_panel() -> void:
 		direction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	for row in 3:
-		var top := 78.0 + row * row_height
+		var top := 152.0 + row * row_height
 		var divider := ColorRect.new()
 		divider.color = Color(UI.GOLD, 0.28 if row == 2 else 0.13)
 		divider.position = Vector2(24, top)
@@ -271,7 +311,7 @@ func _build_native_settlement_panel() -> void:
 
 	var total_bg := ColorRect.new()
 	total_bg.color = Color(UI.GOLD, 0.10)
-	total_bg.position = Vector2(762, 222)
+	total_bg.position = Vector2(762, 296)
 	total_bg.size = Vector2(232, 66)
 	total_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(total_bg)
@@ -723,20 +763,43 @@ func _current_hand_count(seat: int) -> int:
 	var player = round.players[seat]
 	return maxi(1, player.concealed.size() - (1 if player.just_drew != "" else 0))
 
-func action_bar_position(row_size: Vector2, preferred: Vector2) -> Vector2:
-	var alternatives := [preferred,
-		Vector2(G.wall_inner_rect().end.x - 8.0 - row_size.x,
-			G.hand13_rect(human_seat, human_seat).position.y - G.RED_HAND_GAP - G.RED_HEIGHT - 12.0 - row_size.y),
-		Vector2(G.CENTER.x - row_size.x / 2.0, 8.0)]
-	for position in alternatives:
-		var candidate := Rect2(position, row_size)
-		var clear := true
-		for layer in _render_layers():
-			for tile in layer.get_children():
-				if tile is TileView and tile.visible and candidate.intersects(_visual_rect(tile).grow(6.0)):
-					clear = false
-		if clear: return position
-	return alternatives.back()
+func action_bar_rect(row_size: Vector2, preferred: Vector2) -> Rect2:
+	var left := G.TABLE_BOUNDS.position.x + UI.ACTION_EDGE_GAP
+	var right := G.TABLE_BOUNDS.end.x - UI.ACTION_EDGE_GAP
+	var top := G.CENTER.y
+	var bottom := preferred.y
+	var rows: Array[float] = [bottom, top]
+	var obstacles: Array[Rect2] = []
+	for layer in _render_layers():
+		for tile in layer.get_children():
+			if tile is TileView and tile.visible:
+				var obstacle := _visual_rect(tile).grow(6.0)
+				if obstacle.end.y <= top or obstacle.position.y >= bottom + row_size.y:
+					continue
+				obstacles.append(obstacle)
+				var above := obstacle.position.y - row_size.y
+				if above > top and above < bottom and not rows.has(above): rows.append(above)
+	obstacles.sort_custom(func(a: Rect2, b: Rect2): return a.position.x < b.position.x)
+	rows.sort()
+	rows.reverse()
+	for y in rows:
+		var gap_left := left
+		var best_x := INF
+		for obstacle in obstacles:
+			if obstacle.position.y >= y + row_size.y or obstacle.end.y <= y:
+				continue
+			var gap_right := minf(right, obstacle.position.x) - row_size.x
+			if gap_right >= gap_left:
+				var x := clampf(preferred.x, gap_left, gap_right)
+				if absf(x - preferred.x) < absf(best_x - preferred.x): best_x = x
+			gap_left = maxf(gap_left, obstacle.end.x)
+		if right - row_size.x >= gap_left:
+			var x := clampf(preferred.x, gap_left, right - row_size.x)
+			if absf(x - preferred.x) < absf(best_x - preferred.x): best_x = x
+		if best_x != INF: return Rect2(Vector2(best_x, y), row_size)
+	# A crowded table can use the same bottom lane as the next-round button.
+	return Rect2(Vector2(G.CENTER.x - row_size.x / 2.0, G.HAND_BOTTOM + 8.0),
+		Vector2(row_size.x, UI.ACTION_BUTTON_SIZE.y))
 
 ## 新弃牌落点（屏幕坐标）。普通弃牌按非鸡牌顺序，鸡牌用红色区落点。
 func hand_source_global(seat: int, concealed_index: int) -> Vector2:
@@ -882,8 +945,7 @@ func _reset_round_visual_state() -> void:
 	deal_animation_active = false
 	_sort_started = false
 	_sort_animating = false
-	_draw_animating = false
-	_draw_hidden_seat = -1
+	_draw_flights.clear()
 	_pending_draws = {0: "", 1: "", 2: "", 3: ""}
 	_deal_moving.clear()
 	_deal_done_callback = Callable()
@@ -1766,9 +1828,8 @@ func _wall_center_for_ring_index(index: int) -> Vector2:
 
 ## 排序后摸牌：从墙牌位置飞到摸牌区，同时放大到手牌尺寸。
 func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> void:
+	_finish_pending_draw(seat)
 	var action_id := _begin_visual_action()
-	_draw_animating = true
-	_draw_hidden_seat = seat
 	_pending_draws[seat] = card
 	var hand_unit := G.hand_unit(seat, human_seat)
 	var rel := G.relative_seat(human_seat, seat)
@@ -1801,10 +1862,8 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 		if int(node.get_meta("wall_ring_index", -2)) == wall_index:
 			node.visible = false
 	var complete := func():
+		_draw_flights.erase(seat)
 		_release_visual_node(tile)
-		_draw_hidden_seat = -1
-		_draw_animating = false
-		_draw_hidden_seat = -1
 		var drawn := _tile(draw_boxes[seat], card, _face_visible(seat),
 			target, hand_unit, UI.ROTATIONS[rel])
 		drawn.set_meta("new_kind", "draw")
@@ -1820,29 +1879,47 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 	if duration <= 0.0 or not has_wall_source:
 		complete.call()
 		return
+	var tween := _motion_tween()
+	_draw_flights[seat] = {"tween": tween, "complete": complete}
 	if _motion_would_cover(tile, target, tile.size, UI.ROTATIONS[rel]):
 		tile.hide()
-		_deal_tween = _motion_tween()
-		_deal_tween.tween_interval(duration)
-		_deal_tween.tween_callback(complete)
+		tween.tween_interval(duration)
+		tween.tween_callback(complete)
 		return
-	var tween := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	_deal_tween = tween
+	tween.set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(tile, "position", target - tile.size / 2.0, duration)
 	tween.tween_property(tile, "scale", Vector2.ONE, duration)
 	tween.tween_property(tile, "rotation", UI.ROTATIONS[rel], duration)
 	tween.chain().tween_callback(complete)
+
+func _finish_pending_draw(seat: int) -> void:
+	if not _draw_flights.has(seat): return
+	var flight: Dictionary = _draw_flights[seat]
+	var tween: Tween = flight.tween
+	tween.kill()
+	_motion_tweens.erase(tween)
+	flight.complete.call()
 
 ## 弃牌飞行动画：同时插值位置、缩放、旋转。
 func _noop() -> void:
 	pass
 
 func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -> void:
-	if node == null: return
-	# A discard is public even when its origin was a hidden opponent tile.
-	if node is TileView: node.set_card(card, true)
 	var rel := G.relative_seat(human_seat, seat)
 	var player = table.round.players[seat] if table != null and table.round != null else null
+	var discard_id := int(player.discard_ids.back()) if player != null and not player.discard_ids.is_empty() else -1
+	var missing_source := node == null
+	if missing_source:
+		# The public tile can land even when a prior snapshot had no visual source.
+		if discard_id < 0 or player.discards.is_empty() or str(player.discards.back()) != card:
+			if on_finish.is_valid(): on_finish.call()
+			return
+		for other in _discard_layer.get_children() + _red_layer.get_children():
+			if int(other.get_meta("v2_seat", -1)) == seat and int(other.get_meta("discard_id", -1)) == discard_id:
+				if on_finish.is_valid(): on_finish.call()
+				return
+	# A discard is public even when its origin was a hidden opponent tile.
+	if node is TileView: node.set_card(card, true)
 	var ordinary_index := 0
 	if player != null and not player.discards.is_empty():
 		for i in maxi(0, player.discards.size() - 1):
@@ -1852,11 +1929,8 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 	var target := G.ordinary_slot_center(seat, ordinary_index, human_seat)
 	if chicken:
 		# 幺鸡进红牌/碰杠区，不进普通弃牌区。
-		var last_id := -1
-		if player != null and not player.discard_ids.is_empty():
-			last_id = int(player.discard_ids.back())
 		var global_target := Vector2.ZERO
-		if last_id >= 0: global_target = discard_target_global(seat, last_id)
+		if discard_id >= 0: global_target = discard_target_global(seat, discard_id)
 		if player != null and not player.discards.is_empty():
 			charge = table.round.is_charge_discard(seat, player.discards.size() - 1)
 		if global_target != Vector2.ZERO:
@@ -1870,11 +1944,13 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 				_: target = Vector2(hand.position.x - 60.0, G.CENTER.y)
 	var target_size: Vector2 = Vector2(G.RED_WIDTH, G.RED_HEIGHT) if chicken \
 		else Vector2(TileView.BASE_W, TileView.BASE_H) * G.ORDINARY_UNIT
-	var target_scale: Vector2 = Vector2(target_size.x / node.size.x, target_size.y / node.size.y)
 	var target_angle: float = UI.ROTATIONS[rel] + (PI / 2.0 if charge else 0.0)
-	var duration := GameConfig.tile_motion_seconds()
+	if missing_source:
+		node = _tile(_deal_layer, card, true, target, 1.0, target_angle)
+	var target_scale := target_size / node.size
+	var duration := 0.0 if missing_source else GameConfig.tile_motion_seconds()
 	_latest_discard_seat = seat
-	_latest_discard_id = int(player.discard_ids.back()) if player != null and not player.discard_ids.is_empty() else -1
+	_latest_discard_id = discard_id
 	for layer in [_discard_layer, _red_layer]:
 		for previous in layer.get_children():
 			if previous is TileView: previous.set_latest_highlight(false)
@@ -1882,7 +1958,7 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 	var flight_id := _discard_flight_id
 	_discard_flights[flight_id] = {"node_id": node.get_instance_id(), "card": card, "seat": seat,
 		"chicken": chicken, "charge": charge, "target": target, "rel": rel, "angle": target_angle,
-		"discard_id": int(player.discard_ids.back()) if player != null and not player.discard_ids.is_empty() else -1,
+		"discard_id": discard_id,
 		"tween": null, "finish": on_finish}
 	if duration <= 0.0:
 		_finish_discard_flight(flight_id)
@@ -1963,13 +2039,14 @@ func _take_discard_source(seat: int, discard_id: int, chicken: bool) -> Control:
 
 ## 打出刚摸的牌：摸牌飞到弃牌区，不插入手牌。
 func animate_draw_discard(seat: int, done: Callable, discard_card: String = "") -> void:
+	_finish_pending_draw(seat)
 	var action_id := _begin_visual_action()
 	var node: Control = null
 	for child in draw_boxes[seat].get_children():
 		if child is TileView: node = child
 	var card := discard_card if discard_card != "" else (str(node.tile) if node != null else "")
 	_pending_draws[seat] = ""
-	if node != null and card != "":
+	if card != "":
 		_fly_discard(node, seat, card, func(): _complete_visual_action(action_id, done))
 	else:
 		for child in draw_boxes[seat].get_children(): _release_visual_node(child)
@@ -1990,7 +2067,7 @@ func animate_hand_discard(seat: int, discard_card: String, discard_index: int,
 		else:
 			remaining.append(node)
 	if discard_node == null:
-		_complete_visual_action(action_id, done)
+		_fly_discard(null, seat, discard_card, func(): _complete_visual_action(action_id, done))
 		return
 	_fly_discard(discard_node, seat, discard_card, Callable(self, "_noop"))
 	var ordered: Array = remaining.duplicate()
@@ -2016,6 +2093,7 @@ func animate_hand_discard(seat: int, discard_card: String, discard_index: int,
 ## 弃牌后：弃牌先离手，再移动手牌让出插入位置，最后把摸牌插入手牌。
 func animate_draw_insert(seat: int, discard_card: String, draw_card: String, done: Callable,
 		discard_index: int = -1, hand_slot_map: Dictionary = {}) -> void:
+	_finish_pending_draw(seat)
 	var action_id := _begin_visual_action()
 	var nodes: Array = hand_boxes[seat].get_children().duplicate()
 	var draw_node: TileView = null
@@ -2031,11 +2109,11 @@ func animate_draw_insert(seat: int, discard_card: String, draw_card: String, don
 		else:
 			remaining.append(node)
 	if discard_node == null or draw_node == null:
-		_complete_visual_action(action_id, done)
+		_pending_draws[seat] = ""
+		_fly_discard(discard_node, seat, discard_card, func(): _complete_visual_action(action_id, done))
 		return
 	# 弃牌先飞离手牌区。
-	if discard_node != null:
-		_fly_discard(discard_node, seat, discard_card, Callable(self, "_noop"))
+	_fly_discard(discard_node, seat, discard_card, Callable(self, "_noop"))
 	# 摸牌加入后按排序位置插入。
 	var cards: Array = []
 	for node in remaining: cards.append(str(node.tile))
@@ -2351,7 +2429,7 @@ func _build_hands() -> void:
 		if pending_draw != "":
 			# TODO: test-stage pending draw is excluded from hand until discard.
 			if drew == "": drew = pending_draw
-		if seat == _draw_hidden_seat: drew = ""
+		if _draw_flights.has(seat): drew = ""
 		var opening := _opening_mode()
 		if test_frozen and _opening_visual_gate():
 			hand = _frozen_hands[seat].duplicate() if seat < _frozen_hands.size() else []

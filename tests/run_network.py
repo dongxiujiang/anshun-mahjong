@@ -99,7 +99,12 @@ def run(godot, lan_interface=False, section="all", graphical_table=False):
                 item = launch(godot, f"ready_player_{role}", "res://tests/next_round_network.gd", [f"--ready-role={role}"])
                 children.append(item)
                 ready_clients.append(item)
-                time.sleep(0.15)
+                deadline = time.monotonic() + 12
+                log = LOGS / f"ready_player_{role}.log"
+                while "SEAT_ASSIGNED" not in log.read_text(encoding="utf-8-sig"):
+                    if item[0].poll() is not None or time.monotonic() >= deadline:
+                        raise AssertionError(f"Player {role} was not assigned a seat")
+                    time.sleep(0.05)
             for role, item in enumerate(ready_clients):
                 finish(item, f"ready_player_{role}", 70)
     finally:

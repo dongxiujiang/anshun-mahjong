@@ -34,7 +34,7 @@ func _host_test() -> void:
 	if not await _wait_until(func(): return net.ack_text == "lobby-1", "Client initially ready"): return
 	var peer := _guest_peer()
 	var seat := int(net._peer_seat[peer])
-	t.expect(seat == posmod(GameConfig.TURN_DIRECTION, 4), "Guest occupies the next seat in configured turn order")
+	t.expect(seat == posmod(1 + GameConfig.TURN_DIRECTION, 4), "Guest occupies the next seat in configured turn order")
 	var token: String = net._members[peer].resume_token
 	_drop_guest()
 	t.expect(net._orphaned[seat].token == token, "Reservation belongs to original client")
@@ -47,7 +47,7 @@ func _host_test() -> void:
 	net.set_ready(true)
 	if not await _wait_until(func(): return net._started, "Ready humans start game automatically"): return
 	if not await _wait_until(func(): return net.ack_text == "game-start", "Client receives first private snapshot"): return
-	t.expect(net.game.current_turn == 0 and net.game.awaiting, "Host holds turn while testing restoration")
+	t.expect(net.game.current_turn == net.my_seat and net.game.awaiting, "Host holds turn while testing restoration")
 	var hand: Array = net.game.players[seat].concealed.duplicate()
 	var score: float = net.game.players[seat].score
 	_drop_guest()
@@ -63,9 +63,10 @@ func _host_test() -> void:
 	net.game.ai_delay_seconds = 1.5
 	_drop_guest()
 	var safe_tile := ""
-	for tile in net.game.players[0].concealed:
+	for tile in net.game.players[net.my_seat].concealed:
 		var available := true
-		for opponent in range(1, 4):
+		for opponent in 4:
+			if opponent == net.my_seat: continue
 			var trial: Array = net.game.players[opponent].concealed.duplicate()
 			trial.append(tile)
 			if Tiles.count(trial, tile) >= 3 or RuleEngine.analyze(trial, net.game.players[opponent].melds).win: available = false
@@ -75,7 +76,7 @@ func _host_test() -> void:
 	if not t.expect(safe_tile != "", "Fixture has a discard without intervening claims"):
 		quit(t.finish("reconnect_network_host"))
 		return
-	t.expect(net.game.submit_turn(0, {"discard": safe_tile}), "Host advances to disconnected guest")
+	t.expect(net.game.submit_turn(net.my_seat, {"discard": safe_tile}), "Host advances to disconnected guest")
 	t.expect(net.game.current_turn == seat and net.game.awaiting, "Reserved seat waits for its human reconnect")
 	t.expect(net._ctrl_hint.get(seat) == "wait" and net.game._ai_pending.is_empty(),
 		"No AI task is installed before the reconnect grace expires")
@@ -97,8 +98,8 @@ func _client_test() -> void:
 	net.room_ready.connect(func(seat):
 		# Choose the seat immediately after the host using the real lobby API.
 		# A seat assignment from this move is not a reconnect.
-		if original_seat < 0 and seat != posmod(GameConfig.TURN_DIRECTION, 4):
-			net.select_seat(posmod(GameConfig.TURN_DIRECTION, 4))
+		if original_seat < 0 and seat != posmod(1 + GameConfig.TURN_DIRECTION, 4):
+			net.select_seat(posmod(1 + GameConfig.TURN_DIRECTION, 4))
 			return
 		joins += 1
 		if original_seat < 0: original_seat = seat

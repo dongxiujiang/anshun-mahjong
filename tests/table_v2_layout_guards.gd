@@ -180,14 +180,13 @@ func _test_new_round_reset(deck) -> void:
 	deck.set_round(_fixture(), 1)
 	deck._sort_started = true
 	deck._sort_animating = true
-	deck._draw_animating = true
-	deck._draw_hidden_seat = 1
+	deck._draw_flights[1] = {}
 	deck._pending_draws[1] = "wan9"
 	deck._frozen_hands = [["wan1"]]
 	deck.set_round(_fixture(), 1)
 	t.expect(not deck._sort_started and not deck._sort_animating,
 		"新一局重置理牌运行态")
-	t.expect(not deck._draw_animating and deck._draw_hidden_seat == -1,
+	t.expect(deck._draw_flights.is_empty(),
 		"新一局重置摸牌隐藏状态")
 	t.expect(deck._pending_draws.values().all(func(value): return str(value) == ""),
 		"新一局清空上一局待处理摸牌")

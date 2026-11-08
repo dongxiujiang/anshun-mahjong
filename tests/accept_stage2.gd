@@ -9,6 +9,7 @@ func _run() -> void:
 	table.round.opening_delay_seconds = 0.0
 	for _i in 120: await process_frame
 	table.round.cancel_opening()
+	table._table_animation_controller.recover_after_resume()
 	table.round.phase = RoundState.Phase.PLAYING
 	table.round.current_turn = table.human_seat
 	table.round.awaiting = false
@@ -35,6 +36,10 @@ func _run() -> void:
 	print("[stage2] actions=", action_texts, " visible=", bar.visible)
 	t.expect(bar.visible and action_texts.size() >= 3, "胡碰杠按钮生成")
 	t.expect("胡" in action_texts and "碰" in action_texts, "胡碰按钮存在")
+	t.expect(bar.position.y >= TableV2Geometry.CENTER.y and bar.position.y + bar.size.y <= TableV2Geometry.DESIGN_SIZE.y, "胡碰杠过整排按钮位于自己一侧且完整可见")
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png("res://build/v2_action_buttons.png")
 	# 幺鸡/八筒必须进红牌层，不进普通弃牌层。
 	for card in ["tiao1", "tong8"]:
 		var before_red: int = v2._red_layer.get_child_count()

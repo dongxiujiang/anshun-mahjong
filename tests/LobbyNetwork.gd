@@ -36,7 +36,7 @@ func _run() -> void:
 		t.expect(not net.all_ready(), "Host unready blocks start")
 		net.select_seat(2)
 		t.expect(await _wait_until(func(): return net.ack_text == "swap-refused"), "Client declined first swap")
-		t.expect(net.my_seat == 0, "Refusal preserves seat")
+		t.expect(net.my_seat == 1, "Refusal preserves the host’s South seat")
 		net.select_seat(2)
 		t.expect(await _wait_until(func(): return net.my_seat == 2), "Consent swaps both humans")
 		t.expect(not net.all_ready(), "Swap invalidates readiness")
@@ -48,7 +48,7 @@ func _run() -> void:
 		net.set_ready(true)
 		t.expect(await _wait_until(func(): return net._started), "All ready automatically starts without countdown")
 		t.expect(net._countdown < 0, "Ready start does not create a legacy countdown")
-		t.expect(net.game.dealer_seat == 0, "Only dealer applicant selected after swap")
+		t.expect(net.game.dealer_seat == 1, "Only dealer applicant selected after swap")
 		print("[lobby_network] GAME_STARTED")
 		# Leave enough time for the third Godot process to start and attempt
 		# the late join; CI process startup can exceed the old two seconds.
@@ -94,12 +94,13 @@ func _run() -> void:
 		net.rpc_id(1, "ack", "swap-refused")
 		t.expect(await _wait_until(func(): return not net.lobby.swap.is_empty()), "Second request received")
 		net.respond_swap(true)
-		t.expect(await _wait_until(func(): return net.my_seat == 0), "Swapped seat synchronized")
+		t.expect(await _wait_until(func(): return net.my_seat == 1), "Swapped seat synchronized")
 		t.expect(await _wait_until(func(): return bool(net.lobby.seats[3].ready)), "Moved host readied")
 		net.set_ready(true)
 		t.expect(await _wait_until(func(): return net.game.phase != RoundState.Phase.IDLE), "All ready immediately starts the game")
-		t.expect(net.game.dealer_seat == 0, "Dealer synchronized")
-		for seat in range(1, 4):
+		t.expect(net.game.dealer_seat == 1, "Dealer synchronized")
+		for seat in 4:
+			if seat == net.my_seat: continue
 			t.expect(net.game.players[seat].concealed.all(func(tile): return tile == "hidden0"), "Opponent tiles remain private")
 	var net := Network.net_node
 	var deadline := Time.get_ticks_msec() + 45000

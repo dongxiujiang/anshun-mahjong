@@ -61,6 +61,13 @@ func _run() -> void:
 	t.expect(host.serialize_for_seat(0).players[1].melds[0].tile == "wan5", "下一轮出牌后暗杠可见")
 	host.phase = RoundState.Phase.SETTLED
 	t.expect(host.serialize_for_seat(0).players[1].concealed == host.players[1].concealed, "结算公开四家的手牌")
+	host.phase = RoundState.Phase.PLAYING
+	host._emit_visual_event("discard", {"seat": 1, "tile": "wan5", "draw_tile": "", "drawn_source_index": -1})
+	host._emit_visual_event("discard", {"seat": 1, "tile": "wan5", "draw_tile": "tong9", "drawn_source_index": 13})
+	var masked: Array = host.serialize_for_seat(0).visual_events
+	t.expect(masked[-2].draw_tile == "", "碰后无摸牌，联机快照保留空值")
+	t.expect(masked[-1].draw_tile == "hidden0", "普通弃牌仍隐藏对手实际摸到的牌")
+	host.phase = RoundState.Phase.SETTLED
 	# 模拟较老客户端/服务端省略后来新增的可选字段。
 	var legacy := host.serialize()
 	for key in ["dealer_seat", "next_dealer_seat", "prompt_id", "awaiting_response", "last_result", "wall_stacks", "next_chicken_multiplier", "audio_session", "audio_event_id", "audio_events"]:

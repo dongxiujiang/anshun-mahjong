@@ -116,7 +116,7 @@ func _test_mid_animation_background() -> void:
 		table._new_areas.test_frozen = false
 		table._new_areas.deal_animation_active = false
 		table._new_areas._sort_animating = false
-		table._new_areas._draw_animating = false
+		table._new_areas._draw_flights.clear()
 	table._refresh()
 	table._on_require_turn(table.human_seat)
 	await process_frame
@@ -128,8 +128,7 @@ func _test_v2_mid_animation_background() -> void:
 	_fixture()
 	table._new_areas.deal_animation_active = true
 	table._new_areas._sort_animating = true
-	table._new_areas._draw_animating = true
-	table._new_areas._draw_hidden_seat = 0
+	table._new_areas._draw_flights[0] = {}
 	table.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
 	table.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	await create_timer(0.8).timeout

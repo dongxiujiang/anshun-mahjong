@@ -5,6 +5,8 @@ var t := H.new()
 var role := 0
 var net: NetGameNode
 var table: Control
+var discard_sent_at := 0.0
+var discard_received_at := 0.0
 
 func _initialize() -> void: call_deferred("_run")
 
@@ -22,11 +24,23 @@ func _run() -> void:
 	net = network.net_node
 	if role == 0:
 		t.expect(network.start_host(false, false, 7536), "Host opens readiness test")
-		t.expect(await _wait_until(func(): return net._members.size() == 4), "Four real humans join")
 	else:
 		t.expect(network.start_client("127.0.0.1", 7536), "Human client connects")
 		t.expect(await _wait_until(func(): return net.lobby.get("seats", []).size() == 4), "Client receives own seat")
+	var expected_seat: int = [1, 0, 3, 2][role]
+	t.expect(net.my_seat == expected_seat, "Join order allocates South, East, North, West")
+	print("[next_round] SEAT_ASSIGNED")
 	t.expect(await _wait_until(func(): return net.lobby.seats.filter(func(seat): return int(seat.peer) > 0).size() == 4), "Wait for all joins before first readiness")
+	if role == 0:
+		net.set_wants_dealer(true)
+	else:
+		net.lobby_notice.connect(func(message: String):
+			if message.begins_with("test-discard-time="):
+				discard_sent_at = float(message.get_slice("=", 1)))
+		net.state_updated.connect(func():
+			if discard_received_at == 0.0 and net.game.players.size() == 4 \
+					and not net.game.players[1].discard_history.is_empty():
+				discard_received_at = Time.get_unix_time_from_system())
 	net.set_ready(true)
 	if not t.expect(await _wait_until(func(): return net.round_number == 1), "First round dealt after lobby readiness"):
 		await H.quit_cleanly(self, t.finish("next_round_network"))
@@ -35,8 +49,30 @@ func _run() -> void:
 	root.add_child(table)
 	await process_frame
 	if role == 0:
-		await create_timer(0.3).timeout
+		t.expect(await _wait_until(func(): return net.game.awaiting and net.game.current_turn == net.my_seat),
+			"South dealer can submit a real discard")
+		# Measure an in-game update after peers have mounted their first table.
+		await create_timer(1.0).timeout
+		var initial_revision := net._state_revision
+		var started_at := Time.get_unix_time_from_system()
+		var discard: String = net.game.players[net.my_seat].just_drew
+		t.expect(net.game.submit_turn(net.my_seat, {"discard": discard}), "Authority accepts the dealer discard")
+		print("[next_round] authority submit: %.1f ms" % ((Time.get_unix_time_from_system() - started_at) * 1000.0))
+		for peer in net._peer_seat:
+			if peer > 1: net.notice.rpc_id(peer, "test-discard-time=%.6f" % started_at)
+		t.expect(await _wait_until(func(): return net._state_revision > initial_revision, 1.0), "Authority broadcasts the accepted discard")
+		print("[next_round] authority flush: %.1f ms" % ((Time.get_unix_time_from_system() - started_at) * 1000.0))
+		await create_timer(1.25).timeout
+		# This fixture forces settlement instead of playing the remaining turns.
+		table._table_animation_controller.recover_after_resume()
 		net.game._finish()
+	else:
+		t.expect(await _wait_until(func(): return discard_received_at > 0.0 and discard_sent_at > 0.0),
+			"Every client receives the first discard")
+		if discard_received_at > 0.0 and discard_sent_at > 0.0:
+			var latency := discard_received_at - discard_sent_at
+			print("[next_round] discard sync role=%d: %.1f ms" % [role, latency * 1000.0])
+			t.expect(latency >= 0.0 and latency < 1.0, "Discard arrives before the next action or settlement")
 	t.expect(await _wait_until(func(): return net.game.phase == RoundState.Phase.SETTLED and net.lobby.get("ready_round", -1) == 1), "Settlement ready state reaches every human")
 	t.expect(await _wait_until(func(): return table._settlement_animation_controller.is_completed()), "Settlement preview finishes before controls unlock")
 	await process_frame

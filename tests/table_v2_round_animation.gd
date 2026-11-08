@@ -246,6 +246,76 @@ func _remote_discards():
 	t.expect(first.get_parent()==deck.hand_boxes[1],"clicking second identical tile does not discard the first copy")
 	await _cleanup(host)
 
+func _discard_during_draw():
+	for from_draw in [true, false]:
+		var host = _fixture()
+		var view = host._new_areas
+		var seat := 0
+		var player: PlayerState = host.round.players[seat]
+		for i in 13:
+			player.concealed.append("hidden0")
+			var tile = _card(view, view.hand_boxes[seat], "", seat, i,
+				G.hand_slot_center(seat, i, 1, 13))
+			tile.set_card("", false)
+		view.animate_draw(seat, "hidden0", 29, func(): pass)
+		t.expect(view.draw_boxes[seat].get_child_count() == 0, "The opponent's earlier draw is still flying")
+		player.discards = ["wan9"]
+		player.discard_ids = [0]
+		if from_draw:
+			view.animate_draw_discard(seat, func(): pass, "wan9")
+		else:
+			view.animate_draw_insert(seat, "wan9", "hidden0", func(): pass, 4)
+		t.expect(not view._discard_flights.is_empty() or view._discard_layer.get_child_count() == 1,
+			"Public discard starts immediately while the older opponent draw is still flying")
+		await create_timer(0.7).timeout
+		t.expect(view._discard_layer.get_child_count() == 1 and view.draw_boxes[seat].get_child_count() == 0,
+			"Only the public discard remains after the interrupted draw")
+		await _cleanup(host)
+
+func _remote_discard_without_draw():
+	if DisplayServer.get_name() == "headless": return
+	var host = _fixture()
+	var view = host._new_areas
+	host.round.players[0].discards = ["wan9"]
+	host.round.players[0].discard_ids = [0]
+	_card(view, view.hand_boxes[0], "hidden0", 0, 0, G.hand_slot_center(0, 0, 1, 4))
+	host._table_animation_controller._pending_draw_after_meld = {"seat": 0, "tile": "hidden0"}
+	host._table_animation_controller._on_visual_event({
+		"session": "regression", "id": 1, "type": "discard", "seat": 0, "tile": "wan9",
+		"draw_tile": "hidden0", "drawn_source_index": -1, "discard_index": 0})
+	t.expect(not view._discard_flights.is_empty() or view._discard_layer.get_child_count() == 1,
+		"Legacy masked discard after a pung still starts with no draw slot")
+	t.expect(host._table_animation_controller._pending_draw_after_meld.is_empty(),
+		"An authoritative discard clears a superseded draw queued by a meld animation")
+	await _cleanup(host)
+
+func _remote_discards_without_source():
+	var host = _fixture()
+	var view = host._new_areas
+	view.animate_draw(1, "wan2", 53, func(): pass)
+	var cards := {0: "wan9", 2: "tiao1", 3: "tong8"}
+	for seat: int in [0, 2, 3]:
+		var player: PlayerState = host.round.players[seat]
+		player.discards = [cards[seat]]
+		player.discard_ids = [0]
+		if seat == 0:
+			view.animate_draw_discard(seat, func(): pass, cards[seat])
+		elif seat == 2:
+			view._pending_draws[seat] = "hidden0"
+			view.animate_draw_insert(seat, cards[seat], "hidden0", func(): pass, 4)
+			t.expect(view._pending_draws[seat] == "", "Missing draw source cannot leave a stale draw placeholder")
+		else:
+			view.animate_hand_discard(seat, cards[seat], 4, func(): pass)
+		var river: Control = view._discard_layer if seat == 0 else view._red_layer
+		var public_tiles := river.get_children().filter(func(node):
+			return int(node.get_meta("v2_seat", -1)) == seat and int(node.get_meta("discard_id", -1)) == 0)
+		t.expect(public_tiles.size() == 1 and public_tiles[0].tile == cards[seat] and public_tiles[0].face_up,
+			"Opponent %d's public discard appears immediately even without a source node" % seat)
+	t.expect(view._draw_flights.has(1), "Independent opponent discards do not cancel the viewer's draw")
+	view.animate_draw_discard(0, func(): pass, cards[0])
+	t.expect(view._discard_layer.get_child_count() == 1, "The same authoritative discard lands only once")
+	await _cleanup(host)
+
 func _refresh_during_discard_flight():
 	var host = _fixture()
 	var view = host._new_areas
@@ -562,6 +632,9 @@ func _run():
 	if selected_case in ["all","kong_sources"]: await _kong_sources()
 	if selected_case in ["all","discard_sources"]: await _discard_sources()
 	if selected_case in ["all","remote_discards"]: await _remote_discards()
+	if selected_case in ["all","discard_during_draw"]: await _discard_during_draw()
+	if selected_case in ["all","remote_discard_without_draw"]: await _remote_discard_without_draw()
+	if selected_case in ["all","remote_discards_without_source"]: await _remote_discards_without_source()
 	if selected_case in ["all","refresh_during_discard_flight"]: await _refresh_during_discard_flight()
 	if selected_case in ["all","deal_privacy"]: await _deal_privacy()
 	if selected_case in ["all","online_opening_wall"]: await _online_opening_wall()

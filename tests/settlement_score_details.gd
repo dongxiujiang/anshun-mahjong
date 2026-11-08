@@ -59,6 +59,7 @@ func _test_grouped_sources() -> void:
 	t.expect(_find(groups, "0:hand_flip").stages.flip.text == "翻鸡3分", "short flip caption")
 	t.expect(_find(groups, "0:hand_flip").detail == "翻鸡3分", "click uses the same compact caption")
 	t.expect(_find(groups, "0:hand_flip").tile_details.wan5 == "翻鸡1分", "a single flip tile shows its recorded unit")
+	t.expect(_find(groups, "0:hand_flip").tile_scores.wan5.label == "翻鸡", "inspection labels the flip tile")
 	t.expect(var_to_bytes(f) == before, "build leaves all nested inputs unchanged")
 	t.expect(groups == _build(f), "deterministic details")
 	groups[0].tiles.clear()
@@ -80,6 +81,8 @@ func _test_gold_charge_and_multiplier() -> void:
 	t.expect(group.detail == "冲锋幺鸡8分 幺鸡4分", "click details include the same addition total")
 	t.expect(group.tile_details["tiao1:charge"] == "冲锋幺鸡8分" and group.tile_details.tiao1 == "幺鸡4分",
 		"tapping identical chicken tiles distinguishes charge and ordinary values")
+	t.expect(group.tile_scores["tiao1:charge"].label == "金鸡冲锋" and group.tile_scores.tiao1.label == "金鸡",
+		"inspection distinguishes charge gold from gold")
 	t.expect(not group.stages.has("chicken"), "gold never counts twice")
 	t.expect(group.detail.contains("冲锋幺鸡8分") and group.detail.contains("幺鸡4分"), "charge and ordinary details")
 	# Already doubled ordinary charge/ordinary items have different recorded units.
@@ -153,7 +156,9 @@ func _test_draw() -> void:
 	var groups := _build(f)
 	t.expect(groups.all(func(group): return group.area not in ["hand", "draw"]), "draw does not expose hidden hands/draw")
 	t.expect(groups.all(func(group): return not group.stages.has("flip") and not group.stages.has("chicken")), "draw details use only existing phases")
-	_amount(_find(groups, "0:meld_0"), "kong", 24, "draw kong includes base and actual chicken payments")
+	var kong_group := _find(groups, "0:meld_0")
+	_amount(kong_group, "kong", 24, "draw kong includes base and actual chicken payments")
+	t.expect(kong_group.inspection_parts == {"杠": 4.0, "杠中鸡": 8.0}, "inspection separates draw kong and kong chicken")
 	var discard := _find(groups, "0:chicken_tong8")
 	_amount(discard, "other", 2, "draw discarded chicken composition goes other")
 	t.expect(not discard.detail.contains("向上家收"), "called seat1 never invented as payer")
@@ -224,6 +229,8 @@ func _test_uncalled_two_same_chickens() -> void:
 	t.expect(group.detail == "冲锋幺鸡-4分 幺鸡-2分", "click keeps the same two per-payer tile lines")
 	t.expect(group.tile_details["tiao1:charge"] == "冲锋幺鸡-4分／每位叫牌者"
 		and group.tile_details.tiao1 == "幺鸡-2分／每位叫牌者", "a clicked chicken shows only its own debt")
+	t.expect(group.tile_scores["tiao1:charge"].label == "冲锋鸡" and group.tile_scores.tiao1.label == "普通鸡",
+		"inspection distinguishes charge and ordinary chicken debts")
 	t.expect(is_equal_approx(float(group.stages.chicken.amount), -18.0), "two tile lines still keep the real ledger total")
 	f.players[1].discards.append("tiao1")
 	f.players[1].discard_ids.append(2)
@@ -476,6 +483,9 @@ func _test_multiple_kong_debts() -> void:
 				var group := _find(_build(f), "1:meld_%d" % index)
 				var chicken_stage := "kong" if is_draw else ("flip" if index == 0 else "chicken")
 				if not is_draw: _amount(group, chicken_stage, -unit * 3.0, "each kong gets only its recorded chicken debt")
+				var label := "杠中金鸡" if chicken_stage == "flip" else "杠中鸡"
+				t.expect(group.inspection_parts == {"杠": -4.0 * multiplier, label: -float(unit)},
+					"inspection separates each kong debt from its chicken debt")
 				t.expect(group.detail.contains(name + str(-unit) + "分"), "multiple chicken kongs keep separate short tile debts")
 				t.expect(group.detail.contains("鸡分·杠上家" + name + str(-4 * multiplier) + "分"), "exposed debt direction follows the source, across all receivers")
 				t.expect(not group.detail.contains("向") and not group.detail.contains("本组暂无"), "complete multiple kong debts need no flow or fallback")

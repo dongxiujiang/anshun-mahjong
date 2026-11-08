@@ -68,14 +68,14 @@ func _run() -> void:
 	t.expect(network.start_host(false, true, 7595, "001234"), "Reservation fixture host opens")
 	var net: NetGameNode = network.net_node
 	net.set_ready(true)
-	net._orphaned[1] = {"until": Time.get_ticks_msec() + NetGameNode.RESUME_GRACE_MS,
+	net._orphaned[0] = {"until": Time.get_ticks_msec() + NetGameNode.RESUME_GRACE_MS,
 		"ready_until": Time.get_ticks_msec() + NetGameNode.READY_GRACE_MS, "member": {"name": "离线玩家"}}
 	t.expect(not net.all_ready(), "First thirty seconds wait for the disconnected player")
-	net._orphaned[1].ready_until = Time.get_ticks_msec() - 1
+	net._orphaned[0].ready_until = Time.get_ticks_msec() - 1
 	net._process(0.0)
 	t.expect(net.all_ready() and net.has_reconnect_reservations(), "Other players can continue while restart reservation remains")
-	t.expect(net.lobby.seats[1].ready and net.lobby.seats[1].disconnected, "Lobby presents ready substitute without losing reservation")
-	net._orphaned[1].until = Time.get_ticks_msec() - 1
+	t.expect(net.lobby.seats[0].ready and net.lobby.seats[0].disconnected, "Lobby presents ready substitute without losing reservation")
+	net._orphaned[0].until = Time.get_ticks_msec() - 1
 	net._process(0.0)
 	t.expect(net.has_reconnect_reservations(), "Started game retains the reservation until settlement")
 	network.reset()

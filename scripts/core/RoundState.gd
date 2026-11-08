@@ -209,6 +209,7 @@ func start_round(human_seat: int, die_override: int = -1, white_die_override: in
 	_reset_visual_events()
 	last_result = {}
 	round_meta.chicken_multiplier = clampi(next_chicken_multiplier, 1, CFG.MAX_CHICKEN_MULTIPLIER)
+	round_meta.previous_draw_double = round_meta.chicken_multiplier > 1
 	next_chicken_multiplier = 1
 	last_discard = {}
 	_pending_kong = {}

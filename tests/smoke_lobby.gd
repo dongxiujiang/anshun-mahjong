@@ -14,7 +14,9 @@ func _run() -> void:
 	t.expect(net.game.phase == RoundState.Phase.IDLE and net.game.players.is_empty(), "No tiles before readiness")
 	t.expect(not net.start_net_game(9), "Unready start rejected")
 	t.expect(net.lobby.seats.size() == 4, "Four seats published")
-	for seat in range(1, 4):
+	t.expect(net.my_seat == 1, "LAN host defaults to South")
+	for seat in 4:
+		if seat == net.my_seat: continue
 		t.expect(net.lobby.seats[seat].ai and net.lobby.seats[seat].ready, "AI defaults ready")
 	net.select_seat(3)
 	t.expect(net.my_seat == 3 and net._peer_seat[1] == 3, "Host can select AI seat")

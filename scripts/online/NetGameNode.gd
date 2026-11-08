@@ -31,6 +31,7 @@ const HEARTBEAT_INTERVAL_MS := 5000
 const HEARTBEAT_TIMEOUT_MS := 15000
 # 3: server-issued resume token + compressed state frames.
 const PROTOCOL_VERSION := 3
+const JOIN_SEAT_ORDER := [1, 0, 3, 2] # 南、东、北、西
 const READY_GRACE_MS := 30000
 const BACKGROUND_AI_DELAY_MS := 30000
 const BACKGROUND_VOTE_DELAY_MS := 5000
@@ -163,11 +164,11 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 		_seat_peer[seat] = -1
 		_ctrl_hint[seat] = AUTO
 	if not dedicated:
-		_seat_peer[0] = 1
-		_peer_seat[1] = 0
-		_ctrl_hint[0] = AUTO if host_auto else "human"
+		my_seat = JOIN_SEAT_ORDER[0]
+		_seat_peer[my_seat] = 1
+		_peer_seat[1] = my_seat
+		_ctrl_hint[my_seat] = AUTO if host_auto else "human"
 		_members[1] = {"name": get_node("/root/GameConfig").player_name, "ready": host_auto, "wants_dealer": false}
-		my_seat = 0
 		my_voice_pack = ""
 		# 房主创建房间时先把本地四个座位音色上传为房间初始配置。
 		var audio = get_node_or_null("/root/AudioManager") if is_inside_tree() else null
@@ -403,15 +404,10 @@ func request_join(number: String, player_name: String, token: String = "", resum
 		_reject(peer, "该房间已开局，或重连座位已过期")
 		return
 	if not resumed:
-		# 创建者进入自己创建的房间时固定坐东位，保证建房座位与音色设置一致。
-		var owner_joining := dedicated and _owner_peer == 0 and _owner_token != "" and token == _owner_token
-		if owner_joining and int(_seat_peer.get(0, -1)) < 1 and not _orphaned.has(0):
-			seat = 0
-		else:
-			for candidate in 4:
-				if int(_seat_peer.get(candidate, -1)) < 1 and not _orphaned.has(candidate):
-					seat = candidate
-					break
+		for candidate in JOIN_SEAT_ORDER:
+			if int(_seat_peer.get(candidate, -1)) < 1 and not _orphaned.has(candidate):
+				seat = candidate
+				break
 	if seat < 0:
 		_reject(peer, "房间已满")
 		return

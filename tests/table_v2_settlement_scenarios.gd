@@ -52,7 +52,7 @@ func _run_case() -> void:
 	var r: RoundState
 	if _visual:
 		table = load("res://scenes/GameTable.tscn").instantiate()
-		table.human_seat = 1 if _case in ["double-ron", "rob-added-kong"] else 0
+		table.human_seat = 3 if _case == "double-ron" else (1 if _case == "rob-added-kong" else 0)
 		root.add_child(table)
 		await process_frame
 		r = table.round
@@ -64,6 +64,10 @@ func _run_case() -> void:
 		r = RoundState.new()
 		r.build_players(0)
 	r._reset_meta()
+	if _case in ["ready-seven-pairs", "triplets-exposed-kong", "mixed-draw"]:
+		r.round_meta.chicken_multiplier = 2
+		r.round_meta.dice_double = _case != "mixed-draw"
+		r.round_meta.previous_draw_double = _case != "ready-seven-pairs"
 	r.cancel_ai()
 	r.controllers = [null, null, null, null]
 	var spec := _fixture(r)
@@ -100,6 +104,9 @@ func _fixture(r: RoundState) -> Dictionary:
 			hand[6] = "tiao1"
 			hand[7] = "tiao2"
 			hand[8] = "tiao3"
+			hand[9] = "tiao1"
+			hand[10] = "tiao2"
+			hand[11] = "tiao3"
 			for payer in [1, 2, 3]: fees.append([payer, 0, "自摸基础分", 4])
 		"ready-seven-pairs":
 			hand = SEVEN.duplicate()
@@ -301,7 +308,8 @@ func _check_ledger(r: RoundState, spec: Dictionary) -> void:
 		var amount := 0.0
 		for entry: Dictionary in result.transfers:
 			if entry.from == expected[0] and entry.to == expected[1] and entry.reason == expected[2]: amount += float(entry.amount)
-		_check(amount == expected[3], "%d→%d %s: expected %d, got %.0f" % [expected[0], expected[1], expected[2], expected[3], amount])
+		var actual_fee := int(expected[3]) * int(r.round_meta.chicken_multiplier)
+		_check(amount == actual_fee, "%d→%d %s: expected %d, got %.0f" % [expected[0], expected[1], expected[2], actual_fee, amount])
 	if _case in ["flush-ron", "dry-pattern-ready"]:
 		# 总纲 8.5/10.1: verify the total, independent of which component keeps 基础4.
 		for payer in ([1] if _case == "flush-ron" else [1, 2, 3]):
@@ -389,6 +397,20 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 		var peer := posmod(self_seat + offset, 4)
 		_check(view._settlement_pairs[self_seat][peer] == r.last_result.pairwise[self_seat][peer], "final relative column does not match ledger")
 	var panel: Control = view._native_settlement
+	var titles := {
+		"plain-self-draw": "你自摸", "ready-seven-pairs": "你报听自摸",
+		"triplets-exposed-kong": "你胡上家", "flush-ron": "你胡上家", "dragon-seven-pairs-ron": "你胡上家",
+		"rob-added-kong": "下家抢你的杠胡牌", "kong-draw-last-four": "你杠开海底自摸",
+		"double-ron": "下家报听胡对家、上家报听胡对家", "mixed-draw": "本局流局",
+		"all-called-draw": "四家叫牌流局", "dry-pattern-ready": "你报听自摸",
+	}
+	var multiplier_titles := {
+		"ready-seven-pairs": "双骰同点 · 本局双倍",
+		"mixed-draw": "上局流局 · 本局双倍",
+		"triplets-exposed-kong": "上局流局、双骰同点 · 本局双倍",
+	}
+	_check(panel.get_node("ResultTitle").text == titles[_case], "settlement title shows the outcome in the viewer's seat order")
+	_check(panel.get_node("MultiplierTitle").text == multiplier_titles.get(_case, ""), "multiplier identifies the exact source")
 	var next: Control = table._settlement_card._post_controls
 	var sizes := [Vector2i(1280, 720)]
 	if _case in ["triplets-exposed-kong", "double-ron", "all-called-draw"]: sizes.append_array([Vector2i(960, 540), Vector2i(2400, 1080)])
@@ -412,9 +434,48 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 		await _click(tile)
 		var details = view._score_inspection
 		if _check(is_instance_valid(details) and details._detail_panel.visible, "winning tile not inspectable through pointer input"):
-			_check(details._total.text.contains("胡牌实收"), "winning tile detail missing actual receipts")
+			_check(details._heading.text == view._tile_short(tile.tile) and not details._breakdown.text.is_empty(),
+				"winning tile shows its name and score categories")
+			var expected_parts: Array = {
+				"plain-self-draw": ["自摸4分"],
+				"ready-seven-pairs": ["小七对24分", "报听20分", "翻鸡2分"],
+				"triplets-exposed-kong": ["大对子14分"],
+				"flush-ron": ["清一色24分", "大干扣20分"],
+				"dragon-seven-pairs-ron": ["龙七对44分"],
+				"rob-added-kong": ["抢杠12分"],
+				"kong-draw-last-four": ["大对子14分", "杠开5分", "海底捞5分"],
+				"double-ron": ["干扣14分", "报听20分"],
+				"dry-pattern-ready": ["清一色24分", "大干扣20分", "报听20分"],
+			}.get(_case, [])
+			var parts: PackedStringArray = details._breakdown.text.split("　")
+			_check(expected_parts.all(func(part): return part in parts), "winning tile splits single-rate scores: %s" % [parts])
 			await _capture("%02d-winning-tile-detail" % (index + 1))
 		_check(before == r.last_result, "inspection altered ledger")
+	if _case == "triplets-exposed-kong":
+		var found_kong := false
+		for tile: TileView in view._native_tiles_for_seat(0):
+			if tile.tile == "wan5" and int(tile.get_meta("meld_index", -1)) == 0:
+				found_kong = true
+				await _click(tile)
+				var details = view._score_inspection
+				_check(details._detail_panel.visible and details._heading.text == "5万" and details._breakdown.text == "杠4分　翻鸡4分",
+					"doubled exposed kong shows each category at single rate")
+				await _capture("final-single-rate-kong")
+				break
+		_check(found_kong, "doubled exposed kong tile is present")
+	if _case == "plain-self-draw":
+		var found_chicken := false
+		for tile: TileView in view._native_tiles_for_seat(0):
+			if tile.tile != "tiao1" or str(tile.get_meta("new_kind", "")) != "hand":
+				continue
+			found_chicken = true
+			await _click(tile)
+			var details = view._score_inspection
+			_check(details._detail_panel.visible and details._heading.text == "幺鸡" and details._breakdown.text == "普通鸡4分",
+				"two matching ordinary chicken tiles show their combined single-rate points")
+			await _capture("final-ordinary-chicken")
+			break
+		_check(found_chicken, "ordinary chicken tile is present")
 
 func _click(tile: Control) -> void:
 	var center := tile.get_global_transform_with_canvas() * (tile.size / 2.0)

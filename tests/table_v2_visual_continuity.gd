@@ -226,15 +226,17 @@ func _run():
 						if rect(exposed_tile).intersects(wall.grow(-0.1)): wall_clear=false
 		t.expect(wall_clear,"seat%d: exposed belt clears both layers of all four walls" % seat)
 	for count in [13,10,7,4,1]:
-		var row_size=Vector2(378,84)
+		var ui := preload("res://scripts/ui/table/TableUiConfig.gd")
+		var row_size := Vector2(4 * ui.DISCARD_BUTTON_SIZE.x + 3 * ui.ACTION_SEPARATION, ui.DISCARD_BUTTON_SIZE.y)
 		var drawn=G.draw_slot_center(1,1,count)
 		var preferred=Vector2(drawn.x+G.TILE_BASE.x*G.OWN_UNIT/2-row_size.x, G.hand13_rect(1,1).position.y-12-row_size.y)
-		var action_rect=Rect2(view.action_bar_position(row_size,preferred),row_size)
+		var action_rect: Rect2 = view.action_bar_rect(row_size,preferred)
 		var unobscured=true
 		for layer in view._render_layers():
 			for tile in layer.get_children():
 				if action_rect.intersects(rect(tile).grow(-0.1)):unobscured=false
 		t.expect(unobscured,"hand%d: action buttons avoid every public tile, wall and hand" % count)
+		t.expect(action_rect.position.y >= G.CENTER.y, "hand%d: action buttons stay on the local side of the table" % count)
 	host.round.players[1].melds[0]["from_seat"]=0
 	view.refresh()
 	var exposed_source=false
