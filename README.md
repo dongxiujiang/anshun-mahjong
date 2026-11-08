@@ -523,7 +523,7 @@ Android 固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280），Android 使�
 ### 10.8 牌组件与弹窗
 
 - `scripts/ui/TileView.gd`：单张牌的牌面、牌背、选中抬起、悬停和程序化绘制。替换牌素材或改变基础牌比例时从这里开始。
-- `scripts/ui/SoundSettings.gd`：声音开关、音乐/语音/落桌音效滑块、AI 快中慢和退出房间二次确认。牌桌右上角的“设置”按钮打开它。
+- `scripts/ui/SoundSettings.gd`：声音开关、音乐/语音/落桌音效滑块、详细展示开关，以及牌张动画、人机出牌等待、结算步骤三个 0～2 秒滑条。牌桌右上角的“设置”按钮打开它。
 - `scripts/ui/RuleGuide.gd`：首次进入时的规则/教程分页。修改新手引导文字直接编辑 `PAGES`。
 - `scripts/ui/UpdatePanel.gd`：版本检查、补丁下载、进度、重启和回滚，不负责游戏牌桌布局。
 - `scripts/ui/TableAnimationLayer.gd`：临时牌节点与 Tween。`TableAnimationController` 管理事件队列、实际牌位、临时遮挡和取消恢复；`TableUiConfig` 中 `DICE_DURATION`/`DEAL_DURATION`/`DRAW_DURATION`/`DISCARD_DURATION`/`MELD_DURATION` 和 `ANIMATION_TILE_UNIT` 调整表现。牌局立即完成操作，视觉异步播放；重连取消旧动画，headless 跳过 Tween。
@@ -558,8 +558,8 @@ Android 固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280），Android 使�
 
 ### 开局动画与结算准备的调整入口
 
-- `GameConfig.OPENING_DICE_SECONDS = 1.2`、`OPENING_DICE_HOLD_SECONDS = 0.5`、`OPENING_DEAL_SECONDS = 0.22`、`OPENING_DEAL_TILE_STAGGER = 0.035`、`OPENING_SORT_SECONDS = 0.34` 和 `OPENING_SORT_TILE_STAGGER = 0.012` 定义共享开局节奏。骰子、发牌和理牌不受每个客户端的动画速度影响，日常摸打仍可调快慢。
-- 权威端先立即完成 52 张起手牌数据，保持 `DEALING`；UI 从空手牌开始，按三轮四张和最后单张逐组播放，全部落桌后用抛物线完成理牌。共同开局等待结束后才摸庄家的第 14 张并发出行动提示。动画回调不提交操作、不推进权威端。普通 headless 回归默认跳过等待，专用服务器保留真实等待。
+- 开局骰子时长由 `GameConfig.OPENING_DICE_SECONDS` 和 `OPENING_DICE_HOLD_SECONDS` 定义；逐组发牌和理牌使用牌张动画滑条的秒数，联机采用房主同步的速度。`opening_wait_seconds()` 按全部发牌组、理牌和帧间隔计算服务端等待时间。
+- 权威端先立即完成 52 张起手牌数据，保持 `DEALING`；UI 从空手牌开始，按三轮四张和最后单张逐组播放，全部落桌后用抛物线完成理牌。共同等待结束且所有在线真人客户端确认理牌画面已呈现后，才摸庄家的第 14 张并发出行动提示。动画只报告开局完成，不提交游戏操作；断线或转为人机的座位不会阻塞开局。普通 headless 回归默认跳过等待，专用服务器保留真实等待。
 - `TableActions._on_human_tile_gui()` 在短按松手时提交一次出牌，滑动超过阈值不出牌；所有提交入口都检查开局锁。原生触控和模拟鼠标不能重复提交。
 - `SettlementCard` 的 `ReadinessFooter` 独立显示四人的昵称与准备状态、等待提示、大号准备/取消按钮。每个真人各自准备，人机默认准备；全部准备后仍由权威端等待 1 秒开始下一局。
 - `tests/table_interaction.gd` 加入常规和 CI 快速检查；`tests/capture_table_controls.gd` 需真实窗口，保存本轮牌桌、结算、准备和骰子截图到 `build/ui_review/table_controls/`。
