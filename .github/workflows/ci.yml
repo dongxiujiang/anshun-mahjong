@@ -35,9 +35,15 @@ jobs:
 
       - name: Install Godot
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          for attempt in 1 2 3 4 5; do
+            if gh release download "$GODOT_RELEASE" --repo godotengine/godot --pattern "Godot_v${GODOT_RELEASE}_linux.x86_64.zip" --output /tmp/godot.zip --clobber; then break; fi
+            test "$attempt" -lt 5
+            sleep 3
+          done
           unzip -q /tmp/godot.zip -d /tmp/godot
           sudo install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
 

@@ -71,7 +71,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = "Stop"
-          Invoke-WebRequest -MaximumRetryCount 5 -RetryIntervalSec 3 -Uri "https://github.com/godotengine/godot/releases/download/${env:GODOT_RELEASE}/Godot_v${env:GODOT_RELEASE}_win64.exe.zip" -OutFile godot.zip
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            gh release download $env:GODOT_RELEASE --repo godotengine/godot --pattern "Godot_v${env:GODOT_RELEASE}_win64.exe.zip" --output godot.zip --clobber
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 5) { throw "Godot engine download failed" }
+            Start-Sleep -Seconds 3
+          }
           Expand-Archive godot.zip -DestinationPath godot
           $godot = Get-ChildItem godot -Filter "*.exe" | Select-Object -First 1
           "GODOT_EXE=$($godot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -169,7 +174,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          for attempt in 1 2 3 4 5; do
+            if gh release download "$GODOT_RELEASE" --repo godotengine/godot --pattern "Godot_v${GODOT_RELEASE}_linux.x86_64.zip" --output /tmp/godot.zip --clobber; then break; fi
+            test "$attempt" -lt 5
+            sleep 3
+          done
           unzip -q /tmp/godot.zip -d /tmp/godot
           sudo install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
           for attempt in 1 2 3 4 5; do
@@ -267,6 +276,7 @@ jobs:
           mkdir -p build/android android/build
           unzip -q "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/android_source.zip" -d android/build
           printf '%s.stable\n' "$GODOT_VERSION" > android/.build_version
+          touch android/build/.gdignore
           chmod +x android/build/gradlew
           grep -q 'gradle-8.11.1-bin.zip' android/build/gradle/wrapper/gradle-wrapper.properties
           for attempt in 1 2 3 4 5; do
