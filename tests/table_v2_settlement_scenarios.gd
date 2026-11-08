@@ -434,48 +434,82 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 		await _click(tile)
 		var details = view._score_inspection
 		if _check(is_instance_valid(details) and details._detail_panel.visible, "winning tile not inspectable through pointer input"):
-			_check(details._heading.text == view._tile_short(tile.tile) and not details._breakdown.text.is_empty(),
-				"winning tile shows its name and score categories")
+			_check(details._selected == 0 and details._heading.text.ends_with("得分明细（单倍）") and not details._breakdown.text.is_empty(),
+				"hand click opens all score categories for that player")
 			var expected_parts: Array = {
-				"plain-self-draw": ["自摸4分"],
-				"ready-seven-pairs": ["小七对24分", "报听20分", "翻鸡2分"],
-				"triplets-exposed-kong": ["大对子14分"],
-				"flush-ron": ["清一色24分", "大干扣20分"],
-				"dragon-seven-pairs-ron": ["龙七对44分"],
-				"rob-added-kong": ["抢杠12分"],
-				"kong-draw-last-four": ["大对子14分", "杠开5分", "海底捞5分"],
-				"double-ron": ["干扣14分", "报听20分"],
-				"dry-pattern-ready": ["清一色24分", "大干扣20分", "报听20分"],
+				"plain-self-draw": ["自摸 4分"],
+				"ready-seven-pairs": ["小七对 24分", "报听 20分", "7筒 · 翻鸡 2分"],
+				"triplets-exposed-kong": ["大对子 14分"],
+				"flush-ron": ["清一色 24分", "大干扣 20分"],
+				"dragon-seven-pairs-ron": ["龙七对 44分"],
+				"rob-added-kong": ["抢杠 12分"],
+				"kong-draw-last-four": ["大对子 14分", "杠开 5分", "海底捞 5分"],
+				"double-ron": ["干扣 14分", "报听 20分"],
+				"dry-pattern-ready": ["清一色 24分", "大干扣 20分", "报听 20分"],
 			}.get(_case, [])
-			var parts: PackedStringArray = details._breakdown.text.split("　")
+			var parts: PackedStringArray = details._breakdown.text.split("\n")
 			_check(expected_parts.all(func(part): return part in parts), "winning tile splits single-rate scores: %s" % [parts])
 			await _capture("%02d-winning-tile-detail" % (index + 1))
 		_check(before == r.last_result, "inspection altered ledger")
-	if _case == "triplets-exposed-kong":
-		var found_kong := false
-		for tile: TileView in view._native_tiles_for_seat(0):
-			if tile.tile == "wan5" and int(tile.get_meta("meld_index", -1)) == 0:
-				found_kong = true
-				await _click(tile)
-				var details = view._score_inspection
-				_check(details._detail_panel.visible and details._heading.text == "5万" and details._breakdown.text == "杠4分　翻鸡4分",
-					"doubled exposed kong shows each category at single rate")
-				await _capture("final-single-rate-kong")
+	var details = view._score_inspection
+	var before: Dictionary = r.last_result.duplicate(true)
+	for seat in 4:
+		var hand_tile: Control = null
+		for tile: TileView in view._native_tiles_for_seat(seat):
+			if str(tile.get_meta("new_kind", "")) == "hand":
+				hand_tile = tile
 				break
-		_check(found_kong, "doubled exposed kong tile is present")
-	if _case == "plain-self-draw":
-		var found_chicken := false
-		for tile: TileView in view._native_tiles_for_seat(0):
-			if tile.tile != "tiao1" or str(tile.get_meta("new_kind", "")) != "hand":
-				continue
-			found_chicken = true
-			await _click(tile)
-			var details = view._score_inspection
-			_check(details._detail_panel.visible and details._heading.text == "幺鸡" and details._breakdown.text == "普通鸡4分",
-				"two matching ordinary chicken tiles show their combined single-rate points")
-			await _capture("final-ordinary-chicken")
-			break
-		_check(found_chicken, "ordinary chicken tile is present")
+		if not _check(hand_tile != null, "all four players have a clickable hand region"):
+			continue
+		await _click(hand_tile)
+		_check(details._detail_panel.visible and details._selected == seat,
+			"clicking any hand switches to that player's full details")
+		_check(details._heading.text.begins_with(["你", "上家", "对家", "下家"][posmod(seat - view.human_seat, 4)]),
+			"player heading uses the viewer's relative position")
+		if seat == 0 and _case == "triplets-exposed-kong":
+			_check(details._breakdown.text.contains("5万 · 杠 4分") and details._breakdown.text.contains("5万 · 翻鸡 4分")
+				and details._breakdown.text.contains("大对子 14分"), "hand click includes the meld and winning pattern")
+		elif seat == 0 and _case == "plain-self-draw":
+			_check(details._breakdown.text.contains("幺鸡 · 普通鸡 4分") and details._breakdown.text.contains("自摸 4分"),
+				"hand click includes all matching chicken tiles and self-draw")
+		elif _case == "all-called-draw":
+			_check(details._breakdown.text == "叫牌0分", "all-called draw remains inspectable with no scores")
+		var called: bool = bool(view._settlement_plan.called[seat])
+		var parts: Dictionary = details._seat_details[seat].parts
+		var status: String = "叫牌" if called else "未叫牌"
+		if parts.is_empty():
+			_check(details._breakdown.text == status + "0分", "empty scores show called or uncalled zero")
+		else:
+			_check(details._breakdown.text.begins_with(status), "scoring details identify called status")
+		if not called:
+			var total := 0.0
+			for value in parts.values(): total += float(value) / int(r.round_meta.chicken_multiplier)
+			if total < 0.0:
+				_check(details._breakdown.text.begins_with("未叫牌%.0f分\n" % total), "uncalled chicken debts show a negative single-rate total")
+		await _click(hand_tile)
+		_check(details._detail_panel.visible and details._selected == seat, "repeated hand click keeps details visible")
+		for dimensions in [Vector2i(960, 540), Vector2i(1280, 720), Vector2i(2400, 1080)]:
+			root.size = dimensions
+			await process_frame
+			await process_frame
+			_check(root.get_visible_rect().encloses(details._detail_panel.get_global_rect()), "player details fit the screen")
+			_check(not details._detail_panel.get_global_rect().intersects(panel.get_global_rect()), "player details do not overlap settlement")
+		root.size = Vector2i(1280, 720)
+		await process_frame
+		await _capture("final-player-%d-detail" % seat)
+	for receiving_seat in 4:
+		var client := RoundState.new()
+		client.apply_sync(JSON.parse_string(JSON.stringify(r.serialize_for_seat(receiving_seat))))
+		var plan: Dictionary = preload("res://scripts/ui/table/SettlementAnimationPlan.gd").build(
+			client.last_result, client.round_meta, client.players, view.human_seat)
+		var remote = load("res://scripts/ui/table/v2/TableV2ScoreInspection.gd").new(
+			view, client.last_result, client.round_meta, client.players, plan)
+		view._settlement_layer.add_child(remote)
+		_check(remote._seat_details == details._seat_details, "network snapshot produces identical details for every player")
+		remote.free()
+	_check(before == r.last_result, "switching players never changes scores or transfers")
+	details._hide_detail()
+	_check(not details._detail_panel.visible, "player score details can be closed")
 
 func _click(tile: Control) -> void:
 	var center := tile.get_global_transform_with_canvas() * (tile.size / 2.0)

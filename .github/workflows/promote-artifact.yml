@@ -9,19 +9,17 @@ on:
       run_id:
         description: Full release workflow run ID
         required: true
-        default: "39136889832"
       artifact_name:
         description: Full release artifact name
         required: true
-        default: "full-release-39136889832"
       baseline_artifact:
         description: Baseline artifact name for future patches
         required: true
         default: "baseline"
       tag:
-        description: Release tag for the download-only bridge
+        description: Release tag for the tested Android build
         required: true
-        default: "V1.0.0-bridge"
+        default: "V1.6.16"
       make_latest:
         description: Mark this release as GitHub latest
         required: false
@@ -69,6 +67,7 @@ jobs:
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
+          target_commitish: ${{ github.sha }}
           tag_name: ${{ inputs.tag }}
           name: ${{ inputs.tag }}
           files: release/*

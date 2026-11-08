@@ -6,6 +6,7 @@ on:
       - main
       - master
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -36,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
           unzip -q /tmp/godot.zip -d /tmp/godot
           sudo install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
 
@@ -57,7 +58,7 @@ jobs:
           set -euo pipefail
           python -X utf8 tests/run_suites.py --godot "$(command -v godot)" \
             --suite rules_complete rules_update smoke_scoring settlement_card scoring_audit scoring_pairwise \
-              legal_actions round_sync smoke_audio reconnect_control table_components table_v2_static table_v2_hand_discard table_v2_round_animation smoke_ai \
+              legal_actions round_sync smoke_audio reconnect_control table_components table_v2_static table_v2_hand_discard table_v2_round_animation settlement_score_details table_v2_settlement_scenarios smoke_ai \
             --simulation-timeout 180
 
       - name: Run Python CI checks

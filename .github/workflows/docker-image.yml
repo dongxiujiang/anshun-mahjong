@@ -3,7 +3,7 @@ name: Build online server image
 on:
   push:
     tags:
-      - "V1.0.*"
+      - "V[0-9]*"
   workflow_dispatch:
 
 permissions:

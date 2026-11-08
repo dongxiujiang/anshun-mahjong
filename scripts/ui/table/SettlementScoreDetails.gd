@@ -231,7 +231,7 @@ static func _kong_rows(item: Dictionary, items: Array, transfers: Array, seat: i
 			var other: Dictionary = items[index]
 			if str(other.get("kind", "")) != "kong": continue
 			if amount_key == "base_amount" and other.get("label", "") != item.get("label", ""): continue
-			if payer in other.get(payers_key, []) and is_equal_approx(float(other.get(amount_key, 0.0)), float(item.get(amount_key, 0.0))):
+			if other.get(payers_key, []).any(func(value): return int(value) == payer) and is_equal_approx(float(other.get(amount_key, 0.0)), float(item.get(amount_key, 0.0))):
 				candidates.append(index)
 		# Scoring emits meld items and each payer's rows in the same meld order.
 		# Only a complete, equally sized set establishes this correspondence.

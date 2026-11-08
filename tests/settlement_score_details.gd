@@ -159,6 +159,9 @@ func _test_draw() -> void:
 	var kong_group := _find(groups, "0:meld_0")
 	_amount(kong_group, "kong", 24, "draw kong includes base and actual chicken payments")
 	t.expect(kong_group.inspection_parts == {"杠": 4.0, "杠中鸡": 8.0}, "inspection separates draw kong and kong chicken")
+	var restored: Dictionary = JSON.parse_string(JSON.stringify(f))
+	t.expect(_find(_build(restored), "0:meld_0").inspection_parts == kong_group.inspection_parts,
+		"JSON-restored payment seats preserve both base kong and chicken scores")
 	var discard := _find(groups, "0:chicken_tong8")
 	_amount(discard, "other", 2, "draw discarded chicken composition goes other")
 	t.expect(not discard.detail.contains("向上家收"), "called seat1 never invented as payer")

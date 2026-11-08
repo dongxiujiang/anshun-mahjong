@@ -7,11 +7,11 @@
 - 单机：1 名真人（南位1，首局为庄）+ 3 个 AI；之后按本局结果换庄。
 - 联机：局域网自动搜索房间，也支持连接云端房间服务；先选座、换座和准备，人不够由默认准备的 AI 补位，全部准备后开局。
 - 更新：主菜单和联机大厅都可「检查更新」。新完整 APK 默认使用自建 HTTPS 更新源，主清单和回退清单都在 `https://mj.dongxiu.fun/updates/`；1.1.9 及更早版本仍需先安装一次新完整包。
-- 联机语音：正在从 LiveKit 迁移到腾讯云 GME；Android 使用 GME arm64，Windows 暂时保留 PCM。需要服务器 `GME_APP_ID`/`GME_APP_KEY`，详见 [GME 语音接入手册](docs/gme_voice.md)。
+- 联机语音：Android 使用腾讯云 GME arm64。需要服务器 `GME_APP_ID`/`GME_APP_KEY`，详见 [GME 语音接入手册](docs/gme_voice.md)。
 
-联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.6.1**，完整规则见 [游戏规则总纲](docs/游戏规则总纲.md)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Windows/Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
+联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.6.16**，完整规则见 [游戏规则总纲](docs/游戏规则总纲.md)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 
-应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Windows 和 Android 游戏内下载补丁，重启生效，不必重装；大版本更新完整 EXE/APK。首次使用热更新须安装包含 PatchBoot 的完整版本。自 1.4.19 起，自建更新清单必须携带离线 RSA 签名，客户端只信任内置公钥验证通过的 `signed_payload`；发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
+应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Android 游戏内下载补丁，重启生效；完整版本更新正式签名 APK。首次使用热更新须安装包含 PatchBoot 的完整版本。自 1.4.19 起，自建更新清单必须携带离线 RSA 签名，客户端只信任内置公钥验证通过的 `signed_payload`；发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
 
 ---
 
@@ -345,7 +345,7 @@ docker compose -f compose.prod.yaml up -d app --pull never
 
 1.0.0 正式横屏版本已使用提供的游戏图标重新打包，发布文件位于 `build/releases/v1.0.0/`：Windows 安装向导、免安装主程序、Android 正式签名 APK 和更新清单。热更新基线位于 `build/update_baselines/1.0.0-boot1/`。首次发布与以后的小/大版本更新教程见 [docs/publishing.md](docs/publishing.md)；双击根目录 `生成小版本更新.cmd` 可准备后续小补丁。正式 APK 与旧调试版签名不同，首次需卸载旧调试版；后续正式版保持同一签名。
 
-导出预设已写入 `export_presets.cfg`（Windows + Android，含包名 `com.anshun.mahjong`、arm64-v8a、沉浸式全屏）。
+导出预设已写入 `export_presets.cfg`（Android，含包名 `com.anshun.mahjong`、arm64-v8a、沉浸式全屏）。
 
 ## 六、工程结构
 

@@ -16,7 +16,10 @@ FIXTURE = PROJECT / "build/hot_update_fixture"
 def run(godot):
     FIXTURE.mkdir(parents=True, exist_ok=True)
     app_name = "MahjongHotTest-" + uuid.uuid4().hex
-    user = Path(os.environ["APPDATA"]) / "Godot/app_userdata" / app_name
+    app_data = (Path(os.environ["APPDATA"]) / "Godot/app_userdata").resolve()
+    user = (app_data / app_name).resolve()
+    assert user.parent == app_data, user
+    (user / "logs").mkdir(parents=True)
     engine = subprocess.check_output([godot, "--version"], text=True).strip().split(".")[:3]
     engine = ".".join(engine)
     template = Path(os.environ["APPDATA"]) / "Godot/export_templates" / (engine + ".stable/windows_release_x86_64.exe")
@@ -93,7 +96,9 @@ func _ready():
         result = subprocess.run(args, capture_output=True, timeout=90)
         text = (result.stdout + result.stderr).decode("utf-8", errors="replace")
         (FIXTURE / (label + ".log")).write_text(text, encoding="utf-8")
-        assert result.returncode == 0 and "SCRIPT ERROR:" not in text and "\nERROR:" not in text, text[-7000:]
+        errors = [line for line in text.splitlines() if "ERROR:" in line
+                  and "Failed to read the root certificate store" not in line]
+        assert result.returncode == 0 and not errors, text[-7000:]
 
     def export(path, baseline=None):
         command([godot, "--headless", "--path", str(source), "--editor", "--import"], "import-" + path.stem)
@@ -102,7 +107,7 @@ func _ready():
         command(args, "export-" + path.stem)
 
     def launch(confirm=False):
-        args = [str(runtime), "--headless"]
+        args = [str(runtime), "--headless", "--log-file", str(FIXTURE / "runtime.log")]
         if not confirm: args += ["--", "--no-confirm"]
         command(args, "launch")
         return json.loads((user / "result.json").read_text(encoding="utf-8"))
