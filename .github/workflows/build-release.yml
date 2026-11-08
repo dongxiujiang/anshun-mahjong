@@ -161,7 +161,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+          packages: "platform-tools platforms;android-36 build-tools;36.1.0"
 
       - name: Install Godot and export templates
         shell: bash
@@ -260,11 +260,21 @@ jobs:
       - name: Export signed Android package
         if: ${{ env.RELEASE_KIND == 'full' }}
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p build/android
-          rm -rf android
-          godot --headless --path . --install-android-build-template --export-release "Android" /tmp/gme-template.apk > build/ci/android-template.log 2>&1 || { cat build/ci/android-template.log; exit 1; }
+          mkdir -p build/android android/build
+          unzip -q "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/android_source.zip" -d android/build
+          printf '%s.stable\n' "$GODOT_VERSION" > android/.build_version
+          chmod +x android/build/gradlew
+          grep -q 'gradle-8.11.1-bin.zip' android/build/gradle/wrapper/gradle-wrapper.properties
+          for attempt in 1 2 3 4 5; do
+            if gh release download v8.11.1 --repo gradle/gradle-distributions --pattern gradle-8.11.1-bin.zip --output /tmp/gradle-8.11.1-bin.zip --clobber; then break; fi
+            test "$attempt" -lt 5
+            sleep 3
+          done
+          sed -i 's|^distributionUrl=.*|distributionUrl=file:///tmp/gradle-8.11.1-bin.zip|' android/build/gradle/wrapper/gradle-wrapper.properties
           mkdir -p android/build/libs
           cp addons/gme/gmesdk.aar android/build/libs/gmesdk.aar
           mkdir -p android/build/src/main/java/com/anshun/mahjong
@@ -272,7 +282,7 @@ jobs:
           printf "\ndependencies { implementation files(%s) }\n" "\"libs/gmesdk.aar\"" >> android/build/build.gradle
           godot --headless --path . --export-release "Android" build/android/anshun-mahjong.apk > build/ci/android-export.log 2>&1 || { cat build/ci/android-export.log; exit 1; }
           test -s build/android/anshun-mahjong.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose build/android/anshun-mahjong.apk
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --verbose build/android/anshun-mahjong.apk
 
       - name: Prepare full manifest and baseline
         if: ${{ env.RELEASE_KIND == 'full' }}
