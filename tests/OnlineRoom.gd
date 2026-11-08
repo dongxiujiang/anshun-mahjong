@@ -68,7 +68,7 @@ func _run() -> void:
 		net.set_ready(true)
 	else:
 		net.set_ready(true)
-	t.expect(await _wait_until(func(): return net.game.phase == RoundState.Phase.PLAYING), "Ready online room starts")
+	t.expect(await _wait_until(func(): return net.game.phase == RoundState.Phase.PLAYING, GameConfig.opening_wait_seconds("0.64") + 8.0), "Ready online room starts")
 	t.expect(net.game.opening_speed == "0.64", "Authoritative opening snapshots carry the selected duration")
 	t.expect(net.game.dealer_seat == 2, "Applicant becomes initial dealer")
 	for seat in 4:

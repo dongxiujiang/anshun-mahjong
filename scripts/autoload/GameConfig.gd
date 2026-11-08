@@ -237,11 +237,11 @@ static func opening_motion_seconds(value: String) -> float:
 	return value.to_float() if is_speed_seconds(value) else DEFAULT_TILE_ANIMATION_SECONDS * float(OPENING_SPEEDS.get(value, 1.0))
 
 static func opening_deal_scale(value: String) -> float:
-	return opening_motion_seconds(value) / DEAL_SEQUENCE_SECONDS
+	return opening_motion_seconds(value) / DEAL_FLIGHT_SECONDS
 
 static func opening_wait_seconds(value: String) -> float:
 	# Leave time for the serial deal callbacks to cross frame boundaries.
-	var seconds := opening_motion_seconds(value)
+	var seconds := DEAL_SEQUENCE_SECONDS * opening_deal_scale(value)
 	var frame_margin := 0.04 if seconds == 0.0 else 0.6
 	return OPENING_DICE_SECONDS + OPENING_DICE_HOLD_SECONDS + seconds + frame_margin
 

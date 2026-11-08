@@ -325,7 +325,7 @@ func _refresh_during_discard_flight():
 	view._fly_discard(tile, 1, "wan9", Callable())
 	t.expect(not view._discard_flights.is_empty(), "The discard is still in flight when the table refresh arrives")
 	view.refresh()
-	t.expect(tile.get_parent() == view.draw_boxes[1], "Refreshing does not recycle a tile still in its discard flight")
+	t.expect(tile.get_parent() == view._deal_layer and tile.is_visible_in_tree(), "Refreshing preserves the same visible discard actor in the animation layer")
 	await create_timer(0.45).timeout
 	t.expect(tile.get_parent() == view._discard_layer and view._discard_layer.get_child_count() == 1,
 		"The same tile lands once after a concurrent refresh")
@@ -443,7 +443,7 @@ func _settlement_faces():
 func _speed_settings():
 	var config=root.get_node("GameConfig")
 	var saved_seconds=config.tile_animation_seconds
-	for kind in ["draw","discard"]:
+	for kind in ["draw","discard","meld"]:
 		var times={}
 		for seconds in [0.0,0.15,0.30,2.0]:
 			var host=_fixture()
@@ -454,11 +454,15 @@ func _speed_settings():
 			var complete=func():state.count+=1;state.elapsed=Time.get_ticks_msec()-started
 			if kind=="draw":
 				deck.animate_draw(1,"wan9",0,complete)
-			else:
+			elif kind=="discard":
 				_card(deck,deck.draw_boxes[1],"wan9",1,13)
 				host.round.players[1].discards=["wan9"]
 				host.round.players[1].discard_ids=[0]
 				deck.animate_draw_discard(1,complete,"wan9")
+			else:
+				for i in 3: _card(deck,deck.hand_boxes[1],"wan5",1,i,Vector2(300+i*70,1000))
+				host.round.players[1].melds=[{"kind":"pung","tile":"wan5","from_seat":0}]
+				deck.animate_meld({"seat":1,"tile":"wan5","kind":"pung","index":0,"hand_indices":[0,1,2]},complete)
 			if seconds==0.0:t.expect(state.count==1 and not deck.native_actions_pending(),kind+": instant lands and completes synchronously")
 			else:t.expect(state.count==0 and deck.native_actions_pending(),kind+": timed motion initially pending")
 			var deadline=Time.get_ticks_msec()+3000
@@ -481,14 +485,15 @@ func _opening_speed_settings():
 		root.add_child(table)
 		table.round.controllers = [null, null, null, null]
 		var controller = table._table_animation_controller
-		var deadline := started + 7000
+		var allowed_ms := int(config.opening_wait_seconds(config.opening_speed_key()) * 1000.0) + 3000
+		var deadline := started + allowed_ms
 		while Time.get_ticks_msec() < deadline:
 			if controller._dealt == [13, 13, 13, 13] and not table._new_areas._sort_animating:
 				break
 			await process_frame
 		var elapsed := Time.get_ticks_msec() - started
 		times.append(elapsed)
-		t.expect(controller._dealt == [13, 13, 13, 13] and elapsed < 7000, "opening slider leaves all four hands correctly dealt")
+		t.expect(controller._dealt == [13, 13, 13, 13] and elapsed < allowed_ms, "opening slider leaves all four hands correctly dealt")
 		var start_turn_deadline := Time.get_ticks_msec() + 2000
 		while table.round.phase == RoundState.Phase.DEALING and Time.get_ticks_msec() < start_turn_deadline:
 			await process_frame
@@ -540,9 +545,25 @@ func _authoritative_melds():
 		table._table_animation_controller._dealt=[13,13,13,13]
 		table._new_areas.auto_sort_hands=false
 		table._refresh()
+		await RenderingServer.frame_post_draw
 		if kind=="concealed":r._do_concealed_kong(1,"wan5",p)
 		elif kind=="add_kong":r._do_add_kong(1,"wan5")
 		else:r._process_response(1,0,"wan5",{"action":"kong" if kind=="kong" else "pong"})
+		var starts := {}
+		for actor in table._new_areas._deal_layer.get_children():
+			starts[actor.get_instance_id()] = actor.position
+		t.expect(starts.size() == (3 if kind == "pung" else 4), kind + ": authority starts visible flying tiles instead of instant placement")
+		await create_timer(0.08).timeout
+		await process_frame
+		var moved := false
+		for actor in table._new_areas._deal_layer.get_children():
+			if starts.has(actor.get_instance_id()):
+				moved = moved or actor.position.distance_to(starts[actor.get_instance_id()]) > 1.0
+				t.expect(actor.is_visible_in_tree(), kind + ": flying tile remains visible")
+		t.expect(moved, kind + ": authoritative meld visibly moves before landing")
+		await RenderingServer.frame_post_draw
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://build/meld-motion"))
+		root.get_texture().get_image().save_png("res://build/meld-motion/authority-" + kind + ".png")
 		await create_timer(1.1).timeout
 		var deck=table._new_areas
 		t.expect(p.melds.size()==1 and deck._meld_layer.get_child_count()==(3 if kind=="pung" else 4),kind+": authority and rendered meld cardinality agree")

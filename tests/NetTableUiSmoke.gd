@@ -16,7 +16,9 @@ func _ready() -> void:
 	AudioManager.event_played.connect(_on_audio_event)
 	host_mode = OS.get_cmdline_user_args().has("--table-host")
 	graphical = DisplayServer.get_name() != "headless"
-	if graphical: GameConfig.set_settlement_speed("0.25", false)
+	if graphical:
+		GameConfig.set_settlement_speed("0.25", false)
+		GameConfig.set_tile_animation_seconds(0.15, false)
 	_run()
 
 func _run() -> void:
@@ -135,6 +137,7 @@ func _run() -> void:
 			var response: Dictionary = actor.decide_response(round, seat, int(round.last_discard.get("seat", -1)), card, options)
 			responses += 1
 			table._commit_response(response.action)
+	print("[net_table] timeout host=%s turns=%d responses=%d phase=%d turn=%d awaiting=%s locked=%s dealt=%s pending=%s" % [host_mode, turns, responses, table.round.phase, table.round.current_turn, table.round.awaiting, table._table_actions.input_locked(), table._table_animation_controller._dealt, table._table_animation_controller.has_pending()])
 	push_error("Network UI test timed out")
 	await _finish_test(1)
 

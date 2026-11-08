@@ -134,6 +134,7 @@ func _build_layers() -> void:
 	_action_layer = _layer("ActionLayer")
 	_animation_layer = _layer("AnimationLayer")
 	_deal_layer = _layer("DealLayer")
+	_deal_layer.z_index = 10
 	_debug_layer = _layer("WallDebugLayer")
 	_settlement_layer = _layer("SettlementLayer")
 	# 牌墙/手牌使用 z_index，结算卡必须压过它们，否则庄家卡会被南墙和手牌遮住。
@@ -283,11 +284,21 @@ func _build_native_settlement_panel() -> void:
 	var column_start := 188.0
 	var column_width := 184.0
 	var row_height := 70.0
-	for index in 3:
-		var direction := _table_text(panel, ["上", "对", "下"][index], 36, UI.GOLD)
-		direction.position = Vector2(column_start + index * column_width, header_y)
-		direction.size = Vector2(column_width, 58)
+	for index in 4:
+		var seat := posmod(human_seat + index, 4)
+		var center := 102.0 if index == 0 else column_start + (index - 1) * column_width + column_width / 2.0
+		var direction := _table_text(panel, ["我", "上", "对", "下"][index], 36, UI.GOLD)
+		direction.name = "SettlementSeat%d" % seat
+		direction.position = Vector2(center - 35.0, header_y)
+		direction.size = Vector2(36, 58)
 		direction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var called := bool(_settlement_plan.called[seat])
+		var background := Color("#30784e") if called else UI.DEALER_BACKGROUND
+		var border := Color("#a2d3ac") if called else UI.DEALER_BORDER
+		var badge := _hud_badge("叫", Vector2(center + 9.0, header_y + 16.0), background, border)
+		badge.name = "CalledStatus%d" % seat
+		badge.tooltip_text = "叫牌" if called else "未叫牌"
+		badge.reparent(panel, false)
 
 	for row in 3:
 		var top := 152.0 + row * row_height
@@ -763,43 +774,30 @@ func _current_hand_count(seat: int) -> int:
 	var player = round.players[seat]
 	return maxi(1, player.concealed.size() - (1 if player.just_drew != "" else 0))
 
-func action_bar_rect(row_size: Vector2, preferred: Vector2) -> Rect2:
-	var left := G.TABLE_BOUNDS.position.x + UI.ACTION_EDGE_GAP
-	var right := G.TABLE_BOUNDS.end.x - UI.ACTION_EDGE_GAP
-	var top := G.CENTER.y
-	var bottom := preferred.y
-	var rows: Array[float] = [bottom, top]
+func action_bar_rect(row_size: Vector2) -> Rect2:
+	var count := _current_hand_count(human_seat)
+	var size := G.hand_tile_size(human_seat, human_seat)
+	var right := G.hand_slot_center(human_seat, count - 1, human_seat, count).x + size.x / 2.0
+	var top := G.hand13_rect(human_seat, human_seat).position.y - 12.0 - row_size.y
+	var placement := Rect2(Vector2(right - row_size.x, top), row_size)
 	var obstacles: Array[Rect2] = []
+	var rows: Array[float] = [top]
 	for layer in _render_layers():
 		for tile in layer.get_children():
-			if tile is TileView and tile.visible:
-				var obstacle := _visual_rect(tile).grow(6.0)
-				if obstacle.end.y <= top or obstacle.position.y >= bottom + row_size.y:
-					continue
-				obstacles.append(obstacle)
-				var above := obstacle.position.y - row_size.y
-				if above > top and above < bottom and not rows.has(above): rows.append(above)
-	obstacles.sort_custom(func(a: Rect2, b: Rect2): return a.position.x < b.position.x)
+			if not (tile is TileView) or not tile.is_visible_in_tree(): continue
+			var bounds := _visual_rect(tile).grow(6.0)
+			if bounds.end.x <= placement.position.x or bounds.position.x >= placement.end.x: continue
+			obstacles.append(bounds)
+			var above := bounds.position.y - 12.0 - row_size.y
+			if above >= G.CENTER.y and above < top: rows.append(above)
 	rows.sort()
 	rows.reverse()
 	for y in rows:
-		var gap_left := left
-		var best_x := INF
-		for obstacle in obstacles:
-			if obstacle.position.y >= y + row_size.y or obstacle.end.y <= y:
-				continue
-			var gap_right := minf(right, obstacle.position.x) - row_size.x
-			if gap_right >= gap_left:
-				var x := clampf(preferred.x, gap_left, gap_right)
-				if absf(x - preferred.x) < absf(best_x - preferred.x): best_x = x
-			gap_left = maxf(gap_left, obstacle.end.x)
-		if right - row_size.x >= gap_left:
-			var x := clampf(preferred.x, gap_left, right - row_size.x)
-			if absf(x - preferred.x) < absf(best_x - preferred.x): best_x = x
-		if best_x != INF: return Rect2(Vector2(best_x, y), row_size)
-	# A crowded table can use the same bottom lane as the next-round button.
-	return Rect2(Vector2(G.CENTER.x - row_size.x / 2.0, G.HAND_BOTTOM + 8.0),
-		Vector2(row_size.x, UI.ACTION_BUTTON_SIZE.y))
+		placement.position.y = y
+		if obstacles.all(func(bounds: Rect2): return not placement.intersects(bounds)):
+			return placement
+	placement.position.y = top
+	return placement
 
 ## 新弃牌落点（屏幕坐标）。普通弃牌按非鸡牌顺序，鸡牌用红色区落点。
 func hand_source_global(seat: int, concealed_index: int) -> Vector2:
@@ -1793,7 +1791,7 @@ func animate_deal_group(seat: int, cards: Array, indices: Array, existing: int, 
 		recenter.chain().tween_callback(func(): _finish_deal_group(moving, done))
 	)
 	# 动画异常中断时兜底结束，避免整局卡在某一组。
-	var timer := get_tree().create_timer(0.9)
+	var timer := get_tree().create_timer(flight_seconds + recenter_seconds + 0.4)
 	timer.timeout.connect(_on_deal_anim_timeout.bind(generation))
 
 func _on_deal_anim_timeout(generation: int) -> void:
@@ -1881,11 +1879,6 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 		return
 	var tween := _motion_tween()
 	_draw_flights[seat] = {"tween": tween, "complete": complete}
-	if _motion_would_cover(tile, target, tile.size, UI.ROTATIONS[rel]):
-		tile.hide()
-		tween.tween_interval(duration)
-		tween.tween_callback(complete)
-		return
 	tween.set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(tile, "position", target - tile.size / 2.0, duration)
 	tween.tween_property(tile, "scale", Vector2.ONE, duration)
@@ -1947,6 +1940,7 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 	var target_angle: float = UI.ROTATIONS[rel] + (PI / 2.0 if charge else 0.0)
 	if missing_source:
 		node = _tile(_deal_layer, card, true, target, 1.0, target_angle)
+	if node.get_parent() != _deal_layer: node.reparent(_deal_layer)
 	var target_scale := target_size / node.size
 	var duration := 0.0 if missing_source else GameConfig.tile_motion_seconds()
 	_latest_discard_seat = seat
@@ -1962,14 +1956,6 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 		"tween": null, "finish": on_finish}
 	if duration <= 0.0:
 		_finish_discard_flight(flight_id)
-		return
-	if _motion_would_cover(node, target, target_size, target_angle):
-		_discard_flights[flight_id].finish = Callable()
-		_finish_discard_flight(flight_id)
-		if on_finish.is_valid():
-			var hold := _motion_tween()
-			hold.tween_interval(duration)
-			hold.tween_callback(on_finish)
 		return
 	var tw := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_discard_flights[flight_id].tween = tw
@@ -2317,14 +2303,6 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 		var av := TILES.value_index(str(a.card))
 		var bv := TILES.value_index(str(b.card))
 		return int(a.index) < int(b.index) if av == bv else av < bv)
-	# A claimed discard and three hand tiles enter the same small belt.
-	# Commit exposed kongs as a group so their paths cannot cover other tiles.
-	var place_together := source_slot >= 0
-	if not place_together:
-		for i in nodes.size():
-			if _motion_would_cover(nodes[i], targets[i], target_sizes[i], target_angles[i]):
-				place_together = true
-				break
 	var land := func():
 		_place_exposed_tiles(seat, meld_index)
 		for i in nodes.size():
@@ -2355,25 +2333,24 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			kept.set_meta("concealed_index", int(remaining_sources[slot].index))
 			kept.set_meta("v2_hand_slot", slot)
 			hand_boxes[seat].move_child(kept, slot)
-	if place_together:
+	var duration := GameConfig.tile_motion_seconds()
+	if duration <= 0.0:
 		land.call()
-		var cue := _motion_tween().set_parallel(true)
-		for node in nodes:
-			node.modulate = Color(1.13, 1.10, 0.93)
-			cue.tween_property(node, "modulate", Color.WHITE, 0.26 + (count - 1) * 0.03)
-		cue.chain().tween_callback(_complete_visual_action.bind(action_id, done))
+		_complete_visual_action(action_id, done)
 		return
 	var flight := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	for i in nodes.size():
 		var node: TileView = nodes[i]
+		# 飞行实体置于动画层，经过牌墙和弃牌时保持可见。
+		node.reparent(_deal_layer)
 		node.set_card(tile if visible_face else "", visible_face)
 		node.set_interactive(false)
 		node.set_latest_highlight(false)
 		var target: Vector2 = targets[i]
 		var tile_size: Vector2 = target_sizes[i]
-		flight.tween_property(node, "position", target - node.size / 2.0, 0.26).set_delay(i * 0.03)
-		flight.tween_property(node, "scale", tile_size / node.size, 0.26).set_delay(i * 0.03)
-		flight.tween_property(node, "rotation", target_angles[i], 0.26).set_delay(i * 0.03)
+		flight.tween_property(node, "position", target - node.size / 2.0, duration)
+		flight.tween_property(node, "scale", tile_size / node.size, duration)
+		flight.tween_property(node, "rotation", target_angles[i], duration)
 	flight.chain().tween_callback(func():
 		land.call()
 		_complete_visual_action(action_id, done))

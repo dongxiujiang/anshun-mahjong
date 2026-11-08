@@ -50,6 +50,27 @@ func _run() -> void:
 	first._animation_layer.set_skip(true)
 	second._animation_layer.set_skip(true)
 	first.round.awaiting = true
+	var actions = first._table_actions
+	var hand_right: float = first._new_areas.action_bar_rect(Vector2.ZERO).end.x
+	for titles in [["胡", "碰", "杠", "过"], ["碰", "过"], ["自摸", "暗杠", "加杠", "报听"], ["报听"], ["取消"]]:
+		for child in actions.action_bar.get_children():
+			actions.action_bar.remove_child(child)
+			child.free()
+		for title in titles:
+			var action := Button.new()
+			action.text = title
+			actions.action_bar.add_child(action)
+		actions._layout_actions_v2()
+		var index := 0
+		for child in actions.action_bar.get_children():
+			var pos: Vector2 = actions.action_bar.position + child.position
+			t.expect(is_equal_approx(pos.x + child.size.x, hand_right - index * (child.size.x + UI.ACTION_SEPARATION)), "Actions pack from the fixed hand right edge toward the left: " + child.text)
+			t.expect(pos.y + child.size.y < 1026.4, "Action stays above the hand")
+			index += 1
+
+	for child in actions.action_bar.get_children():
+		actions.action_bar.remove_child(child)
+		child.free()
 	var original := var_to_bytes(first.round.serialize())
 	var event := {"id": 700, "type": "draw", "seat": first.human_seat, "tile": "tiao1"}
 	first._on_visual_event(event)
@@ -134,6 +155,7 @@ func _run() -> void:
 	for helper in [first._table_layout, first._player_tile_areas, first._table_actions, first._settlement_card, first._table_widgets]:
 		component_refs.append(weakref(helper))
 	first._player_tile_areas._scroll_to_latest(first.discard_scroll[0])
+	actions = null
 	first.free()
 	await process_frame
 	t.expect(controller.table == null and controller._animation_queue.is_empty(), "Freed tables cancel visuals and are not held alive by their helpers")

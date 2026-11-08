@@ -447,8 +447,8 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 				"double-ron": ["干扣 14分", "报听 20分"],
 				"dry-pattern-ready": ["清一色 24分", "大干扣 20分", "报听 20分"],
 			}.get(_case, [])
-			var parts: PackedStringArray = details._breakdown.text.split("\n")
-			_check(expected_parts.all(func(part): return part in parts), "winning tile splits single-rate scores: %s" % [parts])
+			var parts: String = details._breakdown.text
+			_check(expected_parts.all(func(part): return parts.contains(part)), "winning tile splits single-rate scores: %s" % [parts])
 			await _capture("%02d-winning-tile-detail" % (index + 1))
 		_check(before == r.last_result, "inspection altered ledger")
 	var details = view._score_inspection
@@ -475,6 +475,10 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 		elif _case == "all-called-draw":
 			_check(details._breakdown.text == "叫牌0分", "all-called draw remains inspectable with no scores")
 		var called: bool = bool(view._settlement_plan.called[seat])
+		_check(details.find_children("*", "ScrollContainer", true, false).is_empty(), "score details have no scroll container")
+		_check(details._breakdown.get_line_count() <= 2, "all score entries fit in at most two lines")
+		_check(details._breakdown.get_theme_font_size("font_size") >= 18, "two-line details retain a readable font")
+		_check(Rect2(Vector2.ZERO, details._detail_panel.size).encloses(details._breakdown.get_rect()), "full detail text fits its panel")
 		var parts: Dictionary = details._seat_details[seat].parts
 		var status: String = "叫牌" if called else "未叫牌"
 		if parts.is_empty():
@@ -485,7 +489,7 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 			var total := 0.0
 			for value in parts.values(): total += float(value) / int(r.round_meta.chicken_multiplier)
 			if total < 0.0:
-				_check(details._breakdown.text.begins_with("未叫牌%.0f分\n" % total), "uncalled chicken debts show a negative single-rate total")
+				_check(details._breakdown.text.begins_with("未叫牌%.0f分" % total), "uncalled chicken debts show a negative single-rate total")
 		await _click(hand_tile)
 		_check(details._detail_panel.visible and details._selected == seat, "repeated hand click keeps details visible")
 		for dimensions in [Vector2i(960, 540), Vector2i(1280, 720), Vector2i(2400, 1080)]:
@@ -494,6 +498,10 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 			await process_frame
 			_check(root.get_visible_rect().encloses(details._detail_panel.get_global_rect()), "player details fit the screen")
 			_check(not details._detail_panel.get_global_rect().intersects(panel.get_global_rect()), "player details do not overlap settlement")
+			for wall: TileView in view._wall_layer.get_children():
+				var bounds: Rect2 = wall.get_global_transform() * Rect2(Vector2.ZERO, wall.size)
+				_check(not details._detail_panel.get_global_rect().intersects(bounds), "player details must not cover the remaining wall")
+				_check(not panel.get_global_rect().intersects(bounds), "settlement must not cover the remaining wall")
 		root.size = Vector2i(1280, 720)
 		await process_frame
 		await _capture("final-player-%d-detail" % seat)
@@ -535,3 +543,5 @@ func _check(ok: bool, message: String) -> bool:
 		_failures += 1
 		printerr("[FAIL] %s: %s" % [_case, message])
 	return ok
+
+

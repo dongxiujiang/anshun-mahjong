@@ -110,13 +110,27 @@ func _meld_clear_in_frame(view, owner: int, layer: Control) -> bool:
 					return false
 	return count == 4
 
-func _watch_meld_motion(view, owner: int, layer: Control) -> bool:
-	var clear := _meld_clear_in_frame(view, owner, layer)
+func _watch_meld_motion(view, owner: int, layer: Control, expect_flight := false, capture := "") -> bool:
+	var starts := {}
+	for tile in view._deal_layer.get_children():
+		starts[tile.get_instance_id()] = tile.position
+	var moved := false
+	var visible := not expect_flight or starts.size() == 4
+	var frames := 0
 	var deadline := Time.get_ticks_msec() + 3000
 	while view.native_actions_pending() and Time.get_ticks_msec() < deadline:
 		await process_frame
-		clear = _meld_clear_in_frame(view, owner, layer) and clear
-	return clear and not view.native_actions_pending()
+		frames += 1
+		for tile in view._deal_layer.get_children():
+			if starts.has(tile.get_instance_id()):
+				visible = visible and tile.is_visible_in_tree()
+				moved = moved or tile.position.distance_to(starts[tile.get_instance_id()]) > 1.0
+		if frames == 6 and capture != "" and DisplayServer.get_name() != "headless":
+			await RenderingServer.frame_post_draw
+			DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://build/meld-motion"))
+			root.get_texture().get_image().save_png("res://build/meld-motion/" + capture + ".png")
+	return not view.native_actions_pending() and _meld_clear_in_frame(view, owner, layer) \
+		and (not expect_flight or (visible and moved))
 
 func _test_exposed_kongs_on_every_seat() -> void:
 	for owner in 4:
@@ -149,7 +163,7 @@ func _test_exposed_kongs_on_every_seat() -> void:
 				view.animate_meld({"seat": owner, "source": source, "source_discard_id": 7,
 					"kind": "kong", "tile": card, "index": 0, "hand_indices": [0, 1, 2]}, func(): pass)
 				var name := "seat %d source %d %s" % [owner, offset, card]
-				t.expect(await _watch_meld_motion(view, owner, destination), name + ": clear in every sampled kong frame")
+				t.expect(await _watch_meld_motion(view, owner, destination, true, "seat%d-source%d-%s" % [owner, offset, card]), name + ": visible flight moves before an unobstructed landing")
 				t.expect(claimed.get_parent() == destination and claimed.get_meta("meld_slot", -1) == (0 if offset == 1 else 3),
 					name + ": preserves the source discard in its correct slot")
 				var tail := r.wall._tail_index()
@@ -227,10 +241,16 @@ func _run():
 		t.expect(wall_clear,"seat%d: exposed belt clears both layers of all four walls" % seat)
 	for count in [13,10,7,4,1]:
 		var ui := preload("res://scripts/ui/table/TableUiConfig.gd")
-		var row_size := Vector2(4 * ui.DISCARD_BUTTON_SIZE.x + 3 * ui.ACTION_SEPARATION, ui.DISCARD_BUTTON_SIZE.y)
-		var drawn=G.draw_slot_center(1,1,count)
-		var preferred=Vector2(drawn.x+G.TILE_BASE.x*G.OWN_UNIT/2-row_size.x, G.hand13_rect(1,1).position.y-12-row_size.y)
-		var action_rect: Rect2 = view.action_bar_rect(row_size,preferred)
+		var row_size := Vector2(4 * ui.DISCARD_BUTTON_SIZE.x + 3 * ui.ACTION_SEPARATION, ui.ACTION_BUTTON_SIZE.y)
+		var saved_hand: Array = host.round.players[1].concealed.duplicate()
+		host.round.players[1].concealed = saved_hand.slice(0, count)
+		var action_rect: Rect2 = view.action_bar_rect(row_size)
+		var hand_size := G.hand_tile_size(1, 1)
+		var right := G.hand_slot_center(1, count - 1, 1, count).x + hand_size.x / 2.0
+		t.expect(is_equal_approx(action_rect.end.x, right), "short-hand action row remains right aligned")
+		t.expect(action_rect.end.y < G.hand13_rect(1, 1).position.y, "actions remain above the hand")
+		host.round.players[1].concealed = saved_hand
+
 		var unobscured=true
 		for layer in view._render_layers():
 			for tile in layer.get_children():

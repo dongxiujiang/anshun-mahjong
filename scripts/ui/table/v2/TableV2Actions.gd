@@ -4,7 +4,8 @@ extends "res://scripts/ui/table/TableComponent.gd"
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
 const LEGAL := preload("res://scripts/core/LegalActions.gd")
 
-var action_bar: HBoxContainer
+
+var action_bar: Control
 var auto_ready_enabled := DisplayServer.get_name() != "headless"
 var _ready_auto_serial := 0
 var _selecting := false
@@ -26,11 +27,10 @@ func input_locked() -> bool:
 
 func build() -> void:
 	if action_bar != null and is_instance_valid(action_bar): return
-	action_bar = HBoxContainer.new()
+	action_bar = Control.new()
 	action_bar.position = Vector2(810, 1450)
 	action_bar.size = Vector2(560, 58)
-	action_bar.alignment = BoxContainer.ALIGNMENT_END
-	action_bar.add_theme_constant_override("separation", UI.ACTION_SEPARATION)
+	action_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	table.surface.add_child(action_bar)
 
 func _layout_actions() -> void:
@@ -51,7 +51,7 @@ func _layout_actions() -> void:
 	for button in action_bar.get_children():
 		row_size.x += button.custom_minimum_size.x
 		row_size.y = maxf(row_size.y, button.custom_minimum_size.y)
-	row_size.x += maxi(0, count - 1) * action_bar.get_theme_constant("separation")
+	row_size.x += maxi(0, count - 1) * UI.ACTION_SEPARATION
 	action_bar.size = row_size
 	# With a short hand, keep the buttons to the right of our river. The
 	# next player's river may sit underneath, as requested, but our tiles stay clear.
@@ -64,21 +64,24 @@ func _layout_actions() -> void:
 	if Rect2(Vector2(left, row_top), row_size).intersects(river):
 		row_top = minf(row_top, river.position.y - row_size.y - UI.ACTION_EDGE_GAP)
 	action_bar.position = Vector2(left, row_top)
+	var offset := 0.0
+	for button in action_bar.get_children():
+		button.size = button.custom_minimum_size
+		button.position = Vector2(offset, (row_size.y - button.size.y) / 2.0)
+		offset += button.size.x + UI.ACTION_SEPARATION
 
 func _layout_actions_v2() -> void:
 	var count := action_bar.get_child_count()
 	action_bar.visible = count > 0 and not input_locked()
 	if count == 0: return
-	var row_size := Vector2(
-		count * UI.DISCARD_BUTTON_SIZE.x + (count - 1) * action_bar.get_theme_constant("separation"),
-		UI.DISCARD_BUTTON_SIZE.y)
-	var center: Vector2 = table._new_areas.draw_slot_center(table.human_seat)
-	var tile_size := Vector2(TileView.BASE_W, TileView.BASE_H) * UI.OWN_HAND_TILE_UNIT
-	var right := center.x + tile_size.x * 0.5
-	var top := center.y - tile_size.y * 0.5 - 12.0
-	var placement: Rect2 = table._new_areas.action_bar_rect(row_size, Vector2(right - row_size.x, top - row_size.y))
+	var row_size := Vector2(count * UI.DISCARD_BUTTON_SIZE.x + (count - 1) * UI.ACTION_SEPARATION, UI.ACTION_BUTTON_SIZE.y)
+	var placement: Rect2 = table._new_areas.action_bar_rect(row_size)
+	var index := 0
 	for button in action_bar.get_children():
-		button.custom_minimum_size.y = placement.size.y
+		button.custom_minimum_size = Vector2(UI.DISCARD_BUTTON_SIZE.x, placement.size.y)
+		button.size = button.custom_minimum_size
+		button.position = Vector2(row_size.x - button.size.x - index * (button.size.x + UI.ACTION_SEPARATION), 0)
+		index += 1
 	action_bar.size = placement.size
 	action_bar.position = placement.position
 

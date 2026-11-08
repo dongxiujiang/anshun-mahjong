@@ -198,7 +198,8 @@ func _test_deal_tick() -> void:
 			table._refresh()
 			if not _pending_test_deals.is_empty(): _schedule_deal_tick()
 		_deal_complete_callback = complete
-		var timeout: SceneTreeTimer = table.get_tree().create_timer(1.1)
+		var packet_seconds := (GameConfig.DEAL_FLIGHT_SECONDS + GameConfig.DEAL_RECENTER_SECONDS) * _opening_speed_scale
+		var timeout: SceneTreeTimer = table.get_tree().create_timer(packet_seconds + 0.6)
 		timeout.timeout.connect(_on_deal_timeout.bind(token))
 		table._new_areas.animate_deal_group(deal_seat, deal_cards, deal_indices,
 			int(_dealt[deal_seat]), complete, _opening_speed_scale)

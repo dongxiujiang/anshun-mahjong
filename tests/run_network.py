@@ -131,6 +131,14 @@ def run(godot, lan_interface=False, section="all", graphical_table=False):
     try:
         code, data = request(base)
         assert code == 200 and data == {"rooms": []}, "Empty online directory"
+        if graphical_table:
+            clock = launch(godot, "online_opening_clock", "res://tests/online_opening_clock.gd",
+                           [f"--directory={base}"], graphical=True)
+            cloud_clients.append(clock)
+            finish(clock, "online_opening_clock", 75)
+            code, data = request(base)
+            assert code == 200 and data == {"rooms": []}, "Opening clock test leaves no active room"
+
         for invalid in ["123", "123456789", "12a34", "-1234", 12345]:
             code, data = request(base, "POST", {"number": invalid})
             assert code == 400, "Invalid room number accepted"

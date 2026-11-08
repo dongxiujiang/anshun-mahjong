@@ -217,6 +217,16 @@ func _run_native_api() -> void:
 	t.expect(deck._score_inspection == null, "settlement has no score detail overlay by default")
 	config.set_score_details_enabled(true, false)
 	t.expect(is_instance_valid(deck._score_inspection), "enabling score details applies to the current settlement")
+	var inspection = deck._score_inspection
+	var rich_terms: Array[String] = ["叫牌", "大对子 14分", "报听 12分", "5万 · 杠 4分", "5万 · 翻鸡 4分",
+		"幺鸡 · 杠 4分", "幺鸡 · 杠中鸡 8分", "八筒 · 杠 4分", "八筒 · 杠中鸡 8分",
+		"9万 · 杠 4分", "幺鸡 · 冲锋鸡 4分", "八筒 · 普通鸡 4分", "6筒 · 翻鸡 2分"]
+	inspection._fit_two_lines(rich_terms)
+	t.expect(inspection._breakdown.get_line_count() == 2 and inspection._breakdown.get_theme_font_size("font_size") >= 18,
+		"rich score details occupy exactly two readable lines")
+	for term in rich_terms:
+		t.expect(inspection._breakdown.text.contains(term), "two-line formatting retains the complete score item: " + term)
+	t.expect(inspection.find_children("*", "ScrollContainer", true, false).is_empty(), "score details do not contain a scroll container")
 	config.set_score_details_enabled(false, false)
 	t.expect(deck._score_inspection == null, "disabling score details removes the current overlay and tile inputs")
 	t.expect(int(deck._settlement_total_label.text) == int(r.last_result.deltas[0]), "toggling details preserves the settlement total")
@@ -231,7 +241,35 @@ func _run_native_api() -> void:
 	stub.queue_free()
 	await process_frame
 
+func _check_called_headers() -> void:
+	const UI = preload("res://scripts/ui/table/TableUiConfig.gd")
+	for kind in ["self_draw", "ron", "draw", "all_called_draw"]:
+		var local := _fixture(kind)
+		for viewer in 4:
+			var client := RoundState.new()
+			client.apply_sync(local.serialize_for_seat(viewer))
+			for state in [local, client]:
+				var deck = load("res://scenes/table/TableV2.tscn").instantiate()
+				root.add_child(deck)
+				deck.round = state
+				deck.human_seat = viewer
+				deck._settlement_plan = PLAN.build(state.last_result, state.round_meta, state.players, viewer)
+				deck._build_native_settlement_panel()
+				var panel: Control = deck._native_settlement
+				var dealer: Label = deck._hud_badge("庄", Vector2.ZERO, UI.DEALER_BACKGROUND, UI.DEALER_BORDER)
+				for index in 4:
+					var seat := posmod(viewer + index, 4)
+					var heading: Label = panel.get_node("SettlementSeat%d" % seat)
+					var badge: Label = panel.get_node("CalledStatus%d" % seat)
+					var called := bool(deck._settlement_plan.called[seat])
+					t.expect(heading.text == ["我", "上", "对", "下"][index], "header follows the viewer on local and synced tables")
+					t.expect(badge.text == "叫" and badge.size == dealer.size, "called badge matches the dealer badge size and single-character style")
+					t.expect(badge.get_theme_stylebox("normal").bg_color == (Color("#30784e") if called else UI.DEALER_BACKGROUND), "settlement uses green for called and red for uncalled, including winners")
+					t.expect(not badge.get_rect().intersects(heading.get_rect()) and panel.get_rect().size.y > badge.get_rect().end.y, "status badge does not overlap its seat label or leave the panel")
+				deck.free()
+
 func _run() -> void:
+	_check_called_headers()
 	_check_relative_scores()
 	for kind in ["self_draw", "ron", "draw", "all_called_draw"]:
 		var r := _fixture(kind)

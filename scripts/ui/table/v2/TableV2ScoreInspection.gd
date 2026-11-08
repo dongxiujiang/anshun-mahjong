@@ -3,6 +3,7 @@ extends Control
 
 const DETAILS := preload("res://scripts/ui/table/SettlementScoreDetails.gd")
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
+const G := preload("res://scripts/ui/table/v2/TableV2Geometry.gd")
 
 var _view_ref: WeakRef
 var _groups: Array
@@ -15,7 +16,7 @@ var _selected := -1
 var _detail_panel: Panel
 var _heading: Label
 var _breakdown: Label
-var _scroll: ScrollContainer
+var _settlement_position: Vector2
 
 func _init(view: Control, result: Dictionary, meta: Dictionary, players: Array, plan: Dictionary) -> void:
 	_view_ref = weakref(view)
@@ -44,10 +45,11 @@ func _init(view: Control, result: Dictionary, meta: Dictionary, players: Array, 
 func _ready() -> void:
 	var view = _view_ref.get_ref()
 	var settlement: Rect2 = view._native_settlement.get_rect()
+	_settlement_position = settlement.position
 	_detail_panel = Panel.new()
 	_detail_panel.name = "PlayerScoreDetail"
 	_detail_panel.position = settlement.position - Vector2(0, 244)
-	_detail_panel.size = Vector2(settlement.size.x, 232)
+	_detail_panel.size = Vector2(G.wall_inner_rect().size.x - 24.0, 148)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("#102c24")
 	style.border_color = Color(UI.GOLD, 0.65)
@@ -57,21 +59,16 @@ func _ready() -> void:
 	add_child(_detail_panel)
 	_heading = view._table_text(_detail_panel, "", 24, UI.GOLD)
 	_heading.position = Vector2(24, 8)
-	_heading.size = Vector2(settlement.size.x - 100, 36)
-	_scroll = ScrollContainer.new()
-	_scroll.position = Vector2(24, 48)
-	_scroll.size = Vector2(settlement.size.x - 48, 172)
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_detail_panel.add_child(_scroll)
-	_breakdown = view._table_text(_scroll, "", 24, UI.INK)
-	_breakdown.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_heading.size = Vector2(_detail_panel.size.x - 100, 36)
+	_breakdown = view._table_text(_detail_panel, "", 24, UI.INK)
+	_breakdown.position = Vector2(24, 48)
+	_breakdown.size = Vector2(_detail_panel.size.x - 48.0, 88)
 	_breakdown.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	_breakdown.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var close := Button.new()
 	close.text = "×"
 	close.tooltip_text = "关闭得分明细"
 	close.focus_mode = Control.FOCUS_NONE
-	close.position = Vector2(settlement.size.x - 66, 8)
+	close.position = Vector2(_detail_panel.size.x - 66, 8)
 	close.size = Vector2(48, 38)
 	close.pressed.connect(_hide_detail)
 	_detail_panel.add_child(close)
@@ -145,7 +142,6 @@ func _select_seat(seat: int) -> void:
 func _show_seat(seat: int) -> void:
 	if not _seat_details.has(seat):
 		return
-	var changed := _selected != seat
 	_selected = seat
 	var detail: Dictionary = _seat_details[seat]
 	_heading.text = detail.title
@@ -161,11 +157,45 @@ func _show_seat(seat: int) -> void:
 	elif not detail.called:
 		status += "%.0f分" % total
 	terms.push_front(status)
-	_breakdown.text = "\n".join(terms)
-	if changed:
-		_scroll.scroll_vertical = 0
+	_fit_two_lines(terms)
+	var view = _view_ref.get_ref()
+	var settlement: Control = view._native_settlement
+	var inner := G.wall_inner_rect()
+	var height: float = _detail_panel.size.y + 12.0 + settlement.size.y
+	var top: float = inner.position.y + (inner.size.y - height) / 2.0
+	_detail_panel.position = Vector2(inner.position.x + 12.0, top)
+	settlement.position.y = top + _detail_panel.size.y + 12.0
 	_detail_panel.show()
+
+func _fit_two_lines(terms: Array[String]) -> void:
+	var font := _breakdown.get_theme_font("font")
+	var lines := "　".join(terms)
+	for font_size in range(24, 0, -1):
+		var widest := font.get_string_size(lines.replace("\n", ""), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		if terms.size() > 1:
+			widest = INF
+			for split in range(1, terms.size()):
+				var first := "　".join(terms.slice(0, split))
+				var second := "　".join(terms.slice(split))
+				var width := maxf(font.get_string_size(first, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x,
+					font.get_string_size(second, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+				if width < widest:
+					widest = width
+					lines = first + "\n" + second
+		if widest <= _detail_panel.size.x - 48.0:
+			_breakdown.add_theme_font_size_override("font_size", font_size)
+			_breakdown.text = lines
+			return
 
 func _hide_detail() -> void:
 	_selected = -1
 	_detail_panel.hide()
+	_restore_settlement_position()
+
+func _exit_tree() -> void:
+	_restore_settlement_position()
+
+func _restore_settlement_position() -> void:
+	var view = _view_ref.get_ref()
+	if is_instance_valid(view) and is_instance_valid(view._native_settlement):
+		view._native_settlement.position = _settlement_position

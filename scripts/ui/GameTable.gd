@@ -96,7 +96,7 @@ var dealer_badges: Dictionary:
 var status_label: Label:
 	get: return _table_layout.status_label
 	set(value): _table_layout.status_label = value
-var action_bar: HBoxContainer:
+var action_bar: Control:
 	get: return _table_actions.action_bar
 	set(value): _table_actions.action_bar = value
 var surface: Control:

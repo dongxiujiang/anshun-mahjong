@@ -46,7 +46,7 @@ func _config_and_controls() -> void:
 			slider.value = seconds
 			t.expect(settings._timing_labels[slider].text == "%.2f s" % seconds, "readout shows the exact selected duration")
 		t.expect(is_equal_approx(config.tile_motion_seconds(), seconds), "draw and discard use the shared duration")
-		t.expect(is_equal_approx(config.opening_deal_scale(config.opening_speed_key()) * config.DEAL_SEQUENCE_SECONDS, seconds), "opening tiles share the configured duration")
+		t.expect(is_equal_approx(config.opening_deal_scale(config.opening_speed_key()) * config.DEAL_FLIGHT_SECONDS, seconds), "each opening packet shares the configured duration")
 		t.expect(is_equal_approx(config.ai_speed_seconds(config.ai_speed), seconds), "AI control stores seconds")
 		t.expect(is_equal_approx(config.settlement_duration(config.SETTLEMENT_STEP_SECONDS), seconds), "each scoring stage uses the configured duration")
 	settings.tile_speed_slider.drag_started.emit()
