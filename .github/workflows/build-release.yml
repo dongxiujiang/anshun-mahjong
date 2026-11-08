@@ -67,13 +67,20 @@ jobs:
           python-version: "3.12"
       - name: Install Godot and export templates
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = "Stop"
           Invoke-WebRequest -MaximumRetryCount 5 -RetryIntervalSec 3 -Uri "https://github.com/godotengine/godot/releases/download/${env:GODOT_RELEASE}/Godot_v${env:GODOT_RELEASE}_win64.exe.zip" -OutFile godot.zip
           Expand-Archive godot.zip -DestinationPath godot
           $godot = Get-ChildItem godot -Filter "*.exe" | Select-Object -First 1
           "GODOT_EXE=$($godot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Invoke-WebRequest -MaximumRetryCount 5 -RetryIntervalSec 3 -Uri "https://github.com/godotengine/godot/releases/download/${env:GODOT_RELEASE}/Godot_v${env:GODOT_RELEASE}_export_templates.tpz" -OutFile templates.zip
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            gh release download $env:GODOT_RELEASE --repo godotengine/godot --pattern "Godot_v${env:GODOT_RELEASE}_export_templates.tpz" --output templates.zip --clobber
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 5) { throw "Godot template download failed" }
+            Start-Sleep -Seconds 3
+          }
           Expand-Archive templates.zip -DestinationPath templates
           $target = Join-Path $env:APPDATA "Godot/export_templates/${env:GODOT_VERSION}.stable"
           New-Item -ItemType Directory -Force $target | Out-Null
@@ -158,12 +165,18 @@ jobs:
 
       - name: Install Godot and export templates
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
           unzip -q /tmp/godot.zip -d /tmp/godot
           sudo install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
-          curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+          for attempt in 1 2 3 4 5; do
+            if gh release download "$GODOT_RELEASE" --repo godotengine/godot --pattern "Godot_v${GODOT_RELEASE}_export_templates.tpz" --output /tmp/templates.tpz --clobber; then break; fi
+            test "$attempt" -lt 5
+            sleep 3
+          done
           rm -rf /tmp/templates
           mkdir -p /tmp/templates "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
           unzip -q /tmp/templates.tpz -d /tmp/templates
