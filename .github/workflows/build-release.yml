@@ -327,13 +327,17 @@ jobs:
       - name: Download original release baseline
         if: ${{ env.RELEASE_KIND == 'patch' && env.BASELINE_SOURCE == 'release' }}
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           folder="build/update_baselines/$BASELINE_ID"
           mkdir -p "$folder"
-          curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 \
-            "https://github.com/$GITHUB_REPOSITORY/releases/download/$BASELINE_RELEASE_TAG/baseline.zip" \
-            --output /tmp/baseline.zip
+          for attempt in 1 2 3 4 5; do
+            if gh release download "$BASELINE_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern baseline.zip --output /tmp/baseline.zip --clobber; then break; fi
+            test "$attempt" -lt 5
+            sleep 3
+          done
           unzip -q /tmp/baseline.zip -d /tmp/release-baseline
           for file in baseline.json android-base.pck; do
             source=$(find /tmp/release-baseline -type f -name "$file")
