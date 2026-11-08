@@ -308,6 +308,10 @@ func recover_after_resume() -> void:
 	cancel()
 	if table == null or table.round == null or table.round.players.size() != 4:
 		return
+	# The next live event belongs to this snapshot's session, even if none
+	# of its historical events were replayed when opening the table.
+	_session = table.round._presentation.session
+	_animation_last_id = table.round.visual_event_id
 	if table._new_areas != null: table._new_areas.recover_after_resume()
 	for seat in 4:
 		var cards: Array = table.round.players[seat].concealed

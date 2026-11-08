@@ -1435,6 +1435,8 @@ func _refresh_status() -> void:
 func _on_client_state_updated() -> void:
 	# 普通快照保留正在播放的视觉队列；重连回调单独清理并跳过历史。
 	if _awaiting_rejoin_snapshot:
+		if _opening_primed:
+			_table_animation_controller.recover_after_resume()
 		_settlement_immediate = round.phase == RoundState.Phase.SETTLED
 		_awaiting_rejoin_snapshot = false
 		if _ai_proxy_worker != null and _ai_proxy_task > 0:

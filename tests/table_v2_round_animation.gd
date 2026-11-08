@@ -489,6 +489,42 @@ func _authoritative_melds():
 		table.queue_free()
 		await process_frame
 
+func _rejoin_live_hand():
+	var host = _fixture()
+	var controller = host._table_animation_controller
+	var view = host._new_areas
+	for player in host.round.players:
+		player.concealed = ["wan1", "wan2", "wan3", "wan4"]
+	host.round._presentation.session = "restored-round"
+	host.round._presentation.event_id = 36
+	controller.recover_after_resume()
+	view.refresh()
+	t.expect(view.hand_boxes[1].get_child_count() == 4, "Rejoin restores the shortened authoritative hand")
+	controller._on_visual_event({"session":"restored-round", "id":37, "type":"meld_reveal", "seat":0, "index":0})
+	view.refresh()
+	t.expect(not controller.deal_sequence_active() and view.hand_boxes[1].get_child_count() == 4,
+		"The next live event in a restored round cannot hide the hand or reopen dealing")
+	await _cleanup(host)
+
+	var table = load("res://scenes/GameTable.tscn").instantiate()
+	root.add_child(table)
+	table.round = RoundState.new()
+	table.round.build_players(1)
+	table.round.phase = RoundState.Phase.PLAYING
+	table.human_seat = 1
+	table.round.players[1].concealed = ["wan1", "wan2", "wan3", "wan4"]
+	table._connect_audio_round()
+	table._opening_primed = true
+	table._awaiting_rejoin_snapshot = true
+	table._on_client_state_updated()
+	t.expect(not table._awaiting_rejoin_snapshot and not table._table_animation_controller.deal_sequence_active(),
+		"An existing table restores its dealt baseline before unlocking after transport reconnect")
+	t.expect(table._new_areas.hand_boxes[1].get_child_count() == 4,
+		"An existing table immediately redraws the shortened hand after reconnect")
+	if table._ai_service != null: table._ai_service.stop()
+	table.queue_free()
+	await process_frame
+
 func _online_opening_wall():
 	var host = _fixture()
 	var view = host._new_areas
@@ -529,6 +565,7 @@ func _run():
 	if selected_case in ["all","refresh_during_discard_flight"]: await _refresh_during_discard_flight()
 	if selected_case in ["all","deal_privacy"]: await _deal_privacy()
 	if selected_case in ["all","online_opening_wall"]: await _online_opening_wall()
+	if selected_case in ["all","rejoin_live_hand"]: await _rejoin_live_hand()
 	if selected_case in ["all","chicken_kong_privacy"]: await _chicken_kong_privacy()
 	if selected_case in ["all","meld_zones"]: await _meld_zones()
 	if selected_case in ["all","short_hand_layout"]: await _short_hand_layout()
