@@ -204,7 +204,3 @@ static func special_pattern_key(pattern: Dictionary) -> String:
 	if pattern.get("big_triplet_single_wait", false):
 		return "big_triplet_single_wait"
 	return ""
-
-static func is_scoring_pattern(pattern: Dictionary, key: String) -> bool:
-	var special := special_pattern_key(pattern)
-	return key == special if special != "" else bool(pattern.get(key, false))

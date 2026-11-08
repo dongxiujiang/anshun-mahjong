@@ -193,12 +193,6 @@ func _settlement_animation_active() -> bool:
 		return _new_areas.native_settlement_active()
 	return _settlement_animation_controller.is_active()
 
-func _settlement_animation_started() -> bool:
-	if _new_areas != null and DisplayServer.get_name() != "headless" \
-			and _new_areas.has_method("native_settlement_started"):
-		return _new_areas.native_settlement_started()
-	return _settlement_animation_controller.has_started()
-
 func _settlement_animation_done() -> bool:
 	if _new_areas != null and DisplayServer.get_name() != "headless" \
 			and _new_areas.has_method("native_settlement_complete"):
@@ -712,28 +706,14 @@ func open_voice_packs() -> void:
 		_voice_pack_dialog.pack_selected.connect(_on_voice_pack_selected)
 		_voice_pack_dialog.preview_requested.connect(_on_voice_pack_preview)
 		_voice_pack_dialog.test_all_requested.connect(func(): AudioManager.start_voice_test())
-	var net = _net_node()
-	var seat := human_seat
-	var is_host := false
-	if net != null and _net_mode() != "":
-		for index in 4:
-			AudioManager.set_seat_voice_pack(index, str(net.voice_packs[index]), false)
-		seat = net.my_seat
-		is_host = net.is_room_owner()
-	else:
-		is_host = true
 	var packs: Array = []
 	for index in 4:
 		packs.append(AudioManager.get_seat_voice_pack(index))
-	_voice_pack_dialog.open(packs, seat, is_host)
+	_voice_pack_dialog.open(packs, human_seat, true)
 
 func _on_voice_pack_selected(seat: int, pack_id: String) -> void:
-	# 本地先立即生效并保存，联机再交给房主权威同步。
-	AudioManager.set_seat_voice_pack(seat, pack_id, seat == human_seat)
-	AudioManager.save_settings()
-	var net = _net_node()
-	if net != null and _net_mode() != "":
-		net.request_voice_pack(seat, pack_id)
+	# 每位玩家独立保存本机的四个座位音色。
+	AudioManager.set_seat_voice_pack(seat, pack_id, true)
 
 func _on_voice_pack_preview(seat: int, pack_id: String) -> void:
 	AudioManager.preview_voice_pack(seat, pack_id)
@@ -883,7 +863,7 @@ func _recommendation_tiles(result: Dictionary) -> Array:
 	return output
 
 func _strength_label() -> String:
-	return {"weak": "弱", "medium": "中", "strong": "强"}.get(GameConfig.ai_strength, "中")
+	return {"weak": "弱", "medium": "中", "strong": "强"}.get(GameConfig.effective_ai_strength(), "中")
 
 func _refresh_voice_button() -> void:
 	if _voice_button == null:
@@ -1067,7 +1047,7 @@ func toggle_ai_proxy() -> void:
 	_ai_proxy_active = not _ai_proxy_active
 	_clear_ai_teach()
 	if _ai_proxy_active:
-		var level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "medium")
+		var level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.effective_ai_strength(), "medium")
 		_ai_proxy_ai = AiPlayer.new("AI代打", level)
 		_ai_proxy_worker = load("res://scripts/core/AiTurnWorker.gd").new()
 		_ai_proxy_task = 0
@@ -1091,7 +1071,7 @@ func _refresh_ai_proxy_button() -> void:
 	_ai_proxy_button.tooltip_text = "点击关闭 AI 代打" if _ai_proxy_active else "AI 代替你操作当前座位"
 
 func _submitted_proxy_level() -> String:
-	return {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "medium")
+	return {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.effective_ai_strength(), "medium")
 
 func _poll_ai_proxy() -> void:
 	if _awaiting_rejoin_snapshot or _ai_proxy_task <= 0 or _ai_proxy_worker == null:
@@ -1215,7 +1195,7 @@ func new_game(reset_scores: bool = false, dealer_override: int = -1,
 	round.round_finished.connect(_on_round_finished)
 	round.state_update.connect(_queue_refresh)
 	var controllers: Array = []
-	var ai_level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "low")
+	var ai_level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.effective_ai_strength(), "low")
 	for seat in 4:
 		var table_ai := AiPlayer.new("AI%d" % seat, ai_level) if _auto_test_rounds > 0 or seat != human_seat else null
 		controllers.append(table_ai)
@@ -1395,6 +1375,11 @@ func _refresh_center() -> void:
 	# 中央 168×168 只负责骰子；不再写余牌/局数标签。
 	_table_layout.refresh_turn_indicator()
 
+func _set_ai_strength(strength_key: String) -> void:
+	if _net_mode() == "" and round != null:
+		for actor in round.controllers:
+			if actor is AiPlayer: actor.set_difficulty({"weak": "low", "medium": "medium", "strong": "high"}.get(strength_key, "medium"))
+
 func _set_ai_speed(speed_key: String) -> void:
 	var persist := _sound_settings == null or _sound_settings.persist_changes
 	if _net_mode() == "":
@@ -1405,17 +1390,6 @@ func _set_ai_speed(speed_key: String) -> void:
 	elif _net_node().is_room_owner():
 		GameConfig.set_ai_speed(speed_key, persist)
 		_net_node().set_ai_speed(speed_key)
-
-func _sum_wall() -> int:
-	var count := 0
-	for seat in 4:
-		count += _wall_remain(seat)
-	return count
-
-func _wall_remain(seat: int) -> int:
-	if round != null and round.wall != null:
-		return round.wall.wall_remaining(seat)
-	return int(round.wall_remain.get(seat, 0)) if round != null else 0
 
 func _seat_name(seat: int) -> String:
 	if seat < 0 or seat > 3:
@@ -1458,6 +1432,7 @@ func _on_client_state_updated() -> void:
 	_on_opening_visual_finished()
 
 func _on_net_lobby_updated() -> void:
+	_on_settlement_speed_changed()
 	if _sound_settings != null: _sound_settings.sync_timing_controls()
 	_refresh_next_round_controls()
 	var net = _net_node()

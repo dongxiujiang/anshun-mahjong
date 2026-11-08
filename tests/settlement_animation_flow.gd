@@ -700,26 +700,27 @@ func _test_settlement_speed() -> void:
 			c.skip()
 			_check_final(r, general + "/" + settlement)
 	config.set_animation_speed("instant")
-	config.set_settlement_speed("standard")
+	config.set_settlement_speed("0.50")
 	var tween := _prepare_timed(r)
 	if tween == null: return
 	var c = table._settlement_animation_controller
-	tween.custom_step(0.05)
+	var quarter_fade: float = config.settlement_duration(UI.SETTLEMENT_FADE_SECONDS) / 4.0
+	tween.custom_step(quarter_fade)
 	t.expect(is_equal_approx(c._river_alpha, 0.75), "initial fade advances at normal settlement speed")
 	var settings = table._sound_settings
-	settings.settlement_speed_slider.value = 1.90
+	settings.settlement_speed_slider.value = 1.0
 	t.expect(c._tween == tween and is_equal_approx(c._river_alpha, 0.75), "live setting preserves exact animation progress")
-	t.expect(settings._timing_labels[settings.settlement_speed_slider].text == "1.90 s", "selected settlement duration is visible")
-	tween.custom_step(0.1)
+	t.expect(settings._timing_labels[settings.settlement_speed_slider].text == "1.0 s", "selected settlement duration is visible")
+	tween.custom_step(quarter_fade * 2.0)
 	t.expect(is_equal_approx(c._river_alpha, 0.5), "live slow setting halves playback rate immediately")
-	settings.settlement_speed_slider.value = 0.76
+	settings.settlement_speed_slider.value = 0.2
 	tween.custom_step(0.2)
 	t.expect(c._river_alpha <= 0.25, "live fast setting accelerates the fade without restarting it")
 	t.expect(config.animation_speed == "instant", "settlement selection preserves instant play animation")
 	settings.tile_speed_slider.value = 0.15
-	t.expect(config.settlement_speed == "0.76", "tile animation selection preserves settlement duration")
+	t.expect(config.settlement_speed == "0.20", "tile animation selection preserves settlement duration")
 	config.set_settlement_speed("invalid")
-	t.expect(config.settlement_speed == "0.76", "invalid settlement speed is ignored")
+	t.expect(config.settlement_speed == "0.20", "invalid settlement speed is ignored")
 	settings.settlement_speed_slider.value = 0.0
 	t.expect(c.is_completed(), "zero seconds completes the in-progress settlement immediately")
 	_check_final(r, "zero second settlement")

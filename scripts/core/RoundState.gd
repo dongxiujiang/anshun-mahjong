@@ -1269,9 +1269,6 @@ func build_result() -> Dictionary:
 		result.scores.append(player.score)
 	return result
 
-func _hand_is_win(player: PlayerState) -> bool:
-	return RuleEngine.analyze(player.concealed, player.melds).win
-
 func can_declare_ready(seat: int) -> bool:
 	return seat >= 0 and seat < players.size() and ACTIONS.ready_window(players[seat])
 

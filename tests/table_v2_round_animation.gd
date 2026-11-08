@@ -445,7 +445,7 @@ func _speed_settings():
 	var saved_seconds=config.tile_animation_seconds
 	for kind in ["draw","discard","meld"]:
 		var times={}
-		for seconds in [0.0,0.15,0.30,2.0]:
+		for seconds in [0.0,0.1,0.3,1.0]:
 			var host=_fixture()
 			var deck=host._new_areas
 			config.set_tile_animation_seconds(seconds,false)
@@ -470,7 +470,7 @@ func _speed_settings():
 			t.expect(state.count==1 and not deck.native_actions_pending(),kind+": every speed completes exactly once")
 			times[seconds]=state.elapsed
 			await _cleanup(host)
-		t.expect(times[0.15]<times[0.30] and times[0.30]<times[2.0],kind+": real flight duration follows the shared slider")
+		t.expect(times[0.1]<times[0.3] and times[0.3]<times[1.0],kind+": real flight duration follows the shared slider")
 	config.set_tile_animation_seconds(saved_seconds,false)
 
 func _opening_speed_settings():
@@ -478,7 +478,7 @@ func _opening_speed_settings():
 	var config = root.get_node("GameConfig")
 	var saved_seconds: float = config.tile_animation_seconds
 	var times: Array[int] = []
-	for seconds in [0.0, 2.0]:
+	for seconds in [0.0, 1.0]:
 		config.set_tile_animation_seconds(seconds, false)
 		var table = load("res://scenes/GameTable.tscn").instantiate()
 		var started := Time.get_ticks_msec()
@@ -501,7 +501,7 @@ func _opening_speed_settings():
 		if table._ai_service != null: table._ai_service.stop()
 		table.queue_free()
 		await process_frame
-	t.expect(times[1] - times[0] >= 1650, "two-second opening setting adds visible tile motion after the fixed dice beat")
+	t.expect(times[1] - times[0] >= 1650, "one-second opening setting adds visible tile motion after the fixed dice beat")
 	config.set_tile_animation_seconds(saved_seconds, false)
 
 func _authoritative_melds():
@@ -656,6 +656,71 @@ func _online_opening_wall():
 		"A legacy draw without a slot appears directly in the draw area")
 	await _cleanup(host)
 
+func _held_after_meld():
+	var config = root.get_node("GameConfig")
+	for seconds in [0.0, 0.2]:
+		config.set_tile_animation_seconds(seconds, false)
+		for seat in 4:
+			for kind in ["pung", "kong", "concealed", "add_kong"]:
+				var host = _fixture()
+				var deck = host._new_areas
+				var p = host.round.players[seat]
+				var source = posmod(seat + 1, 4)
+				var removed = 1 if kind == "add_kong" else (4 if kind == "concealed" else (3 if kind == "kong" else 2))
+				for i in 13: p.concealed.append("wan5" if i < removed else "tong%d" % (i % 9 + 1))
+				if kind == "add_kong": p.melds = [{"kind":"pung", "tile":"wan5", "from_seat":source}]
+				var src = host.round.players[source]
+				src.discards = ["wan5"]
+				src.discard_ids = [4]
+				deck.refresh()
+				var positions = {}
+				for tile in deck.hand_boxes[seat].get_children():
+					if int(tile.get_meta("concealed_index", -1)) >= removed: positions[tile] = tile.position
+				var indices = []
+				for i in removed: indices.append(i)
+				p.concealed = p.concealed.slice(removed)
+				p.melds = [{"kind":"add_kong" if kind == "add_kong" else ("pung" if kind == "pung" else "kong"), "tile":"wan5", "from_seat":source, "concealed":kind == "concealed"}]
+				var event = {"seat":seat, "tile":"wan5", "kind":kind, "index":0, "hand_indices":indices}
+				if kind in ["pung", "kong"]:
+					event.source = source
+					event.source_discard_id = 4
+				var done = {"meld":false,"discard":false,"draw":false}
+				deck.animate_meld(event, func(): done.meld = true)
+				await create_timer(seconds + 0.06).timeout
+				deck.refresh()
+				t.expect(done.meld and deck._held_hand_centers.has(seat), kind + ": hand position is held for seat %d" % seat)
+				for tile in positions:
+					t.expect(is_instance_valid(tile) and tile.position.is_equal_approx(positions[tile]), kind + ": surviving hand hit targets never move after claim and refresh")
+				if kind != "pung":
+					p.concealed.append("tiao9")
+					p.just_drew = "tiao9"
+					deck.animate_draw(seat, "tiao9", -1, func(): done.draw = true)
+					deck.refresh()
+					for tile in positions: t.expect(tile.position.is_equal_approx(positions[tile]), "replacement draw also preserves the old hit targets")
+					p.concealed.pop_back()
+					p.just_drew = ""
+					p.discards.append("tiao9")
+					p.discard_ids.append(8)
+					deck.animate_draw_discard(seat, func(): done.discard = true, "tiao9")
+				else:
+					var value = str(p.concealed[0])
+					p.concealed.remove_at(0)
+					p.discards.append(value)
+					p.discard_ids.append(8)
+					deck.animate_hand_discard(seat, value, 0, func(): done.discard = true)
+				await create_timer(seconds + 0.08).timeout
+				deck.refresh()
+				t.expect(done.discard and not deck._held_hand_centers.has(seat), "discard releases held hand exactly once")
+				for tile in deck.hand_boxes[seat].get_children():
+					var slot = int(tile.get_meta("v2_hand_slot", -1))
+					t.expect((tile.position + tile.size / 2.0).is_equal_approx(G.hand_slot_center(seat, slot, 1, p.concealed.size())), "hand recenters after discard")
+				if DisplayServer.get_name() != "headless" and seconds > 0:
+					await RenderingServer.frame_post_draw
+					DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://build/meld-motion"))
+					root.get_texture().get_image().save_png("res://build/meld-motion/held-%d-%s.png" % [seat, kind])
+				await _cleanup(host)
+	config.set_tile_animation_seconds(0.3, false)
+
 func _run():
 	# Tests use a known baseline without persisting user preferences.
 	root.get_node("GameConfig").set_tile_animation_seconds(0.30,false)
@@ -663,6 +728,7 @@ func _run():
 		if arg.begins_with("--case="): selected_case=arg.substr(7)
 	if selected_case in ["all","lifecycle"]: await _lifecycle()
 	if selected_case in ["all","kong_draw"]: await _kong_draw()
+	if selected_case in ["all","held_after_meld"]: await _held_after_meld()
 	if selected_case in ["all","kong_sources"]: await _kong_sources()
 	if selected_case in ["all","discard_sources"]: await _discard_sources()
 	if selected_case in ["all","remote_discards"]: await _remote_discards()

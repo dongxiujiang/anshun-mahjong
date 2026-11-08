@@ -19,14 +19,6 @@ static func cancel_income(deltas: Array, transfers: Array, receiver: int) -> voi
 			deltas[receiver] -= float(entry.amount)
 			transfers.remove_at(index)
 
-static func pay_win(deltas: Array, transfers: Array, winner: int, meta: Dictionary, amount: float, reason: String) -> void:
-	if meta.get("self_draw", false):
-		for seat in 4:
-			if seat != winner:
-				transfer(deltas, transfers, seat, winner, amount, reason)
-	else:
-		transfer(deltas, transfers, int(meta.get("discard_seat", -1)), winner, amount, reason)
-
 static func pay_uncalled(deltas: Array, transfers: Array, called: Array, discard_points: Array, add_huang_fee: bool = false, pong_debt_points: Array = []) -> void:
 	# 荒牌时每个未叫者还要向每个叫牌者补 4 分基础分。
 	for payer in 4:

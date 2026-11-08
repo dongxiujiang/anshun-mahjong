@@ -88,20 +88,6 @@ static func recommend_response_fast(round, seat: int, source: int, tile: String,
 		return {"action": "pong", "label": "碰", "message": "AI教学：建议碰 %s" % _display(tile)}
 	return {"action": "pass", "label": "", "message": "AI教学：建议过"}
 
-static func recommend_response(round, seat: int, source: int, tile: String, options: Dictionary) -> Dictionary:
-	if round == null or seat < 0 or seat >= round.players.size():
-		return {}
-	if not options.get("can_win", false) and not options.get("can_pong", false) and not options.get("can_kong", false):
-		return {}
-	var level: String = {"weak": "low", "medium": "medium", "strong": "high"}.get(CONFIG.ai_strength, "low")
-	var ai := AI_PLAYER.new("AI教学", level)
-	ai.use_mcts = false
-	var decision: Dictionary = ai.decide_response(round, seat, source, tile, options)
-	var action := str(decision.get("action", "pass"))
-	var text: String = {"win": "建议胡", "pong": "建议碰", "kong": "建议杠", "pass": "建议过"}.get(action, "建议过")
-	var label: String = {"win": "胡", "pong": "碰", "kong": "杠"}.get(action, "")
-	return {"action": action, "label": label, "message": "AI教学：%s %s" % [text, _display(tile)]}
-
 static func _display(tile: String) -> String:
 	var suit := Tiles.suit(tile)
 	var rank := Tiles.rank(tile)

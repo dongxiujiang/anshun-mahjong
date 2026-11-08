@@ -32,6 +32,14 @@ func _run() -> void:
 	print("[next_round] SEAT_ASSIGNED")
 	t.expect(await _wait_until(func(): return net.lobby.seats.filter(func(seat): return int(seat.peer) > 0).size() == 4), "Wait for all joins before first readiness")
 	if role == 0:
+		root.get_node("GameConfig").set_tile_animation_seconds(0.4, false)
+		root.get_node("GameConfig").set_ai_speed("0.60", false)
+		root.get_node("GameConfig").set_settlement_speed("0.90", false)
+		root.get_node("GameConfig").set_ai_strength("weak", false)
+		net.set_opening_speed("0.40")
+		net.set_ai_speed("0.60")
+		net.set_settlement_speed("0.90")
+		net.set_ai_strength("weak")
 		net.set_wants_dealer(true)
 	else:
 		net.lobby_notice.connect(func(message: String):
@@ -41,6 +49,13 @@ func _run() -> void:
 			if discard_received_at == 0.0 and net.game.players.size() == 4 \
 					and not net.game.players[1].discard_history.is_empty():
 				discard_received_at = Time.get_unix_time_from_system())
+	t.expect(await _wait_until(func(): return net.lobby.get("opening_speed", "") == "0.40" and net.lobby.get("ai_speed", "") == "0.60" and net.lobby.get("settlement_speed", "") == "0.90" and net.lobby.get("ai_strength", "") == "weak"), "all peers immediately receive the owner's four shared settings")
+	if role != 0:
+		t.expect(root.get_node("GameConfig").ai_speed == "0.80" and root.get_node("GameConfig").ai_strength == "medium", "joining does not overwrite the guest's own offline preferences")
+		net.set_ai_strength("strong")
+		net.set_settlement_speed("0.10")
+		await create_timer(0.1).timeout
+		t.expect(net.lobby.ai_strength == "weak" and net.lobby.settlement_speed == "0.90", "nonowners cannot change shared room settings through the network")
 	net.set_ready(true)
 	if not t.expect(await _wait_until(func(): return net.round_number == 1), "First round dealt after lobby readiness"):
 		await H.quit_cleanly(self, t.finish("next_round_network"))
@@ -85,7 +100,7 @@ func _run() -> void:
 	t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Settlement uses non-blocking tabletop content and plain bottom controls")
 	t.expect(table._next_round_button.get_parent() == table._settlement_card._post_controls and not table._next_round_button.disabled, "Every player has an enabled bottom ready button")
 	t.expect(table._next_round_button.text.contains("准备"), "Guests get ready button instead of return to lobby")
-	t.expect(table._next_round_button.size.y >= 80, "All humans have a usable next-round touch button")
+	t.expect(table._next_round_button.size.y >= 96 and table._next_round_button.size.x >= 480, "All humans have a usable next-round touch button")
 	t.expect(not net.lobby.seats[net.my_seat].ready, "Own readiness resets at settlement")
 	for seat in settlement.boards:
 		var board: Control = settlement.boards[seat]

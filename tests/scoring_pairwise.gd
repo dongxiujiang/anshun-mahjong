@@ -193,7 +193,7 @@ func _test_result_ui() -> void:
 		t.expect(table._settlement_card._next_round_button.position == Vector2.ZERO, "单按钮居中，不再左右分栏")
 		t.expect(table._settlement_card._post_controls.size == table._settlement_card._next_round_button.size,
 			"单按钮填满底部下一局控件")
-		t.expect(table._settlement_card._return_seat_button.custom_minimum_size.y <= 84.0,
+		t.expect(table._settlement_card._return_seat_button.custom_minimum_size.y <= table._settlement_card._post_controls.size.y,
 			"联机返回座位按钮的最小高度必须放入底部控件")
 		for seat in 4:
 			t.expect(settlement.boards[seat].is_visible_in_tree(), "每家桌面结算板可见")

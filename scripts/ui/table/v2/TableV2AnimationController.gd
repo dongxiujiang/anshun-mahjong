@@ -75,15 +75,6 @@ func holds_seat_refresh(seat: int) -> bool:
 func holds_draw_slot(seat: int) -> bool:
 	return _held_draw_seats.has(seat)
 
-## 该弃牌仍在飞行中；牌区先不显示落点牌，等落地后再显示。
-func discard_in_flight(seat: int, discard_id: int) -> bool:
-	for task in _discard_tasks.values():
-		var event: Dictionary = task.event
-		if int(event.get("seat", -2)) != seat: continue
-		if int(event.get("discard_id", -2)) != discard_id: continue
-		if not bool(task.get("landed", false)): return true
-	return false
-
 func opening_active() -> bool:
 	return _opening
 

@@ -2,9 +2,6 @@ class_name Tiles
 ## 牌值工具：牌用字符串表示 "wan3" / "tiao1" / "tong8" 等（4 张同值牌即同字符串）。
 
 const SUITS := ["wan", "tiao", "tong"]
-const SUIT_WAN := "wan"
-const SUIT_TIAO := "tiao"
-const SUIT_TONG := "tong"
 const RANKS := [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 static func val(suit: String, rank: int) -> String:
@@ -58,19 +55,9 @@ static func to_counts(hand: Array) -> Dictionary:
 static func value_index(tile: String) -> int:
 	return SUITS.find(suit(tile)) * 9 + (rank(tile) - 1)
 
-## 花色索引 0..2
-static func suit_index(tile: String) -> int:
-	return SUITS.find(suit(tile))
-
 ## 由价值索引反推牌值字符串（0..26）
 static func from_index(idx: int) -> String:
 	return SUITS[idx / 9] + str(idx % 9 + 1)
-
-## 34 个价值的索引 0..26
-static func all_indices() -> Array:
-	var out := []
-	for i in 27: out.append(i)
-	return out
 
 ## 手牌排序（万→条→筒，各花色按 1→9）
 static func sort_hand(hand: Array) -> Array:

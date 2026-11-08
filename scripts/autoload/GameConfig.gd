@@ -71,26 +71,27 @@ const SEAT_LEFT := 3    # 上家（左）
 var player_name := "玩家"
 var online_mode := false
 
-const MAX_SPEED_SECONDS := 2.0
+const MAX_SPEED_SECONDS := 1.0
+const SPEED_STEP_SECONDS := 0.1
 # 保留旧档位供已保存设置和联机协议读取。
 const AI_SPEED_DELAYS := {"fast": 0.8, "medium": 1.3, "slow": 2.0}
 # Claims use the same wait as an ordinary AI discard; the speed slider controls
 # both. Pass and win responses remain immediate.
-var ai_speed := "fast"
+var ai_speed := "0.80"
 # AI 强度三档；中档为加强防守、保留转换路线并兼顾报听速度的默认档。
 const AI_STRENGTHS := {"weak": "弱", "medium": "中", "strong": "强"}
 static var ai_strength := "medium"
 const ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0}
 const OPENING_SPEEDS := {"standard": 1.0, "fast": 0.5}
 const TILE_ANIMATION_SPEEDS := {"instant": 0.0, "fast": 0.5, "standard": 1.0, "slow": 1.8}
-const DEFAULT_TILE_ANIMATION_SECONDS := 0.30
+const DEFAULT_TILE_ANIMATION_SECONDS := 0.20
 var tile_animation_seconds := DEFAULT_TILE_ANIMATION_SECONDS
 # 结算阅读节奏独立于摸牌、出牌等动画；慢速默认留足查看计分的时间。
 signal settlement_speed_changed
 const SETTLEMENT_SPEEDS := {"fast": 0.8, "standard": 1.0, "slow": 2.0}
 # Base highlight, two pauses and score roll in TableUiConfig.
 const SETTLEMENT_STEP_SECONDS := 0.95
-var settlement_speed := "fast"
+var settlement_speed := "0.70"
 signal score_details_changed
 var score_details_enabled := false
 # 联机语音聊天：麦克风增益与其它玩家语音音量独立保存。
@@ -141,16 +142,18 @@ func load_settings(path: String = "") -> void:
 	for key in PREFERENCE_CHOICES:
 		var value = config.get_value("game", key, get(key))
 		if value is String and PREFERENCE_CHOICES[key].has(value): set(key, value)
-	var saved_ai = config.get_value("game", "ai_speed", "fast")
-	if saved_ai is String: set_ai_speed(saved_ai, false)
-	var saved_settlement = config.get_value("game", "settlement_speed", "fast")
-	if saved_settlement is String: set_settlement_speed(saved_settlement, false)
+	var saved_ai = config.get_value("game", "ai_speed", "0.80")
+	if saved_ai is String and (saved_ai.is_valid_float() or AI_SPEED_DELAYS.has(saved_ai)):
+		set_ai_speed("%.2f" % speed_seconds(float(AI_SPEED_DELAYS.get(saved_ai, saved_ai.to_float()))), false)
+	var saved_settlement = config.get_value("game", "settlement_speed", "0.70")
+	if saved_settlement is String and (saved_settlement.is_valid_float() or SETTLEMENT_SPEEDS.has(saved_settlement)):
+		set_settlement_speed("%.2f" % speed_seconds(float(SETTLEMENT_SPEEDS[saved_settlement]) * SETTLEMENT_STEP_SECONDS if SETTLEMENT_SPEEDS.has(saved_settlement) else saved_settlement.to_float()), false)
 	var legacy_draw = config.get_value("game", "draw_animation_speed", "")
 	var legacy_seconds := DEFAULT_TILE_ANIMATION_SECONDS
 	if legacy_draw is String: legacy_seconds *= float(TILE_ANIMATION_SPEEDS.get(legacy_draw, 1.0))
 	var saved_animation = config.get_value("game", "tile_animation_seconds", legacy_seconds)
 	if saved_animation is float or saved_animation is int:
-		set_tile_animation_seconds(float(saved_animation), false)
+		set_tile_animation_seconds(speed_seconds(float(saved_animation)), false)
 	var score_details = config.get_value("game", "score_details_enabled", false)
 	set_score_details_enabled(score_details is bool and score_details, false)
 	voice_chat_mic_gain = clampf(float(config.get_value("voice_chat", "mic_gain", voice_chat_mic_gain)), 0.0, 2.0)
@@ -197,8 +200,11 @@ func _save_preference(persist: bool) -> void:
 
 func set_ai_speed(value: String, persist: bool = true) -> void:
 	if is_ai_speed(value):
-		ai_speed = value
+		ai_speed = "%.2f" % ai_speed_seconds(value)
 		_save_preference(persist)
+
+static func speed_seconds(value: float) -> float:
+	return snappedf(clampf(value, 0.0, MAX_SPEED_SECONDS), SPEED_STEP_SECONDS) if is_finite(value) else 0.0
 
 static func is_speed_seconds(value: String) -> bool:
 	return value.is_valid_float() and value.to_float() >= 0.0 and value.to_float() <= MAX_SPEED_SECONDS
@@ -207,12 +213,18 @@ static func is_ai_speed(value: String) -> bool:
 	return AI_SPEED_DELAYS.has(value) or is_speed_seconds(value)
 
 static func ai_speed_seconds(value: String) -> float:
-	return value.to_float() if is_speed_seconds(value) else float(AI_SPEED_DELAYS.get(value, AI_SPEED_DELAYS.fast))
+	return speed_seconds(value.to_float() if is_speed_seconds(value) else float(AI_SPEED_DELAYS.get(value, AI_SPEED_DELAYS.fast)))
 
 func set_ai_strength(value: String, persist: bool = true) -> void:
 	if AI_STRENGTHS.has(value):
 		ai_strength = value
 		_save_preference(persist)
+
+func effective_ai_strength() -> String:
+	var network := get_node_or_null("/root/Network") if is_inside_tree() else null
+	if network != null and network.mode != "" and network.net_node != null:
+		return str(network.net_node.lobby.get("ai_strength", ai_strength))
+	return ai_strength
 
 func ai_delay_seconds() -> float:
 	if DisplayServer.get_name() == "headless":
@@ -234,7 +246,7 @@ static func is_opening_speed(value: String) -> bool:
 	return OPENING_SPEEDS.has(value) or is_speed_seconds(value)
 
 static func opening_motion_seconds(value: String) -> float:
-	return value.to_float() if is_speed_seconds(value) else DEFAULT_TILE_ANIMATION_SECONDS * float(OPENING_SPEEDS.get(value, 1.0))
+	return speed_seconds(value.to_float() if is_speed_seconds(value) else DEFAULT_TILE_ANIMATION_SECONDS * float(OPENING_SPEEDS.get(value, 1.0)))
 
 static func opening_deal_scale(value: String) -> float:
 	return opening_motion_seconds(value) / DEAL_FLIGHT_SECONDS
@@ -256,22 +268,28 @@ func animation_duration(base_seconds: float) -> float:
 
 func set_tile_animation_seconds(value: float, persist: bool = true) -> void:
 	if not is_finite(value) or value < 0.0 or value > MAX_SPEED_SECONDS: return
-	tile_animation_seconds = snappedf(value, 0.01)
+	tile_animation_seconds = speed_seconds(value)
 	_save_preference(persist)
 
 func set_settlement_speed(value: String, persist: bool = true) -> void:
 	if not SETTLEMENT_SPEEDS.has(value) and not is_speed_seconds(value): return
-	var changed := settlement_speed != value
-	settlement_speed = value
+	var normalized := "%.2f" % settlement_seconds(value)
+	var changed := settlement_speed != normalized
+	settlement_speed = normalized
 	_save_preference(persist)
 	if changed: settlement_speed_changed.emit()
 
 func settlement_duration(base_seconds: float) -> float:
 	return base_seconds * settlement_step_seconds() / SETTLEMENT_STEP_SECONDS
 
+static func settlement_seconds(value: String) -> float:
+	return speed_seconds(value.to_float() if is_speed_seconds(value) else SETTLEMENT_STEP_SECONDS * float(SETTLEMENT_SPEEDS.get(value, 0.8)))
+
 func settlement_step_seconds() -> float:
-	if is_speed_seconds(settlement_speed): return settlement_speed.to_float()
-	return SETTLEMENT_STEP_SECONDS * float(SETTLEMENT_SPEEDS.get(settlement_speed, 0.8))
+	var network := get_node_or_null("/root/Network") if is_inside_tree() else null
+	if network != null and network.mode != "" and network.net_node != null:
+		return settlement_seconds(str(network.net_node.lobby.get("settlement_speed", settlement_speed)))
+	return settlement_seconds(settlement_speed)
 
 func set_score_details_enabled(value: bool, persist: bool = true) -> void:
 	var changed := score_details_enabled != value

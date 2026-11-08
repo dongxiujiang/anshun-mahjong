@@ -54,7 +54,8 @@ var _ctrl_hint: Dictionary = {}
 var _members: Dictionary = {}
 var _pending_peers: Dictionary = {}
 var _owner_peer := 1
-var _opening_speed_reported := ""
+var _room_settings_reported := {}
+var _settings_owner := -1
 var _opening_waiters: Dictionary = {}
 var _opening_ack_session := ""
 var _owner_token := ""
@@ -95,8 +96,10 @@ var _last_state_flush_ms := 0
 const STATE_SYNC_INTERVAL_MS := 80
 var _state_revision := 0
 var _received_revision := -1
-var ai_speed := "fast"
-var opening_speed := "standard"
+var ai_speed := "0.80"
+var opening_speed := "0.20"
+var settlement_speed := "0.70"
+var ai_strength := "medium"
 var test_mode := false
 var voice_chat = null
 var _ai_service = null
@@ -126,9 +129,7 @@ static func valid_room_number(value: String) -> bool:
 	return true
 
 func _ai_level() -> String:
-	# 专用房间没有玩家设置，默认使用中档；本地/联机房主跟随设置。
-	if dedicated: return "medium"
-	return {"weak": "low", "medium": "medium", "strong": "high"}.get(CONFIG.ai_strength, "low")
+	return {"weak": "low", "medium": "medium", "strong": "high"}.get(ai_strength, "medium")
 
 func _ai_turn_delay() -> float:
 	if not dedicated and DisplayServer.get_name() == "headless": return 0.0
@@ -149,8 +150,12 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	multiplayer.multiplayer_peer = peer
 	host_mode = true
 	dedicated = server_only
-	ai_speed = "medium" if dedicated else get_node("/root/GameConfig").ai_speed
-	if not dedicated: opening_speed = get_node("/root/GameConfig").opening_speed_key()
+	if not dedicated:
+		var config := get_node("/root/GameConfig")
+		ai_speed = config.ai_speed
+		opening_speed = config.opening_speed_key()
+		settlement_speed = config.settlement_speed
+		ai_strength = config.ai_strength
 	_host_ai_fill = ai_fill
 	room_number = number
 	room_name = title.strip_edges().left(24)
@@ -642,8 +647,7 @@ func _publish_lobby() -> void:
 		# disconnected seats have an orphan record with the retained member.
 		if _orphaned.has(seat): member = _orphaned[seat].member
 		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": (not _waiting_for_reconnect(seat) and ai) if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
-	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "opening_speed": opening_speed, "test_mode": test_mode, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "voice_packs": voice_packs.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
-	_sync_voice_packs_to_audio()
+	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "opening_speed": opening_speed, "settlement_speed": settlement_speed, "ai_strength": ai_strength, "test_mode": test_mode, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "voice_packs": voice_packs.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer): rpc_id(peer, "lobby_sync", lobby)
 	lobby_updated.emit()
@@ -724,7 +728,6 @@ func _apply_voice_pack(peer: int, data: Dictionary) -> void:
 			return
 		_player_voice_prefs[peer] = pack_id
 	_reconcile_voice_packs()
-	_sync_voice_packs_to_audio()
 	_publish_lobby()
 
 func _reconcile_voice_packs() -> void:
@@ -777,16 +780,14 @@ func _ensure_unique_voice_packs() -> void:
 		voice_packs[seat] = pack_id
 		used[pack_id] = true
 
-func _sync_voice_packs_to_audio() -> void:
-	if not is_inside_tree():
-		return
-	var audio := get_node_or_null("/root/AudioManager")
-	if audio == null: return
-	for seat in 4:
-		audio.set_seat_voice_pack(seat, voice_packs[seat], false)
-
 func set_ai_speed(speed_key: String) -> void:
 	_submit_lobby("ai_speed", {"value": speed_key})
+
+func set_settlement_speed(value: String) -> void:
+	_submit_lobby("settlement_speed", {"value": value})
+
+func set_ai_strength(value: String) -> void:
+	_submit_lobby("ai_strength", {"value": value})
 
 func set_wants_dealer(value: bool) -> void:
 	_submit_lobby("dealer", {"value": value})
@@ -830,17 +831,36 @@ func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 	if action == "voice_pack":
 		_apply_voice_pack(peer, data)
 		return
+	if action == "room_settings":
+		if peer != _owner_peer: return
+		for key in ["opening_speed", "ai_speed", "settlement_speed", "ai_strength"]:
+			if data.has(key): _apply_lobby_action(peer, key, {"value": data[key]})
+		return
+	if action == "settlement_speed":
+		var value := str(data.get("value", ""))
+		if peer != _owner_peer or not CONFIG.is_speed_seconds(value): return
+		settlement_speed = "%.2f" % CONFIG.settlement_seconds(value)
+		_publish_lobby()
+		return
+	if action == "ai_strength":
+		var value := str(data.get("value", ""))
+		if peer != _owner_peer or not CONFIG.AI_STRENGTHS.has(value): return
+		ai_strength = value
+		for actor in game.controllers:
+			if actor is AiPlayer: actor.set_difficulty(_ai_level())
+		_publish_lobby()
+		return
 	if action == "opening_speed":
 		if peer != _owner_peer: return
 		var speed := str(data.get("value", ""))
 		if CONFIG.is_opening_speed(speed) and speed != opening_speed:
-			opening_speed = speed
+			opening_speed = "%.2f" % CONFIG.opening_motion_seconds(speed)
 			_publish_lobby()
 		return
 	if action == "ai_speed":
 		var speed_key := str(data.get("value", ""))
 		if peer != _owner_peer or not CONFIG.is_ai_speed(speed_key) or speed_key == ai_speed: return
-		ai_speed = speed_key
+		ai_speed = "%.2f" % CONFIG.ai_speed_seconds(speed_key)
 		game.ai_delay_seconds = _ai_turn_delay()
 		game.ai_response_delay_seconds = _ai_response_delay()
 		_publish_lobby()
@@ -1426,10 +1446,9 @@ func set_opening_speed(value: String) -> void:
 	if not CONFIG.is_opening_speed(value):
 		return
 	if host_mode:
-		opening_speed = value
+		opening_speed = "%.2f" % CONFIG.opening_motion_seconds(value)
 		_publish_lobby()
 	elif _client_joined and is_room_owner() and not _reconnecting and not _resume_sync_pending:
-		_opening_speed_reported = value
 		_submit_lobby("opening_speed", {"value": value})
 
 func _start_next_round() -> void:
@@ -1456,7 +1475,8 @@ func _apply_member_names() -> void:
 	game._recorder.update_players(game)
 
 func client(ip: String, port: int = 0, number: String = "", player_name: String = "", owner_token: String = "", resume_token: String = "", resume_only: bool = false) -> bool:
-	_opening_speed_reported = ""
+	_room_settings_reported.clear()
+	_settings_owner = -1
 	_server_ip = ip
 	_server_port = port if port > 0 else 7500
 	if not resume_only:
@@ -1671,7 +1691,7 @@ func seat_assign(seat: int, issued_token: String = "") -> void:
 	# 入座/换座后把本机音色上传到房间并立即同步。
 	call_deferred("_upload_my_seat_voice")
 	# 入座/收到 lobby 时上报本机速度；服务器只接受房主发来的值。
-	call_deferred("_report_opening_speed")
+	call_deferred("_report_room_settings")
 	room_ready.emit(seat)
 	if not _pending_snapshot.is_empty():
 		var state := _pending_snapshot
@@ -1681,6 +1701,9 @@ func seat_assign(seat: int, issued_token: String = "") -> void:
 @rpc("authority", "call_remote", "reliable")
 func lobby_sync(state: Dictionary) -> void:
 	lobby = state
+	if _settings_owner != int(state.get("owner", -1)):
+		_settings_owner = int(state.get("owner", -1))
+		_room_settings_reported.clear()
 	room_number = str(state.number)
 	room_name = str(state.name)
 	test_mode = bool(state.get("test_mode", false))
@@ -1688,18 +1711,19 @@ func lobby_sync(state: Dictionary) -> void:
 	for seat in 4:
 		voice_packs[seat] = VOICE_PACKS.normalize(packs[seat] if seat < packs.size() else "default")
 	_ensure_unique_voice_packs()
-	_sync_voice_packs_to_audio()
 	if not bool(state.get("started", false)) and _client_joined: _resume_sync_pending = false
-	_report_opening_speed()
+	_report_room_settings()
 	lobby_updated.emit()
 
-func _report_opening_speed() -> void:
+func _report_room_settings() -> void:
 	if host_mode or not _client_joined or int(lobby.get("owner", -1)) != _local_peer():
 		return
-	var desired: String = get_node("/root/GameConfig").opening_speed_key()
-	if str(lobby.get("opening_speed", "")) == desired or _opening_speed_reported == desired:
-		return
-	set_opening_speed(desired)
+	var config := get_node("/root/GameConfig")
+	var desired := {"opening_speed": config.opening_speed_key(), "ai_speed": config.ai_speed,
+		"settlement_speed": config.settlement_speed, "ai_strength": config.ai_strength}
+	if _room_settings_reported == desired: return
+	_room_settings_reported = desired.duplicate()
+	_submit_lobby("room_settings", desired)
 
 @rpc("authority", "call_remote", "reliable")
 func join_rejected(message: String) -> void:

@@ -27,13 +27,9 @@ const ORDINARY_UNIT := 1.25    # 60 × 80
 const ORDINARY_STEP_X := 64.0
 const ORDINARY_STEP_Y := 84.0
 const ORDINARY_ROW_WIDTH := 768.0
-const ORDINARY_ROW_HEIGHT := 164.0
 ## 东/西弃牌旋转后视觉尺寸 80×60，槽位必须按旋转后的步进。
 const ORDINARY_SIDE_STEP_X := 84.0
 const ORDINARY_SIDE_STEP_Y := 64.0
-const ORDINARY_SIDE_WIDTH := 332.0
-const ORDINARY_SIDE_HEIGHT := 380.0
-const ORDINARY_CENTER_MARGIN := 20.0
 
 const RED_WIDTH := 44.0
 const RED_HEIGHT := 56.0
@@ -44,9 +40,6 @@ const RED_CATEGORY_GAP := 12.0
 const SIDE_RED_GAP := 8.0
 ## 东/西两行红牌最宽占位：56 + 4 + 56。
 const SIDE_RED_RESERVE := 116.0
-## 普通碰杠避开红牌区：南北一层红牌，东西最多两层红牌。
-const MELD_HAND_OFFSET_NS := 106.0
-const MELD_HAND_OFFSET_SIDE := 170.0
 ## 东/西牌墙中心对齐牌墙内框中心 y=606.4。
 const SIDE_WALL_Y_SHIFT := -33.6
 ## A 方案：北/南牌墙为“墙—红8、红—手8”整体移动。
@@ -95,20 +88,6 @@ static func hand13_rect(seat: int, human_seat: int) -> Rect2:
 	if rel == 1:
 		return Rect2(HAND_RIGHT - size.y, top, size.y, span)
 	return Rect2(HAND_LEFT, top, size.y, span)
-
-static func draw_gap(unit: float) -> float:
-	return TILE_BASE.x * unit * DRAW_GAP_TILES
-
-## 手牌 + 摸牌整体沿牌桌方向的总长度。
-static func hand_group_span(count: int, unit: float) -> float:
-	return hand_span(count, unit) + draw_gap(unit) + TILE_BASE.x * unit
-
-## 手牌部分在整体中的起点（不含摸牌）。
-static func hand_group_left(count: int, unit: float) -> float:
-	return CENTER.x - hand_group_span(count, unit) / 2.0
-
-static func hand_group_top(count: int, unit: float) -> float:
-	return CENTER.y - hand_group_span(count, unit) / 2.0
 
 ## 当前手牌槽中心。count 由调用方决定：开局固定用 13，普通手牌用实际张数。
 ## 手牌+摸牌整体中心固定在牌桌中心线。

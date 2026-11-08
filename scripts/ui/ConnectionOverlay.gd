@@ -127,18 +127,6 @@ func show_syncing(message: String = "座位已恢复，正在同步最新牌局�
 		if MOTION.enabled():
 			MOTION.slide_in(_panel)
 
-func show_connecting(message: String = "正在连接房间…") -> void:
-	var was_visible := visible
-	show()
-	_title.text = "正在连接"
-	_body.text = message
-	_progress.text = ""
-	_retry_button.hide()
-	_leave_button.text = "取消"
-	_layout()
-	if not was_visible:
-		MOTION.appear(self)
-
 func close() -> void:
 	MOTION.stop(self)
 	hide()

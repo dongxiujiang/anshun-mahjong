@@ -44,6 +44,7 @@ func _build_static_ui() -> void:
 	table._sound_settings.table_mode = true
 	table.add_child(table._sound_settings)
 	table._sound_settings.ai_speed_selected.connect(table._set_ai_speed)
+	table._sound_settings.ai_strength_selected.connect(table._set_ai_strength)
 	table._sound_settings.auto_test_requested.connect(table.start_auto_test)
 	table._sound_settings.voice_pack_open_requested.connect(table.open_voice_packs)
 	GameConfig.settlement_speed_changed.connect(table._on_settlement_speed_changed)
@@ -103,20 +104,6 @@ func _build_static_ui() -> void:
 	surface.move_child(v2, 0)
 	v2.set_table(table)
 	table._new_areas = v2
-
-func _show_legacy_table(areas) -> void:
-	if turn_indicator != null: turn_indicator.hide()
-	if areas == null: return
-	for seat in 4:
-		if areas.seat_roots.has(seat): areas.seat_roots[seat].show()
-		if areas.center_labels.has(seat): areas.center_labels[seat].show()
-		if areas.net_labels.has(seat): areas.net_labels[seat].show()
-		if areas.name_labels.has(seat): areas.name_labels[seat].show()
-		if areas.dealer_badges.has(seat): areas.dealer_badges[seat].show()
-		if areas.discard_scroll.has(seat): areas.discard_scroll[seat].show()
-		if areas.meld_box.has(seat): areas.meld_box[seat].show()
-		if areas.chicken_box.has(seat): areas.chicken_box[seat].show()
-		if areas.voice_speaker_buttons.has(seat): areas.voice_speaker_buttons[seat].show()
 
 func _hide_legacy_visuals(areas) -> void:
 	if turn_indicator != null: turn_indicator.hide()

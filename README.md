@@ -9,7 +9,7 @@
 - 更新：主菜单和联机大厅都可「检查更新」。新完整 APK 默认使用自建 HTTPS 更新源，主清单和回退清单都在 `https://mj.dongxiu.fun/updates/`；1.1.9 及更早版本仍需先安装一次新完整包。
 - 联机语音：Android 使用腾讯云 GME arm64。需要服务器 `GME_APP_ID`/`GME_APP_KEY`，详见 [GME 语音接入手册](docs/gme_voice.md)。
 
-联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.6.17**，完整规则见 [游戏规则总纲](docs/游戏规则总纲.md)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
+联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.6.18**，完整规则见 [游戏规则总纲](docs/游戏规则总纲.md)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 
 应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Android 游戏内下载补丁，重启生效；完整版本更新正式签名 APK。首次使用热更新须安装包含 PatchBoot 的完整版本。自 1.4.19 起，自建更新清单必须携带离线 RSA 签名，客户端只信任内置公钥验证通过的 `signed_payload`；发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
 
@@ -326,9 +326,9 @@ docker compose -f compose.prod.yaml up -d app --pull never
 
 ## 五、导出为可执行文件 / APK
 
-工程仅配置 Android 导出预设，正式包版本为 **1.6.17**，包名为 com.anshun.mahjong，支持 arm64-v8a 横屏。
+工程仅配置 Android 导出预设，正式包版本为 **1.6.18**，包名为 com.anshun.mahjong，支持 arm64-v8a 横屏。
 
-使用 Godot 4.7.2、JDK 17 和 Android SDK，在编辑器导出设置中选择 Android。正式包使用既有签名，覆盖安装保留应用数据。云端构建同时保存 1.6.17-native1 安装基线和签名更新清单。
+使用 Godot 4.7.2、JDK 17 和 Android SDK，在编辑器导出设置中选择 Android。正式包使用既有签名，覆盖安装保留应用数据。云端构建同时保存 1.6.18-native1 安装基线和签名更新清单。
 
 GitHub Actions 的完整包、热补丁、基线下载及服务器镜像流程见 [CI/CD 发布说明](docs/ci_release.md)。完整包发布产物为正式签名 APK、update-manifest.json 和 baseline.zip。
 
@@ -424,7 +424,7 @@ godot --headless res://tests/client_scene.tscn
 
 ## 九、牌桌 UI 可调参数
 
-主要视觉参数集中在 [`scripts/ui/table/TableUiConfig.gd`](scripts/ui/table/TableUiConfig.gd)：`OWN_HAND_TILE_UNIT` 控制自己的手牌和摸牌（当前 2.40 倍），`OWN_PLAYER_TILE_UNIT` 控制自己的碰杠和鸡牌（1.60 倍），`PLAYER_TILE_UNIT` 控制其他三家的同类牌（1.35 倍），`TILE_UNIT` 保持弃牌牌面（1.10 倍）；牌墙数据仍参与骰子和摸牌逻辑，但牌桌不再绘制牌墙。`DISCARD_BUTTON_SIZE` 统一控制报听、碰、杠、胡等选择按钮（出牌改为点牌）；`SETTINGS_BUTTON_SIZE` 独立控制顶部设置入口（144×72），`SettingsButton.gd` 将触控范围向左、下扩大到 168×112，不增大可见按钮；碰杠牌区避开整个热区，`ACTION_HAND_GAP` 控制操作区与手牌上边的空隙。`RESULT_TILE_UNIT` 控制结算牌面和翻鸡牌；`DRAW_GAP` 是手牌与摸牌位之间的距离，`EXPOSED_HAND_GAP` 是碰杠/鸡牌与手牌的最小间隔。`TableLayout._hand_layout()` 让手牌和摸牌位整体居中，预留摸牌位避免摸打时整排晃动；`_seat_metrics()` 控制各家的手牌、弃牌区和碰杠换行区域。东西两家的弃牌区扩大容器但仍使用 `TILE_UNIT`，滚动条隐藏；`PlayerTileAreas._prepare_exposed_layouts()` 会在多组碰杠/鸡牌时向内换行并避开按钮、分数和中央区域。`GameTable` 中同名常量只保留兼容引用，调整数值请改配置文件。动画事件时序、真实桌面对照和当前 2D 限制见 [`docs/animation_review.md`](docs/animation_review.md)。
+主要视觉参数集中在 [`scripts/ui/table/TableUiConfig.gd`](scripts/ui/table/TableUiConfig.gd)：`OWN_HAND_TILE_UNIT` 控制自己的手牌和摸牌（当前 2.40 倍），`OWN_PLAYER_TILE_UNIT` 控制自己的碰杠和鸡牌（1.60 倍），`PLAYER_TILE_UNIT` 控制其他三家的同类牌（1.35 倍），`TILE_UNIT` 保持弃牌牌面（1.10 倍）；牌墙数据仍参与骰子和摸牌逻辑，但牌桌不再绘制牌墙。`DISCARD_BUTTON_SIZE` 统一控制报听、碰、杠、胡等选择按钮（出牌改为点牌）；`SETTINGS_BUTTON_SIZE` 独立控制顶部设置入口（144×72），`SettingsButton.gd` 将触控范围向左、下扩大到 168×112，不增大可见按钮；碰杠牌区避开整个热区，`ACTION_HAND_GAP` 控制操作区与手牌上边的空隙。结算牌面与翻鸡牌由 `TableV2.gd` 的原生结算逻辑绘制；`DRAW_GAP` 是手牌与摸牌位之间的距离，`EXPOSED_HAND_GAP` 是碰杠/鸡牌与手牌的最小间隔。`TableLayout._hand_layout()` 让手牌和摸牌位整体居中，预留摸牌位避免摸打时整排晃动；`_seat_metrics()` 控制各家的手牌、弃牌区和碰杠换行区域。东西两家的弃牌区扩大容器但仍使用 `TILE_UNIT`，滚动条隐藏；`PlayerTileAreas._prepare_exposed_layouts()` 会在多组碰杠/鸡牌时向内换行并避开按钮、分数和中央区域。`GameTable` 中同名常量只保留兼容引用，调整数值请改配置文件。动画事件时序、真实桌面对照和当前 2D 限制见 [`docs/animation_review.md`](docs/animation_review.md)。
 
 Android 固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280），Android 使用 `window/handheld/orientation=4`。窗口比例变化只缩放和留边，不切回竖屏；`_usable_rect()` 为安卓安全区域留边，切换尺寸会自动刷新牌面、弃牌区和操作按钮。布局测试覆盖 16:9、20:9、16:10、方屏和竖屏窗口的横屏画布边界；截图见 `docs/android_table_*.png` 和 `docs/android_result_*.png`。
 
@@ -503,10 +503,9 @@ Android 固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280），Android 使�
 - `OWN_PLAYER_TILE_UNIT`：自己的碰杠和鸡牌，当前为 `1.60`。
 - `PLAYER_TILE_UNIT`：其他三家的手牌、碰杠和鸡牌，当前为 `1.35`。
 - `TILE_UNIT`：弃牌牌面，当前为 `1.10`；放大弃牌区应改 `river_size`，不要改这个值。
-- `RESULT_TILE_UNIT`：结算卡片中的牌，当前为 `1.60`。
 - `TILE_GAP`、`EXPOSED_HAND_GAP`、`DRAW_GAP`：牌间距、碰杠与手牌间距、手牌与摸牌间距。
 
-要放大自己的牌，优先只改 `OWN_HAND_TILE_UNIT`；要让所有操作按钮变大，改 `DISCARD_BUTTON_SIZE`，按钮由 `TableActions._add_action()` 统一创建。`_layout_actions()` 会把报听、碰、杠、胡、自摸等选择按钮放在摸牌位上方，并避开自己的弃牌区。`SIDE_RIVER_SIZE`/`MAIN_RIVER_SIZE` 调整弃牌容器，`RESULT_GRID_ORIGIN`/`RESULT_GRID_STRIDE`/`RESULT_ROW_SIZE` 调整结算行网格；`BUTTON_*` 常量调整按钮各状态颜色。
+要放大自己的牌，优先只改 `OWN_HAND_TILE_UNIT`；要让所有操作按钮变大，改 `DISCARD_BUTTON_SIZE`，按钮由 `TableActions._add_action()` 统一创建。`_layout_actions()` 会把报听、碰、杠、胡、自摸等选择按钮放在摸牌位上方，并避开自己的弃牌区。`SIDE_RIVER_SIZE`/`MAIN_RIVER_SIZE` 调整弃牌容器，结算行网格由 `TableV2._build_native_settlement_panel()` 定位；`BUTTON_*` 常量调整按钮各状态颜色。
 
 ### 10.6 碰杠、冲锋鸡和弃牌区
 
@@ -516,9 +515,9 @@ Android 固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280），Android 使�
 
 ### 10.7 结算卡片
 
-`SettlementCard._show_result()` 动态创建遮罩和卡片，卡片内四行按“你、上家、对家、下家”显示。每行由 `_draw_result_details()` 创建独立滚动区，`_draw_result_group()` 绘制牌组、分值和说明。鸡牌按同类型/同分值合并，杠牌集中在最后；`_result_sideways_index()` 复用玩家牌区的 `_meld_tile_layout()`，保证结算中的横牌方向与牌桌一致。
+`TableV2._build_native_settlement_panel()` 创建个人结算面板，显示本局结果、倍率来源以及我、上、对、下的叫牌状态和相互收付。`TableV2ScoreInspection` 负责点击各家手牌后的单倍得分明细，全部项目最多两行显示。
 
-“查看结算/看牌桌”按钮位置由 `RESULT_TOGGLE_SIZE`、`_result_toggle_position()` 和 `panel_position_for_result_toggle()` 控制；下一局按钮由 `NEXT_ROUND_BUTTON_SIZE` 和 `_refresh_next_round_controls()` 控制。调整结算卡片整体大小时改 `_result_card_size()` 相关常量，同时检查每行 `ScrollContainer` 的宽高。
+下一局按钮由 `TableV2SettlementCard.refresh_layout()` 定位在牌桌底部，单机与联机按钮尺寸分别由该脚本的 `SOLO_BUTTON_SIZE`、`ONLINE_BUTTON_SIZE` 控制。
 
 ### 10.8 牌组件与弹窗
 
@@ -558,7 +557,7 @@ Android 固定使用横屏画布 `LANDSCAPE_SIZE`（2280×1280），Android 使�
 
 ### 开局动画与结算准备的调整入口
 
-- 开局骰子时长由 `GameConfig.OPENING_DICE_SECONDS` 和 `OPENING_DICE_HOLD_SECONDS` 定义；逐组发牌和理牌使用牌张动画滑条的秒数，联机采用房主同步的速度。`opening_wait_seconds()` 按全部发牌组、理牌和帧间隔计算服务端等待时间。
+- 开局骰子时长由 `GameConfig.OPENING_DICE_SECONDS` 和 `OPENING_DICE_HOLD_SECONDS` 定义；逐组发牌和理牌使用牌张动画滑条的秒数，联机三项速度与人机强度采用房主设置，音量和音色独立保存在本机。速度滑条范围0～1秒，每0.1秒一档，牌面、人机等待、结算默认分别为0.2、0.8、0.7秒。碰杠后剩余手牌原位保留至该玩家出牌后再居中。`opening_wait_seconds()` 按全部发牌组、理牌和帧间隔计算服务端等待时间。
 - 权威端先立即完成 52 张起手牌数据，保持 `DEALING`；UI 从空手牌开始，按三轮四张和最后单张逐组播放，全部落桌后用抛物线完成理牌。共同等待结束且所有在线真人客户端确认理牌画面已呈现后，才摸庄家的第 14 张并发出行动提示。动画只报告开局完成，不提交游戏操作；断线或转为人机的座位不会阻塞开局。普通 headless 回归默认跳过等待，专用服务器保留真实等待。
 - `TableActions._on_human_tile_gui()` 在短按松手时提交一次出牌，滑动超过阈值不出牌；所有提交入口都检查开局锁。原生触控和模拟鼠标不能重复提交。
 - `SettlementCard` 的 `ReadinessFooter` 独立显示四人的昵称与准备状态、等待提示、大号准备/取消按钮。每个真人各自准备，人机默认准备；全部准备后仍由权威端等待 1 秒开始下一局。

@@ -3,7 +3,7 @@ const H := preload("res://tests/test_harness.gd")
 const STORE := preload("res://scripts/core/UserSettingsStore.gd")
 const GAME := "res://scripts/autoload/GameConfig.gd"
 const AUDIO := "res://scripts/autoload/AudioManager.gd"
-const CHOICES := {"ai_speed": "1.26", "animation_speed": "fast", "tile_animation_seconds": 0.75, "settlement_speed": "1.45"}
+const CHOICES := {"ai_speed": "0.80", "animation_speed": "fast", "tile_animation_seconds": 0.7, "settlement_speed": "0.60"}
 var t := H.new()
 var directory := "res://build/settings_persistence/%d" % OS.get_process_id()
 
@@ -26,19 +26,19 @@ func _audio(path: String):
 func _test_defaults_and_recovery() -> void:
 	var path := directory + "/validation.cfg"
 	var config = _game(path)
-	t.expect(config.ai_speed == "fast" and config.tile_animation_seconds == 0.30 and config.settlement_speed == "fast", "new installation uses short durations")
+	t.expect(config.ai_speed == "0.80" and config.tile_animation_seconds == 0.20 and config.settlement_speed == "0.70", "new installation uses short durations")
 	t.expect(not config.score_details_enabled, "new installation defaults to score details off")
 	t.expect(not FileAccess.file_exists(path), "loading missing settings never writes defaults")
 	config.set_settlement_speed("slow")
-	t.expect(STORE.read_config(path).get_value("game", "settlement_speed") == "slow", "explicitly choosing the current default is still saved for future upgrades")
+	t.expect(STORE.read_config(path).get_value("game", "settlement_speed") == "1.00", "explicitly choosing the current default is still saved for future upgrades")
 	config.set_ai_speed("medium")
 	config.set_ai_speed("slow")
 	t.expect(FileAccess.file_exists(path + ".bak"), "saving keeps previous complete settings")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	var recovered = _game(path)
-	t.expect(recovered.ai_speed == "medium", "interrupted primary rename recovers the previous complete settings")
+	t.expect(recovered.ai_speed == "1.00", "interrupted primary rename recovers the previous complete settings")
 	recovered.set_ai_speed("slow")
-	t.expect(STORE.read_config(path).get_value("game", "ai_speed") == "slow", "recovered settings can be saved again")
+	t.expect(STORE.read_config(path).get_value("game", "ai_speed") == "1.00", "recovered settings can be saved again")
 	var data := STORE.read_config(path)
 	data.set_value("future", "keep", "from-newer-version")
 	data.set_value("game", "draw_animation_speed", {"invalid": true})
@@ -48,10 +48,21 @@ func _test_defaults_and_recovery() -> void:
 	data.erase_section_key("game", "score_details_enabled")
 	data.erase_section_key("game", "tile_animation_seconds")
 	data.save(path)
+	data.set_value("game", "ai_speed", "1.26")
+	data.set_value("game", "tile_animation_seconds", 1.75)
+	data.set_value("game", "settlement_speed", "1.45")
+	data.save(path)
+	var migrated = _game(path)
+	t.expect(migrated.ai_speed == "1.00" and migrated.tile_animation_seconds == 1.0 and migrated.settlement_speed == "1.00", "old durations above the new range clamp to one second")
+	migrated.free()
+	data.set_value("game", "ai_speed", "slow")
+	data.set_value("game", "settlement_speed", "fast")
+	data.erase_section_key("game", "tile_animation_seconds")
+	data.save(path)
 	var digest := FileAccess.get_sha256(path)
 	var loaded = _game(path)
-	t.expect(loaded.ai_speed == "slow" and loaded.settlement_speed == "fast", "valid choices survive invalid neighboring fields")
-	t.expect(loaded.tile_animation_seconds == 0.30, "invalid legacy animation preference falls back to the default")
+	t.expect(loaded.ai_speed == "1.00" and loaded.settlement_speed == "0.80", "valid choices survive invalid neighboring fields")
+	t.expect(loaded.tile_animation_seconds == 0.20, "invalid legacy animation preference falls back to the default")
 	t.expect(loaded.animation_speed == "standard", "a newly added setting uses its default")
 	t.expect(not loaded.score_details_enabled, "older settings default to score details off")
 	loaded.set_ai_speed("invalid")
@@ -100,8 +111,8 @@ func _test_controls() -> void:
 	var reloaded = _game(config.settings_path)
 	t.expect(reloaded.score_details_enabled, "enabled score details survive reloading settings")
 	reloaded.free()
-	settings.tile_speed_slider.value = 1.25
-	t.expect(is_equal_approx(STORE.read_config(config.settings_path).get_value("game", "tile_animation_seconds"), 1.25), "tile duration is saved while settings is open")
+	settings.tile_speed_slider.value = 0.7
+	t.expect(is_equal_approx(STORE.read_config(config.settings_path).get_value("game", "tile_animation_seconds"), 0.7), "tile duration is saved while settings is open")
 	settings.settlement_speed_slider.value = 0.40
 	t.expect(STORE.read_config(config.settings_path).get_value("game", "settlement_speed") == "0.40", "settlement step duration is saved while settings is open")
 	settings.sliders.voice.value = 37
@@ -144,7 +155,9 @@ func _child(mode: String) -> void:
 		audio.set_preview_voice_seat(2)
 		t.expect(FileAccess.file_exists(config.settings_path) and FileAccess.file_exists(audio.settings_path), "preferences saved before closing the settings panel or exiting")
 	else:
-		for key in CHOICES: t.expect(config.get(key) == CHOICES[key], mode + " restores " + key + " at startup")
+		for key in CHOICES:
+			var actual = config.get(key)
+			t.expect(is_equal_approx(actual, CHOICES[key]) if actual is float else actual == CHOICES[key], mode + " restores " + key + " at startup")
 		for channel in audio.CHANNELS:
 			t.expect(is_equal_approx(audio.volumes[channel], {"music": 0.28, "voice": 0.9, "effects": 0.43}[channel]), mode + " restores volume " + channel)
 			var expected_enabled: bool = channel in ["voice", "effects"]
@@ -169,7 +182,7 @@ func _test_restart_and_patch() -> void:
 	var game_hash := FileAccess.get_sha256(directory + "/restart_game.cfg")
 	var audio_hash := FileAccess.get_sha256(directory + "/restart_audio.cfg")
 	_run_child("read")
-	var game_source := FileAccess.get_file_as_string(GAME).replace('var ai_speed := "fast"', 'var ai_speed := "slow"').replace('var settlement_speed := "fast"', 'var settlement_speed := "standard"')
+	var game_source := FileAccess.get_file_as_string(GAME).replace('var ai_speed := "0.80"', 'var ai_speed := "slow"').replace('var settlement_speed := "0.70"', 'var settlement_speed := "standard"')
 	var audio_source := FileAccess.get_file_as_string(AUDIO).replace('{"music": 0.12, "voice": 0.8, "effects": 0.65}', '{"music": 0.5, "voice": 0.5, "effects": 0.5}')
 	var pack := PCKPacker.new()
 	t.expect(pack.pck_start(directory + "/new-defaults.pck") == OK, "create preference upgrade fixture")

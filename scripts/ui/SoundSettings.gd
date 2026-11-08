@@ -244,7 +244,7 @@ func _slider_row(title: String, pos: Vector2, maximum: float, step: float) -> Ar
 	return [slider, value]
 
 func _timing_slider(title: String, y: float, apply: Callable) -> HSlider:
-	var row := _slider_row(title, Vector2(584, y), GameConfig.MAX_SPEED_SECONDS, 0.01)
+	var row := _slider_row(title, Vector2(584, y), GameConfig.MAX_SPEED_SECONDS, GameConfig.SPEED_STEP_SECONDS)
 	var slider: HSlider = row[0]
 	var label: Label = row[1]
 	_timing_labels[slider] = label
@@ -253,7 +253,7 @@ func _timing_slider(title: String, y: float, apply: Callable) -> HSlider:
 		_timing_drags.erase(slider)
 		if changed and slider.editable: apply.call(slider.value))
 	slider.value_changed.connect(func(seconds: float):
-		label.text = "%.2f s" % seconds
+		label.text = "%.1f s" % seconds
 		if not _timing_drags.has(slider) and slider.editable: apply.call(seconds))
 	return slider
 
@@ -332,6 +332,10 @@ func _set_ai_speed(seconds: float) -> void:
 	ai_speed_selected.emit("%.2f" % seconds)
 
 func _set_ai_strength(strength_key: String) -> void:
+	var network := get_node_or_null("/root/Network")
+	if network != null and network.mode != "" and network.net_node != null:
+		if not network.net_node.is_room_owner(): return
+		network.net_node.set_ai_strength(strength_key)
 	GameConfig.set_ai_strength(strength_key, persist_changes)
 	_sync_ai_strength()
 	ai_strength_selected.emit(strength_key)
@@ -343,6 +347,10 @@ func _set_tile_speed(seconds: float) -> void:
 		network.net_node.set_opening_speed(GameConfig.opening_speed_key())
 
 func _set_settlement_speed(seconds: float) -> void:
+	var network := get_node_or_null("/root/Network")
+	if network != null and network.mode != "" and network.net_node != null:
+		if not network.net_node.is_room_owner(): return
+		network.net_node.set_settlement_speed("%.2f" % seconds)
 	GameConfig.set_settlement_speed("%.2f" % seconds, persist_changes)
 
 func _toggle_score_details() -> void:
@@ -356,8 +364,11 @@ func _sync_score_details_button() -> void:
 	score_details_button.modulate = Color("#f4df9f") if GameConfig.score_details_enabled else Color.WHITE
 
 func _sync_ai_strength() -> void:
+	var network := get_node_or_null("/root/Network")
+	var editable: bool = network == null or network.mode == "" or network.net_node == null or network.net_node.is_room_owner()
 	for speed_key in ai_strength_buttons:
-		ai_strength_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.ai_strength else Color.WHITE
+		ai_strength_buttons[speed_key].disabled = not editable or speed_key == "strong"
+		ai_strength_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.effective_ai_strength() else Color.WHITE
 
 func sync_timing_controls() -> void:
 	if not table_mode: return
@@ -367,18 +378,19 @@ func sync_timing_controls() -> void:
 	if network != null and network.mode != "" and network.net_node != null:
 		ai_key = str(network.net_node.lobby.get("ai_speed", "fast"))
 		editable = network.net_node.is_room_owner()
-	for slider in [tile_speed_slider, ai_speed_slider]:
+	for slider in [tile_speed_slider, ai_speed_slider, settlement_speed_slider]:
 		slider.editable = editable
 		slider.modulate = Color.WHITE if editable else Color(1.0, 1.0, 1.0, 0.55)
 		slider.tooltip_text = "联机房间速度由房主设置" if not editable else ""
 	_sync_timing_value(tile_speed_slider, GameConfig.tile_motion_seconds())
 	_sync_timing_value(ai_speed_slider, GameConfig.ai_speed_seconds(ai_key))
 	_sync_timing_value(settlement_speed_slider, GameConfig.settlement_step_seconds())
+	_sync_ai_strength()
 
 func _sync_timing_value(slider: HSlider, seconds: float) -> void:
 	if _timing_drags.has(slider): return
 	slider.set_value_no_signal(seconds)
-	_timing_labels[slider].text = "%.2f s" % seconds
+	_timing_labels[slider].text = "%.1f s" % seconds
 
 func open() -> void:
 	_sync()

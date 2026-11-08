@@ -24,7 +24,6 @@ var _segments: Dictionary
 ## 调试牌墙按真实取牌顺序回放；正式逻辑不读取。
 var draw_log: Array = []
 
-const SUIT_LEN := 26  # 砖数单位，仅供内部：每砖2张
 const PAIR := 2
 
 func _init(ring_tiles: Array, dealer_seat: int = 0):
@@ -157,20 +156,10 @@ func _physical_slot_order(segment: Dictionary, slots: Array) -> Array:
 		ordered.append(slots[index])
 	return ordered
 
-func debug_remaining_at(count: int) -> int:
-	return N - clampi(count, 0, draw_log.size())
-
 func _wall_seg_for_seat(seat: int) -> Dictionary:
 	for key in _segments:
 		if _segments[key].seat == seat: return _segments[key]
 	return _segments[0]
-
-func remaining_in_wall_until_empty() -> bool:
-	return remaining <= 0
-
-## 剩余最后四张（用于"最后四张自摸+5"）：当前尚未摸的张数 <=4 且将要摸
-func is_global_tail_four() -> bool:
-	return remaining <= 4
 
 # 调试
 func debug_ring_head_tail() -> Dictionary:

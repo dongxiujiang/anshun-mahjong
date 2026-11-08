@@ -35,7 +35,7 @@ func _run() -> void:
 	if room.is_empty():
 		get_tree().quit(1)
 		return
-	if room_owner: GameConfig.set_tile_animation_seconds(1.25, false)
+	if room_owner: GameConfig.set_tile_animation_seconds(1.0, false)
 	Network.start_client(str(room.host), int(room.port), str(room.number), _arg("--owner-token"))
 	var net := Network.net_node
 	t.expect(await _wait_until(func(): return not net.lobby.is_empty()), "Cloud room handshake")
@@ -43,21 +43,25 @@ func _run() -> void:
 	t.expect(net.is_room_owner() == room_owner, "Creator exclusively owns room")
 	t.expect(net.my_seat == 1, "Cloud entrants choose South whenever it is free")
 	if room_owner:
-		t.expect(net.lobby.get("opening_speed", "") == "1.25", "Dedicated room accepts a numeric opening speed at creation")
-		GameConfig.set_tile_animation_seconds(0.64, false)
-		net.set_opening_speed("0.64")
-		t.expect(await _wait_until(func(): return net.lobby.get("opening_speed", "") == "0.64"), "Owner changes the shared tile speed through the server")
-		net.set_ai_speed("1.37")
-		t.expect(await _wait_until(func(): return net.lobby.get("ai_speed", "") == "1.37"), "Owner can choose a fractional AI delay")
+		t.expect(await _wait_until(func(): return net.lobby.get("opening_speed", "") == "1.00"), "Dedicated room accepts a numeric opening speed at creation")
+		GameConfig.set_tile_animation_seconds(0.6, false)
+		net.set_opening_speed("0.60")
+		t.expect(await _wait_until(func(): return net.lobby.get("opening_speed", "") == "0.60"), "Owner changes the shared tile speed through the server")
+		if room_owner: GameConfig.set_ai_speed("0.70", false)
+		net.set_ai_speed("0.70")
+		t.expect(await _wait_until(func(): return net.lobby.get("ai_speed", "") == "0.70"), "Owner can choose a fractional AI delay")
+		GameConfig.set_ai_speed("medium", false)
 		net.set_ai_speed("medium")
-		t.expect(await _wait_until(func(): return net.lobby.get("ai_speed", "") == "medium"), "Owner changes dedicated AI speed through server")
+		t.expect(await _wait_until(func(): return net.lobby.get("ai_speed", "") == "1.00"), "Owner changes dedicated AI speed through server")
+		GameConfig.set_ai_speed("fast", false)
 		net.set_ai_speed("fast")
-		t.expect(await _wait_until(func(): return net.lobby.get("ai_speed", "") == "fast"), "Owner can restore one-second online speed")
+		t.expect(await _wait_until(func(): return net.lobby.get("ai_speed", "") == "0.80"), "Owner can restore default online speed")
 	else:
-		net.set_ai_speed("1.37")
+		if room_owner: GameConfig.set_ai_speed("0.70", false)
+		net.set_ai_speed("0.70")
 		await get_tree().create_timer(0.2).timeout
-		t.expect(net.lobby.get("ai_speed", "") == "fast", "Guest cannot change shared AI speed")
-		t.expect(is_equal_approx(GameConfig.tile_motion_seconds(), 0.64), "Guest sees the room's shared tile animation duration")
+		t.expect(net.lobby.get("ai_speed", "") == "0.80", "Guest cannot change shared AI speed")
+		t.expect(is_equal_approx(GameConfig.tile_motion_seconds(), 0.6), "Guest sees the room's shared tile animation duration")
 	if room_owner:
 		net.select_seat(2)
 		t.expect(await _wait_until(func(): return net.my_seat == 2), "Online seat change")
@@ -68,8 +72,8 @@ func _run() -> void:
 		net.set_ready(true)
 	else:
 		net.set_ready(true)
-	t.expect(await _wait_until(func(): return net.game.phase == RoundState.Phase.PLAYING, GameConfig.opening_wait_seconds("0.64") + 8.0), "Ready online room starts")
-	t.expect(net.game.opening_speed == "0.64", "Authoritative opening snapshots carry the selected duration")
+	t.expect(await _wait_until(func(): return net.game.phase == RoundState.Phase.PLAYING, GameConfig.opening_wait_seconds("0.60") + 8.0), "Ready online room starts")
+	t.expect(net.game.opening_speed == "0.60", "Authoritative opening snapshots carry the selected duration")
 	t.expect(net.game.dealer_seat == 2, "Applicant becomes initial dealer")
 	for seat in 4:
 		if seat != net.my_seat:

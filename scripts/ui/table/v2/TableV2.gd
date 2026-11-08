@@ -78,6 +78,8 @@ var _sort_tween: Tween
 var _draw_flights: Dictionary = {}
 var _draw_animating: bool:
 	get: return not _draw_flights.is_empty()
+# 碰杠后保持剩余牌的触点，直到该玩家出牌再重新居中。
+var _held_hand_centers: Dictionary = {}
 var _pending_draws := {0: "", 1: "", 2: "", 3: ""}
 var _deal_done_callback := Callable()
 var _deal_moving: Array = []
@@ -399,11 +401,6 @@ func native_settlement_active() -> bool:
 
 func native_settlement_complete() -> bool:
 	return _settlement_complete
-
-func skip_native_settlement() -> void:
-	if not _settlement_started or _settlement_complete:
-		return
-	_finish_native_settlement()
 
 func _clear_native_settlement_visuals() -> void:
 	_kill_native_settlement_tween()
@@ -764,10 +761,23 @@ func sync_animation_proxies() -> void:
 	pass
 
 func hand_slot_center(seat: int, slot: int) -> Vector2:
-	return G.hand_slot_center(seat, slot, human_seat, _current_hand_count(seat))
+	return _hand_center(seat, slot, _current_hand_count(seat))
 
 func draw_slot_center(seat: int) -> Vector2:
-	return G.draw_slot_center(seat, human_seat, _current_hand_count(seat))
+	return _draw_center(seat, _current_hand_count(seat))
+
+func _hand_center(seat: int, slot: int, count: int) -> Vector2:
+	var held: Array = _held_hand_centers.get(seat, [])
+	return Vector2(held[slot]) if slot >= 0 and slot < held.size() else G.hand_slot_center(seat, slot, human_seat, count)
+
+func _draw_center(seat: int, count: int) -> Vector2:
+	var held: Array = _held_hand_centers.get(seat, [])
+	if held.is_empty(): return G.draw_slot_center(seat, human_seat, count)
+	var direction: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][G.relative_seat(human_seat, seat)]
+	var edge: Vector2 = held[0]
+	for center: Vector2 in held:
+		if center.dot(direction) > edge.dot(direction): edge = center
+	return edge + direction * (G.hand_tile_size(seat, human_seat).x + 20.0)
 
 func _current_hand_count(seat: int) -> int:
 	if round == null or seat < 0 or seat >= round.players.size(): return 13
@@ -777,7 +787,7 @@ func _current_hand_count(seat: int) -> int:
 func action_bar_rect(row_size: Vector2) -> Rect2:
 	var count := _current_hand_count(human_seat)
 	var size := G.hand_tile_size(human_seat, human_seat)
-	var right := G.hand_slot_center(human_seat, count - 1, human_seat, count).x + size.x / 2.0
+	var right := _draw_center(human_seat, count).x - size.x / 2.0 - 20.0
 	var top := G.hand13_rect(human_seat, human_seat).position.y - 12.0 - row_size.y
 	var placement := Rect2(Vector2(right - row_size.x, top), row_size)
 	var obstacles: Array[Rect2] = []
@@ -890,6 +900,7 @@ func refresh() -> void:
 	if round == null:
 		return
 	if _wall_layer == null: _build_layers()
+	if round.phase == ROUND_STATE.Phase.SETTLED: _held_hand_centers.clear()
 	snapshot = MODEL.build(round, human_seat)
 	var all_dealt_now := false
 	if auto_sort_hands and not test_frozen and table != null \
@@ -945,6 +956,7 @@ func _reset_round_visual_state() -> void:
 	_sort_animating = false
 	_draw_flights.clear()
 	_pending_draws = {0: "", 1: "", 2: "", 3: ""}
+	_held_hand_centers.clear()
 	_deal_moving.clear()
 	_deal_done_callback = Callable()
 	_frozen_hands.clear()
@@ -1843,14 +1855,14 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 	existing = hand_boxes[seat].get_children()
 	for slot in mini(13, existing.size()):
 		var node: Control = existing[slot]
-		node.position = G.hand_slot_center(seat, slot, human_seat, 13) - node.size / 2.0
+		node.position = _hand_center(seat, slot, 13) - node.size / 2.0
 	var hand_count: int = mini(13, hand_boxes[seat].get_child_count())
 	# 开始飞行前把现有手牌校准到“无摸牌”的居中位置，避免第一次摸牌用到旧位置。
 	var hand_nodes: Array = hand_boxes[seat].get_children()
 	for slot in mini(hand_count, hand_nodes.size()):
 		var node: Control = hand_nodes[slot]
-		node.position = G.hand_slot_center(seat, slot, human_seat, hand_count) - node.size / 2.0
-	var target := G.draw_slot_center(seat, human_seat, hand_count)
+		node.position = _hand_center(seat, slot, hand_count) - node.size / 2.0
+	var target := _draw_center(seat, hand_count)
 	var has_wall_source := wall_index >= 0 and wall_index < WallRing.N
 	var start := _wall_center_for_ring_index(wall_index) if has_wall_source else target
 	var tile := _tile(_deal_layer, card, _face_visible(seat),
@@ -2032,6 +2044,11 @@ func animate_draw_discard(seat: int, done: Callable, discard_card: String = "") 
 		if child is TileView: node = child
 	var card := discard_card if discard_card != "" else (str(node.tile) if node != null else "")
 	_pending_draws[seat] = ""
+	if _held_hand_centers.has(seat):
+		_held_hand_centers.erase(seat)
+		for slot in hand_boxes[seat].get_child_count():
+			var kept: Control = hand_boxes[seat].get_child(slot)
+			_motion_tween().tween_property(kept, "position", G.hand_slot_center(seat, slot, human_seat, hand_boxes[seat].get_child_count()) - kept.size / 2.0, GameConfig.tile_motion_seconds() * 0.4)
 	if card != "":
 		_fly_discard(node, seat, card, func(): _complete_visual_action(action_id, done))
 	else:
@@ -2042,6 +2059,7 @@ func animate_draw_discard(seat: int, done: Callable, discard_card: String = "") 
 func animate_hand_discard(seat: int, discard_card: String, discard_index: int,
 		done: Callable) -> void:
 	var action_id := _begin_visual_action()
+	_held_hand_centers.erase(seat)
 	var discard_node: Control = null
 	var remaining: Array = []
 	for node in hand_boxes[seat].get_children():
@@ -2081,6 +2099,7 @@ func animate_draw_insert(seat: int, discard_card: String, draw_card: String, don
 		discard_index: int = -1, hand_slot_map: Dictionary = {}) -> void:
 	_finish_pending_draw(seat)
 	var action_id := _begin_visual_action()
+	_held_hand_centers.erase(seat)
 	var nodes: Array = hand_boxes[seat].get_children().duplicate()
 	var draw_node: TileView = null
 	for node in draw_boxes[seat].get_children():
@@ -2324,15 +2343,17 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			node.set_meta("meld_sideways", i if i == source_slot else -1)
 			node.set_meta("meld_concealed", concealed)
 			node.set_meta("meld_revealed", visible_face)
+		var held: Array = []
 		for slot in remaining_sources.size():
 			var kept: TileView = remaining_sources[slot].node
 			if kept.get_parent() != hand_boxes[seat]: kept.reparent(hand_boxes[seat], false)
-			kept.position = G.hand_slot_center(seat, slot, human_seat, remaining_sources.size()) - kept.size / 2.0
+			held.append(kept.position + kept.size / 2.0)
 			kept.set_meta("new_kind", "hand")
 			kept.set_meta("drawn", false)
 			kept.set_meta("concealed_index", int(remaining_sources[slot].index))
 			kept.set_meta("v2_hand_slot", slot)
 			hand_boxes[seat].move_child(kept, slot)
+		_held_hand_centers[seat] = held
 	var duration := GameConfig.tile_motion_seconds()
 	if duration <= 0.0:
 		land.call()
@@ -2456,7 +2477,7 @@ func _build_hands() -> void:
 			var face_visible := _face_visible(seat)
 			var key := "hand:%d:%d" % [seat, source_index] if source_index >= 0 else "hand:%d:transient:%d" % [seat, slot]
 			var tile: TileView = _sync_tile(hand_boxes[seat], key, str(cards[slot]) if face_visible else "",
-				face_visible, G.hand_slot_center(seat, slot, human_seat, count, drew != ""), unit, angle)
+				face_visible, _hand_center(seat, slot, count), unit, angle)
 			tile.set_meta("v2_hand_slot", slot)
 			tile.set_meta("v2_seat", seat)
 			tile.set_meta("new_kind", "hand")
@@ -2473,7 +2494,7 @@ func _build_hands() -> void:
 		if drew != "":
 			var draw_visible := _face_visible(seat)
 			var drawn_tile := _sync_tile(draw_boxes[seat], "draw:%d" % seat, drew if draw_visible else "", draw_visible,
-				G.draw_slot_center(seat, human_seat, count), unit, angle)
+				_draw_center(seat, count), unit, angle)
 			var winning: bool = round.phase == ROUND_STATE.Phase.SETTLED and round.round_meta.get("winners", []).has(seat)
 			if winning != (drawn_tile._win_glow > 0.0): drawn_tile.set_winning(winning)
 			drawn_tile.set_meta("new_kind", "draw")

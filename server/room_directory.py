@@ -281,7 +281,7 @@ class RoomDirectory:
         if not isinstance(number, str) or not NUMBER.fullmatch(number):
             raise ValueError("房间号必须是 4～8 位数字")
         if not isinstance(name, str): raise ValueError("房间名称无效")
-        if not isinstance(opening_speed, str) or not re.fullmatch(r"fast|standard|[01](?:\.\d{1,2})?|2(?:\.0{1,2})?", opening_speed, re.ASCII):
+        if not isinstance(opening_speed, str) or not re.fullmatch(r"fast|standard|0(?:\.\d{1,2})?|1(?:\.0{1,2})?", opening_speed, re.ASCII):
             opening_speed = "standard"
         # Reserve the number and port under the lock, but never hold the global
         # directory lock while starting/waiting for a Godot process. A slow or

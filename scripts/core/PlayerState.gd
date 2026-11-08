@@ -28,26 +28,3 @@ func init_seat(s: int, human: bool, dealer: bool, nm: String) -> void:
 	is_human = human
 	is_dealer = dealer
 	name_label = nm
-
-## 固定面子里的牌值（用于清一色判定与展示）
-func other_meld_tiles() -> Array:
-	var out: Array = []
-	for m in melds: out.append(m.tile)
-	return out
-
-func all_hand_tiles() -> Array:
-	var out := concealed.duplicate()
-	for meld in melds:
-		for index in (3 if meld.kind == "pung" else 4):
-			out.append(meld.tile)
-	return out
-
-func hand_tile_count() -> int:
-	var n := concealed.size()
-	for m in melds:
-		n += 3 if m.kind == "pung" else 4
-	return n
-
-## 别家已打出的牌（用于 AI 防御/翻牌统计）
-func discard_all() -> Array:
-	return discards.duplicate()

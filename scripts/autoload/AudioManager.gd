@@ -393,15 +393,6 @@ func set_seat_voice_pack(seat: int, pack_id: String, persist_local: bool = true)
 func get_preferred_seat_voice_pack(seat: int) -> String:
 	return VOICE_PACKS.normalize(preferred_seat_voice_packs[clampi(seat, 0, 3)])
 
-func _has_duplicate_voice_packs() -> bool:
-	var seen := {}
-	for seat in 4:
-		var pack_id := VOICE_PACKS.normalize(seat_voice_packs[seat])
-		if seen.has(pack_id):
-			return true
-		seen[pack_id] = true
-	return false
-
 func _ensure_unique_voice_packs() -> void:
 	var used := {}
 	for seat in 4:

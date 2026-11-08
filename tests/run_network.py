@@ -136,13 +136,17 @@ def run(godot, lan_interface=False, section="all", graphical_table=False):
                            [f"--directory={base}"], graphical=True)
             cloud_clients.append(clock)
             finish(clock, "online_opening_clock", 75)
-            code, data = request(base)
+            deadline = time.monotonic() + 5
+            while True:
+                code, data = request(base)
+                if data == {"rooms": []} or time.monotonic() >= deadline: break
+                time.sleep(0.1)
             assert code == 200 and data == {"rooms": []}, "Opening clock test leaves no active room"
 
         for invalid in ["123", "123456789", "12a34", "-1234", 12345]:
             code, data = request(base, "POST", {"number": invalid})
             assert code == 400, "Invalid room number accepted"
-        code, data = request(base, "POST", {"number": "654321", "name": "在线测试", "opening_speed": "1.25"})
+        code, data = request(base, "POST", {"number": "654321", "name": "在线测试", "opening_speed": "1.00"})
         assert code == 201 and data["room"]["owner_token"], f"Creation failed: {data}"
         room = data["room"]
         code, data = request(base, "POST", {"number": "654321"})
