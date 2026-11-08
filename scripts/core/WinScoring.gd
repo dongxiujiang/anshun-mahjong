@@ -2,11 +2,10 @@ extends RefCounted
 ## 计算单个赢家的牌型、自摸、报听和特殊摸牌得分。
 const CFG := preload("res://scripts/autoload/GameConfig.gd")
 const PAY := preload("res://scripts/core/PaymentLedger.gd")
-const CHICKEN := preload("res://scripts/core/ChickenScoring.gd")
 const ACTIONS := preload("res://scripts/core/LegalActions.gd")
 const SEAT_NAMES := ["庄家", "上家", "对家", "下家"]
 
-static func settle_winner(round, winner: int, chicken_points: Array, winner_seats: Array, deltas: Array, transfers: Array, items: Array, lines: Array) -> Dictionary:
+static func settle_winner(round, winner: int, chicken_points: Array, called_seats: Array, deltas: Array, transfers: Array, items: Array, lines: Array) -> Dictionary:
 	var meta: Dictionary = round.round_meta
 	var player: PlayerState = round.players[winner]
 	var self_draw: bool = bool(meta.get("self_draw", false))
@@ -17,65 +16,8 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 		return pattern
 	var pattern_info := _pattern_info(pattern)
 	var pattern_amount: float = float(pattern_info.get("score", 0.0))
-	var pattern_paid := pattern_amount
 	var pattern_label := str(pattern_info.get("label", ""))
-	var base_payers: Array = []
-	for payer in 4:
-		if payer == winner:
-			continue
-		if self_draw or payer == source:
-			base_payers.append(payer)
-
-	if self_draw:
-		var primary_amount: float = pattern_amount
-		var primary_label := pattern_label
-		if primary_amount <= 0.0:
-			if not player.ready:
-				# 干扣/大干扣：赢家不能有任何鸡分来源——幺鸡八筒、翻鸡、碰、以及明杠/暗杠/加杠。
-				if not _has_any_kong(player) and CHICKEN.chicken_profile(round, winner, str(meta.get("flip_tile", ""))).total == 0.0:
-					# 大干扣按最终参与比较的四家鸡分判断；未叫牌者的结算鸡分为 0。
-					# 其他玩家只要叫牌且有鸡分，或开过杠，就只算干扣。
-					var all_chickenless := true
-					for other in 4:
-						if float(chicken_points[other]) > 0.0 or _has_any_kong(round.players[other]):
-							all_chickenless = false
-							break
-					primary_amount = CFG.SCORE_BIG_NO_CHICKEN if all_chickenless else CFG.SCORE_NO_CHICKEN
-					primary_label = "大干扣" if all_chickenless else "干扣"
-					items[winner].append(_item("bonus", primary_label, primary_amount, "含自摸基础4分"))
-				else:
-					primary_amount = CFG.SCORE_SELF_DRAW
-					primary_label = "自摸基础分"
-					items[winner].append(_item("bonus", "自摸", primary_amount, ""))
-			# 报听自摸的普通牌只收 24 + 鸡，不再另收自摸 4。
-		if pattern_amount > 0.0:
-			items[winner].append(_item("pattern", pattern_label, pattern_amount, "牌型分含基础4分"))
-		if primary_amount > 0.0:
-			for payer in base_payers:
-				var pay_amount := primary_amount
-				# 自摸者未报听、付款者已报听：牌型分照付，但不再额外加
-				# 自摸基础4；没有牌型时这4分不付，只走杀报24。
-				if not player.ready and round.players[payer].ready:
-					pay_amount = pattern_amount if pattern_amount > 0.0 else 0.0
-				if pay_amount > 0.0:
-					PAY.transfer(deltas, transfers, payer, winner, pay_amount, primary_label)
-			lines.append("%s：其余每家付 %.0f" % [primary_label, primary_amount])
-		# 自摸底分与牌型互斥；报听自摸有牌型时，24 里已含一个自摸4，
-		# 牌型分也含一个4，只能再补20，不能重复算两份基础4。
-		if player.ready:
-			var ready_bonus := CFG.SCORE_READY_PATTERN if pattern_amount > 0.0 else CFG.SCORE_READY
-			for payer in base_payers:
-				PAY.transfer(deltas, transfers, payer, winner, ready_bonus, "报听胡牌")
-			items[winner].append(_item("ready", "报听胡牌", ready_bonus, "另加报听分，三家各付"))
-			lines.append("报听胡牌：每家另付 %.0f" % ready_bonus)
-		elif not player.ready:
-			# 杀报：赢家未报听时，被自摸的报听者单独支付24。
-			for payer in base_payers:
-				if round.players[payer].ready:
-					PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_KILL_READY, "杀报")
-					items[winner].append(_item("ready", "杀报", CFG.SCORE_KILL_READY, "报听者被自摸，单独支付"))
-					lines.append("杀报：%s付 %.0f" % [_nm(payer, int(meta.get("dealer_seat", 0))), CFG.SCORE_KILL_READY])
-	else:
+	if not self_draw:
 		# 非自摸胡分成三类：抢杠胡、暗/加杠后的单次放炮，以及
 		# 报听/大牌胡。普通弃牌不再产生点炮基础分。
 		var kong_discard := not robbed_kong and ACTIONS.is_post_kong_discard(round.last_discard)
@@ -98,51 +40,69 @@ static func settle_winner(round, winner: int, chicken_points: Array, winner_seat
 			items[winner].append(_item("win", "通行证胡牌", CFG.SCORE_KONG_SELF_RON, "放炮者支付"))
 			lines.append("通行证胡牌：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), CFG.SCORE_KONG_SELF_RON])
 
-		# 报听胡：点炮时只有点炮者支付；牌型分也只由放炮者支付。
-		# 其他两家只按幺鸡八筒、杠分、翻鸡分参与两两比较。
+	var dry_label := ""
+	var dry_amount := 0.0
+	if pattern.get("win", false) and chicken_points[winner] == 0.0 and not _has_any_kong(player):
+		var big_dry := true
+		for other in 4:
+			if other != winner and called_seats[other] and (chicken_points[other] > 0.0 or _has_any_kong(round.players[other])):
+				big_dry = false
+				break
+		dry_label = "大干扣" if big_dry else "干扣"
+		dry_amount = CFG.SCORE_BIG_NO_CHICKEN if big_dry else CFG.SCORE_NO_CHICKEN
+
+	# 含基础4的项目逐付款人合并。双方报听点炮时保留原有的24与20两条流水。
+	var both_ready: bool = not self_draw and player.ready and source in range(4) and source != winner and round.players[source].ready
+	var has_primary := pattern_amount > 0.0 or dry_amount > 0.0
+	var pattern_paid := pattern_amount - CFG.SCORE_SELF_DRAW if both_ready and pattern_amount > 0.0 else pattern_amount
+	var dry_paid := dry_amount - CFG.SCORE_SELF_DRAW if dry_amount > 0.0 and (pattern_amount > 0.0 or both_ready) else dry_amount
+	var ready_paid := CFG.SCORE_READY_PATTERN if has_primary and not both_ready else CFG.SCORE_READY
+	var kill_paid := CFG.SCORE_KILL_READY - CFG.SCORE_SELF_DRAW if has_primary else CFG.SCORE_KILL_READY
+	var has_payer := false
+	var ordinary_draw_paid := false
+	var dealer := int(meta.get("dealer_seat", 0))
+	for payer in 4:
+		if payer == winner or (not self_draw and payer != source):
+			continue
+		has_payer = true
+		PAY.transfer(deltas, transfers, payer, winner, pattern_paid, pattern_label)
+		PAY.transfer(deltas, transfers, payer, winner, dry_paid, dry_label)
 		if player.ready:
-			# 报听胡牌：点炮时只有点炮者支付
-			if source in range(4) and source != winner:
-				var source_ready: bool = bool(round.players[source].ready)
-				if source_ready:
-					# 双方都报听：赢家报听 24 + 输家报听补 20。
-					# 牌型分里含一个自摸 4，报听 24 里也含一个 4，只保留一个，
-					# 所以此时牌型只算 牌型分 − 4。
-					pattern_paid = maxf(0.0, pattern_amount - CFG.SCORE_SELF_DRAW)
-					PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY, "报听胡牌")
-					PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_READY_PATTERN, "输家报听")
-					items[winner].append(_item("ready", "报听胡牌", CFG.SCORE_READY, "点炮者支付"))
-					items[winner].append(_item("ready", "输家报听", CFG.SCORE_READY_PATTERN, "放炮者也报听，另补"))
-					lines.append("报听胡牌：%s付 24，另补输家报听 20" % _nm(source, int(meta.get("dealer_seat", 0))))
-				else:
-					# 报听且有牌型只补 20（24 里的自摸 4 与牌型分重复）；无牌型保持 24。
-					var ready_amount := CFG.SCORE_READY_PATTERN if pattern_amount > 0.0 else CFG.SCORE_READY
-					PAY.transfer(deltas, transfers, source, winner, ready_amount, "报听胡牌")
-					items[winner].append(_item("ready", "报听胡牌", ready_amount, "点炮者支付"))
-					lines.append("报听胡牌：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), ready_amount])
-		elif source in range(4) and source != winner and round.players[source].ready:
-			# 杀报：赢家未报听，胡了报听者的弃牌，报听者额外付24。
-			PAY.transfer(deltas, transfers, source, winner, CFG.SCORE_KILL_READY, "杀报")
-			items[winner].append(_item("ready", "杀报", CFG.SCORE_KILL_READY, "报听者放炮，单独支付"))
-			lines.append("杀报：%s付 %.0f" % [_nm(source, int(meta.get("dealer_seat", 0))), CFG.SCORE_KILL_READY])
-		if pattern_amount > 0.0:
-			# 放炮牌型分只由放炮者支付；一炮多响时，放炮者向每位赢家
-			# 分别支付各自的牌型分。其他两家不付牌型分。
-			if source in range(4) and source != winner:
-				PAY.transfer(deltas, transfers, source, winner, pattern_paid, pattern_label)
-				items[winner].append(_item("pattern", pattern_label, pattern_paid, "放炮者支付"))
-				lines.append("%s：%s付 %.0f" % [
-					pattern_label,
-					_nm(source, int(meta.get("dealer_seat", 0))),
-					pattern_paid
-				])
+			PAY.transfer(deltas, transfers, payer, winner, ready_paid, "报听胡牌")
+			if both_ready:
+				PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_READY_PATTERN, "输家报听")
+		elif round.players[payer].ready:
+			PAY.transfer(deltas, transfers, payer, winner, kill_paid, "杀报")
+			items[winner].append(_item("ready", "杀报", kill_paid, "%s报听，单独支付" % _nm(payer, dealer)))
+			lines.append("杀报：%s付 %.0f" % [_nm(payer, dealer), kill_paid])
+		elif self_draw and not has_primary:
+			PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_SELF_DRAW, "自摸基础分")
+			ordinary_draw_paid = true
+	if has_payer:
+		var payer_note := "其余每家付" if self_draw else "%s付" % _nm(source, dealer)
+		if pattern_paid > 0.0:
+			items[winner].append(_item("pattern", pattern_label, pattern_paid, payer_note))
+			lines.append("%s：%s %.0f" % [pattern_label, payer_note, pattern_paid])
+		if dry_paid > 0.0:
+			items[winner].append(_item("bonus", dry_label, dry_paid, payer_note))
+			lines.append("%s：%s %.0f" % [dry_label, payer_note, dry_paid])
+		if player.ready:
+			items[winner].append(_item("ready", "报听胡牌", ready_paid, payer_note))
+			lines.append("报听胡牌：%s %.0f" % [payer_note, ready_paid])
+			if both_ready:
+				items[winner].append(_item("ready", "输家报听", CFG.SCORE_READY_PATTERN, "放炮者也报听，另补"))
+				lines.append("输家报听：%s %.0f" % [payer_note, CFG.SCORE_READY_PATTERN])
+		if ordinary_draw_paid:
+			items[winner].append(_item("bonus", "自摸", CFG.SCORE_SELF_DRAW, "未报听玩家支付"))
+			lines.append("自摸基础分：未报听玩家各付 %.0f" % CFG.SCORE_SELF_DRAW)
+
 	if self_draw and int(meta.get("kong_draw_seat", -1)) == winner:
-		_apply_extra(round, winner, CFG.SCORE_KONG_DRAW, "杠开", chicken_points, winner_seats, deltas, transfers, items, lines)
+		_apply_extra(winner, CFG.SCORE_KONG_DRAW, "杠开", deltas, transfers, items, lines)
 	if self_draw and int(meta.get("last_four_self_draw_seat", -1)) == winner:
-		_apply_extra(round, winner, CFG.SCORE_LAST_FOUR, "海底捞", chicken_points, winner_seats, deltas, transfers, items, lines)
+		_apply_extra(winner, CFG.SCORE_LAST_FOUR, "海底捞", deltas, transfers, items, lines)
 	return pattern
 
-static func _apply_extra(round, winner: int, amount: float, label: String, _chicken_points: Array, _winner_seats: Array, deltas: Array, transfers: Array, items: Array, lines: Array) -> void:
+static func _apply_extra(winner: int, amount: float, label: String, deltas: Array, transfers: Array, items: Array, lines: Array) -> void:
 	for payer in 4:
 		if payer != winner:
 			PAY.transfer(deltas, transfers, payer, winner, amount, label)

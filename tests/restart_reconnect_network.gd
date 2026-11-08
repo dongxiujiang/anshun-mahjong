@@ -99,7 +99,7 @@ func _host() -> void:
 	if not await _wait(func(): return net._members.size() == 2 and net._members.values().any(func(member): return member.ready), "Initial client ready"): return
 	net.set_wants_dealer(true)
 	net.set_ready(true)
-	t.expect(net.start_net_game(20261018), "Seeded round starts")
+	if not await _wait(func(): return net._started, "Ready humans start the restart fixture"): return
 	net.game.players[0].score = 412
 	net.game.players[1].score = -12
 	net._host_broadcast()

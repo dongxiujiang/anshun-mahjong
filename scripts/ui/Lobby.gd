@@ -367,7 +367,7 @@ func _create() -> void:
 		# A background list refresh must not swallow the create request.
 		Network.directory.cancel()
 		_message("正在创建在线房间…")
-		Network.directory.create_room(number, room_name_input.text, GameConfig.opening_animation_speed,
+		Network.directory.create_room(number, room_name_input.text, GameConfig.opening_speed_key(),
 			GameConfig.debug_enabled)
 		return
 	_message("检查房间号…")
@@ -427,17 +427,24 @@ func _join(room: Dictionary) -> void:
 func _bind_net() -> void:
 	var net := Network.net_node
 	net.room_ready.connect(func(_seat):
-		if _connecting:
-			_connecting = false
-			_resuming = false
-			_show_waiting())
-	net.lobby_updated.connect(_render_waiting)
+		_finish_join_when_ready())
+	net.lobby_updated.connect(func():
+		if _connecting: _finish_join_when_ready()
+		else: _render_waiting())
 	net.lobby_notice.connect(_message)
 	net.game_started.connect(_enter_table)
 	net.connection_error.connect(_connection_failed)
 	net.reconnecting.connect(func(attempt, maximum): _message("连接中断，正在重连（%d/%d）…" % [attempt, maximum]))
 	net.room_ready.connect(func(_seat):
 		if _in_room: _message("连接已恢复"))
+
+func _finish_join_when_ready() -> void:
+	var net := Network.net_node
+	# The seat assignment and room snapshot arrive in separate messages.
+	if not _connecting or net.my_seat < 0 or net.lobby.is_empty(): return
+	_connecting = false
+	_resuming = false
+	_show_waiting()
 
 func _show_waiting() -> void:
 	_in_room = true
@@ -535,7 +542,7 @@ func _directory_error(message: String) -> void:
 			Network.directory.cancel()
 			_message("房间号已被占用，自动更换为 %s 并重试…" % next)
 			Network.directory.create_room(next, room_name_input.text,
-				GameConfig.opening_animation_speed, GameConfig.debug_enabled)
+				GameConfig.opening_speed_key(), GameConfig.debug_enabled)
 			return
 		_creation_failed(message)
 		_render_rooms()

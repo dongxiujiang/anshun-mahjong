@@ -16,9 +16,11 @@ var fake_mode := ""
 var fake_ready
 var new_game_requests := 0
 func _ready() -> void:
+	human_seat = 0
 	_build_static_ui()
 	_layout()
-func new_game() -> void:
+func new_game(_reset_scores: bool = false, _dealer_override: int = -1,
+		_die_override: int = -1) -> void:
 	new_game_requests += 1
 func _net_mode() -> String:
 	return fake_mode
@@ -28,6 +30,7 @@ func _net_node():
 
 class ReadyEndpoint extends RefCounted:
 	var round_number := 7
+	var next_round_calls := 0
 	var ready_calls: Array[bool] = []
 	var lobby := {"ready_round": 7, "countdown": -1, "seats": [
 		{"ready": false}, {"ready": true}, {"ready": false}, {"ready": true}]}
@@ -38,6 +41,9 @@ class ReadyEndpoint extends RefCounted:
 	func set_ready(value: bool) -> void:
 		ready_calls.append(value)
 		lobby.seats[0].ready = value
+
+	func next_round() -> void:
+		next_round_calls += 1
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -81,7 +87,9 @@ func _fixture(kind: String, multiplier: int = 1) -> RoundState:
 			r.round_meta.self_draw = false
 			r.round_meta.discard_seat = 1
 			if kind == "zero":
-				r.players[0].concealed = WAIT.duplicate()
+				# 四家各一张普通鸡，鸡分打平，同时让赢家不满足干扣。
+				for seat in 4:
+					r.players[seat].concealed = WAIT.slice(0, 6) + ["tiao1", "tiao2", "tiao3"] + WAIT.slice(9)
 				r.players[0].concealed.append("wan9")
 				flip = "tiao6"
 		"rob_kong", "ready_rob_kong":
@@ -228,7 +236,9 @@ func _bind(r: RoundState, human: int = 0) -> void:
 	table.round = r
 	table.human_seat = human
 	table._connect_audio_round()
+	table._settlement_animation_controller.reset()
 	table._refresh()
+	table._start_settlement_animation(true)
 	table._settlement_animation_controller.skip()
 
 func _nodes(node: Node) -> Array[Node]:
@@ -670,7 +680,7 @@ func _test_all_called_timeline() -> void:
 func _test_settlement_speed() -> void:
 	var config := root.get_node("GameConfig")
 	var old_animation: String = config.animation_speed
-	var old_draw: String = config.draw_animation_speed
+	var old_tile_seconds: float = config.tile_animation_seconds
 	var old_settlement: String = config.settlement_speed
 	var r := _fixture("gold_tiao")
 	var snapshot := _snapshot(r)
@@ -697,31 +707,31 @@ func _test_settlement_speed() -> void:
 	tween.custom_step(0.05)
 	t.expect(is_equal_approx(c._river_alpha, 0.75), "initial fade advances at normal settlement speed")
 	var settings = table._sound_settings
-	settings.settlement_speed_buttons.slow.pressed.emit()
+	settings.settlement_speed_slider.value = 1.90
 	t.expect(c._tween == tween and is_equal_approx(c._river_alpha, 0.75), "live setting preserves exact animation progress")
-	t.expect(settings.settlement_speed_buttons.slow.modulate != Color.WHITE, "selected settlement speed is marked")
+	t.expect(settings._timing_labels[settings.settlement_speed_slider].text == "1.90 s", "selected settlement duration is visible")
 	tween.custom_step(0.1)
 	t.expect(is_equal_approx(c._river_alpha, 0.5), "live slow setting halves playback rate immediately")
-	settings.settlement_speed_buttons.fast.pressed.emit()
+	settings.settlement_speed_slider.value = 0.76
 	tween.custom_step(0.2)
 	t.expect(c._river_alpha <= 0.25, "live fast setting accelerates the fade without restarting it")
 	t.expect(config.animation_speed == "instant", "settlement selection preserves instant play animation")
-	settings.draw_speed_buttons.fast.pressed.emit()
-	t.expect(config.settlement_speed == "fast", "general animation selection preserves fast settlement")
+	settings.tile_speed_slider.value = 0.15
+	t.expect(config.settlement_speed == "0.76", "tile animation selection preserves settlement duration")
 	config.set_settlement_speed("invalid")
-	t.expect(config.settlement_speed == "fast", "invalid settlement speed is ignored")
-	c.skip()
-	_check_final(r, "live fast")
+	t.expect(config.settlement_speed == "0.76", "invalid settlement speed is ignored")
+	settings.settlement_speed_slider.value = 0.0
+	t.expect(c.is_completed(), "zero seconds completes the in-progress settlement immediately")
+	_check_final(r, "zero second settlement")
 	t.expect(_snapshot(r) == snapshot, "all speed changes leave authoritative settlement immutable")
-	var groups: Array = [settings.speed_buttons, settings.draw_speed_buttons, settings.discard_speed_buttons, settings.settlement_speed_buttons]
 	var rectangles: Array[Rect2] = []
-	for group in groups:
-		for button in group.values():
-			t.expect(Rect2(Vector2.ZERO, settings.panel.size).encloses(button.get_rect()), "all speed controls stay inside settings")
-			for previous in rectangles: t.expect(not button.get_rect().intersects(previous), "independent speed controls never overlap")
-			rectangles.append(button.get_rect())
+	for slider in [settings.tile_speed_slider, settings.ai_speed_slider, settings.settlement_speed_slider]:
+		for control in [slider, settings._timing_labels[slider]]:
+			t.expect(Rect2(Vector2.ZERO, settings.panel.size).encloses(control.get_rect()), "all speed controls stay inside settings")
+			for previous in rectangles: t.expect(not control.get_rect().intersects(previous), "speed controls and labels never overlap")
+			rectangles.append(control.get_rect())
 	config.set_animation_speed(old_animation)
-	config.set_draw_animation_speed(old_draw)
+	config.set_tile_animation_seconds(old_tile_seconds)
 	config.set_settlement_speed(old_settlement)
 
 func _test_settlement_identities(render: bool = true) -> void:
@@ -1018,9 +1028,35 @@ func _run() -> void:
 	_test_settlement_speed()
 	_test_settlement_identities()
 	_test_settlement_audio()
+	_test_proxy_waits_for_settlement()
 	await _test_all_called_timeline()
 	await _capture_review()
 	await _test_exit()
 	AudioServer.set_bus_mute(master, was_muted)
 	await H.quit_cleanly(self, t.finish("settlement_animation_flow"))
+
+func _test_proxy_waits_for_settlement() -> void:
+	var script := GDScript.new()
+	script.source_code = """extends \"res://scripts/ui/GameTable.gd\"
+var fake_done := false
+var fake_net
+func _ready() -> void: pass
+func _settlement_animation_done() -> bool: return fake_done
+func _net_node(): return fake_net
+"""
+	if not t.expect(script.reload() == OK, "compile proxy settlement test"): return
+	var view = script.new()
+	root.add_child(view)
+	var endpoint := ReadyEndpoint.new()
+	view.fake_net = endpoint
+	view.round = _fixture("self_draw")
+	view.round.phase = RoundState.Phase.SETTLED
+	view._ai_proxy_active = true
+	view._auto_test_poll_online()
+	t.expect(endpoint.next_round_calls == 0, "AI proxy waits for settlement animation before starting next round")
+	view.fake_done = true
+	view._auto_test_poll_online()
+	t.expect(endpoint.next_round_calls == 1, "AI proxy advances after settlement animation finishes")
+	view._ai_proxy_active = false
+	view.queue_free()
 

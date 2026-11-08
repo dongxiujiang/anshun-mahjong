@@ -140,20 +140,14 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 	var pattern := RuleEngine.analyze(hand, melds, win_tile if win_tile != "" else str(round.round_meta.get("win_tile", "")))
 	var multiplier := clampi(int(round.round_meta.get("chicken_multiplier", 1)), 1, CFG.MAX_CHICKEN_MULTIPLIER)
 	var points := pattern_points(pattern) if pattern.win else 0.0
-	var primary := points
-	if self_draw and primary <= 0.0:
-		if declared_ready:
-			# 报听自摸的普通牌只收 24 + 鸡，不再另收自摸 4。
-			primary = 0.0
-		else:
-			primary = CFG.SCORE_SELF_DRAW
-			if float(own.total) <= 0.0:
-				var all_dry := true
-				for opponent in opponents:
-					if float(opponent.tenpai_probability) > 0.0 and float(opponent.chickens) > 0.0:
-						all_dry = false
-						break
-				primary = CFG.SCORE_BIG_NO_CHICKEN if all_dry else CFG.SCORE_NO_CHICKEN
+	var dry := 0.0
+	if pattern.win and float(own.total) == 0.0 and not melds.any(func(meld): return meld.kind in ["kong", "add_kong"]):
+		var big_dry_probability := 1.0
+		for opponent in opponents:
+			var has_kong: bool = opponent.melds.any(func(meld): return meld.kind in ["kong", "add_kong"])
+			if float(opponent.chickens) > 0.0 or has_kong:
+				big_dry_probability *= 1.0 - clampf(float(opponent.tenpai_probability), 0.0, 1.0)
+		dry = lerpf(CFG.SCORE_NO_CHICKEN, CFG.SCORE_BIG_NO_CHICKEN, big_dry_probability)
 	var bonus := (CFG.SCORE_KONG_DRAW if kong_draw else 0.0) + (CFG.SCORE_LAST_FOUR if self_draw and round._wall_count() <= 4 else 0.0)
 	var total := 0.0
 	for opponent in opponents:
@@ -165,46 +159,33 @@ static func win_value(round, seat: int, hand: Array, melds: Array, flips: Dictio
 		total += kong_base(melds, payer) - called * kong_base(opponent.melds, seat)
 		# §十八（一）6：未叫杠主的全部杠基础和杠中鸡向每个叫牌者反付。
 		total += (1.0 - called) * (uncalled_kong_base(opponent.melds) + float(opponent.get("kong_chickens", 0.0)))
+		if not self_draw and payer != source:
+			continue
+		var payer_ready := bool(opponent.get("ready", false))
+		var fees := points + dry
+		var fee_count := int(points > 0.0) + int(dry > 0.0)
+		if declared_ready:
+			fees += CFG.SCORE_READY
+			fee_count += 1
+			if not self_draw and payer_ready:
+				fees += CFG.SCORE_READY
+				fee_count += 1
+		elif payer_ready:
+			fees += CFG.SCORE_KILL_READY
+			fee_count += 1
+		if self_draw and fee_count == 0:
+			fees = CFG.SCORE_SELF_DRAW
+		total += fees - CFG.SCORE_SELF_DRAW * maxi(0, fee_count - 1)
 		if self_draw:
 			total += bonus
-			if declared_ready:
-				total += CFG.SCORE_READY_PATTERN if points > 0.0 else CFG.SCORE_READY
-			elif bool(opponent.get("ready", false)):
-				total += CFG.SCORE_KILL_READY
-		var base_payer := self_draw or payer == source
-		if base_payer:
-			if self_draw:
-				# 自摸者未报听、该对手已报听：牌型分照付，但不再另加自摸4；
-				# 没有牌型时自摸基础4也不付。
-				if not declared_ready and bool(opponent.get("ready", false)):
-					total += points if points > 0.0 else 0.0
-				else:
-					total += primary
-			else:
-				# 普通弃牌不收17/21；只有抢杠胡或暗/加杠后的
-				# 第一张弃牌才产生基础费。
-				var meta: Dictionary = round.round_meta
-				if bool(meta.get("robbed_kong", false)):
-					total += CFG.SCORE_ROB_KONG
-				elif ACTIONS.is_post_kong_discard(round.last_discard):
-					total += CFG.SCORE_RON_CALLED if called > 0.5 else CFG.SCORE_RON_UNCALLED
-		# §十二：报听费只由点炮者支付，点炮者是否报听不产生额外费用。
-		if not self_draw:
-			# 牌型费：只由放炮者支付；其他两家不付牌型分。
-			if payer == source and points > 0.0:
-				total += points
-			# 自带暗杠/加杠的小牌放炮：普通小牌才加4。
-			if payer == source and has_self_kong(melds) and points <= 0.0 and not declared_ready \
-				and RuleEngine.special_pattern_key(pattern) == "" \
-				and not pattern.get("all_triplets", false) and not pattern.get("seven_pairs", false) \
-				and not pattern.get("dragon_seven_pairs", false) and not pattern.get("flush", false):
+			continue
+		if bool(round.round_meta.get("robbed_kong", false)):
+			total += CFG.SCORE_ROB_KONG
+		else:
+			if ACTIONS.is_post_kong_discard(round.last_discard):
+				total += lerpf(CFG.SCORE_RON_UNCALLED, CFG.SCORE_RON_CALLED, called)
+			if has_self_kong(melds) and points <= 0.0 and not declared_ready:
 				total += CFG.SCORE_KONG_SELF_RON
-			# 报听费：只有点炮者支付；赢家未报听时，报听放炮者另付杀报24。
-			if payer == source:
-				if declared_ready:
-					total += CFG.SCORE_READY_PATTERN if points > 0.0 else CFG.SCORE_READY
-				elif bool(opponent.get("ready", false)):
-					total += CFG.SCORE_KILL_READY
 	return total * multiplier
 
 static func draw_value(round, seat: int, hand: Array, melds: Array, opponents: Array, discard: String = "") -> Dictionary:

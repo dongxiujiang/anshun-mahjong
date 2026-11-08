@@ -27,6 +27,10 @@ func _run() -> void:
 	manager = get_node("/root/UpdateManager")
 	base_url = _arg("--update-base")
 	manager.auto_check = false
+	var boot := get_node("/root/PatchBoot")
+	boot.base_id = "1.0.0-boot1"
+	boot.base_version = "1.0.0"
+	boot.effective_version = "1.0.0"
 	manager.download_directory = "res://build/update_fixture/downloads"
 	await _check("/missing", "no_release")
 	await _check("/broken", "error")
@@ -66,9 +70,9 @@ func _run() -> void:
 	manager.cancel_download()
 	t.expect(manager.state == "available" and not FileAccess.file_exists(manager._partial_path), "Cancel clears partial download")
 	await _check("/github-patch", "available")
-	t.expect(manager.latest.kind == "patch" and manager.latest.version == "1.0.2", "GitHub release fetches and verifies separate patch manifest")
+	t.expect(manager.latest.get("kind") == "patch" and manager.latest.get("version") == "1.0.2", "GitHub release fetches and verifies separate patch manifest")
 	await _check("/github-lowercase", "available")
-	t.expect(manager.latest.kind == "patch" and manager.latest.version == "1.0.2", "Lowercase release tags remain supported")
+	t.expect(manager.latest.get("kind") == "patch" and manager.latest.get("version") == "1.0.2", "Lowercase release tags remain supported")
 	await _check("/github-wrong-version", "error")
 	t.expect(manager.message.contains("不一致"), "Different release and manifest versions rejected")
 	await _check("/github-patch", "available")

@@ -9,10 +9,14 @@ var turns := 0
 var responses := 0
 var audio_events := 0
 var audio_ids := {}
+var graphical := false
+var captured_opening_wall := false
 
 func _ready() -> void:
 	AudioManager.event_played.connect(_on_audio_event)
 	host_mode = OS.get_cmdline_user_args().has("--table-host")
+	graphical = DisplayServer.get_name() != "headless"
+	if graphical: GameConfig.set_settlement_speed("0.25", false)
 	_run()
 
 func _run() -> void:
@@ -44,11 +48,18 @@ func _run() -> void:
 			for opponent in 4:
 				if opponent != seat:
 					_expect(round.players[opponent].concealed.all(func(tile): return tile == "hidden0"), "Opponent hand values must stay private")
+			if graphical and not captured_opening_wall and table._table_animation_controller.dice_gate_active():
+				captured_opening_wall = true
+				var visible_tiles := 0
+				for tile in table._new_areas._wall_layer.get_children():
+					visible_tiles += int(tile.visible)
+				_expect(visible_tiles == 108, "Client keeps all 108 wall tiles visible while the dice roll")
+				await _capture("opening-wall")
 		if round.phase == RoundState.Phase.SETTLED:
 			var settlement_deadline := Time.get_ticks_msec() + 10000
-			while not table._settlement_animation_controller.is_completed() and Time.get_ticks_msec() < settlement_deadline:
+			while not table._settlement_animation_done() and Time.get_ticks_msec() < settlement_deadline:
 				await get_tree().process_frame
-			_expect(table._settlement_animation_controller.is_completed(), "Network settlement reaches its final tabletop state")
+			_expect(table._settlement_animation_done(), "Network settlement reaches its final tabletop state")
 			_expect(audio_events > 0, "Host and client table must both receive audio events")
 			_expect(AudioManager._last_event_id == round.audio_event_id, "Table audio must reach the latest synced event")
 			if host_mode:
@@ -58,19 +69,28 @@ func _run() -> void:
 					_expect(int(stats.coalesced) > 0 and int(stats.bytes) < int(stats.full_bytes), "Coalescing and incremental audio reduce network traffic")
 					print("[net_table] sync metrics: ", stats)
 					print("[net_table] host completed; turns=%d responses=%d client=%s" % [turns, responses, Network.net_node.ack_text])
+					if graphical: await _capture("settlement")
 					await _finish_test()
 					return
 			else:
 				await get_tree().process_frame
-				var settlement = table._settlement_animation_controller
-				var board_count: int = 0 if settlement.plan.all_called_draw else 4
-				_expect(settlement.boards.size() == board_count and table._settlement_card._post_controls.visible, "Client sees the final tabletop settlement and bottom readiness controls automatically")
-				_expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Client settlement uses non-blocking tabletop content and plain bottom controls")
+				if graphical: _expect(captured_opening_wall, "Client must observe the opening wall during the dice animation")
+				_expect(table._settlement_card._post_controls.visible, "Client sees bottom readiness controls automatically")
 				_expect(table._next_round_button.get_parent() == table._settlement_card._post_controls and not table._next_round_button.disabled, "Client can ready from the bottom button")
 				_expect(round.last_result.has("deltas"), "Settlement scores must synchronize")
-				_expect(settlement.current_pairs == round.last_result.pairwise, "Client tabletop payments match the authoritative settlement")
-				for owner in settlement.boards:
-					_expect(settlement.boards[owner].is_visible_in_tree() and settlement.payment_labels[owner].size() == 3, "All clients retain three payments per seat")
+				if graphical:
+					var view = table._new_areas
+					_expect(is_instance_valid(view._native_settlement) and view._native_settlement.is_visible_in_tree(), "Client sees the native settlement card")
+					_expect(view._settlement_pairs == round.last_result.pairwise, "Native client payments match the server settlement")
+					await _capture("settlement")
+				else:
+					var settlement = table._settlement_animation_controller
+					var board_count: int = 0 if settlement.plan.all_called_draw else 4
+					_expect(settlement.boards.size() == board_count, "Client sees the expected final tabletop settlement")
+					_expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Client settlement preserves table input")
+					_expect(settlement.current_pairs == round.last_result.pairwise, "Client tabletop payments match the authoritative settlement")
+					for owner in settlement.boards:
+						_expect(settlement.boards[owner].is_visible_in_tree() and settlement.payment_labels[owner].size() == 3, "All clients retain three payments per seat")
 				# A legal seeded hand can offer zero claim windows to this seat;
 				# response UI is covered deterministically by
 				# play_animation_flow/table_interaction. Require at least the
@@ -83,9 +103,30 @@ func _run() -> void:
 				return
 		elif table._selecting:
 			var player: PlayerState = round.players[seat]
-			_expect(table.hand_box[seat].get_child_count() + table.draw_box[seat].get_child_count() == player.concealed.size(), "Every local hand tile must appear once")
+			var ui_deadline := Time.get_ticks_msec() + 3000
+			while table._table_actions.input_locked() and Time.get_ticks_msec() < ui_deadline:
+				await get_tree().process_frame
+			await get_tree().process_frame
+			var hand_box: Control = table.hand_box[seat]
+			var draw_box: Control = table.draw_box[seat]
+			if table._new_areas != null and DisplayServer.get_name() != "headless":
+				hand_box = table._new_areas.hand_boxes[seat]
+				draw_box = table._new_areas.draw_boxes[seat]
+			var visible_hand_count := hand_box.get_child_count() + draw_box.get_child_count()
+			if visible_hand_count != player.concealed.size():
+				print("[net_table] local tile mismatch host=%s visible=%d concealed=%d just_drew=%s selecting=%s locked=%s deal=%s draw=%s sort=%s opening=%s phase=%s dealt=%s" % [
+					host_mode, visible_hand_count, player.concealed.size(), player.just_drew,
+					table._selecting, table._table_actions.input_locked(),
+					table._new_areas.deal_animation_active if table._new_areas != null else false,
+					table._new_areas._draw_animating if table._new_areas != null else false,
+					table._new_areas._sort_animating if table._new_areas != null else false,
+					table._new_areas._opening_mode() if table._new_areas != null else false,
+					round.phase,
+					table._table_animation_controller.dealt_count(seat)])
+			_expect(visible_hand_count == player.concealed.size(), "Every local hand tile must appear once")
 			if player.just_drew != "":
-				_expect(table.draw_box[seat].get_child_count() == 1, "Drawn tile must appear separately")
+				_expect(draw_box.get_child_count() == 1, "Drawn tile must appear separately")
+			if graphical and turns == 0: await _capture("first-turn")
 			turns += 1
 			table._commit_turn(actor.decide_turn(round, seat))
 		elif table._response_disc != "":
@@ -102,9 +143,30 @@ func _expect(condition: bool, message: String) -> void:
 		failed = true
 		push_error(message)
 
+func _capture(stage: String) -> void:
+	await RenderingServer.frame_post_draw
+	if stage == "settlement":
+		var bounds := get_viewport().get_visible_rect()
+		for button: Button in [table._settlement_card._return_seat_button, table._settlement_card._next_round_button]:
+			var rect: Rect2 = button.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, button.size)
+			_expect(bounds.encloses(rect), "Network settlement button must fit inside the viewport")
+	var folder := "res://build/network-table-review"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(folder))
+	var role := "host" if host_mode else "client"
+	_expect(get_viewport().get_texture().get_image().save_png(folder.path_join(role + "-" + stage + ".png")) == OK,
+		"Save a screenshot of the graphical network table")
+
 func _finish_test(code: int = 0) -> void:
+	var workers: Array = [Network.net_node._ai_service]
+	if is_instance_valid(table):
+		workers.append_array([table._ai_service, table._ai_teach_worker, table._ai_proxy_worker])
 	if is_instance_valid(table): table.queue_free()
+	Network.reset()
 	await get_tree().process_frame
+	var deadline := Time.get_ticks_msec() + 5000
+	while workers.any(func(worker): return worker != null and worker.is_started()) and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	_expect(not workers.any(func(worker): return worker != null and worker.is_started()), "AI workers stop before the test exits")
 	await H.quit_cleanly(get_tree(), 1 if failed else code)
 
 func _on_audio_event(event: Dictionary) -> void:

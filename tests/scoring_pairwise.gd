@@ -110,8 +110,8 @@ func _test_uncalled_discard_chicken() -> void:
 			var result := ScoringEngine.settle(r)
 			ORACLE.check(r, result, t, "未叫牌被胡出牌鸡 charge=%s x%d" % [charge, multiplier])
 			t.expect(result.discard_points[1] == expected, "被胡幺鸡仍计入未叫牌出牌鸡")
-			t.expect(result.pairwise[1][0] == -expected and result.pairwise[1][2] == -expected and result.pairwise[1][3] == 0.0,
-				"未叫牌出牌鸡逐家补付且不向未叫牌者补付")
+			t.expect(result.pairwise[1][0] == -expected - 24.0 * multiplier and result.pairwise[1][2] == -expected and result.pairwise[1][3] == 0.0,
+				"未叫牌出牌鸡逐家补付，大干扣另付给赢家，未叫牌者不收")
 
 func _test_uncalled_kong_chicken() -> void:
 	var r := RoundState.new()
@@ -191,7 +191,10 @@ func _test_result_ui() -> void:
 		t.expect(table._settlement_card._post_controls.visible and settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "桌面结算直接显示下一局，不遮挡牌桌输入")
 		t.expect(not table._settlement_card._return_seat_button.visible, "结算只保留一个准备按钮，不额外显示返回座位入口")
 		t.expect(table._settlement_card._next_round_button.position == Vector2.ZERO, "单按钮居中，不再左右分栏")
-		t.expect(table._settlement_card._post_controls.size == table.DISCARD_BUTTON_SIZE, "单按钮使用标准按钮尺寸")
+		t.expect(table._settlement_card._post_controls.size == table._settlement_card._next_round_button.size,
+			"单按钮填满底部下一局控件")
+		t.expect(table._settlement_card._return_seat_button.custom_minimum_size.y <= 84.0,
+			"联机返回座位按钮的最小高度必须放入底部控件")
 		for seat in 4:
 			t.expect(settlement.boards[seat].is_visible_in_tree(), "每家桌面结算板可见")
 			t.expect(table.center_labels[seat].text.contains("%.0f分" % r.players[seat].score), "桌面累计分显示真实入账后的分数")

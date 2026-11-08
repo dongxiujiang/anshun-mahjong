@@ -1,142 +1,106 @@
-# 麻将动画流程图
+# V2 牌桌动画流程
 
-## 摸牌动画流程
+本文描述当前正式牌桌 `TableV2` 的实际动画路径。旧
+`TableBoardView`、`PlayerTileAreas` 的遮罩动画仅保留兼容接口，正式画面不再使用。
 
-```mermaid
-sequenceDiagram
-    participant R as RoundState
-    participant C as AnimationController
-    participant L as AnimationLayer
-    participant P as PlayerTileAreas
-    
-    R->>C: emit draw event
-    C->>C: _held_draw_seats[seat]++
-    Note over C: 隐藏摸牌位持久节点
-    C->>L: play(event)
-    L->>L: 创建临时牌节点
-    L->>L: 从牌墙飞到摸牌位
-    Note over L: 抛物线 + 落桌回弹
-    L->>C: _on_visual_animation_finished()
-    C->>C: _held_draw_seats[seat]--
-    alt remaining_holds == 0
-        C->>P: draw_tile.visible = true
-        C->>P: draw_tile.modulate.a = 1.0
-        Note over P: 持久节点无缝接管
-    end
+## 1. 开局发牌
+
+`RoundState` 按庄家、下家、对家、上家的顺序生成三个“每家四张”批次，再生成一个
+“每家一张”批次。每次批次包含真实牌值以及这些牌在牌墙环上的下标。
+
+```text
+RoundState.deal_batch
+  -> TableAnimationController 排队
+  -> TableV2.animate_deal_group
+  -> 从牌墙命中的两张下层、两张上层起飞
+  -> 到达每家手牌右侧临时落点
+  -> 第二批、第三批让已有手牌向中间展开
+  -> 四家都显示13张后停止发牌
 ```
 
-## 手牌出牌三段动画流程
+开局没有预先铺好整副手牌的遮罩。手牌节点只按
+`TableAnimationController.dealt_count(seat)` 显示已经落桌的牌，所以不会出现
+“最终手牌被盖住后又闪一下”的情况。
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant C as AnimationController
-    participant L as AnimationLayer
-    participant H as hand_box
-    participant D as draw_box
-    
-    U->>C: 点击手牌
-    C->>C: _hand_snapshot()
-    Note over C: 保存旧手牌位置
-    C->>C: _held_refresh_seats[seat]++
-    Note over C: 暂停手牌刷新
-    C->>L: play(discard event)
-    
-    rect rgb(255, 240, 220)
-    Note over L: 第 1 段（0-0.28s）
-    L->>L: 被打出的牌飞向河牌
-    C->>H: source_node.modulate.a = 0
-    Note over C: 隐藏被打出的牌
-    end
-    
-    rect rgb(220, 240, 255)
-    Note over L: 第 2 段（0.28-0.56s）
-    loop 每张剩余手牌
-        L->>H: tile.position插值
-        Note over H: 水平移动填补空位
-    end
-    end
-    
-    rect rgb(240, 255, 220)
-    Note over L: 第 3 段（0.56-0.84s）
-    L->>D: source_node.visible = false
-    Note over D: 立即隐藏摸牌位源节点
-    L->>L: 创建临时插入节点
-    L->>H: 淡入 + 插入到排序位置
-    Note over H: 抛物线插入
-    end
-    
-    L->>C: _on_visual_animation_finished()
-    C->>C: _commit_hand_discard_visual()
-    Note over C: 物理节点提交到最终位置
-    C->>C: _held_refresh_seats[seat]--
-    alt remaining_holds == 0
-        C->>H: _refresh()
-        Note over H: 重建手牌，更新元数据
-    end
+## 2. 理牌
+
+三家13张都落地后，`TableV2._begin_hand_sort()` 保留当前牌节点，仅把节点移动到
+`Tiles.sort_hand()` 给出的槽位。每张牌用两段位置插值形成拱形轨迹，并逐张错峰。
+理牌完成前输入保持锁定，完成后才恢复庄家摸牌。
+
+## 3. 摸牌
+
+```text
+RoundState 发出 draw
+  -> 记录目标座位并暂时隐藏摸牌位
+  -> TableV2 从真实 wall_index 对应的牌墙块创建飞行牌
+  -> 飞到该玩家的摸牌位并放大到手牌尺寸
+  -> 飞行结束才显示正式摸牌节点
+  -> 解锁玩家操作
 ```
 
-## 遮罩控制逻辑
+自己的牌显示正面，其他三家显示牌背。飞行期间权威摸牌节点和普通手牌中的同张牌
+不会提前显示，因此不会重复、闪烁或提前出现在右侧。
 
-```mermaid
-flowchart TD
-    A[refresh_masks] --> B{动画类型}
-    B -->|draw| C[遮罩目标位置牌]
-    B -->|discard| D{从哪里打出}
-    D -->|从手牌| E[只遮罩被打出的牌]
-    D -->|从摸牌位| F[遮罩摸牌位的牌]
-    B -->|meld| G[遮罩目标位置牌]
-    B -->|meld_reveal| H[遮罩目标位置牌]
-    
-    E --> I[其他手牌保持可见]
-    I --> J[玩家可见手牌移动]
-    
-    style E fill:#90EE90
-    style I fill:#90EE90
-    style J fill:#90EE90
+## 4. 有摸牌时的出牌
+
+玩家刚摸牌后选择打出旧牌，依次执行：
+
+1. 被选中的旧牌从手牌飞到弃牌区；鸡牌进入红色区。
+2. 原有手牌节点保留，按最终顺序平移，把空位移动到插入点。
+3. 右侧摸牌节点移动到新牌的空槽，并由 `draw_box` 转入 `hand_box`。
+
+动画期间不重建整手牌，动画完成后只做一次权威快照校正。位置使用 V2 设计坐标，
+不会先跳到左上角再刷新。
+
+如果玩家直接打出刚摸的牌，则摸牌节点直接飞向弃牌区，手牌保持13张。
+
+## 5. 无摸牌时的出牌
+
+碰牌后可以不打新摸牌而直接出牌。这个回合没有摸牌位节点，因此执行：
+
+1. 选中的手牌飞到弃牌区。
+2. 其余手牌节点平移补位。
+3. 动画结束后刷新权威状态。
+
+它不会伪造摸牌位，也不会关闭空位后整手重建。
+
+## 6. 碰杠与鸡牌
+
+普通碰杠由 `TableV2.animate_meld()` 接管。静态重建和动画落点共用
+`_meld_positions()`，所以动画结束后不会改用另一套坐标。
+
+幺鸡、八筒的单张、碰和杠进入红色区。红色区的尺寸、间距、换行和固定锚点由
+`TableV2Geometry` 与 `red_layout()` 统一计算；旋转后的实际边界使用
+`RedLayer` 本地坐标系计算，避免在 Android 非等比缩放下与手牌或牌墙混算坐标。
+
+## 7. 对象池生命周期
+
+频繁出现的牌统一由 `TileViewPool` 提供：
+
+```text
+acquire -> 重置牌面、尺寸、旋转、高亮和输入连接
+        -> 加入目标图层
+        -> 动画或快照重建结束
+        -> release 回池
 ```
 
-## 坐标系统优化
+回收时必须同时恢复 `unit`、`custom_minimum_size` 和当前 `size`。否则从手牌或
+摸牌位回收的大牌会在下一次作为红牌复用时保持错误尺寸，表现为冲锋鸡尺寸漂移。
 
-```mermaid
-graph LR
-    A[原方案] -->|global_position插值| B[全局坐标系]
-    B --> C[父节点旋转]
-    C --> D[路径偏移❌]
-    
-    E[优化方案] -->|position插值| F[局部坐标系]
-    F --> G[父节点旋转]
-    G --> H[路径正确✓]
-    
-    style D fill:#FFB6C1
-    style H fill:#90EE90
+`TableV2` 和旧 `TableAnimationLayer` 都在退出场景树时清空池内已经脱离节点的
+TileView，防止连续切局积累 CanvasItem。
+
+## 8. 测试入口
+
+```text
+tests/run_all.gd
+tests/table_v2_hand_discard.gd
+tests/table_v2_layout_guards.gd
+tests/table_v2_static.gd
+tests/accept_all_seats.gd
+tests/accept_multi_turn.gd
+tests/accept_tap_center.gd
+tests/wall_deal_order.gd
+tests/wall_draw_ten.gd
 ```
-
-## 关键时序对比
-
-### 优化前
-
-```
-出牌动画 (0.28s)
-                  ↓
-            手牌刷新（瞬间，从错误位置）
-                  ↓
-            所有牌闪烁❌
-```
-
-### 优化后
-
-```
-出牌动画 (0.28s)
-                  ↓
-        手牌移动填补空位 (0.28s)
-                  ↓
-        摸牌插入排序位置 (0.28s)
-                  ↓
-            提交物理节点✓
-```
-
----
-
-生成时间：2026-10-17  
-工具：Codex AI

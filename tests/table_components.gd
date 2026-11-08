@@ -11,31 +11,81 @@ func _run() -> void:
 	var scene: PackedScene = load("res://scenes/GameTable.tscn")
 	var first = scene.instantiate()
 	var second = scene.instantiate()
+	first.human_seat = 0
+	second.human_seat = 0
 	root.add_child(first)
 	root.add_child(second)
 	await process_frame
+	for table in [first, second]:
+		table.round.cancel_opening()
+		table.round.phase = RoundState.Phase.PLAYING
+		table.round.current_turn = table.human_seat
+		table.round.awaiting = false
+		table._table_animation_controller._pending_test_deals.clear()
+		table._table_animation_controller._dealt = [13, 13, 13, 13]
+		table._table_animation_controller._deal_animating = false
+		if table._new_areas != null:
+			table._new_areas.auto_sort_hands = false
+			table._new_areas.test_deal_only = false
+			table._new_areas.test_frozen = false
+			table._new_areas._sort_started = true
+			table._new_areas._frozen_hands.clear()
+			table._new_areas.deal_animation_active = false
+			table._new_areas._sort_animating = false
+			table._new_areas._draw_animating = false
+		for player in table.round.players:
+			if player.concealed.is_empty():
+				player.concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6",
+					"wan7", "wan8", "wan9", "tiao1", "tiao2", "tiao3", "tiao4"]
 	first._table_animation_controller.reset()
 	second._table_animation_controller.reset()
+	for table in [first, second]:
+		table._table_animation_controller._dealt = [13, 13, 13, 13]
+		table._table_animation_controller._deal_animating = false
+		if table._new_areas != null:
+			table._new_areas.test_frozen = false
+			table._new_areas.deal_animation_active = false
+			table._new_areas._sort_animating = false
+			table._new_areas._draw_animating = false
 	first._animation_layer.set_skip(true)
 	second._animation_layer.set_skip(true)
+	first.round.awaiting = true
 	var original := var_to_bytes(first.round.serialize())
 	var event := {"id": 700, "type": "draw", "seat": first.human_seat, "tile": "tiao1"}
 	first._on_visual_event(event)
 	first._on_visual_event(event)
 	event.tile = "tong8"
-	t.expect(first._animation_queue.size() == 1 and first._animation_queue[0].tile == "tiao1", "Repeated visual events queue once and own an immutable copy")
+	t.expect(first._animation_queue.is_empty(), "V2 draw bypasses the old animation queue")
 	t.expect(second._animation_queue.is_empty(), "Two table instances do not share animation queues")
 	first._table_animation_controller.cancel(true)
+	t.expect(not first._table_animation_controller._deal_animating
+		and not first._table_animation_controller._draw_animating
+		and not first._table_animation_controller._insert_animating
+		and not first._table_animation_controller._meld_animating
+		and first._table_animation_controller._draw_cards.values().all(func(v): return str(v) == ""),
+		"Cancel clears every cross-round animation busy flag and pending draw card")
 	first._on_visual_event({"id": 701, "type": "draw", "tile": "wan1"})
-	t.expect(first._animation_queue.is_empty() and not first._skip_visual_once, "Reconnect cancels pending visuals and skips exactly the next event")
+	t.expect(first._animation_queue.is_empty(), "V2 reconnect does not queue stale visuals")
 	first._table_animation_controller.reset()
+	first._table_animation_controller._dealt = [13, 13, 13, 13]
+	if first._new_areas != null:
+		first._new_areas.test_frozen = false
+		first._new_areas.deal_animation_active = false
+		first._new_areas._sort_animating = false
+		first._new_areas._draw_animating = false
 	first._on_visual_event({"id": 1, "type": "draw", "seat": first.human_seat, "tile": "wan1"})
 	await process_frame
 	await process_frame
-	t.expect(first._animation_queue.is_empty() and not first._animation_busy, "A new round accepts low event IDs and headless playback completes")
+	t.expect(first._animation_queue.is_empty() and not first._animation_busy, "V2 draw completes without the old queue")
 	t.expect(var_to_bytes(first.round.serialize()) == original, "Playing or cancelling presentation never changes the live round")
-	var first_tile: TileView = first.hand_box[first.human_seat].get_child(0)
-	var second_tile: TileView = second.hand_box[second.human_seat].get_child(0)
+	first._refresh()
+	second._refresh()
+	await process_frame
+	var first_box = first._new_areas.hand_boxes[first.human_seat] if first._new_areas != null else first.hand_box[first.human_seat]
+	var second_box = second._new_areas.hand_boxes[second.human_seat] if second._new_areas != null else second.hand_box[second.human_seat]
+	t.expect(first_box.get_child_count() > 0 and second_box.get_child_count() > 0, "V2 hand boxes are populated")
+	var first_tile: TileView = first_box.get_child(0)
+	var second_tile: TileView = second_box.get_child(0)
 	first._selected_tile = first_tile
 	first_tile.set_selected(true)
 	t.expect(not second_tile.selected and second._selected_tile == null, "Selection belongs only to its own table")
@@ -43,7 +93,7 @@ func _run() -> void:
 	first.enable_net(func(decision): submissions.append(decision), Callable())
 	first._on_require_turn(first.human_seat)
 	var options: Dictionary = first.round.legal_turn_options(first.human_seat)
-	first._commit_turn({"discard": options.discards[0]})
+	first._commit_turn({"discard": options.discards[0], "discard_index": 0})
 	t.expect(submissions.size() == 1 and not first._selecting, "Action component submits once through the authority boundary and locks input")
 	t.expect(var_to_bytes(first.round.serialize()) == original, "Network action controls never apply rules locally")
 	var button: Button = first._button("测试", func(): pass, UI.DISCARD_BUTTON_SIZE, true)
@@ -69,10 +119,14 @@ func _run() -> void:
 	t.expect(settlement.is_completed() and settlement.boards.size() == 4 and settlement.payment_labels.size() == 4, "Reset rebuilds exactly four tabletop payment boards")
 	for seat in 4:
 		t.expect(not is_instance_valid(old_boards[seat]) and settlement.boards[seat].get_child_count() == 3, "Rebuilding removes old boards and leaves three relative payments per seat")
-	t.expect(first._settlement_card._post_controls.visible and settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Finished settlement exposes bottom controls without blocking the table")
+	first._settlement_card.show_post_settlement_controls()
+	await process_frame
+	t.expect(first._settlement_card._post_controls.visible and settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "V2 finished settlement exposes bottom controls without blocking the table")
 	t.expect(var_to_bytes(first.round.serialize()) == settled, "Settlement rendering cannot change scores or pairwise payments")
 	# Retain one helper externally to ensure it cannot retain a freed table.
 	var controller = first._table_animation_controller
+	t.expect(controller._tile_pool.MAX_POOL_SIZE >= 512,
+		"Tile pool can retain an entire dense table without reallocating")
 	var retained_round: RoundState = first.round
 	var visual_callback := Callable(first, "_on_visual_event")
 	var audio_callback := Callable(first, "_on_audio_event")

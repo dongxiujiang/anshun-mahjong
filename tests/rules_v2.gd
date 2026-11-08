@@ -58,9 +58,9 @@ func _test_payments() -> void:
 	var ordinary := score(PLAIN)
 	t.expect(ordinary.deltas == [72.0, -24.0, -24.0, -24.0], "四家结算鸡分均为0时大干扣24")
 	var gun := score(PLAIN, false, 2)
-	t.expect(gun.deltas == [0.0, 0.0, 0.0, 0.0], "普通点炮不收17/21基础费")
+	t.expect(gun.deltas == [24.0, 0.0, -24.0, 0.0], "普通点炮只收大干扣24，不收17/21基础费")
 	var big := ["wan1","wan1","wan1","wan2","wan2","wan2","tong3","tong3","tong3","tiao4","tiao4","tiao4","wan9","wan9"]
-	t.expect(score(big).deltas == [42.0, -14.0, -14.0, -14.0], "大对子自摸14")
+	t.expect(score(big).deltas == [102.0, -34.0, -34.0, -34.0], "大对子自摸叠大干扣，每家付14+24-4")
 	var clean := ["tiao1","tiao1","tiao2","tiao2","tiao3","tiao3","tiao4","tiao4","tiao5","tiao5","tiao6","tiao6","tiao9","tiao9"]
 	var clean_result := score(clean)
 	t.expect(clean_result.items[0].any(func(v): return v.label == "清七对" and v.amount == 44.0), "清七对44且不重复叠加")
@@ -68,12 +68,12 @@ func _test_payments() -> void:
 	multi.players[0].concealed = PLAIN.duplicate(); multi.players[1].concealed = PLAIN.duplicate()
 	multi.round_meta.winner = 0; multi.round_meta.winners = [0, 1]; multi.round_meta.self_draw = false; multi.round_meta.discard_seat = 2
 	var multi_result := ScoringEngine.settle(multi)
-	t.expect(multi_result.pairwise[0][2] == 0.0 and multi_result.pairwise[1][2] == 0.0 and multi_result.deltas[2] == 0.0, "普通一炮多响不收基础费")
+	t.expect(multi_result.pairwise[0][2] == 24.0 and multi_result.pairwise[1][2] == 24.0 and multi_result.deltas[2] == -48.0, "普通一炮多响各收大干扣24，不收点炮基础费")
 	var ready := fixture(); ready.players[0].concealed = PLAIN.duplicate(); ready.players[0].ready = true; ready.round_meta.winner = 0; ready.round_meta.winners = [0]; ready.round_meta.self_draw = true
-	t.expect(ScoringEngine.settle(ready).deltas == [72.0, -24.0, -24.0, -24.0], "报听普通自摸每家24，不再加自摸4")
+	t.expect(ScoringEngine.settle(ready).deltas == [132.0, -44.0, -44.0, -44.0], "报听大干扣自摸每家24+24-4")
 	var killed := fixture(); killed.players[0].concealed = PLAIN.duplicate(); killed.players[1].concealed = PLAIN.duplicate(); killed.players[1].ready = true; killed.round_meta.winner = 0; killed.round_meta.winners = [0]; killed.round_meta.self_draw = true
 	var killed_result := ScoringEngine.settle(killed)
-	t.expect(killed_result.deltas == [72.0, -24.0, -24.0, -24.0], "自摸杀报只由报听者支付24，不再另付自摸4")
+	t.expect(killed_result.deltas == [92.0, -44.0, -24.0, -24.0], "自摸杀报只由报听者在大干扣之外补20")
 	var seven_ready := fixture()
 	seven_ready.players[0].concealed = ["tiao1","tiao1","tiao2","tiao2","tiao3","tiao3","tiao4","tiao4","tiao5","tiao5","tiao6","tiao6","tiao9","tiao9"]
 	seven_ready.players[1].ready = true
@@ -99,12 +99,12 @@ func _test_payments() -> void:
 	for transfer in multi_ready_result.transfers:
 		if str(transfer.get("reason", "")) == "杀报":
 			kill_by_payer[int(transfer.get("from", -1))] = float(transfer.get("amount", 0.0))
-	t.expect(kill_by_payer.get(1, 0.0) == 24.0 and kill_by_payer.get(2, 0.0) == 24.0,
-		"多个报听付款者各付一份杀报24")
+	t.expect(kill_by_payer.get(1, 0.0) == 20.0 and kill_by_payer.get(2, 0.0) == 20.0,
+		"多个报听付款者各付大干扣之外的杀报20")
 	t.expect(multi_ready_result.pairwise[0][3] == 24.0,
 		"未报听第三家仍按普通自摸/干扣支付")
-	t.expect(multi_ready_result.pairwise[0][1] == 24.0 and multi_ready_result.pairwise[0][2] == 24.0,
-		"报听付款者不再另付自摸4")
+	t.expect(multi_ready_result.pairwise[0][1] == 44.0 and multi_ready_result.pairwise[0][2] == 44.0,
+		"报听付款者各付44，基础4只计一次")
 	var multi_winner := fixture()
 	multi_winner.players[0].concealed = PLAIN.duplicate()
 	multi_winner.players[1].concealed = PLAIN.duplicate()
@@ -118,8 +118,8 @@ func _test_payments() -> void:
 	for transfer in multi_winner_result.transfers:
 		if str(transfer.get("reason", "")) == "杀报":
 			kill_to[int(transfer.get("to", -1))] = float(transfer.get("amount", 0.0))
-	t.expect(kill_to.get(0, 0.0) == 24.0 and kill_to.get(1, 0.0) == 24.0,
-		"一个报听放炮者向每个未报听赢家各付一份杀报24")
+	t.expect(kill_to.get(0, 0.0) == 20.0 and kill_to.get(1, 0.0) == 20.0,
+		"一个报听放炮者向每个未报听赢家各付大干扣之外的杀报20")
 	var dry := fixture(); dry.players[0].concealed = PLAIN.duplicate(); dry.players[1].concealed = WAIT.duplicate(); dry.players[1].discards = ["tiao1"]; dry.players[1].discard_ids = [0]
 	dry.round_meta.charge_chickens = {"tiao1": {"owner": 1, "location": "discard", "discard_id": 0}}
 	dry.round_meta.winner = 0; dry.round_meta.winners = [0]; dry.round_meta.self_draw = true

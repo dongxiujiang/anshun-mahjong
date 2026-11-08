@@ -111,7 +111,7 @@ static func settle(round) -> Dictionary:
 	# 鸡分是全场逐对比较；胡牌费用则逐个赢家分别结算。
 	PAY.compare_chickens(deltas, transfers, called_seats, points, discard_points, pong_points)
 	for target in winners:
-		WIN.settle_winner(round, int(target), points, winners, deltas, transfers, items, lines)
+		WIN.settle_winner(round, int(target), points, called_seats, deltas, transfers, items, lines)
 	KONG.pay(round, deltas, transfers, called_seats, items, flip, false)
 	_pay_uncalled_kong_income(round, called_seats, deltas, transfers)
 	# §十五：烧鸡取消本局所有收入，也包括未叫者补付的出牌鸡和杠分。

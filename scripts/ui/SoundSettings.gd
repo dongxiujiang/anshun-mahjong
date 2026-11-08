@@ -24,12 +24,12 @@ var switches := {}
 var percentages := {}
 
 var persist_changes := true
-var speed_buttons := {}
 var ai_strength_buttons := {}
-var draw_speed_buttons := {}
-var discard_speed_buttons := {}
-var settlement_speed_buttons := {}
-var opening_speed_buttons := {}
+var tile_speed_slider: HSlider
+var ai_speed_slider: HSlider
+var settlement_speed_slider: HSlider
+var _timing_labels := {}
+var _timing_drags := {}
 var table_mode := false
 var exit_confirmation: Panel
 var confirm_exit_button: Button
@@ -47,6 +47,7 @@ var debug_button: Button
 var auto_test_button: Button
 var auto_test_500_button: Button
 var exit_room_button: Button
+var score_details_button: Button
 var replay_exporter: Node
 
 func _ready() -> void:
@@ -76,60 +77,44 @@ func _ready() -> void:
 	panel.theme = ui_theme
 	overlay.add_child(panel)
 	_label("设置" if table_mode else "声音设置", Vector2(36, 24), Vector2(608, 42), 32)
-	_label("设置自动保存，重启和更新后保留", Vector2(36, 78), Vector2(608, 30), 20)
+	if table_mode:
+		_label("音量", Vector2(36, 80), Vector2(500, 36), 27).modulate = STYLE.GOLD
+		_label("速度", Vector2(584, 80), Vector2(500, 36), 27).modulate = STYLE.GOLD
+		var divider := ColorRect.new()
+		divider.color = Color(STYLE.MUTED, 0.25)
+		divider.position = Vector2(559, 84)
+		divider.size = Vector2(2, 566)
+		divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(divider)
 	for index in UI_CHANNELS.size():
 		var channel: String = UI_CHANNELS[index]
-		var y := 126.0 + index * 88.0
-		# Only the slider remains: playback is controlled by volume 0, with no
-		# separate enable switch.
-		_label(TITLES[channel], Vector2(28, y), Vector2(280, 62), 24)
-		var slider := HSlider.new()
-		slider.position = Vector2(324, y)
-		slider.size = Vector2(234, SLIDER_HEIGHT)
-		slider.custom_minimum_size = Vector2(234, SLIDER_HEIGHT)
-		slider.min_value = 0
-		slider.max_value = 100
-		slider.step = 1
-		_style_slider(slider)
-		slider.value_changed.connect(_on_slider.bind(channel))
-		panel.add_child(slider)
-		sliders[channel] = slider
-		percentages[channel] = _label("", Vector2(574, y + 12), Vector2(78, 42), 24)
+		var y := 126.0 + index * (100.0 if table_mode else 88.0)
+		if table_mode:
+			var row := _slider_row(TITLES[channel], Vector2(36, y), 100.0, 1.0)
+			sliders[channel] = row[0]
+			percentages[channel] = row[1]
+		else:
+			_label(TITLES[channel], Vector2(28, y), Vector2(280, 62), 24)
+			sliders[channel] = _slider(Vector2(324, y), 234, 100.0, 1.0)
+			percentages[channel] = _label("", Vector2(574, y + 12), Vector2(78, 42), 24)
+		sliders[channel].value_changed.connect(_on_slider.bind(channel))
 	if table_mode:
-		var mic_y := 126.0 + UI_CHANNELS.size() * 88.0
-		_label("麦克风音量", Vector2(28, mic_y), Vector2(280, 62), 24)
-		mic_gain_slider = HSlider.new()
-		mic_gain_slider.position = Vector2(324, mic_y)
-		mic_gain_slider.size = Vector2(234, SLIDER_HEIGHT)
-		mic_gain_slider.custom_minimum_size = Vector2(234, SLIDER_HEIGHT)
-		mic_gain_slider.min_value = 0
-		mic_gain_slider.max_value = 200
-		mic_gain_slider.step = 1
-		_style_slider(mic_gain_slider)
+		var mic := _slider_row("麦克风音量", Vector2(36, 326), 200.0, 1.0)
+		mic_gain_slider = mic[0]
+		mic_gain_percent = mic[1]
 		mic_gain_slider.value_changed.connect(_on_mic_gain_changed)
-		panel.add_child(mic_gain_slider)
-		mic_gain_percent = _label("", Vector2(574, mic_y + 12), Vector2(78, 42), 24)
-		var remote_y := mic_y + 88.0
-		_label("他人语音音量", Vector2(28, remote_y), Vector2(280, 62), 24)
-		remote_volume_slider = HSlider.new()
-		remote_volume_slider.position = Vector2(324, remote_y)
-		remote_volume_slider.size = Vector2(234, SLIDER_HEIGHT)
-		remote_volume_slider.custom_minimum_size = Vector2(234, SLIDER_HEIGHT)
-		remote_volume_slider.min_value = 0
-		remote_volume_slider.max_value = 200
-		remote_volume_slider.step = 1
-		_style_slider(remote_volume_slider)
+		var remote := _slider_row("他人语音音量", Vector2(36, 426), 200.0, 1.0)
+		remote_volume_slider = remote[0]
+		remote_volume_percent = remote[1]
 		remote_volume_slider.value_changed.connect(_on_remote_volume_changed)
-		panel.add_child(remote_volume_slider)
-		remote_volume_percent = _label("", Vector2(574, remote_y + 12), Vector2(78, 42), 24)
 	debug_button = _button("关闭debug" if GameConfig.debug_enabled else "开启debug",
-		Vector2(36, 540 if table_mode else 320), Vector2(300, 64), _toggle_debug)
+		Vector2(296, 552) if table_mode else Vector2(36, 320), Vector2(240 if table_mode else 300, 64), _toggle_debug)
 	debug_button.name = "DebugToggleButton"
-	auto_test_button = _button("自动跑100局", Vector2(348, 540 if table_mode else 320), Vector2(145, 64), func(): auto_test_requested.emit(100))
+	auto_test_button = _button("自动跑100局", Vector2(36, 622), Vector2(240, 52), func(): auto_test_requested.emit(100))
 	auto_test_button.name = "AutoTestButton"
 	auto_test_button.visible = table_mode and GameConfig.debug_enabled
-	auto_test_500_button = _button("自动跑500局", Vector2(503, 540 if table_mode else 320), Vector2(145, 64), func(): auto_test_requested.emit(500))
-	var voice_pack_button := _button("座位音色", Vector2(36, 470 if table_mode else 320), Vector2(300, 64), func(): voice_pack_open_requested.emit())
+	auto_test_500_button = _button("自动跑500局", Vector2(296, 622), Vector2(240, 52), func(): auto_test_requested.emit(500))
+	var voice_pack_button := _button("座位音色", Vector2(36, 552), Vector2(240, 64), func(): voice_pack_open_requested.emit())
 	voice_pack_button.name = "VoicePackButton"
 	voice_pack_button.visible = table_mode
 	auto_test_500_button.name = "AutoTest500Button"
@@ -137,42 +122,25 @@ func _ready() -> void:
 	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 682) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
 	continue_button.name = "ContinueGameButton"
 	if table_mode:
-		_label("人机出牌 / 碰杠响应", Vector2(716, 24), Vector2(368, 38), 24)
-		for item in [["快", "fast"], ["中", "medium"], ["慢", "slow"]]:
-			var speed_key: String = item[1]
-			var speed_button := _button(item[0], Vector2(716 + speed_buttons.size() * 126, 70), Vector2(116, 64), func(): _set_speed(speed_key))
-			speed_button.tooltip_text = "同时调整 AI 出牌等待和碰杠响应"
-			speed_buttons[speed_key] = speed_button
-		_label("摸牌动画", Vector2(716, 142), Vector2(368, 38), 24)
-		_label("出牌动画", Vector2(716, 254), Vector2(368, 38), 24)
-		for item in [["瞬间", "instant"], ["快", "fast"], ["正常", "standard"], ["慢", "slow"]]:
-			var key: String = item[1]
-			draw_speed_buttons[key] = _button(item[0], Vector2(716 + draw_speed_buttons.size() * 94, 184), Vector2(86, 64), func(): _set_tile_speed("draw", key))
-			discard_speed_buttons[key] = _button(item[0], Vector2(716 + discard_speed_buttons.size() * 94, 296), Vector2(86, 64), func(): _set_tile_speed("discard", key))
-		_label("结算速度", Vector2(716, 366), Vector2(368, 38), 24)
-		for item in [["快速", "fast"], ["正常", "standard"], ["慢速", "slow"]]:
-			var settlement_key: String = item[1]
-			var speed_button := _button(item[0], Vector2(716 + settlement_speed_buttons.size() * 94, 408), Vector2(86, 64), func(): _set_settlement_speed(settlement_key))
-			settlement_speed_buttons[settlement_key] = speed_button
-		_label("AI强度", Vector2(716, 488), Vector2(368, 30), 20)
+		score_details_button = _button("详细展示", Vector2(584, 552), Vector2(500, 64), _toggle_score_details)
+		score_details_button.name = "ScoreDetailsButton"
+		tile_speed_slider = _timing_slider("牌面动画 · 摸牌 / 出牌 / 发牌", 126, _set_tile_speed)
+		ai_speed_slider = _timing_slider("人机出牌等待", 226, _set_ai_speed)
+		settlement_speed_slider = _timing_slider("结算速度 · 每项计分", 326, _set_settlement_speed)
+		_label("人机强度", Vector2(584, 426), Vector2(500, 30), 24)
 		for item in [["弱", "weak"], ["中", "medium"], ["强", "strong"]]:
 			var strength_key: String = item[1]
-			var strength_button := _button(item[0], Vector2(716 + ai_strength_buttons.size() * 126, 524),
-				Vector2(116, 60), func(): _set_ai_strength(strength_key))
+			var strength_button := _button(item[0], Vector2(584 + ai_strength_buttons.size() * 170, 462),
+				Vector2(160, 58), func(): _set_ai_strength(strength_key))
 			strength_button.disabled = strength_key == "strong"
 			strength_button.tooltip_text = "中档已启用：加强防守，兼顾报听速度和得分" if strength_key == "medium" \
 				else ("强档策略后续接入" if strength_key == "strong" else "基础 AI")
 			ai_strength_buttons[strength_key] = strength_button
-		_label("开局发牌", Vector2(716, 610), Vector2(96, 30), 20)
-		for item in [["快", "fast"], ["正常", "standard"]]:
-			var opening_key: String = item[1]
-			opening_speed_buttons[opening_key] = _button(item[0], Vector2(812 + opening_speed_buttons.size() * 96, 610),
-				Vector2(86, 64), func(): _set_opening_speed(opening_key))
 		exit_room_button = _button("退出房间", Vector2(716, 682), Vector2(368, 80), func(): exit_requested.emit())
 		exit_room_button.name = "ExitRoomButton"
 		replay_export_button = _button("保存本局记录", Vector2(36, 682), Vector2(296, 80), func(): replay_export_requested.emit())
 		replay_export_button.name = "SaveRoundButton"
-		replay_status = _label("选择保存位置，建议放在“下载”文件夹，方便查找和发送。", Vector2(36, 766), Vector2(660, 60), 18)
+		replay_status = _label("", Vector2(36, 766), Vector2(660, 60), 18)
 		replay_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		replay_status.max_lines_visible = 2
 		replay_status.clip_text = true
@@ -209,7 +177,8 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_layout)
 	_layout()
 	_sync()
-	_update_speed_buttons()
+	sync_timing_controls()
+	_sync_ai_strength()
 	overlay.hide()
 
 func _exit_tree() -> void:
@@ -255,6 +224,39 @@ func _style_slider(slider: HSlider) -> void:
 	slider.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	slider.focus_mode = Control.FOCUS_ALL
 
+func _slider(pos: Vector2, width: float, maximum: float, step: float) -> HSlider:
+	var slider := HSlider.new()
+	slider.position = pos
+	slider.size = Vector2(width, SLIDER_HEIGHT)
+	slider.custom_minimum_size = slider.size
+	slider.max_value = maximum
+	slider.step = step
+	_style_slider(slider)
+	panel.add_child(slider)
+	return slider
+
+func _slider_row(title: String, pos: Vector2, maximum: float, step: float) -> Array:
+	_label(title, pos, Vector2(500, 30), 24)
+	var slider := _slider(pos + Vector2(0, 34), 408, maximum, step)
+	var value := _label("", pos + Vector2(420, 34), Vector2(80, SLIDER_HEIGHT), 24)
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	return [slider, value]
+
+func _timing_slider(title: String, y: float, apply: Callable) -> HSlider:
+	var row := _slider_row(title, Vector2(584, y), GameConfig.MAX_SPEED_SECONDS, 0.01)
+	var slider: HSlider = row[0]
+	var label: Label = row[1]
+	_timing_labels[slider] = label
+	slider.drag_started.connect(func(): _timing_drags[slider] = true)
+	slider.drag_ended.connect(func(changed: bool):
+		_timing_drags.erase(slider)
+		if changed and slider.editable: apply.call(slider.value))
+	slider.value_changed.connect(func(seconds: float):
+		label.text = "%.2f s" % seconds
+		if not _timing_drags.has(slider) and slider.editable: apply.call(seconds))
+	return slider
+
 func _label(text: String, pos: Vector2, dimensions: Vector2, font_size: int) -> Label:
 	var label := Label.new()
 	label.text = text
@@ -296,6 +298,7 @@ func _sync() -> void:
 		sliders[channel].set_value_no_signal(roundf(float(AudioManager.volumes[channel]) * 100.0))
 		percentages[channel].text = "%d%%" % roundi(float(AudioManager.volumes[channel]) * 100.0)
 	_sync_voice_settings()
+	_sync_score_details_button()
 
 func _sync_voice_settings() -> void:
 	if mic_gain_slider == null or remote_volume_slider == null:
@@ -325,52 +328,62 @@ func _toggle_debug() -> void:
 	if auto_test_500_button != null:
 		auto_test_500_button.visible = table_mode and GameConfig.debug_enabled
 
-func _set_speed(speed_key: String) -> void:
-	if not table_mode: GameConfig.set_ai_speed(speed_key, persist_changes)
-	ai_speed_selected.emit(speed_key)
+func _set_ai_speed(seconds: float) -> void:
+	ai_speed_selected.emit("%.2f" % seconds)
 
 func _set_ai_strength(strength_key: String) -> void:
 	GameConfig.set_ai_strength(strength_key, persist_changes)
-	_update_speed_buttons()
+	_sync_ai_strength()
 	ai_strength_selected.emit(strength_key)
 
-func _set_tile_speed(action: String, speed_key: String) -> void:
-	if action == "draw": GameConfig.set_draw_animation_speed(speed_key, persist_changes)
-	else: GameConfig.set_discard_animation_speed(speed_key, persist_changes)
-	_update_speed_buttons()
-
-func _set_opening_speed(speed_key: String) -> void:
-	GameConfig.set_opening_animation_speed(speed_key, persist_changes)
-	var net := get_node_or_null("/root/Network")
-	if table_mode and net != null and net.mode != "" and net.net_node != null:
-		net.net_node.set_opening_speed(speed_key)
-	_update_speed_buttons()
-
-func _set_settlement_speed(speed_key: String) -> void:
-	GameConfig.set_settlement_speed(speed_key, persist_changes)
-	_update_speed_buttons()
-
-func _update_speed_buttons() -> void:
-	var selected: String = GameConfig.ai_speed
+func _set_tile_speed(seconds: float) -> void:
+	GameConfig.set_tile_animation_seconds(seconds, persist_changes)
 	var network := get_node_or_null("/root/Network")
-	if table_mode and network != null and network.mode != "":
-		selected = str(network.net_node.lobby.get("ai_speed", "fast"))
-	for speed_key in speed_buttons:
-		speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == selected else Color.WHITE
-	for strength_key in ai_strength_buttons:
-		ai_strength_buttons[strength_key].modulate = Color("#f4df9f") if strength_key == GameConfig.ai_strength else Color.WHITE
-	for speed_key in draw_speed_buttons:
-		draw_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.draw_animation_speed else Color.WHITE
-	for speed_key in discard_speed_buttons:
-		discard_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.discard_animation_speed else Color.WHITE
-	for speed_key in settlement_speed_buttons:
-		settlement_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.settlement_speed else Color.WHITE
-	for speed_key in opening_speed_buttons:
-		opening_speed_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.opening_animation_speed else Color.WHITE
+	if network != null and network.mode != "" and network.net_node != null:
+		network.net_node.set_opening_speed(GameConfig.opening_speed_key())
+
+func _set_settlement_speed(seconds: float) -> void:
+	GameConfig.set_settlement_speed("%.2f" % seconds, persist_changes)
+
+func _toggle_score_details() -> void:
+	GameConfig.set_score_details_enabled(not GameConfig.score_details_enabled, persist_changes)
+	_sync_score_details_button()
+
+func _sync_score_details_button() -> void:
+	if score_details_button == null:
+		return
+	score_details_button.text = "详细展示：开启" if GameConfig.score_details_enabled else "详细展示：关闭"
+	score_details_button.modulate = Color("#f4df9f") if GameConfig.score_details_enabled else Color.WHITE
+
+func _sync_ai_strength() -> void:
+	for speed_key in ai_strength_buttons:
+		ai_strength_buttons[speed_key].modulate = Color("#f4df9f") if speed_key == GameConfig.ai_strength else Color.WHITE
+
+func sync_timing_controls() -> void:
+	if not table_mode: return
+	var ai_key: String = GameConfig.ai_speed
+	var network := get_node_or_null("/root/Network")
+	var editable := true
+	if network != null and network.mode != "" and network.net_node != null:
+		ai_key = str(network.net_node.lobby.get("ai_speed", "fast"))
+		editable = network.net_node.is_room_owner()
+	for slider in [tile_speed_slider, ai_speed_slider]:
+		slider.editable = editable
+		slider.modulate = Color.WHITE if editable else Color(1.0, 1.0, 1.0, 0.55)
+		slider.tooltip_text = "联机房间速度由房主设置" if not editable else ""
+	_sync_timing_value(tile_speed_slider, GameConfig.tile_motion_seconds())
+	_sync_timing_value(ai_speed_slider, GameConfig.ai_speed_seconds(ai_key))
+	_sync_timing_value(settlement_speed_slider, GameConfig.settlement_step_seconds())
+
+func _sync_timing_value(slider: HSlider, seconds: float) -> void:
+	if _timing_drags.has(slider): return
+	slider.set_value_no_signal(seconds)
+	_timing_labels[slider].text = "%.2f s" % seconds
 
 func open() -> void:
 	_sync()
-	_update_speed_buttons()
+	sync_timing_controls()
+	_sync_ai_strength()
 	_layout()
 	MOTION.appear(overlay)
 	MOTION.slide_in(panel)

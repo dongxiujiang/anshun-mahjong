@@ -121,9 +121,16 @@ func _refresh_identity(seat: int) -> void:
 	var relative: int = table._relative_seat(seat)
 	var label: Label = center_labels[seat]
 	label.size = UI.CENTER_SCORE_SIZE
-	label.position = table._table_center() + UI.CENTER_SCORE_OFFSETS[relative] - label.size / 2.0
+	# 分数/名字在该玩家自己视角的最左手牌左侧，整体位置随座位旋转，
+	# 但文字本身不旋转。
+	var hand_layout: Dictionary = table._hand_layout(seat)
+	var hand_h: float = TileView.BASE_H * float(table._hand_tile_unit(seat))
+	var local_score := Vector2(
+		float(hand_layout.get("hand_x", 0.0)) - UI.LABEL_HAND_GAP - label.size.x,
+		float(table._seat_metrics(seat).hand_y) + hand_h * 0.5 - label.size.y * 0.5)
+	var score_global: Vector2 = table.seat_roots[seat].get_global_transform() * local_score
+	label.position = table.surface.get_global_transform().affine_inverse() * score_global
 	if table.round.phase == RoundState.Phase.SETTLED:
-		# 说明留在总分下方，向外让开桌心翻鸡牌与其他座位的昵称。
 		label.position += UI.SETTLEMENT_SCORE_SHIFTS[relative]
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -157,9 +164,18 @@ func _refresh_identity(seat: int) -> void:
 	var wind := str(UI.WINDS[seat])
 	nickname.text = player_text
 	nickname.size = Vector2(UI.CENTER_SCORE_SIZE.x, maxf(32.0, nickname.get_minimum_size().y))
+	# 侧边座位的“自己左手边”可能落到桌外；统一夹在牌桌安全区内。
+	var bounds: Rect2 = table._table_bounds()
+	label.position.x = clampf(label.position.x, bounds.position.x + 20.0,
+		bounds.end.x - label.size.x - 20.0)
+	label.position.y = clampf(label.position.y, bounds.position.y + 44.0,
+		bounds.end.y - label.size.y - 20.0)
 	nickname.position = label.position - Vector2(0, nickname.size.y + 4.0)
+	nickname.position.x = clampf(nickname.position.x, bounds.position.x + 20.0,
+		bounds.end.x - nickname.size.x - 20.0)
+	nickname.position.y = maxf(bounds.position.y + 12.0, nickname.position.y)
 	nickname.tooltip_text = "%s位 · %s · 音色：%s" % [wind, player_text, AudioManager.get_seat_voice_pack(seat)]
-	nickname.visible = table._net_mode() != ""
+	nickname.visible = true
 	var speaker: Button = voice_speaker_buttons.get(seat)
 	if speaker != null:
 		var remote_human: bool = table._net_mode() != "" and seat != table.human_seat and player.is_human and table.round.phase != RoundState.Phase.SETTLED
@@ -239,6 +255,10 @@ func cache_current_hand(seat: int) -> void:
 func _refresh_seat(seat: int) -> void:
 	var relative = table._relative_seat(seat)
 	seat_roots[seat].rotation = UI.ROTATIONS[relative]
+	# 正式牌区由 TableV2 绘制；旧碰杠/弃牌节点仅保留给动画兼容接口并隐藏。
+	if meld_box.has(seat): meld_box[seat].hide()
+	if chicken_box.has(seat): chicken_box[seat].hide()
+	if discard_scroll.has(seat): discard_scroll[seat].hide()
 	var avatar_positions = UI.AVATAR_POSITIONS
 	# Reserved positions for the hidden per-seat status labels.
 	var status_positions = UI.HIDDEN_STATUS_POSITIONS
@@ -515,7 +535,7 @@ func _prepare_exposed_layouts() -> void:
 		occupied.append(Rect2(table.action_bar.position, table.action_bar.size))
 	# The score avatars remain in the center after the wall is hidden; exposed
 	# groups may now use that free space but must never cover the center panel.
-	for control in center_labels.values() + name_labels.values() + dealer_badges.values() + [table.center_info, table._remaining_label]:
+	for control in center_labels.values() + name_labels.values() + dealer_badges.values():
 		if control.visible: occupied.append(Rect2(control.position, control.size).grow(6.0))
 	occupied.append(Rect2(table._settings_button.position + table._settings_button.touch_rect().position,
 		table._settings_button.touch_rect().size).grow(6.0))
@@ -750,5 +770,3 @@ static func _scroll_river_after_layout(tree: SceneTree, river_id: int) -> void:
 	var river := instance_from_id(river_id) as ScrollContainer
 	if is_instance_valid(river) and river.is_inside_tree():
 		river.scroll_vertical = int(river.get_v_scroll_bar().max_value)
-
-

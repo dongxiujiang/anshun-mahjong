@@ -69,7 +69,7 @@ func _test_record_and_freeze() -> void:
 	t.expect(exporter.busy, "选位置期间标记忙碌")
 	t.expect(exporter.filename.begins_with("安顺麻将-本局记录-") and exporter.filename.ends_with(".json"), "建议文件名可辨认且为 JSON")
 	t.expect(not exporter.filename.contains(":"), "文件名不含 Windows 禁止字符")
-	t.expect(exporter.message.contains("下载"), "保存前告诉用户如何选可找到的目录")
+	t.expect(exporter.message.is_empty(), "普通导出等待系统窗口时不显示目录建议")
 	t.expect(REPLAY.fingerprint(game) == original, "打开导出不改变回合或分数")
 	var frozen: Dictionary = exporter._pending.duplicate(true)
 	exporter.export_round(game, 0)
@@ -207,6 +207,7 @@ func _test_ui() -> void:
 	table._sound_settings = settings
 	settings.replay_export_requested.connect(table._export_current_replay)
 	settings.open()
+	t.expect(settings.replay_status.text.is_empty(), "打开设置时不显示导出提示")
 	settings.replay_export_button.pressed.emit()
 	t.expect(exporter.busy and exporter.dialog_count == 1, "实际保存按钮通过牌桌入口打开系统保存流程")
 	t.expect(settings.replay_export_button.disabled and settings.continue_button.disabled and settings.exit_room_button.disabled, "选位置期间三个底部按钮禁用，避免重复提交或退出")

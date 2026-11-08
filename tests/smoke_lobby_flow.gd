@@ -22,6 +22,13 @@ func _run() -> void:
 	root.add_child(lobby)
 	current_scene = lobby
 	await process_frame
+	# A seat assignment alone can arrive a frame before the room snapshot.
+	lobby._connecting = true
+	network.net_node.my_seat = 0
+	lobby._finish_join_when_ready()
+	t.expect(lobby._connecting and not lobby._in_room, "Seat assignment alone must not show room controls")
+	lobby._connecting = false
+	network.net_node.my_seat = -1
 	t.expect(lobby.seat_buttons[0].position.x > 900.0, "东位固定在右侧")
 	t.expect(lobby.seat_buttons[1].position.y > 300.0, "南位固定在下方")
 	t.expect(lobby.seat_buttons[2].position.x < 100.0, "西位固定在左侧")
@@ -32,7 +39,8 @@ func _run() -> void:
 	var room_deadline := Time.get_ticks_msec() + 20000
 	while not lobby._in_room and Time.get_ticks_msec() < room_deadline:
 		await process_frame
-	t.expect(lobby._in_room and network.net_node.game.players.is_empty(), "Actual lobby creation remains undealt")
+	t.expect(lobby._in_room and network.net_node.lobby.has("seats") and network.net_node.game.players.is_empty(),
+		"Actual lobby creation shows the authoritative seats before the round starts")
 	lobby.seat_buttons[2].pressed.emit()
 	lobby.dealer_button.button_pressed = true
 	lobby.ready_button.pressed.emit()
@@ -68,6 +76,8 @@ func _run() -> void:
 	t.expect(table.round.phase == RoundState.Phase.SETTLED, "Lobby-to-table full game finishes")
 	t.expect(await _wait_until(func(): return table._settlement_animation_controller.is_completed()), "Lobby-launched settlement preview finishes")
 	var settlement = table._settlement_animation_controller
+	table._settlement_card.show_post_settlement_controls()
+	await _wait_until(func(): return table._settlement_card._post_controls.visible)
 	var board_count: int = 0 if settlement.plan.all_called_draw else 4
 	t.expect(settlement.boards.size() == board_count and table._settlement_card._post_controls.visible, "Lobby-launched game displays the final tabletop settlement and bottom controls")
 	t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Lobby-launched settlement uses non-blocking tabletop content and plain bottom controls")

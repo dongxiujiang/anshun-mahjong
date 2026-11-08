@@ -13,7 +13,7 @@ func _run() -> void:
 	t.expect(table._settings_button.get_rect().end.y <= table._table_bounds().position.y, "Settings stays above the playing area")
 	table._settings_button.pressed.emit()
 	var settings = table._sound_settings
-	t.expect(settings.is_open() and settings.speed_buttons.size() == 3, "One settings panel contains sound and three AI speeds")
+	t.expect(settings.is_open() and settings.ai_speed_slider is HSlider, "One settings panel contains sound and the AI speed slider")
 	t.expect(settings.panel.get_node("ExitRoomButton").size.y >= 80, "Exit entry keeps an 80px touch target aligned with the save/continue row")
 	table.quit_to_menu.connect(func(): exited = true)
 	settings.panel.get_node("ExitRoomButton").pressed.emit()

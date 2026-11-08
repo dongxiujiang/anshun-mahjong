@@ -15,6 +15,8 @@ const SUITES: Array[String] = [
 	"res://tests/smoke_hot_update.gd",
 	"res://tests/smoke_tiles.gd",
 	"res://tests/smoke_wall.gd",
+	"res://tests/wall_deal_order.gd",
+	"res://tests/wall_draw_ten.gd",
 	"res://tests/smoke_logic.gd",
 	"res://tests/shanten_cache.gd",
 	"res://tests/smoke_scoring.gd",
@@ -33,6 +35,7 @@ const SUITES: Array[String] = [
 	"res://tests/rules_priority_edges.gd",
 	"res://tests/rules_randomized.gd",
 	"res://tests/dragon_dealer.gd",
+	"res://tests/single_dealer_check.gd",
 	"res://tests/smoke_round.gd",
 	"res://tests/round_sync.gd",
 	"res://tests/legal_actions.gd",
@@ -43,15 +46,30 @@ const SUITES: Array[String] = [
 	"res://tests/ai_mcts.gd",
 	"res://tests/smoke_ai.gd",
 	"res://tests/sweep.gd",
-	"res://tests/smoke_table_layout.gd",
+	"res://tests/table_v2_geometry.gd",
+	"res://tests/table_v2_static.gd",
+	"res://tests/table_v2_red_spacing.gd",
+	"res://tests/table_v2_wall_ring.gd",
+	"res://tests/table_v2_settlement.gd",
+	"res://tests/table_v2_settlement_scenarios.gd",
+	"res://tests/table_v2_layout_guards.gd",
+	"res://tests/table_v2_hand_discard.gd",
+	"res://tests/table_v2_round_animation.gd",
+	"res://tests/table_v2_visual_continuity.gd",
+	"res://tests/accept_all_seats.gd",
+	"res://tests/accept_chicken_pong_flight.gd",
+	"res://tests/accept_meld_chicken.gd",
+	"res://tests/accept_meld_flight.gd",
+	"res://tests/accept_multi_turn.gd",
+	"res://tests/accept_stage2.gd",
+	"res://tests/accept_tap_center.gd",
+	"res://tests/accept_v2_missing.gd",
+	"res://tests/accept_stability.gd",
+	"res://tests/v2_live_input.gd",
 	"res://tests/table_components.gd",
-	"res://tests/ui_presentation.gd",
-	"res://tests/play_animation_flow.gd",
 	"res://tests/animation_speed_settings.gd",
 	"res://tests/settings_persistence.gd",
 	"res://tests/resume_dialog.gd",
-	"res://tests/table_interaction.gd",
-	"res://tests/focus_return_input.gd",
 	"res://tests/background_lifecycle.gd",
 	"res://tests/background_lobby.gd",
 	"res://tests/host_transfer.gd",
@@ -60,7 +78,6 @@ const SUITES: Array[String] = [
 	"res://tests/concealed_kong_window.gd",
 	"res://tests/add_kong_window.gd",
 	"res://tests/discard_identity.gd",
-	"res://tests/center_dashboard.gd",
 	"res://tests/table_controls_perf.gd",
 	"res://tests/network_latency.gd",
 	"res://tests/reconnect_control.gd",
@@ -99,7 +116,7 @@ func _run() -> void:
 		for line in text.split("\n"):
 			if line.begins_with("[%s]" % name.get_basename()) and (line.contains("通过") or line.contains("passed") or line.contains("0 failures")):
 				completed = true
-		if code == 0 and (not completed or text.contains("SCRIPT ERROR:") or text.contains("\nERROR:")):
+		if code == 0 and (not completed or _has_fatal_runtime_error(text)):
 			code = 1
 			text += "\n测试未完整结束，或输出中包含脚本错误。\n"
 		if code == 0:
@@ -115,3 +132,24 @@ func _run() -> void:
 		return
 	print("失败套件: %s" % ", ".join(failed))
 	quit(1)
+
+func _has_fatal_runtime_error(text: String) -> bool:
+	## Resource/CanvasItem cleanup warnings are emitted by several existing UI
+	## suites and do not mean their assertions failed.  Only treat actual script
+	## loading or runtime failures as fatal here; assertion failures already make
+	## the child process return a non-zero exit code.
+	for marker in [
+		"SCRIPT ERROR:",
+		"\nERROR:",
+		"Parse Error:",
+		"Parser Error:",
+		"Failed to load script",
+		"Invalid access to property",
+		"Trying to call an invalid callable",
+		"Trying to assign an invalid value",
+		"ObjectDB instances were leaked",
+		'RIDs of type "CanvasItem" were leaked',
+	]:
+		if text.contains(marker):
+			return true
+	return false

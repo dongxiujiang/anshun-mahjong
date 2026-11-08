@@ -52,7 +52,7 @@ permissions:
 env:
   GODOT_VERSION: "4.7.2"
   GODOT_RELEASE: "4.7.2-stable"
-  BASELINE_ID: "1.4.13-boot1"
+  BASELINE_ID: "1.6.14-native1"
 
 jobs:
   hot-update-windows:
@@ -243,6 +243,8 @@ jobs:
           godot --headless --path . --install-android-build-template --export-release "Android" /tmp/gme-template.apk > build/ci/android-template.log 2>&1 || { cat build/ci/android-template.log; exit 1; }
           mkdir -p android/build/libs
           cp addons/gme/gmesdk.aar android/build/libs/gmesdk.aar
+          mkdir -p android/build/src/main/java/com/anshun/mahjong
+          cp addons/gme/VoiceDelegate.java android/build/src/main/java/com/anshun/mahjong/VoiceDelegate.java
           printf "\ndependencies { implementation files(%s) }\n" "\"libs/gmesdk.aar\"" >> android/build/build.gradle
           godot --headless --path . --export-release "Android" build/android/anshun-mahjong.apk > build/ci/android-export.log 2>&1 || { cat build/ci/android-export.log; exit 1; }
           test -s build/android/anshun-mahjong.apk

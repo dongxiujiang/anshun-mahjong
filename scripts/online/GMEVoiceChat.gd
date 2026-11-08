@@ -2,9 +2,8 @@ class_name GMEVoiceChat
 extends Node
 ## Tencent GME real-time voice bridge.
 ##
-## Android uses the GME JAR + arm64 native libraries through JavaClassWrapper,
-## so no custom Java plugin/AAR is required. Windows currently keeps the old
-## PCM fallback until the GME C++ GDExtension is built.
+## Android uses the GME JAR + arm64 native libraries through JavaClassWrapper.
+## VoiceDelegate supplies the concrete callback class required by the SDK.
 
 signal status_changed(enabled: bool, message: String)
 signal speaker_changed(seat: int, enabled: bool)
@@ -156,9 +155,12 @@ func _join_room(room_number: String, auth: PackedByteArray) -> void:
 	if _context == null:
 		_fail("GME SDK 初始化失败")
 		return
-	_delegate = _java.call("create_proxy", self, ["com.gme.TMG.ITMGContext$ITMGDelegate"])
-	if _delegate != null:
-		_context.call("SetTMGDelegate", _delegate)
+	var delegate_class = _java.call("wrap", "com.anshun.mahjong.VoiceDelegate")
+	if delegate_class == null:
+		_fail("GME 回调组件未加载")
+		return
+	_delegate = delegate_class.VoiceDelegate()
+	_context.call("SetTMGDelegate", _delegate)
 	var init_ret = int(_context.call("Init", _app_id, _open_id))
 	if init_ret != 0:
 		_fail("GME Init 失败 code=%d" % init_ret)
@@ -183,10 +185,6 @@ func _join_room(room_number: String, auth: PackedByteArray) -> void:
 	_enter_timeout_reported = false
 	_status = "GME Init=0 EnterRoom=0 type=%d openid=%s，等待 IsRoomEntered…" % [selected_type, _open_id]
 	status_changed.emit(false, _status)
-
-func OnEvent(_event_type, _data) -> void:
-	# JavaClassWrapper proxy callback. Room state is polled every frame.
-	pass
 
 func _process(_delta: float) -> void:
 	if not _use_gme or _context == null:

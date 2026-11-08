@@ -2,6 +2,7 @@ extends Node
 ## 三条独立音频通道。全部素材随工程导入，PC/安卓运行时无需语音服务。
 
 signal settings_changed
+signal seat_voice_pack_changed
 signal event_played(event: Dictionary)
 signal discard_impact_played
 signal settlement_cue_played(cue: String)
@@ -72,6 +73,7 @@ func _ready() -> void:
 	_apply_settings()
 	# 提前加载，首次喊牌不在出牌时读取磁盘。
 	_stream("effects/discard")
+	_stream("effects/dice_roll")
 	for cue in SETTLEMENT_CUES: _stream("effects/settlement_" + cue)
 	for seat in 4:
 		var pack_id := get_seat_voice_pack(seat)
@@ -126,6 +128,8 @@ func end_table(owner: Node = null) -> void:
 		return
 	table_active = false
 	_table_owner = 0
+	if effects_player != null: effects_player.stop()
+	if settlement_player != null: settlement_player.stop()
 	reset_round()
 
 func reset_round(session: String = "", event_id: int = 0) -> void:
@@ -157,6 +161,26 @@ func play_settlement_cue(cue: String, owner: Node = null) -> bool:
 func stop_settlement_cue(owner: Node = null) -> void:
 	if owner != null and owner.get_instance_id() != _table_owner: return
 	if settlement_player != null: settlement_player.stop()
+
+func stop_effects() -> void:
+	if effects_player != null:
+		effects_player.stop()
+		effects_player.stream = null
+	if settlement_player != null:
+		settlement_player.stop()
+		settlement_player.stream = null
+	_streams.clear()
+
+func play_dice() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if not table_active or effects_player == null:
+		return
+	var stream := _stream("effects/dice_roll")
+	if stream == null:
+		return
+	effects_player.stream = stream
+	effects_player.play()
 
 func play_event(event: Dictionary, defer_discard_effect: bool = false) -> void:
 	if not table_active:
@@ -359,9 +383,12 @@ func set_seat_voice_pack(seat: int, pack_id: String, persist_local: bool = true)
 	if seat < 0 or seat >= 4:
 		return
 	var normalized := VOICE_PACKS.normalize(pack_id)
+	var changed: bool = seat_voice_packs[seat] != normalized
 	seat_voice_packs[seat] = normalized
 	if persist_local:
 		preferred_seat_voice_packs[seat] = normalized
+	if changed:
+		seat_voice_pack_changed.emit()
 
 func get_preferred_seat_voice_pack(seat: int) -> String:
 	return VOICE_PACKS.normalize(preferred_seat_voice_packs[clampi(seat, 0, 3)])

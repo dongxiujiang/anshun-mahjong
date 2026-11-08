@@ -1,4 +1,359 @@
-extends "res://scripts/ui/table/TableViewBridge.gd"
+extends Control
+## 组件宿主和旧 UI 接口桥接；这里只保留转发，不实现布局或交互。
+## 联机与既有测试仍可访问原字段；尺寸/颜色数值只在 TableUiConfig 定义。
+
+const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
+const LAYOUT := preload("res://scripts/ui/table/TableLayout.gd")
+const PLAYER_AREAS := preload("res://scripts/ui/table/PlayerTileAreas.gd")
+const ACTIONS_UI := preload("res://scripts/ui/table/v2/TableV2Actions.gd")
+const SETTLEMENT_UI := preload("res://scripts/ui/table/v2/TableV2SettlementCard.gd")
+const ANIMATIONS := preload("res://scripts/ui/table/v2/TableV2AnimationController.gd")
+const SETTLEMENT_ANIMATIONS := preload("res://scripts/ui/table/v2/TableV2SettlementAnimationController.gd")
+const WIDGETS := preload("res://scripts/ui/table/TableWidgets.gd")
+
+var _table_layout = LAYOUT.new(self)
+var _player_tile_areas = PLAYER_AREAS.new(self)
+var _new_areas: Control = null
+var _table_actions = ACTIONS_UI.new(self)
+var _settlement_card = SETTLEMENT_UI.new(self)
+var _table_animation_controller = ANIMATIONS.new(self)
+var _settlement_animation_controller = SETTLEMENT_ANIMATIONS.new(self)
+var _table_widgets = WIDGETS.new()
+
+func _on_settlement_speed_changed() -> void:
+	_settlement_animation_controller.update_speed()
+
+## The table is deliberately designed in landscape.  Both the desktop build and
+## Android use this same canvas so a device rotation never switches to the old
+## portrait table.
+const DESIGN_SIZE := UI.DESIGN_SIZE
+## Reference origin for the small center-panel labels authored before landscape.
+const TABLE_CENTER := UI.TABLE_CENTER
+const LANDSCAPE_SIZE := UI.LANDSCAPE_SIZE
+const LANDSCAPE_CENTER := UI.LANDSCAPE_CENTER
+const TILE_UNIT := UI.TILE_UNIT
+const RIVER_TILE_UNIT := UI.RIVER_TILE_UNIT
+const PLAYER_TILE_UNIT := UI.PLAYER_TILE_UNIT
+const OWN_PLAYER_TILE_UNIT := UI.OWN_PLAYER_TILE_UNIT
+const OWN_HAND_TILE_UNIT := UI.OWN_HAND_TILE_UNIT
+const ACTION_BUTTON_SIZE := UI.ACTION_BUTTON_SIZE
+const DISCARD_BUTTON_SIZE := UI.DISCARD_BUTTON_SIZE
+const ACTION_HAND_GAP := UI.ACTION_HAND_GAP
+const NEXT_ROUND_BUTTON_SIZE := UI.NEXT_ROUND_BUTTON_SIZE
+const TILE_GAP := UI.TILE_GAP
+const EXPOSED_HAND_GAP := UI.EXPOSED_HAND_GAP
+const DRAW_GAP := UI.DRAW_GAP
+const RIVER_POSITION := UI.RIVER_POSITION
+const RIVER_SIZE := UI.RIVER_SIZE
+const ROTATIONS := UI.ROTATIONS
+const WINDS := UI.WINDS
+const INK := UI.INK
+const MUTED := UI.MUTED
+const GOLD := UI.GOLD
+const SAFE_MARGIN := UI.SAFE_MARGIN
+const TOUCH_MARGIN := UI.TOUCH_MARGIN
+const VISUAL_ANIMATIONS := UI.VISUAL_ANIMATIONS
+
+var hand_box: Dictionary:
+	get: return _player_tile_areas.hand_box
+	set(value): _player_tile_areas.hand_box = value
+var ready_frames: Dictionary:
+	get: return _player_tile_areas.ready_frames
+	set(value): _player_tile_areas.ready_frames = value
+var draw_box: Dictionary:
+	get: return _player_tile_areas.draw_box
+	set(value): _player_tile_areas.draw_box = value
+var meld_box: Dictionary:
+	get: return _player_tile_areas.meld_box
+	set(value): _player_tile_areas.meld_box = value
+var discard_box: Dictionary:
+	get: return _player_tile_areas.discard_box
+	set(value): _player_tile_areas.discard_box = value
+var discard_scroll: Dictionary:
+	get: return _player_tile_areas.discard_scroll
+	set(value): _player_tile_areas.discard_scroll = value
+var chicken_box: Dictionary:
+	get: return _player_tile_areas.chicken_box
+	set(value): _player_tile_areas.chicken_box = value
+var center_labels: Dictionary:
+	get: return _player_tile_areas.center_labels
+	set(value): _player_tile_areas.center_labels = value
+var net_labels: Dictionary:
+	get: return _player_tile_areas.net_labels
+	set(value): _player_tile_areas.net_labels = value
+var seat_roots: Dictionary:
+	get: return _player_tile_areas.seat_roots
+	set(value): _player_tile_areas.seat_roots = value
+var wind_labels: Dictionary:
+	get: return _player_tile_areas.wind_labels
+	set(value): _player_tile_areas.wind_labels = value
+var avatars: Dictionary:
+	get: return _player_tile_areas.avatars
+	set(value): _player_tile_areas.avatars = value
+var dealer_badges: Dictionary:
+	get: return _player_tile_areas.dealer_badges
+	set(value): _player_tile_areas.dealer_badges = value
+var status_label: Label:
+	get: return _table_layout.status_label
+	set(value): _table_layout.status_label = value
+var action_bar: HBoxContainer:
+	get: return _table_actions.action_bar
+	set(value): _table_actions.action_bar = value
+var surface: Control:
+	get: return _table_layout.surface
+	set(value): _table_layout.surface = value
+var _selecting: bool:
+	get: return _table_actions._selecting
+	set(value): _table_actions._selecting = value
+var _response_disc: String:
+	get: return _table_actions._response_disc
+	set(value): _table_actions._response_disc = value
+var _selected_tile: TileView:
+	get: return _table_actions._selected_tile
+	set(value): _table_actions._selected_tile = value
+var _declaring_ready: bool:
+	get: return _table_actions._declaring_ready
+	set(value): _table_actions._declaring_ready = value
+var _ready_discards: Array:
+	get: return _table_actions._ready_discards
+	set(value): _table_actions._ready_discards = value
+var _felt: NoiseTexture2D:
+	get: return _table_layout._felt
+	set(value): _table_layout._felt = value
+var _next_round_button: Button:
+	get: return _settlement_card._next_round_button
+	set(value): _settlement_card._next_round_button = value
+var _next_round_status: Label:
+	get: return _settlement_card._next_round_status
+	set(value): _settlement_card._next_round_status = value
+var _next_round_hint: Label:
+	get: return _settlement_card._next_round_hint
+	set(value): _settlement_card._next_round_hint = value
+var _post_controls: Control:
+	get: return _settlement_card._post_controls
+	set(value): _settlement_card._post_controls = value
+var _status_labels: Dictionary:
+	get: return _player_tile_areas._status_labels
+	set(value): _player_tile_areas._status_labels = value
+var _exposed_layouts: Dictionary:
+	get: return _player_tile_areas._exposed_layouts
+	set(value): _player_tile_areas._exposed_layouts = value
+var _landscape: bool:
+	get: return _table_layout._landscape
+	set(value): _table_layout._landscape = value
+var _seat_visual_keys: Dictionary:
+	get: return _player_tile_areas._seat_visual_keys
+	set(value): _player_tile_areas._seat_visual_keys = value
+var _animation_layer:
+	get: return _table_animation_controller._animation_layer
+	set(value): _table_animation_controller._animation_layer = value
+var _animation_busy: bool:
+	get: return _table_animation_controller._animation_busy
+	set(value): _table_animation_controller._animation_busy = value
+var _animation_last_id: int:
+	get: return _table_animation_controller._animation_last_id
+	set(value): _table_animation_controller._animation_last_id = value
+var _animation_queue: Array:
+	get: return _table_animation_controller._animation_queue
+	set(value): _table_animation_controller._animation_queue = value
+var _skip_visual_once: bool:
+	get: return _table_animation_controller._skip_visual_once
+	set(value): _table_animation_controller._skip_visual_once = value
+var _last_tile_input_ms: int:
+	get: return _table_actions._last_tile_input_ms
+	set(value): _table_actions._last_tile_input_ms = value
+
+func _on_visual_event(event: Dictionary) -> void:
+	_table_animation_controller._on_visual_event(event)
+
+func _pump_visual_animation() -> void:
+	_table_animation_controller._pump_visual_animation()
+
+func _on_visual_animation_finished() -> void:
+	_table_animation_controller._on_visual_animation_finished()
+
+func _start_settlement_animation(immediate: bool = false) -> void:
+	_settlement_animation_controller.start(immediate)
+
+func _on_settlement_animation_finished() -> void:
+	_settlement_card.show_post_settlement_controls()
+	_update_interactivity()
+
+func _refresh_ready_hint() -> void:
+	if _player_tile_areas != null:
+		_player_tile_areas.refresh_ready_hint(int(get("human_seat")))
+
+func _show_pending_ready(seat: int) -> void:
+	if _player_tile_areas != null:
+		_player_tile_areas.show_pending_ready(seat)
+
+func _settlement_animation_active() -> bool:
+	if _new_areas != null and DisplayServer.get_name() != "headless" \
+			and _new_areas.has_method("native_settlement_active"):
+		return _new_areas.native_settlement_active()
+	return _settlement_animation_controller.is_active()
+
+func _settlement_animation_started() -> bool:
+	if _new_areas != null and DisplayServer.get_name() != "headless" \
+			and _new_areas.has_method("native_settlement_started"):
+		return _new_areas.native_settlement_started()
+	return _settlement_animation_controller.has_started()
+
+func _settlement_animation_done() -> bool:
+	if _new_areas != null and DisplayServer.get_name() != "headless" \
+			and _new_areas.has_method("native_settlement_complete"):
+		return _new_areas.native_settlement_started() and _new_areas.native_settlement_complete()
+	return _settlement_animation_controller.is_completed()
+
+func _animation_target_for_seat(seat: int) -> Vector2:
+	return _table_animation_controller._animation_target_for_seat(seat)
+
+func _build_static_ui() -> void:
+	_table_layout._build_static_ui()
+
+func _layout() -> void:
+	_table_layout._layout()
+
+func _refresh_layout_contents() -> void:
+	_table_layout._refresh_layout_contents()
+
+func _usable_rect() -> Rect2:
+	return _table_layout._usable_rect()
+
+func _design_size() -> Vector2:
+	return _table_layout._design_size()
+
+func _table_center() -> Vector2:
+	return _table_layout._table_center()
+
+func _table_bounds() -> Rect2:
+	return _table_layout._table_bounds()
+
+func _seat_metrics(seat: int) -> Dictionary:
+	return _table_layout._seat_metrics(seat)
+
+func _player_tile_unit(seat: int) -> float:
+	return _table_layout._player_tile_unit(seat)
+
+func _hand_tile_unit(seat: int) -> float:
+	return _table_layout._hand_tile_unit(seat)
+
+func _hand_layout(seat: int) -> Dictionary:
+	return _table_layout._hand_layout(seat)
+
+func _layout_actions() -> void:
+	_table_actions._layout_actions()
+
+func _draw() -> void:
+	_table_layout._draw()
+
+func _draw_die(value: int, pos: Vector2) -> void:
+	_table_layout._draw_die(value, pos)
+
+func _relative_seat(seat: int) -> int:
+	return _table_layout._relative_seat(seat)
+
+func _refresh_seat(seat: int) -> void:
+	_player_tile_areas._refresh_seat(seat)
+
+func _meld_tile_layout(meld: Dictionary, seat: int, unit: float, gap: float) -> Dictionary:
+	return _player_tile_areas._meld_tile_layout(meld, seat, unit, gap)
+
+func _prepare_exposed_layouts() -> void:
+	_player_tile_areas._prepare_exposed_layouts()
+
+func _exposed_rects(layout: Dictionary, origin: Vector2, transform: Transform2D, width: float, height: float) -> Array[Rect2]:
+	return _player_tile_areas._exposed_rects(layout, origin, transform, width, height)
+
+func _exposed_space_clear(rects: Array[Rect2], occupied: Array[Rect2]) -> bool:
+	return _player_tile_areas._exposed_space_clear(rects, occupied)
+
+func _refresh_status_text(seat: int) -> void:
+	_player_tile_areas._refresh_status_text(seat)
+
+func _chicken_discards(seat: int) -> Array:
+	return _player_tile_areas._chicken_discards(seat)
+
+func _exposed_groups(seat: int) -> Array:
+	return _player_tile_areas._exposed_groups(seat)
+
+func _refresh_discards(seat: int) -> void:
+	_player_tile_areas._refresh_discards(seat)
+
+func _scroll_to_latest(river: ScrollContainer) -> void:
+	_player_tile_areas._scroll_to_latest(river)
+
+func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
+	_table_actions._on_human_tile_gui(event, tile)
+
+func _on_require_turn(seat: int) -> void:
+	_table_actions._on_require_turn(seat)
+
+func _build_turn_options(player: PlayerState) -> void:
+	_table_actions._build_turn_options(player)
+
+func _add_kong_choices(title: String, decision_key: String, cards: Array) -> void:
+	_table_actions._add_kong_choices(title, decision_key, cards)
+
+func _discard_selected() -> void:
+	_table_actions._discard_selected()
+
+func _toggle_ready() -> void:
+	_table_actions._toggle_ready()
+
+func _update_interactivity() -> void:
+	_table_actions._update_interactivity()
+
+func _safe_discard() -> String:
+	return _table_actions._safe_discard()
+
+func _commit_turn(decision: Dictionary) -> void:
+	_table_actions._commit_turn(decision)
+
+func _submit_discard(tile: String, discard_index: int = -1) -> void:
+	_table_actions._submit_discard(tile, discard_index)
+
+func _on_require_response(seat: int, discarded_seat: int, tile: String, options: Dictionary) -> void:
+	_table_actions._on_require_response(seat, discarded_seat, tile, options)
+
+func _commit_response(action: String) -> void:
+	_table_actions._commit_response(action)
+
+func _next_round() -> void:
+	_settlement_card._next_round()
+
+func _refresh_next_round_controls() -> void:
+	_settlement_card._refresh_next_round_controls()
+
+func _make_tile(card: String, up: bool, unit: float = TILE_UNIT) -> TileView:
+	return _table_widgets._make_tile(card, up, unit)
+
+func _put_tile(parent: Control, tile: TileView, pos: Vector2) -> void:
+	_table_widgets._put_tile(parent, tile, pos)
+
+func _box(parent: Control) -> Control:
+	return _table_widgets._box(parent)
+
+func _label(parent: Control, text: String, pos: Vector2, dimensions: Vector2, font_size: int, color: Color = INK) -> Label:
+	return _table_widgets._label(parent, text, pos, dimensions, font_size, color)
+
+func _style(color: Color, border: Color, radius: int, border_width: int = 0) -> StyleBoxFlat:
+	return _table_widgets._style(color, border, radius, border_width)
+
+func _button(text: String, callback: Callable, dimensions: Vector2, primary: bool = false) -> Button:
+	return _table_widgets._button(text, callback, dimensions, primary)
+
+func _add_action(text: String, callback: Callable, primary: bool = false, tooltip: String = "") -> Button:
+	return _table_actions._add_action(text, callback, primary, tooltip)
+
+func _clear_actions() -> void:
+	_table_actions._clear_actions()
+
+func _clear_box(box: Node) -> void:
+	_table_widgets._clear_box(box)
+
+func _cn(card: String) -> String:
+	return _table_widgets._cn(card)
 
 signal quit_to_menu
 
@@ -7,15 +362,14 @@ const TEST_PATTERNS := preload("res://scripts/core/TestPatterns.gd")
 
 
 ## 牌局与联机事件协调器。视觉状态由 table/ 组件持有。
-## TableViewBridge 保留既有联机和测试接口；视觉参数统一在 TableUiConfig。
+## 保留既有联机和测试接口；视觉参数统一在 TableUiConfig。
 
 var round: RoundState
-var human_seat := 0
+var human_seat := 1
 var net_submit_turn: Callable
 var net_submit_response: Callable
 var _round_number := 0
 var _connection_overlay: Control
-var _speed_buttons := {}
 var _sound_settings: SoundSettings
 var _audio_round: RoundState
 var _sound_button: Button
@@ -75,6 +429,7 @@ func _ready() -> void:
 	AudioManager.begin_table(self)
 	_build_static_ui()
 	_build_table_overlays()
+	# 新牌区已显示真实牌墙，debug 牌墙测试不再提供。
 	_connection_overlay = CONNECTION_OVERLAY.new()
 	add_child(_connection_overlay)
 	_connection_overlay.retry_requested.connect(_retry_connection)
@@ -409,6 +764,8 @@ func _clear_ai_teach() -> void:
 		_ai_teach_worker.cancel(pending)
 	if _player_tile_areas != null:
 		_player_tile_areas.clear_ai_teach_highlight()
+	if _new_areas != null and _new_areas.has_method("clear_ai_teach_highlights"):
+		_new_areas.clear_ai_teach_highlights()
 
 func request_ai_teach() -> void:
 	if round == null or round.players.size() != 4:
@@ -462,6 +819,8 @@ func _apply_ai_teach_result(result: Dictionary) -> void:
 		tiles = [str(result.get("tile", ""))]
 	if _player_tile_areas != null:
 		_player_tile_areas.highlight_ai_teach_tiles(tiles)
+	if _new_areas != null and _new_areas.has_method("highlight_ai_teach"):
+		_new_areas.highlight_ai_teach(tiles)
 	if result.has("message"):
 		_ai_teach_message = str(result.message)
 		if status_label != null:
@@ -651,20 +1010,20 @@ func start_auto_test(rounds: int = 100) -> void:
 		return
 	GameConfig.set_ai_speed("fast", false)
 	GameConfig.animation_speed = "instant"
-	GameConfig.draw_animation_speed = "instant"
-	GameConfig.discard_animation_speed = "instant"
+	GameConfig.set_tile_animation_seconds(0.0, false)
 	GameConfig.settlement_speed = "fast"
-	GameConfig.opening_animation_speed = "fast"
 	_auto_test_online_ai = null
 	print("[auto-test] start rounds=", _auto_test_rounds)
 	new_game()
 
 func _auto_test_poll_online() -> void:
-	if round == null or (_auto_test_rounds <= 0 and not _ai_proxy_active):
+	if round == null or _awaiting_rejoin_snapshot or (_auto_test_rounds <= 0 and not _ai_proxy_active):
 		return
 	if round.phase == RoundState.Phase.SETTLED:
 		var settled_round := int(_net_node().round_number) if _net_node() != null else 0
 		if _ai_proxy_active and _auto_test_rounds <= 0:
+			if not _settlement_animation_done():
+				return
 			if _auto_test_settled_round != settled_round:
 				_auto_test_settled_round = settled_round
 				_auto_test_prompt_seen = -1
@@ -735,12 +1094,14 @@ func _submitted_proxy_level() -> String:
 	return {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.ai_strength, "medium")
 
 func _poll_ai_proxy() -> void:
-	if _ai_proxy_task <= 0 or _ai_proxy_worker == null:
+	if _awaiting_rejoin_snapshot or _ai_proxy_task <= 0 or _ai_proxy_worker == null:
 		return
 	var decision: Dictionary = _ai_proxy_worker.take_result(_ai_proxy_task)
 	if decision.is_empty():
 		return
 	_ai_proxy_task = 0
+	if round.phase != RoundState.Phase.PLAYING or round.prompt_id != _auto_test_prompt_seen:
+		return
 	if _ai_proxy_response_pending:
 		var tile := _ai_proxy_response_tile
 		_ai_proxy_response_pending = false
@@ -817,14 +1178,20 @@ func _auto_test_online_response(seat: int, discarded_seat: int, tile: String, op
 	# Auto-play only measures the online/UI frame budget; human input is not AI work.
 	_emit_response(tile, {"action": "win"} if options.get("can_win", false) else {"action": "pass"})
 
-func new_game() -> void:
+func new_game(reset_scores: bool = false, dealer_override: int = -1,
+		die_override: int = -1) -> void:
 	var scores: Array = []
-	var chicken_multiplier := round.next_chicken_multiplier if round != null else 1
-	var next_dealer := round.next_dealer_seat if round != null else 0
+	var chicken_multiplier := 1 if reset_scores else (round.next_chicken_multiplier if round != null else 1)
+	# 单机第一局固定南方玩家坐庄；联机/重开仍按原庄家传递。
+	var first_dealer := human_seat if _net_mode() == "" else 0
+	var next_dealer := dealer_override if dealer_override >= 0 else (first_dealer if reset_scores else (round.next_dealer_seat if round != null else first_dealer))
 	if round != null:
-		for player in round.players:
-			scores.append(player.score)
+		if not reset_scores:
+			for player in round.players:
+				scores.append(player.score)
 		round.cancel_opening()
+	if reset_scores:
+		_round_number = 0
 	_clear_actions()
 	_settlement_animation_controller.reset()
 	_settlement_card.hide_post_settlement_controls()
@@ -833,7 +1200,8 @@ func new_game() -> void:
 	_selected_tile = null
 	_round_number += 1
 	round = RoundState.new()
-	round.opening_speed = GameConfig.opening_animation_speed
+	round.pause_after_opening = DisplayServer.get_name() != "headless"
+	round.opening_speed = GameConfig.opening_speed_key()
 	if _net_mode() == "" and DisplayServer.get_name() != "headless":
 		if _ai_service == null:
 			_ai_service = load("res://scripts/ai/AiDecisionService.gd").new()
@@ -855,14 +1223,14 @@ func new_game() -> void:
 	round.ai_delay_seconds = 0.0 if _auto_test_rounds > 0 else GameConfig.ai_delay_seconds()
 	round.ai_response_delay_seconds = 0.0 if _auto_test_rounds > 0 else GameConfig.ai_response_delay_seconds()
 	round.opening_delay_seconds = 0.0 if _auto_test_rounds > 0 else (
-		GameConfig.OPENING_WAIT_SECONDS * GameConfig.opening_animation_scale() \
+		GameConfig.opening_wait_seconds(round.opening_speed) \
 		if DisplayServer.get_name() != "headless" else 0.0)
 	round.randomize_seed()
 	# 先带入累计分数，再让新庄家开始行动（AI 庄家也可能马上结算）。
 	if scores.size() == 4:
 		round.build_players(human_seat)
 		round.apply_scores(scores)
-	round.start_round(human_seat)
+	round.start_round(human_seat, die_override)
 	_refresh()
 
 func _setup_host_view() -> void:
@@ -925,7 +1293,12 @@ func _prime_opening_visuals() -> void:
 	for player in round.players:
 		if player.discard_count > 0 or not player.melds.is_empty():
 			_opening_primed = true
+			_table_animation_controller.recover_after_resume()
 			return
+	if round.phase == RoundState.Phase.PLAYING and not round.visual_events.any(func(event): return event.get("type", "") == "deal_batch"):
+		_opening_primed = true
+		_table_animation_controller.recover_after_resume()
+		return
 	_opening_primed = true
 	for event in round.visual_events: _on_visual_event(event)
 
@@ -952,32 +1325,49 @@ func _refresh() -> void:
 		# visuals received before this table connected to the network.
 		_table_animation_controller.cancel()
 	_layout_actions()
-	for seat in 4: _player_tile_areas._refresh_identity(seat)
-	_prepare_exposed_layouts()
-	for seat in 4:
-		if _table_animation_controller.holds_seat_refresh(seat) or _table_animation_controller.sorting_active():
-			# The discard target must exist immediately, but the hand and draw
-			# boxes stay on their pre-discard snapshot until the animation ends.  A
-			# sorting pass also owns the physical hand nodes until it completes.
-			_player_tile_areas._refresh_exposed(seat)
-			_player_tile_areas._refresh_discards(seat)
-			continue
-		_refresh_seat(seat)
-	_player_tile_areas.refresh_ready_frames()
-	_refresh_center()
-	_refresh_status()
+	if _new_areas == null or DisplayServer.get_name() == "headless":
+		# 正式运行只用 V2；headless 旧回归仍需要旧牌区节点。
+		for seat in 4: _player_tile_areas._refresh_identity(seat)
+		_prepare_exposed_layouts()
+		for seat in 4:
+			if _table_animation_controller.holds_seat_refresh(seat) or _table_animation_controller.sorting_active():
+				_player_tile_areas._refresh_exposed(seat)
+				_player_tile_areas._refresh_discards(seat)
+				continue
+			_refresh_seat(seat)
+		_player_tile_areas.refresh_ready_frames()
+		_refresh_center()
+		_refresh_status()
+		_table_animation_controller.refresh_masks()
+	if _new_areas != null:
+		_new_areas.refresh()
+		_new_areas.sync_animation_proxies()
 	_update_interactivity()
-	_table_animation_controller.refresh_masks()
+	if _table_layout != null:
+		# V2 始终是唯一牌桌画面；结算卡/结算动画仍是独立覆盖层。
+		if _new_areas != null:
+			_new_areas.show()
+			_new_areas.adopt_action_bar(_table_actions.action_bar)
+			_new_areas.adopt_settlement_node(_settlement_card._post_controls)
+		_table_layout._hide_legacy_visuals(_player_tile_areas)
+		_table_actions._layout_actions()
 	queue_redraw()
 	if round.phase == RoundState.Phase.SETTLED and round.players.size() == 4 \
-		and not _settlement_animation_controller.has_started() \
-		and not _table_animation_controller.has_pending():
+			and not _table_animation_controller.has_pending():
 		var immediate := _settlement_immediate
 		_settlement_immediate = false
-		_start_settlement_animation(immediate)
-	_settlement_animation_controller.apply_displays()
+		if _new_areas != null and DisplayServer.get_name() != "headless":
+			_new_areas.start_native_settlement(immediate)
+		elif not _settlement_animation_controller.has_started():
+			_start_settlement_animation(immediate)
+	if _new_areas == null or DisplayServer.get_name() == "headless":
+		# 旧结算控制器仅用于无 V2 的 headless/兼容路径；图形模式由 V2 独占。
+		_settlement_animation_controller.apply_displays()
+	if round.phase == RoundState.Phase.SETTLED and _settlement_animation_done():
+		# Completion and the next network snapshot can arrive in either order.
+		# Keep the post-settlement controls visible once the preview is done.
+		_settlement_card.show_post_settlement_controls()
 	_refresh_next_round_controls()
-
 func _sync_settlement_round() -> void:
 	# Clients and hosts reuse RoundState between rounds. Object identity alone
 	# would leave the previous completed animation (and invisible rivers) alive.
@@ -991,6 +1381,8 @@ func _sync_settlement_round() -> void:
 		_settlement_card.hide_post_settlement_controls()
 		_seat_visual_keys.clear()
 		_settlement_immediate = round.phase == RoundState.Phase.SETTLED
+		if _new_areas != null and _new_areas.has_method("reset_native_settlement"):
+			_new_areas.reset_native_settlement()
 	elif _settlement_phase == RoundState.Phase.IDLE and round.phase == RoundState.Phase.SETTLED:
 		_settlement_immediate = true
 	_settlement_round_id = round.get_instance_id()
@@ -999,11 +1391,8 @@ func _sync_settlement_round() -> void:
 	_settlement_phase = round.phase
 
 func _refresh_center() -> void:
-	center_info.text = str(_sum_wall()) if not round.players.is_empty() else "--"
-	var number: int = _round_number if _net_mode() == "" else _net_node().round_number
-	round_label.text = "第 %02d 局    ·    %s" % [maxi(1, number), "单机对局" if _net_mode() == "" else "联机对局"]
+	# 中央 168×168 只负责骰子；不再写余牌/局数标签。
 	_table_layout.refresh_turn_indicator()
-	_update_speed_buttons()
 
 func _set_ai_speed(speed_key: String) -> void:
 	var persist := _sound_settings == null or _sound_settings.persist_changes
@@ -1015,15 +1404,6 @@ func _set_ai_speed(speed_key: String) -> void:
 	elif _net_node().is_room_owner():
 		GameConfig.set_ai_speed(speed_key, persist)
 		_net_node().set_ai_speed(speed_key)
-	_update_speed_buttons()
-
-func _update_speed_buttons() -> void:
-	var selected: String = GameConfig.ai_speed if _net_mode() == "" else str(_net_node().lobby.get("ai_speed", "fast"))
-	for speed_key in _speed_buttons:
-		var button: Button = _speed_buttons[speed_key]
-		button.modulate = UI.BUTTON_PRIMARY_HOVER if speed_key == selected else Color.WHITE
-		button.disabled = _net_mode() != "" and not _net_node().is_room_owner()
-		button.tooltip_text = "联机房间人机速度由房主设置" if button.disabled else ""
 
 func _sum_wall() -> int:
 	var count := 0
@@ -1057,6 +1437,12 @@ func _on_client_state_updated() -> void:
 	if _awaiting_rejoin_snapshot:
 		_settlement_immediate = round.phase == RoundState.Phase.SETTLED
 		_awaiting_rejoin_snapshot = false
+		if _ai_proxy_worker != null and _ai_proxy_task > 0:
+			_ai_proxy_worker.cancel(_ai_proxy_task)
+		_ai_proxy_task = 0
+		_ai_proxy_response_pending = false
+		_ai_proxy_response_tile = ""
+		_auto_test_prompt_seen = -1
 		if _connection_overlay != null: _connection_overlay.close()
 		status_label.hide()
 	_selecting = false
@@ -1068,7 +1454,7 @@ func _on_client_state_updated() -> void:
 	_refresh()
 
 func _on_net_lobby_updated() -> void:
-	_update_speed_buttons()
+	if _sound_settings != null: _sound_settings.sync_timing_controls()
 	_refresh_next_round_controls()
 	var net = _net_node()
 	if net != null and bool(net.test_mode) != _test_mode_ui:
@@ -1181,8 +1567,14 @@ func _arm_resume_animation_recovery(generation: int) -> void:
 		return
 	if _awaiting_rejoin_snapshot:
 		return
-	if _table_animation_controller.input_locked():
-		_table_animation_controller.cancel()
+	var v2_stuck: bool = _new_areas != null and _new_areas.has_method("visual_recovery_pending") \
+		and _new_areas.visual_recovery_pending()
+	if _table_animation_controller.input_locked() or v2_stuck:
+		if _new_areas != null and _new_areas.has_method("recover_after_resume"):
+			_new_areas.recover_after_resume()
+		_table_animation_controller.recover_after_resume()
+		if round.phase == RoundState.Phase.PLAYING and round.pause_after_opening:
+			round.resume_after_opening()
 		_refresh()
 		_on_net_prompt(human_seat)
 		_update_interactivity()
@@ -1208,4 +1600,3 @@ func _export_current_replay() -> void:
 
 func _confirm_quit() -> void:
 	_sound_settings.confirm_exit()
-

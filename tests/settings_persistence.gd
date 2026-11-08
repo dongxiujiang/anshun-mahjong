@@ -3,7 +3,7 @@ const H := preload("res://tests/test_harness.gd")
 const STORE := preload("res://scripts/core/UserSettingsStore.gd")
 const GAME := "res://scripts/autoload/GameConfig.gd"
 const AUDIO := "res://scripts/autoload/AudioManager.gd"
-const CHOICES := {"ai_speed": "medium", "animation_speed": "fast", "draw_animation_speed": "slow", "discard_animation_speed": "fast", "settlement_speed": "fast"}
+const CHOICES := {"ai_speed": "1.26", "animation_speed": "fast", "tile_animation_seconds": 0.75, "settlement_speed": "1.45"}
 var t := H.new()
 var directory := "res://build/settings_persistence/%d" % OS.get_process_id()
 
@@ -26,7 +26,8 @@ func _audio(path: String):
 func _test_defaults_and_recovery() -> void:
 	var path := directory + "/validation.cfg"
 	var config = _game(path)
-	t.expect(config.ai_speed == "fast" and config.draw_animation_speed == "fast" and config.discard_animation_speed == "fast" and config.settlement_speed == "fast", "new installation uses fast defaults")
+	t.expect(config.ai_speed == "fast" and config.tile_animation_seconds == 0.30 and config.settlement_speed == "fast", "new installation uses short durations")
+	t.expect(not config.score_details_enabled, "new installation defaults to score details off")
 	t.expect(not FileAccess.file_exists(path), "loading missing settings never writes defaults")
 	config.set_settlement_speed("slow")
 	t.expect(STORE.read_config(path).get_value("game", "settlement_speed") == "slow", "explicitly choosing the current default is still saved for future upgrades")
@@ -44,15 +45,18 @@ func _test_defaults_and_recovery() -> void:
 	data.set_value("game", "discard_animation_speed", "obsolete")
 	data.set_value("game", "settlement_speed", "fast")
 	data.erase_section_key("game", "animation_speed")
+	data.erase_section_key("game", "score_details_enabled")
+	data.erase_section_key("game", "tile_animation_seconds")
 	data.save(path)
 	var digest := FileAccess.get_sha256(path)
 	var loaded = _game(path)
 	t.expect(loaded.ai_speed == "slow" and loaded.settlement_speed == "fast", "valid choices survive invalid neighboring fields")
-	t.expect(loaded.draw_animation_speed == "fast" and loaded.discard_animation_speed == "fast", "invalid type and obsolete key fall back individually")
+	t.expect(loaded.tile_animation_seconds == 0.30, "invalid legacy animation preference falls back to the default")
 	t.expect(loaded.animation_speed == "standard", "a newly added setting uses its default")
+	t.expect(not loaded.score_details_enabled, "older settings default to score details off")
 	loaded.set_ai_speed("invalid")
 	t.expect(FileAccess.get_sha256(path) == digest, "loading and invalid selections do not rewrite the saved file")
-	loaded.set_discard_animation_speed("fast")
+	loaded.set_tile_animation_seconds(0.40)
 	t.expect(STORE.read_config(path).get_value("future", "keep") == "from-newer-version", "saving preserves unfamiliar settings for updates and rollback")
 	config.free()
 	recovered.free()
@@ -90,10 +94,16 @@ func _test_controls() -> void:
 	var settings = load("res://scripts/ui/SoundSettings.gd").new()
 	settings.table_mode = true
 	root.add_child(settings)
-	for pair in [["draw", "slow"], ["discard", "fast"], ["settlement", "fast"]]:
-		settings.get(pair[0] + "_speed_buttons")[pair[1]].pressed.emit()
-		var key: String = pair[0] + ("_speed" if pair[0] == "settlement" else "_animation_speed")
-		t.expect(STORE.read_config(config.settings_path).get_value("game", key) == pair[1], "UI choice saved immediately while panel is still open: " + key)
+	t.expect(settings.score_details_button.text == "详细展示：关闭", "settings show the default off state")
+	settings.score_details_button.pressed.emit()
+	t.expect(settings.score_details_button.text == "详细展示：开启", "settings show the enabled state")
+	var reloaded = _game(config.settings_path)
+	t.expect(reloaded.score_details_enabled, "enabled score details survive reloading settings")
+	reloaded.free()
+	settings.tile_speed_slider.value = 1.25
+	t.expect(is_equal_approx(STORE.read_config(config.settings_path).get_value("game", "tile_animation_seconds"), 1.25), "tile duration is saved while settings is open")
+	settings.settlement_speed_slider.value = 0.40
+	t.expect(STORE.read_config(config.settings_path).get_value("game", "settlement_speed") == "0.40", "settlement step duration is saved while settings is open")
 	settings.sliders.voice.value = 37
 	var saved := STORE.read_config(audio.settings_path)
 	t.expect(is_equal_approx(saved.get_value("voice", "volume"), 0.37), "volume slider saves immediately")
@@ -107,9 +117,10 @@ func _test_controls() -> void:
 	var game_hash := FileAccess.get_sha256(config.settings_path)
 	var audio_hash := FileAccess.get_sha256(audio.settings_path)
 	settings.persist_changes = false
-	settings.draw_speed_buttons.instant.pressed.emit()
-	settings.discard_speed_buttons.instant.pressed.emit()
-	settings.settlement_speed_buttons.slow.pressed.emit()
+	settings.tile_speed_slider.value = 0.0
+	settings.settlement_speed_slider.value = 2.0
+	settings.score_details_button.pressed.emit()
+	t.expect(not config.score_details_enabled and settings.score_details_button.text == "详细展示：关闭", "settings can turn score details off again")
 	settings.sliders.voice.value = 19
 	settings.close()
 	t.expect(FileAccess.get_sha256(config.settings_path) == game_hash and FileAccess.get_sha256(audio.settings_path) == audio_hash, "preview/test controls cannot overwrite saved preferences")

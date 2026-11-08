@@ -12,6 +12,8 @@ var _active: Tween
 var _temporary: Array[Node] = []
 var _skip := false
 var _speed_scale := 1.0
+var dice_animating := false
+var _dice_nodes: Array[Node] = []
 var _flight_tiles: Array[TileView] = []
 var _discard_arrived := false
 var _completion := Callable()
@@ -30,7 +32,10 @@ func play(event: Dictionary, target: Callable = Callable()) -> int:
 	var event_id := _next_event_id
 	_completion = target
 	var type := str(event.get("type", ""))
-	_speed_scale = float(event.get("speed_scale", GameConfig.animation_scale_for(type)))
+	var scale_for_action := GameConfig.animation_duration(1.0)
+	if type == "draw": scale_for_action = GameConfig.tile_motion_seconds() / UI.DRAW_DURATION
+	if type == "discard": scale_for_action = GameConfig.tile_motion_seconds() / UI.DISCARD_DURATION
+	_speed_scale = float(event.get("speed_scale", scale_for_action))
 	_discard_arrived = false
 	# Instant discards can still leave an independently timed hand insertion.
 	var hand_motion := type == "discard" and bool(event.get("discard_from_hand", false)) and _hand_duration(event) > 0.0
@@ -54,29 +59,96 @@ func _duration(seconds: float) -> float:
 	return seconds * _speed_scale
 
 func _hand_duration(event: Dictionary) -> float:
-	return UI.DISCARD_DURATION * float(event.get("hand_speed_scale", GameConfig.animation_scale_for("sort_hand")))
+	return UI.DISCARD_DURATION * float(event.get("hand_speed_scale", GameConfig.animation_duration(1.0)))
 
 func _add(node: Control) -> void:
 	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(node)
 	_temporary.append(node)
 
+func _add_persistent_die(node: Control) -> void:
+	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(node)
+	_dice_nodes.append(node)
+
+func clear_dice() -> void:
+	for node in _dice_nodes:
+		if is_instance_valid(node):
+			remove_child(node)
+			node.queue_free()
+	_dice_nodes.clear()
+	dice_animating = false
+
 func _dice(event: Dictionary) -> void:
-	var die := DICE.new()
-	die.size = Vector2(104, 104)
-	die.pivot_offset = die.size / 2.0
-	die.position = UI.LANDSCAPE_CENTER - die.size / 2.0
-	die.rotation = -0.45
-	die.scale = Vector2.ONE * 0.72
-	_add(die)
-	var resting_position := die.position
+	clear_dice()
+	dice_animating = true
+	AudioManager.play_dice()
+	var die_size := Vector2(UI.DICE_SIZE, UI.DICE_SIZE)
+	var red := DICE.new()
+	red.size = die_size
+	red.pivot_offset = die_size / 2.0
+	red.face_color = Color("#f3d8cf")
+	red.border_color = Color("#a55043")
+	red.pip_color = Color("#a62b21")
+	var white := DICE.new()
+	white.size = die_size
+	white.pivot_offset = die_size / 2.0
+	white.face_color = Color("#eef2e8")
+	white.border_color = Color("#8c9d8b")
+	white.pip_color = Color("#243a30")
+	var center := UI.LANDSCAPE_CENTER
+	if event.has("center_global"):
+		center = get_global_transform().affine_inverse() * Vector2(event.center_global)
+
+	var red_rest := center + Vector2(-UI.DICE_SIZE - 4.0, -UI.DICE_SIZE * 0.5)
+	var white_rest := center + Vector2(4.0, -UI.DICE_SIZE * 0.5)
+	var shadow := Panel.new()
+	shadow.size = Vector2(UI.DICE_SIZE * 2.0 + 8.0, 16.0)
+	shadow.position = center + Vector2(-UI.DICE_SIZE - 4.0, UI.DICE_SIZE * 0.5 + 4.0)
+	var shadow_style := StyleBoxFlat.new()
+	shadow_style.bg_color = Color(0, 0, 0, 0.34)
+	shadow_style.set_corner_radius_all(8)
+	shadow.add_theme_stylebox_override("panel", shadow_style)
+	_add(shadow)
+	red.position = red_rest + Vector2(-8, -30)
+	white.position = white_rest + Vector2(8, -30)
+	red.rotation = -0.55
+	white.rotation = 0.62
+	red.scale = Vector2.ONE * 0.8
+	white.scale = Vector2.ONE * 0.8
+	_add_persistent_die(red)
+	_add_persistent_die(white)
+	_active.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_active.tween_method(func(progress: float):
-		die.rotation = lerpf(-0.45, TAU, progress)
-		die.scale = Vector2.ONE * lerpf(0.72, 1.0, progress)
-		die.position = resting_position + Vector2(26 * sin(progress * PI) * (1.0-progress), -18 * sin(progress * PI))
-		die.value = (int(progress * 36) % 6 + 1) if progress < 1.0 else int(event.get("value", 1)), 0.0, 1.0, _duration(UI.DICE_DURATION))
-	_active.tween_callback(func(): die.value = int(event.get("value", 1)))
+		red.rotation = lerpf(-0.55, TAU, progress)
+		white.rotation = lerpf(0.62, TAU + 0.4, progress)
+		red.scale = Vector2.ONE * lerpf(0.8, 1.0, progress)
+		white.scale = Vector2.ONE * lerpf(0.8, 1.0, progress)
+		# 两段落地弹跳 + 阴影随高度衰减。
+		var bounce := _dice_bounce(progress, 46.0)
+		var bounce2 := _dice_bounce(progress, 40.0)
+		red.position = red_rest + Vector2(22 * sin(progress * PI) * (1.0 - progress), bounce)
+		white.position = white_rest + Vector2(-18 * sin(progress * PI) * (1.0 - progress), bounce2)
+		shadow.modulate.a = clampf(1.0 + bounce / 46.0, 0.22, 1.0)
+		shadow.scale.x = clampf(1.0 + bounce / 46.0, 0.5, 1.0)
+		red.value = (int(progress * 36) % 6 + 1) if progress < 1.0 else int(event.get("value", 1))
+		white.value = ((int(progress * 30) + 2) % 6 + 1) if progress < 1.0 else int(event.get("white", event.get("die_white", 1))), 0.0, 1.0, _duration(UI.DICE_DURATION))
+	_active.tween_callback(func():
+		red.value = int(event.get("value", 1))
+		white.value = int(event.get("white", event.get("die_white", 1))))
 	_active.tween_interval(_duration(GameConfig.OPENING_DICE_HOLD_SECONDS))
+
+func _dice_bounce(progress: float, height: float) -> float:
+	# 第一段下落，随后两次高度递减的落地回弹。
+	if progress < 0.5:
+		return lerpf(-height, 0.0, pow(progress / 0.5, 2.2))
+	if progress < 0.68:
+		return -height * 0.38 * sin((progress - 0.5) / 0.18 * PI)
+	if progress < 0.82:
+		return -height * 0.16 * sin((progress - 0.68) / 0.14 * PI)
+	if progress < 0.92:
+		return -height * 0.05 * sin((progress - 0.82) / 0.10 * PI)
+	return 0.0
 
 func _tiles(event: Dictionary) -> void:
 	var type := str(event.get("type", ""))
@@ -86,6 +158,7 @@ func _tiles(event: Dictionary) -> void:
 	var duration := _duration(UI.DEAL_DURATION) if type == "deal" else _duration(UI.REVEAL_DURATION if type == "meld_reveal" else (UI.DISCARD_DURATION if type == "discard" else (UI.MELD_DURATION if type == "meld" else UI.DRAW_DURATION)))
 	var stagger := _duration(UI.DEAL_TILE_STAGGER) if type == "deal" else (_duration(UI.DRAW_TILE_STAGGER) if type == "draw" else (_duration(UI.DISCARD_TILE_STAGGER) if type == "discard" else _duration(UI.MELD_TILE_STAGGER)))
 	var arc_height := UI.DEAL_ARC_HEIGHT if type == "deal" else (UI.DRAW_ARC_HEIGHT if type == "draw" else (UI.DISCARD_ARC_HEIGHT if type == "discard" else UI.MELD_ARC_HEIGHT))
+	var point_to_point := type == "draw"
 	if type == "discard" and duration <= 0.0:
 		_discard_arrived = true
 		discard_landed.emit()
@@ -113,7 +186,13 @@ func _tiles(event: Dictionary) -> void:
 			tile.pivot_offset = tile.size / 2.0
 			_active.parallel().tween_property(tile, "scale:x", 0.05, duration / 2.0)
 		else:
-			var start_scale: float = float(event.get("from_unit", tile.unit)) / tile.unit if type == "discard" and tile.unit > 0.0 else 0.78
+			var start_scale := 0.78
+			if type in ["deal", "draw"] and tile.unit > 0.0:
+				# 牌墙牌背比手牌小；飞行过程中从墙尺寸连续放大到手牌尺寸。
+				start_scale = UI.WALL_TILE_UNIT / tile.unit
+			elif type == "discard" and tile.unit > 0.0:
+				start_scale = float(event.get("from_unit", tile.unit)) / tile.unit
+			tile.pivot_offset = tile.size / 2.0
 			tile.scale = Vector2.ONE * start_scale
 			tile.rotation = start_rotation
 			var delay := stagger * float(index)
@@ -128,10 +207,14 @@ func _tiles(event: Dictionary) -> void:
 					tile.scale = Vector2.ONE * start_scale
 					return
 				var eased := _smoothstep(local)
-				tile.position = _quad_bezier(from, apex, to, eased)
+				if point_to_point:
+					# 摸牌点对点直飞：直线插值，不画抛物线，也不做落点回弹。
+					tile.position = from.lerp(to, eased)
+				else:
+					tile.position = _quad_bezier(from, apex, to, eased)
 				tile.rotation = lerp_angle(start_rotation, final_rotation, eased)
 				var settle := 0.0
-				if local > 0.82:
+				if not point_to_point and local > 0.82:
 					settle = _smoothstep((local - 0.82) / 0.18)
 					tile.position = tile.position.lerp(to, settle) + Vector2(0, -sin(settle * PI) * UI.TILE_SETTLE_LIFT)
 				var bounce := 1.0 + sin(settle * PI) * (UI.TILE_SETTLE_SCALE - 1.0)
@@ -298,6 +381,7 @@ func _win(event: Dictionary) -> void:
 	_active.tween_interval(_duration(0.18))
 
 func _finish(target: Callable, event_id: int) -> void:
+	dice_animating = false
 	_clear_nodes()
 	_active = null
 	_completion = Callable()
@@ -337,3 +421,6 @@ func _clear_nodes() -> void:
 
 func _exit_tree() -> void:
 	cancel()
+	if tile_pool != null:
+		tile_pool.clear()
+		tile_pool = null

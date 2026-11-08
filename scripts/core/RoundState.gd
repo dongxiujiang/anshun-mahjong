@@ -74,6 +74,8 @@ var dealer_seat := 0
 var next_dealer_seat := 0
 var awaiting := false
 var phase: Phase = Phase.IDLE
+## 分步测试：13张发完后停在开局，不自动进入第一次摸牌。
+var pause_after_opening := false
 var last_result := {}
 var last_discard := {}
 var round_meta := {}
@@ -191,7 +193,7 @@ func build_players(human_seat: int) -> void:
 		player.score = CFG.START_SCORE
 		players.append(player)
 
-func start_round(human_seat: int, die_override: int = -1) -> void:
+func start_round(human_seat: int, die_override: int = -1, white_die_override: int = -1) -> void:
 	cancel_ai()
 	_opening_generation += 1
 	if _recorder.auto_save and not _recorder.record.is_empty(): _recorder.save()
@@ -223,11 +225,22 @@ func start_round(human_seat: int, die_override: int = -1) -> void:
 	var built := WallBuilder.setup(_rng, dealer_seat)
 	wall = WallRing.new(built.ring, dealer_seat)
 	var die := die_override if die_override >= 1 and die_override <= 6 else _rng.randi_range(1, 6)
+	# 红骰决定破墙；白骰只参与“同点本局翻倍”。
+	# 测试若只固定红骰，用一个不同点数的白骰保持旧结算可复现；
+	# 需要测试同点时显式传 white_die_override。
+	var white_die := white_die_override
+	if white_die < 1 or white_die > 6:
+		white_die = ((die + 1) % 6) + 1 if die_override >= 1 and die_override <= 6 else _rng.randi_range(1, 6)
 	round_meta["die"] = die
+	round_meta["die_white"] = white_die
+	round_meta["dice_double"] = die == white_die
 	round_meta["break"] = WallRing.compute_break(die, dealer_seat)
+	if round_meta.dice_double:
+		round_meta.chicken_multiplier = CFG.MAX_CHICKEN_MULTIPLIER
 	phase = Phase.DEALING
 	current_turn = dealer_seat
-	_emit_visual_event("dice", {"value": die, "dealer": dealer_seat})
+	_emit_visual_event("dice", {"value": die, "white": white_die,
+		"die_white": white_die, "double": round_meta.dice_double, "dealer": dealer_seat})
 	wall.set_head(round_meta["break"])
 	phase = Phase.DEALING
 	_initial_deal()
@@ -247,7 +260,15 @@ func _wait_for_opening(generation: int) -> void:
 func _finish_opening() -> void:
 	phase = Phase.PLAYING
 	_recorder.begin(self)
+	if pause_after_opening:
+		return
 	_begin_turn()
+
+func resume_after_opening() -> void:
+	if not pause_after_opening: return
+	pause_after_opening = false
+	if phase == Phase.PLAYING:
+		_begin_turn()
 
 func cancel_opening() -> void:
 	cancel_ai()
@@ -263,17 +284,20 @@ func _initial_deal() -> void:
 		for offset in 4:
 			var seat := posmod(dealer_seat + CFG.DEAL_DIRECTION * offset, 4)
 			var cards: Array = []
+			var indices: Array = []
 			for index in 4:
 				var card := wall.draw_head()
 				players[seat].concealed.append(card)
 				cards.append(card)
-			batch_info.append({"seat": seat, "cards": cards})
+				indices.append(int(wall.draw_log.back().index))
+			batch_info.append({"seat": seat, "cards": cards, "indices": indices})
 		batches.append(batch_info)
 	for offset in 4:
 		var seat := posmod(dealer_seat + CFG.DEAL_DIRECTION * offset, 4)
 		var card := wall.draw_head()
+		var wall_index := int(wall.draw_log.back().index)
 		players[seat].concealed.append(card)
-		batches.append([{"seat": seat, "cards": [card], "dealer_extra": seat == dealer_seat}])
+		batches.append([{"seat": seat, "cards": [card], "indices": [wall_index], "dealer_extra": seat == dealer_seat}])
 	var info: Array = []
 	for player in players:
 		info.append({"seat": player.seat, "count": player.concealed.size()})
@@ -305,7 +329,8 @@ func _begin_turn() -> void:
 	_clear_draw_locks(player)
 	player.just_drew = tile
 	player.concealed.append(tile)
-	_emit_visual_event("draw", {"seat": current_turn, "tile": tile, "kind": "head"})
+	_emit_visual_event("draw", {"seat": current_turn, "tile": tile, "kind": "head",
+		"wall_index": int(wall.draw_log.back().index)})
 	_ask_turn_actor()
 
 func _request_async_ai_turn(actor: Object) -> bool:
@@ -858,7 +883,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		var source_discard_id: int = _discard_id_for_tile(source, tile)
 		var hand_indices := _visual_hand_indices(player.concealed, tile, 3)
 		_remove_n(player.concealed, tile, 3)
-		player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
+		player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count, "formed_at": player.discard_count})
 		_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
 		current_turn = seat
 		_kong_draw_kind = KongKind.EXPOSED
@@ -874,7 +899,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		var source_discard_id: int = _discard_id_for_tile(source, tile)
 		var hand_indices := _visual_hand_indices(player.concealed, tile, 2)
 		_remove_n(player.concealed, tile, 2)
-		player.melds.append({"kind": "pung", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
+		player.melds.append({"kind": "pung", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count, "formed_at": player.discard_count})
 		_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
 		player.just_drew = ""
 		player.forbidden_discard_tile = tile
@@ -916,7 +941,7 @@ func _execute_deferred_claim(source: int, tile: String) -> void:
 		if action == "kong":
 			var hand_indices := _visual_hand_indices(player.concealed, tile, 3)
 			_remove_n(player.concealed, tile, 3)
-			player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
+			player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count, "formed_at": player.discard_count})
 			_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
 			current_turn = seat
 			_kong_draw_kind = KongKind.EXPOSED
@@ -929,7 +954,7 @@ func _execute_deferred_claim(source: int, tile: String) -> void:
 				player.add_kong_locked_tiles.append(tile)
 			var hand_indices := _visual_hand_indices(player.concealed, tile, 2)
 			_remove_n(player.concealed, tile, 2)
-			player.melds.append({"kind": "pung", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count})
+			player.melds.append({"kind": "pung", "tile": tile, "robbed": false, "from_seat": source, "after_discard": player.discard_count, "formed_at": player.discard_count})
 			_remove_from_discards(source, tile, seat, "meld", player.melds.size() - 1)
 			player.just_drew = ""
 			player.forbidden_discard_tile = tile
@@ -998,7 +1023,8 @@ func _state_after_kong_draw() -> void:
 	_clear_draw_locks(player)
 	player.just_drew = tile
 	player.concealed.append(tile)
-	_emit_visual_event("draw", {"seat": current_turn, "tile": tile, "kind": "tail"})
+	_emit_visual_event("draw", {"seat": current_turn, "tile": tile, "kind": "tail",
+		"wall_index": int(wall.draw_log.back().index)})
 	_kong_draw_turn = true
 	_ask_turn_actor()
 
@@ -1007,7 +1033,7 @@ func _do_concealed_kong(seat: int, tile: String, player: PlayerState) -> void:
 		return
 	var hand_indices := _visual_hand_indices(player.concealed, tile, 4)
 	_remove_n(player.concealed, tile, 4)
-	player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "concealed": true, "after_discard": player.discard_count})
+	player.melds.append({"kind": "kong", "tile": tile, "robbed": false, "concealed": true, "after_discard": player.discard_count, "formed_at": player.discard_count})
 	current_turn = seat
 	_kong_draw_kind = KongKind.CONCEALED
 	_emit_visual_event("meld", {"seat": seat, "tile": "", "hand_indices": hand_indices, "kind": "concealed", "index": player.melds.size() - 1})
@@ -1156,6 +1182,8 @@ func _finish() -> void:
 	awaiting = false
 	_awaiting_response = {}
 	round_meta.flip_tile = wall.peek_head() if wall != null and round_meta.winner >= 0 else ""
+	if round_meta.flip_tile != "":
+		round_meta.flip_wall_index = wall.peek_head_index()
 	var scored := ScoringEngine.settle(self)
 	_last_deltas = scored.deltas
 	_last_lines = scored.lines

@@ -56,13 +56,13 @@ func _test_scoring() -> void:
 	round.round_meta.self_draw = false
 	round.round_meta.discard_seat = 2
 	result = scored(round)
-	expect(result.deltas == [0.0, 0.0, 0.0, 0.0], "普通点炮不收17/21基础费")
+	expect(result.deltas == [24.0, 0.0, -24.0, 0.0], "普通点炮只收大干扣24，不收17/21基础费")
 	var big := fixture()
 	big.players[0].concealed = ["wan1", "wan1", "wan1", "wan2", "wan2", "wan2", "tong3", "tong3", "tong3", "tiao4", "tiao4", "tiao4", "wan9", "wan9"]
 	big.round_meta.winner = 0
 	big.round_meta.winners = [0]
 	big.round_meta.self_draw = true
-	var big_result := scored(big); expect(big_result.deltas == [42.0, -14.0, -14.0, -14.0], "大对子自摸每家付14")
+	var big_result := scored(big); expect(big_result.deltas == [102.0, -34.0, -34.0, -34.0], "大对子自摸叠大干扣，每家付14+24-4")
 	var clean := fixture()
 	clean.players[0].concealed = ["tiao1", "tiao1", "tiao2", "tiao2", "tiao3", "tiao3", "tiao4", "tiao4", "tiao5", "tiao5", "tiao6", "tiao6", "tiao9", "tiao9"]
 	clean.round_meta.winner = 0
@@ -78,8 +78,8 @@ func _test_scoring() -> void:
 	multi.round_meta.self_draw = false
 	multi.round_meta.discard_seat = 2
 	var multi_result := scored(multi)
-	expect(multi_result.pairwise[0][2] == 0 and multi_result.pairwise[1][2] == 0, "普通一炮多响不收基础费")
-	expect(multi_result.deltas[2] == 0, "普通一炮多响放炮者不支付基础费")
+	expect(multi_result.pairwise[0][2] == 24 and multi_result.pairwise[1][2] == 24, "普通一炮多响各收大干扣24")
+	expect(multi_result.deltas[2] == -48, "普通一炮多响放炮者不另付基础费")
 	round = fixture()
 	round.players[0].concealed = plain.duplicate()
 	round.round_meta.winner = 0
@@ -206,12 +206,12 @@ func _test_discard_win_restrictions() -> void:
 	expect(rob.can_win_on_discard(1, 0, "wan9", RoundState.ResponseStage.ROB), "Robbed added kong permits discard win")
 
 func _test_wall_and_patterns() -> void:
-	var expected := [82, 4, 86, 62, 90, 12]
+	var expected := [84, 4, 88, 62, 92, 12]
 	for die in range(1, 7):
 		expect(WallRing.compute_break(die) == expected[die - 1], "Dice break must skip specified stacks")
 	var wall := WallRing.new(TileSetFactory.create_deck())
 	for seat in 4:
-		expect(wall.wall_remaining(seat) == (28 if seat in [0, 2] else 26), "14/13 double stacks")
+		expect(wall.wall_remaining(seat) == (28 if seat in [1, 3] else 26), "南北14列/东西13列")
 	expect(not RuleEngine.analyze([], []).win, "Empty hand must not be seven pairs")
 	expect(not RuleEngine.analyze(["wan1", "wan1"], []).win, "Incomplete pair must not win")
 	var quad_pairs := ["wan1", "wan1", "wan1", "wan1", "wan2", "wan2", "wan3", "wan3", "tiao4", "tiao4", "tong5", "tong5", "tong6", "tong6"]

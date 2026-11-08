@@ -32,31 +32,34 @@ func _probe() -> Probe:
 
 func _config_and_controls() -> void:
 	var config = root.get_node("GameConfig")
-	config.set_animation_speed("standard")
-	config.set_settlement_speed("fast")
-	var settings = load("res://scripts/ui/SoundSettings.gd").new()
-	settings.table_mode = true
+	var table = load("res://scenes/GameTable.tscn").instantiate()
+	root.add_child(table)
+	var settings = table._sound_settings
 	settings.persist_changes = false
-	root.add_child(settings)
-	for draw in config.TILE_ANIMATION_SPEEDS:
-		for discard in config.TILE_ANIMATION_SPEEDS:
-			settings.draw_speed_buttons[draw].pressed.emit()
-			settings.discard_speed_buttons[discard].pressed.emit()
-			for ai in config.AI_SPEED_DELAYS:
-				config.set_ai_speed(ai)
-				t.expect(config.animation_scale_for("draw") == config.TILE_ANIMATION_SPEEDS[draw], "draw speed survives independent discard and AI selections")
-				t.expect(config.animation_scale_for("discard") == config.TILE_ANIMATION_SPEEDS[discard], "discard speed survives independent draw and AI selections")
-				t.expect(config.animation_scale_for("meld") == 1.0 and config.animation_scale_for("sort_hand") == 1.0, "tile preferences cannot change meld/insert/sort")
-				t.expect(config.animation_scale_for("deal") == 1.0 and config.settlement_duration(1.0) == 0.8, "opening and settlement keep their own clocks")
-			t.expect(settings.draw_speed_buttons[draw].modulate != Color.WHITE and settings.discard_speed_buttons[discard].modulate != Color.WHITE, "both current selections are marked")
-	config.set_draw_animation_speed("invalid")
-	config.set_discard_animation_speed("invalid")
-	t.expect(config.draw_animation_speed == "slow" and config.discard_animation_speed == "slow", "invalid keys preserve independent preferences")
-	settings.free()
-	config.set_draw_animation_speed("standard")
-	config.set_discard_animation_speed("standard")
-	config.set_settlement_speed("slow")
-	config.set_ai_speed("fast")
+	settings.open()
+	var timing: Array = [settings.tile_speed_slider, settings.ai_speed_slider, settings.settlement_speed_slider]
+	for slider in timing:
+		t.expect(slider.min_value == 0.0 and slider.max_value == 2.0 and slider.step == 0.01, "each speed control supports 0–2 seconds")
+		t.expect(settings._timing_labels[slider].position.x > slider.get_rect().end.x, "numeric readout sits to the right")
+	for seconds in [0.0, 1.37, 2.0]:
+		for slider in timing:
+			slider.value = seconds
+			t.expect(settings._timing_labels[slider].text == "%.2f s" % seconds, "readout shows the exact selected duration")
+		t.expect(is_equal_approx(config.tile_motion_seconds(), seconds), "draw and discard use the shared duration")
+		t.expect(is_equal_approx(config.opening_deal_scale(config.opening_speed_key()) * config.DEAL_SEQUENCE_SECONDS, seconds), "opening tiles share the configured duration")
+		t.expect(is_equal_approx(config.ai_speed_seconds(config.ai_speed), seconds), "AI control stores seconds")
+		t.expect(is_equal_approx(config.settlement_duration(config.SETTLEMENT_STEP_SECONDS), seconds), "each scoring stage uses the configured duration")
+	settings.tile_speed_slider.drag_started.emit()
+	settings.tile_speed_slider.value = 0.64
+	t.expect(is_equal_approx(config.tile_animation_seconds, 2.0), "dragging updates the readout without saving every increment")
+	settings.tile_speed_slider.drag_ended.emit(true)
+	t.expect(is_equal_approx(config.tile_animation_seconds, 0.64), "releasing the slider commits the selected duration")
+	config.set_tile_animation_seconds(-0.1, false)
+	t.expect(is_equal_approx(config.tile_animation_seconds, 0.64), "invalid tile duration is ignored")
+	config.set_settlement_speed("fast", false)
+	config.set_ai_speed("fast", false)
+	config.set_tile_animation_seconds(0.30, false)
+	table.free()
 
 func _ai_waits() -> void:
 	var r := _probe()
@@ -97,6 +100,9 @@ func _ai_waits() -> void:
 		host.ai_speed = speed
 		t.expect(host._ai_turn_delay() == root.get_node("GameConfig").AI_SPEED_DELAYS[speed], "network and offline use the same draw wait rates")
 		t.expect(host._ai_response_delay() == root.get_node("GameConfig").AI_SPEED_DELAYS[speed], "claim beat matches the same speed selection")
+	for seconds in [0.0, 0.37, 2.0]:
+		host.ai_speed = "%.2f" % seconds
+		t.expect(is_equal_approx(host._ai_turn_delay(), seconds) and is_equal_approx(host._ai_response_delay(), seconds), "dedicated room uses numeric wait for AI turns and claims")
 	host.free()
 
 func _run() -> void:

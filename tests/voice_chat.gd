@@ -35,7 +35,8 @@ func _run() -> void:
 
 	var chat := VOICE.new()
 	root.add_child(chat)
-	chat.setup(Node.new(), false)
+	var chat_owner := Node.new()
+	chat.setup(chat_owner, false)
 	t.expect(chat.speaker_enabled(1), "remote speaker starts enabled")
 	chat.set_speaker_enabled(1, false)
 	t.expect(not chat.speaker_enabled(1), "remote speaker can be muted by seat")
@@ -43,17 +44,27 @@ func _run() -> void:
 	t.expect(chat.speaker_enabled(1), "remote speaker can be restored")
 	chat.shutdown()
 	chat.queue_free()
+	chat_owner.free()
 
 	var audio_chat := VOICE.new()
 	root.add_child(audio_chat)
-	audio_chat.setup(Node.new(), true)
+	var audio_chat_owner := Node.new()
+	audio_chat.setup(audio_chat_owner, true)
 	await process_frame
 	t.expect(audio_chat.speaker_enabled(2), "audio playback channels initialize")
+	t.expect(audio_chat._playbacks.is_empty(), "idle voice chat holds no playing audio streams")
 	audio_chat.set_speaker_enabled(2, false)
+	audio_chat.play_packet(packet)
+	t.expect(audio_chat._playbacks.is_empty(), "packets from a muted seat do not start playback")
 	audio_chat.set_speaker_enabled(2, true)
 	t.expect(audio_chat.speaker_enabled(2), "audio speaker mute can be restored")
+	audio_chat.set_remote_volume(0.8)
+	audio_chat.play_packet(packet)
+	t.expect(audio_chat._playbacks.keys() == [2] and audio_chat._rx.has(2), "the first audible packet starts playback and buffers its frame")
+	await create_timer(0.12).timeout
 	audio_chat.shutdown()
 	audio_chat.queue_free()
+	audio_chat_owner.free()
 
 	var net = load("res://scripts/online/NetGameNode.gd").new()
 	root.add_child(net)
@@ -68,6 +79,7 @@ func _run() -> void:
 	await process_frame
 
 	var table = load("res://scenes/GameTable.tscn").instantiate()
+	table.human_seat = 0
 	root.add_child(table)
 	await process_frame
 	await process_frame
@@ -80,6 +92,4 @@ func _run() -> void:
 			"remote voice toggle stays large enough for touch")
 	t.expect(table._sound_settings.mic_gain_slider != null and table._sound_settings.remote_volume_slider != null, "table exposes microphone and remote-volume sliders")
 	table.queue_free()
-	await process_frame
-
-	quit(t.finish("voice_chat"))
+	await H.quit_cleanly(self, t.finish("voice_chat"))

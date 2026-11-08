@@ -53,7 +53,7 @@ com.gme.TMG.ITMGContext
 com.gme.TMG.ITMGAudioCtrl
 ```
 
-不需要另写 Java 插件类；但必须使用 Gradle 导出模板，并保留 `RECORD_AUDIO` 权限。
+使用 `VoiceDelegate.java` 提供 GME 所需的具体回调类；必须使用 Gradle 导出模板，并保留 `RECORD_AUDIO` 权限。新增或修改此 Java 类需要发布完整 APK，不能仅靠 PCK 更新。
 
 ## 4. Windows SDK 文件
 
@@ -117,6 +117,11 @@ Android：
 
 ```bash
 godot --headless --path . --install-android-build-template
+mkdir -p android/build/libs android/build/src/main/java/com/anshun/mahjong
+cp addons/gme/gmesdk.aar android/build/libs/gmesdk.aar
+cp addons/gme/VoiceDelegate.java android/build/src/main/java/com/anshun/mahjong/VoiceDelegate.java
+# 在 android/build/build.gradle 中加入：
+# dependencies { implementation files("libs/gmesdk.aar") }
 godot --headless --path . --export-release "Android" build/android/anshun-mahjong.apk
 ```
 

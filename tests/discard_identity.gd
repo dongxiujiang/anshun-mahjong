@@ -20,6 +20,7 @@ func _new_game() -> RoundState:
 
 func _run() -> void:
 	table = load("res://scenes/GameTable.tscn").instantiate()
+	table.human_seat = 0
 	root.add_child(table)
 	await process_frame
 	table._table_animation_controller.cancel()

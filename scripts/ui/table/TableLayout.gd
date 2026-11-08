@@ -6,9 +6,6 @@ const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
 var surface: Control
 var _felt: NoiseTexture2D
 var _landscape := false
-var _remaining_label: Label
-var center_info: Label
-var round_label: Label
 var status_label: Label
 var turn_indicator: Control
 
@@ -21,7 +18,7 @@ func refresh_turn_indicator() -> void:
 		var seat: int = table.round.presentation_turn_seat()
 		if seat >= 0:
 			side = table._relative_seat(seat)
-	turn_indicator.set_active(side)
+	if turn_indicator != null: turn_indicator.set_active(side)
 
 func _build_static_ui() -> void:
 	var theme_resource = Theme.new()
@@ -43,17 +40,13 @@ func _build_static_ui() -> void:
 	_felt.changed.connect(table.queue_redraw)
 	table._label(surface, "安顺麻将", Vector2(36, 21), Vector2(180, 36), 27)
 	table._label(surface, "捉鸡  /  万 · 条 · 筒", Vector2(222, 28), Vector2(250, 30), 16, UI.MUTED)
-	round_label = table._label(surface, "", Vector2(570, 28), Vector2(300, 30), 16, UI.MUTED)
-	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	table._sound_settings = SoundSettings.new()
 	table._sound_settings.table_mode = true
 	table.add_child(table._sound_settings)
-	table._speed_buttons = table._sound_settings.speed_buttons
 	table._sound_settings.ai_speed_selected.connect(table._set_ai_speed)
 	table._sound_settings.auto_test_requested.connect(table.start_auto_test)
 	table._sound_settings.voice_pack_open_requested.connect(table.open_voice_packs)
 	GameConfig.settlement_speed_changed.connect(table._on_settlement_speed_changed)
-	table._update_speed_buttons()
 	var sound_button: Button = table._button("设置", table._sound_settings.open, UI.SETTINGS_BUTTON_SIZE)
 	sound_button.set_script(preload("res://scripts/ui/table/SettingsButton.gd"))
 	sound_button.name = "SoundButton"
@@ -95,15 +88,53 @@ func _build_static_ui() -> void:
 	table._sound_settings.exit_confirmed.connect(table._on_quit)
 	table._sound_settings.replay_export_requested.connect(table._export_current_replay)
 	table._settings_button = sound_button
-	turn_indicator = preload("res://scripts/ui/table/CenterTurnIndicator.gd").new()
-	turn_indicator.name = "CenterTurnIndicator"
-	turn_indicator.size = UI.CENTER_SIZE
-	surface.add_child(turn_indicator)
 	table._player_tile_areas.build()
-	_remaining_label = table._label(surface, "余牌", Vector2(680, 705), Vector2(80, 24), 14, UI.MUTED)
-	_remaining_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	center_info = table._label(surface, "", Vector2(664, 733), Vector2(112, 58), 40)
-	center_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# 旧牌区仅保留输入/动画接口，视觉全部隐藏；由 TableV2 接管。
+	_hide_legacy_table(table._player_tile_areas)
+	var v2 = load("res://scenes/table/TableV2.tscn").instantiate()
+	v2.name = "TableV2"
+	v2.mouse_filter = Control.MOUSE_FILTER_PASS
+	surface.add_child(v2)
+	# TableV2 固定设计尺寸并在可用区域居中，宽屏 expand 时不会偏左。
+	v2.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	v2.size = UI.DESIGN_SIZE
+	v2.position = ((surface.size - UI.DESIGN_SIZE) * 0.5).floor()
+	# TableV2 放在最底层，按钮/设置仍绘制在其上方。
+	surface.move_child(v2, 0)
+	v2.set_table(table)
+	table._new_areas = v2
+
+func _show_legacy_table(areas) -> void:
+	if turn_indicator != null: turn_indicator.hide()
+	if areas == null: return
+	for seat in 4:
+		if areas.seat_roots.has(seat): areas.seat_roots[seat].show()
+		if areas.center_labels.has(seat): areas.center_labels[seat].show()
+		if areas.net_labels.has(seat): areas.net_labels[seat].show()
+		if areas.name_labels.has(seat): areas.name_labels[seat].show()
+		if areas.dealer_badges.has(seat): areas.dealer_badges[seat].show()
+		if areas.discard_scroll.has(seat): areas.discard_scroll[seat].show()
+		if areas.meld_box.has(seat): areas.meld_box[seat].show()
+		if areas.chicken_box.has(seat): areas.chicken_box[seat].show()
+		if areas.voice_speaker_buttons.has(seat): areas.voice_speaker_buttons[seat].show()
+
+func _hide_legacy_visuals(areas) -> void:
+	if turn_indicator != null: turn_indicator.hide()
+	if areas == null: return
+	for seat in 4:
+		if areas.seat_roots.has(seat): areas.seat_roots[seat].hide()
+		if areas.center_labels.has(seat): areas.center_labels[seat].hide()
+		if areas.net_labels.has(seat): areas.net_labels[seat].hide()
+		if areas.name_labels.has(seat): areas.name_labels[seat].hide()
+		if areas.dealer_badges.has(seat): areas.dealer_badges[seat].hide()
+		if areas.discard_scroll.has(seat): areas.discard_scroll[seat].hide()
+		if areas.meld_box.has(seat): areas.meld_box[seat].hide()
+		if areas.chicken_box.has(seat): areas.chicken_box[seat].hide()
+		if areas.voice_speaker_buttons.has(seat): areas.voice_speaker_buttons[seat].hide()
+
+func _hide_legacy_table(areas) -> void:
+	# 只有首次构建时做一次建层；_refresh 里只需藏旧视觉，避免反复重建。
+	_hide_legacy_visuals(areas)
 	table._table_actions.build()
 	status_label = table._label(surface, "", Vector2(60, 1464), Vector2(710, 30), 20, UI.MUTED)
 	status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -138,7 +169,11 @@ func _layout() -> void:
 	table._animation_layer.scale = surface.scale
 	for seat in 4:
 		table.seat_roots[seat].position = table._table_center()
-		table.seat_roots[seat].show()
+		# V2 接管后旧座位根节点只保留给 headless/兼容测试；图形模式不能再次弹出。
+		if table._new_areas == null or DisplayServer.get_name() == "headless":
+			table.seat_roots[seat].show()
+		else:
+			table.seat_roots[seat].hide()
 		var metrics: Dictionary = table._seat_metrics(seat)
 		# Release the previous content width before shrinking the scroll container.
 		# Otherwise its minimum size keeps the wider landscape river in portrait.
@@ -146,12 +181,7 @@ func _layout() -> void:
 		content.custom_minimum_size.x = metrics.river_size.x - UI.RIVER_CONTENT_MARGIN
 		table.discard_scroll[seat].position = metrics.river_position
 		table.discard_scroll[seat].size = metrics.river_size
-	_remaining_label.position = center_rect().position + Vector2(0, 24)
-	_remaining_label.size = Vector2(UI.CENTER_SIZE.x, 24)
-	center_info.position = center_rect().position + Vector2(0, 54)
-	center_info.size = Vector2(UI.CENTER_SIZE.x, 58)
-	turn_indicator.position = center_rect().position
-	round_label.position.x = (design.x - round_label.size.x) / 2.0
+	if turn_indicator != null: turn_indicator.position = center_rect().position
 	table._sound_button.position = Vector2(design.x - UI.SETTINGS_BUTTON_SIZE.x - UI.SETTINGS_EDGE_GAP, UI.SETTINGS_TOP_GAP)
 	table._sound_button.custom_minimum_size = UI.SETTINGS_BUTTON_SIZE
 	table._sound_button.size = table._sound_button.custom_minimum_size
@@ -208,8 +238,10 @@ func _table_bounds() -> Rect2:
 func _seat_metrics(seat: int) -> Dictionary:
 	var side = table._relative_seat(seat) % 2 == 1
 	var exposed_y = UI.SIDE_EXPOSED_Y if side else (UI.OWN_EXPOSED_Y if seat == table.human_seat else UI.OPPONENT_EXPOSED_Y)
-	# Keep the local hand's bottom edge; the larger faces grow upwards.
-	var hand_y = exposed_y - TileView.BASE_H * (UI.OWN_HAND_TILE_UNIT - UI.OWN_PLAYER_TILE_UNIT) if seat == table.human_seat else exposed_y
+	# 新布局：本地坐标中所有手牌靠外侧，手牌底边距桌框 20。
+	var hand_h: float = TileView.BASE_H * float(table._hand_tile_unit(seat))
+	var outer_local_y: float = UI.TABLE_BOUNDS.size.y * 0.5 - UI.HAND_OUTER_MARGIN
+	var hand_y: float = outer_local_y - hand_h
 	return {"hand_y": hand_y, "exposed_y": exposed_y,
 		"left": UI.SIDE_EXPOSED_LEFT if side else UI.EXPOSED_LEFT, "overflow_x": UI.SIDE_OVERFLOW_LEFT if side else UI.EXPOSED_LEFT,
 		"overflow_right": UI.SIDE_OVERFLOW_RIGHT if side else UI.OVERFLOW_RIGHT,
@@ -226,11 +258,13 @@ func _hand_tile_unit(seat: int) -> float:
 
 func _hand_layout(seat: int) -> Dictionary:
 	var player: PlayerState = table.round.players[seat]
-	var width = TileView.BASE_W * table._hand_tile_unit(seat)
-	var count = player.concealed.size() - (1 if player.just_drew != "" and player.concealed.has(player.just_drew) else 0)
-	var span = maxf(0.0, count * (width + UI.TILE_GAP) - UI.TILE_GAP)
-	var right = (span + UI.DRAW_GAP + width) / 2.0
-	return {"draw_x": right - width, "hand_x": right - width - UI.DRAW_GAP - span, "count": count}
+	var width: float = TileView.BASE_W * float(table._hand_tile_unit(seat))
+	var count: int = player.concealed.size() - (1 if player.just_drew != "" and player.concealed.has(player.just_drew) else 0)
+	var span: float = maxf(0.0, count * (width + UI.TILE_GAP) - UI.TILE_GAP)
+	# 绿色手牌自身居中；摸牌单独放在右端，与手牌间隔一个牌宽。
+	var hand_x: float = -span / 2.0
+	var draw_x: float = hand_x + span + width * UI.HAND_DRAW_GAP_TILES
+	return {"draw_x": draw_x, "hand_x": hand_x, "count": count}
 
 func _draw() -> void:
 	table.draw_rect(Rect2(Vector2.ZERO, table.size), UI.BACKGROUND)
@@ -244,24 +278,20 @@ func _draw() -> void:
 		table.draw_texture_rect(_felt, bounds.grow(-38), false, UI.FELT_TEXTURE_TINT)
 	table.draw_style_box(table._style(UI.TRANSPARENT_FILL, UI.FELT_INNER_BORDER, 8, 1), bounds.grow(-40))
 	table.draw_line(Vector2(30, 68), Vector2(table._design_size().x - 30, 68), UI.HEADER_LINE, 1)
-	table.draw_style_box(table._style(UI.CENTER_BACKGROUND, UI.CENTER_BORDER, 8, 2), center_rect())
-	if table.round == null:
-		return
-	table._draw_die(int(table.round.round_meta.get("die", 1)), center_rect().position + Vector2(66, 126))
+	if table.round != null and not _should_show_dice():
+		# 动画结束后骰子节点保留到庄家第二次拿牌；超过时机统一移除。
+		if table._animation_layer != null:
+			table._animation_layer.clear_dice()
 
-func _draw_die(value: int, pos: Vector2) -> void:
-	table.draw_style_box(table._style(UI.DICE_FACE, UI.DICE_BORDER, 5, 1), Rect2(pos, Vector2(36, 36)))
-	var points: Array = []
-	if value % 2 == 1:
-		points.append(Vector2(18, 18))
-	if value >= 2:
-		points.append_array([Vector2(9, 9), Vector2(27, 27)])
-	if value >= 4:
-		points.append_array([Vector2(27, 9), Vector2(9, 27)])
-	if value == 6:
-		points.append_array([Vector2(9, 18), Vector2(27, 18)])
-	for point in points:
-		table.draw_circle(pos + point, 3.0, UI.DICE_RED if value == 1 else UI.DICE_DOT)
+func _should_show_dice() -> bool:
+	if table.round == null or table.round.phase == RoundState.Phase.IDLE:
+		return false
+	if table.round.phase != RoundState.Phase.DEALING:
+		return false
+	var dealer := int(table.round.dealer_seat)
+	var dealt: int = table._table_animation_controller.dealt_count(dealer)
+	# 庄家第二次拿两蹲（已落地8张）时隐藏。
+	return dealt < 8
 
 func _relative_seat(seat: int) -> int:
 	# 逆时针回合：本地座位的下家是编号 -1 的座位，显示在右侧。

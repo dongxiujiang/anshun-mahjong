@@ -12,8 +12,15 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	_label = Label.new()
-	_label.position = Vector2(24, 18)
-	_label.size = Vector2(220, 40)
+	_label.name = "FpsLabel"
+	_label.anchor_left = 0.5
+	_label.anchor_right = 0.5
+	_label.offset_left = -110.0
+	_label.offset_top = 18.0
+	_label.offset_right = 110.0
+	_label.offset_bottom = 58.0
+	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label.add_theme_font_override("font", FONT)
 	_label.add_theme_font_size_override("font_size", 24)
 	_label.add_theme_color_override("font_color", Color(0.45, 0.95, 0.55))
@@ -21,6 +28,12 @@ func _ready() -> void:
 	_label.add_theme_constant_override("outline_size", 4)
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
+
+func hide_during_settlement(panel: Control) -> void:
+	if _label == null:
+		return
+	_label.hide()
+	panel.tree_exited.connect(_label.show, CONNECT_ONE_SHOT)
 
 func _process(delta: float) -> void:
 	if _label == null:

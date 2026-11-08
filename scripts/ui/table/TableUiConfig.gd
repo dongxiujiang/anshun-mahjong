@@ -5,7 +5,26 @@ extends RefCounted
 const DESIGN_SIZE := Vector2(2280, 1280)
 const TABLE_CENTER := Vector2(720, 760)
 const LANDSCAPE_SIZE := Vector2(2280, 1280)
-const LANDSCAPE_CENTER := Vector2(1140, 650)
+const LANDSCAPE_CENTER := Vector2(1140, 640)
+## 新牌区基准。
+const CENTRAL_SIZE := Vector2(1320, 520)
+const WALL_BLOCK_GAP := 0.0
+const WALL_TILE_UNIT := 1.0
+const WALL_EDGE_GAP := 8.0
+const WALL_LAYER_SHIFT := 5.0
+const RED_TILE_WIDTH := 44.0
+const RED_TILE_HEIGHT := 56.0
+const RED_LINE_GAP := 4.0
+const RED_GROUP_GAP := 8.0
+const RED_CATEGORY_GAP := 12.0
+const RED_HAND_GAP := 12.0
+const RED_WALL_GAP := 12.0
+const HAND_OUTER_MARGIN := 20.0
+const HAND_DRAW_GAP_TILES := 0.5
+const LABEL_HAND_GAP := 20.0
+const ORDINARY_TILE_UNIT := 1.25
+const DICE_BOX_SIZE := Vector2(168, 168)
+const DICE_SIZE := 56.0
 const LANDSCAPE_RESULT_SIZE := Vector2(2200, 1232)
 const TILE_UNIT := 1.1
 const RIVER_TILE_UNIT := 1.25
@@ -159,7 +178,7 @@ const DISABLED_TILE_TINT := Color(0.7, 0.76, 0.7)
 # 异步视觉动画；速度不影响牌局逻辑。
 const DICE_DURATION := preload("res://scripts/autoload/GameConfig.gd").OPENING_DICE_SECONDS
 const DEAL_DURATION := preload("res://scripts/autoload/GameConfig.gd").OPENING_DEAL_SECONDS
-const DRAW_DURATION := 0.24
+const DRAW_DURATION := 0.65
 const DISCARD_DURATION := 0.28
 const MELD_DURATION := 0.28
 const REVEAL_DURATION := 0.24

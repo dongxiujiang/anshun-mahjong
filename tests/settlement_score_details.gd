@@ -58,6 +58,7 @@ func _test_grouped_sources() -> void:
 	_amount(_find(groups, "0:hand_flip"), "flip", 3, "hand flip tiles grouped")
 	t.expect(_find(groups, "0:hand_flip").stages.flip.text == "翻鸡3分", "short flip caption")
 	t.expect(_find(groups, "0:hand_flip").detail == "翻鸡3分", "click uses the same compact caption")
+	t.expect(_find(groups, "0:hand_flip").tile_details.wan5 == "翻鸡1分", "a single flip tile shows its recorded unit")
 	t.expect(var_to_bytes(f) == before, "build leaves all nested inputs unchanged")
 	t.expect(groups == _build(f), "deterministic details")
 	groups[0].tiles.clear()
@@ -77,6 +78,8 @@ func _test_gold_charge_and_multiplier() -> void:
 	_amount(group, "flip", 12, "gold charge plus ordinary")
 	t.expect(group.stages.flip.text == "冲锋幺鸡8分 幺鸡4分", "gold composition short caption")
 	t.expect(group.detail == "冲锋幺鸡8分 幺鸡4分", "click details include the same addition total")
+	t.expect(group.tile_details["tiao1:charge"] == "冲锋幺鸡8分" and group.tile_details.tiao1 == "幺鸡4分",
+		"tapping identical chicken tiles distinguishes charge and ordinary values")
 	t.expect(not group.stages.has("chicken"), "gold never counts twice")
 	t.expect(group.detail.contains("冲锋幺鸡8分") and group.detail.contains("幺鸡4分"), "charge and ordinary details")
 	# Already doubled ordinary charge/ordinary items have different recorded units.
@@ -219,6 +222,8 @@ func _test_uncalled_two_same_chickens() -> void:
 	var group := _find(_build(f), "1:chicken_tiao1")
 	t.expect(group.stages.chicken.text == "冲锋幺鸡-4分 幺鸡-2分", "uncalled charge+ordinary discard keeps both per-payer tile lines")
 	t.expect(group.detail == "冲锋幺鸡-4分 幺鸡-2分", "click keeps the same two per-payer tile lines")
+	t.expect(group.tile_details["tiao1:charge"] == "冲锋幺鸡-4分／每位叫牌者"
+		and group.tile_details.tiao1 == "幺鸡-2分／每位叫牌者", "a clicked chicken shows only its own debt")
 	t.expect(is_equal_approx(float(group.stages.chicken.amount), -18.0), "two tile lines still keep the real ledger total")
 	f.players[1].discards.append("tiao1")
 	f.players[1].discard_ids.append(2)

@@ -45,7 +45,7 @@ func _host_test() -> void:
 	t.expect(net._members[peer].name == "重连测试", "Player name survives reconnect")
 	net.set_wants_dealer(true)
 	net.set_ready(true)
-	t.expect(net.start_net_game(101), "Ready humans start game")
+	if not await _wait_until(func(): return net._started, "Ready humans start game automatically"): return
 	if not await _wait_until(func(): return net.ack_text == "game-start", "Client receives first private snapshot"): return
 	t.expect(net.game.current_turn == 0 and net.game.awaiting, "Host holds turn while testing restoration")
 	var hand: Array = net.game.players[seat].concealed.duplicate()

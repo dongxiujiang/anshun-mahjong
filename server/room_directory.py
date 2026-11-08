@@ -281,6 +281,8 @@ class RoomDirectory:
         if not isinstance(number, str) or not NUMBER.fullmatch(number):
             raise ValueError("房间号必须是 4～8 位数字")
         if not isinstance(name, str): raise ValueError("房间名称无效")
+        if not isinstance(opening_speed, str) or not re.fullmatch(r"fast|standard|[01](?:\.\d{1,2})?|2(?:\.0{1,2})?", opening_speed, re.ASCII):
+            opening_speed = "standard"
         # Reserve the number and port under the lock, but never hold the global
         # directory lock while starting/waiting for a Godot process. A slow or
         # failed room must not block listing, GME auth, or other room creates.
@@ -310,7 +312,7 @@ class RoomDirectory:
                     "--script", "res://server/RoomServer.gd", "--",
                     f"--room-number={number}", f"--room-name={name.strip()[:24] or '在线麻将'}",
                     f"--room-port={port}", f"--status-file={status}",
-                    f"--opening-speed={opening_speed if opening_speed in ('fast', 'standard') else 'standard'}",
+                    f"--opening-speed={opening_speed}",
                     f"--test-mode={1 if test_mode else 0}"]
             # Keep the owner bearer token out of the process command line,
             # where ps/procfs would expose it to other local users.

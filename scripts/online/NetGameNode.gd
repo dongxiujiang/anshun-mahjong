@@ -129,7 +129,7 @@ func _ai_level() -> String:
 
 func _ai_turn_delay() -> float:
 	if not dedicated and DisplayServer.get_name() == "headless": return 0.0
-	return float(preload("res://scripts/autoload/GameConfig.gd").AI_SPEED_DELAYS.get(ai_speed, 0.8))
+	return CONFIG.ai_speed_seconds(ai_speed)
 
 func _ai_response_delay() -> float:
 	return _ai_turn_delay()
@@ -147,6 +147,7 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	host_mode = true
 	dedicated = server_only
 	ai_speed = "medium" if dedicated else get_node("/root/GameConfig").ai_speed
+	if not dedicated: opening_speed = get_node("/root/GameConfig").opening_speed_key()
 	_host_ai_fill = ai_fill
 	room_number = number
 	room_name = title.strip_edges().left(24)
@@ -826,14 +827,13 @@ func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 	if action == "opening_speed":
 		if peer != _owner_peer: return
 		var speed := str(data.get("value", ""))
-		if speed in CONFIG.OPENING_SPEEDS:
+		if CONFIG.is_opening_speed(speed) and speed != opening_speed:
 			opening_speed = speed
-			_apply_opening_delay()
 			_publish_lobby()
 		return
 	if action == "ai_speed":
 		var speed_key := str(data.get("value", ""))
-		if peer != _owner_peer or speed_key not in ["fast", "medium", "slow"]: return
+		if peer != _owner_peer or not CONFIG.is_ai_speed(speed_key) or speed_key == ai_speed: return
 		ai_speed = speed_key
 		game.ai_delay_seconds = _ai_turn_delay()
 		game.ai_response_delay_seconds = _ai_response_delay()
@@ -957,7 +957,7 @@ func start_net_game(seed_value: int = -1) -> bool:
 	game.ai_delay_seconds = _ai_turn_delay()
 	game.ai_response_delay_seconds = _ai_response_delay()
 	if not dedicated:
-		opening_speed = CONFIG.opening_animation_speed
+		opening_speed = get_node("/root/GameConfig").opening_speed_key()
 	_apply_opening_delay()
 	game.require_turn.connect(_on_host_require_turn)
 	game.require_response.connect(_on_host_require_response)
@@ -1384,20 +1384,18 @@ func _apply_opening_delay() -> void:
 	if game == null:
 		return
 	game.opening_speed = opening_speed
-	game.opening_delay_seconds = CONFIG.OPENING_WAIT_SECONDS \
-		* float(CONFIG.OPENING_SPEEDS.get(opening_speed, 1.0)) \
+	game.opening_delay_seconds = CONFIG.opening_wait_seconds(opening_speed) \
 		if dedicated or DisplayServer.get_name() != "headless" else 0.0
 
 func set_opening_speed(value: String) -> void:
-	if value not in CONFIG.OPENING_SPEEDS:
+	if not CONFIG.is_opening_speed(value):
 		return
-	_opening_speed_reported = ""
 	if host_mode:
 		opening_speed = value
-		_apply_opening_delay()
 		_publish_lobby()
-	elif _client_joined:
-		rpc_id(1, "lobby_action", "opening_speed", {"value": value})
+	elif _client_joined and is_room_owner() and not _reconnecting and not _resume_sync_pending:
+		_opening_speed_reported = value
+		_submit_lobby("opening_speed", {"value": value})
 
 func _start_next_round() -> void:
 	if not host_mode or game == null or game.phase != RoundState.Phase.SETTLED or _ready_round != round_number or not all_ready() or _countdown > 0.0: return
@@ -1423,6 +1421,7 @@ func _apply_member_names() -> void:
 	game._recorder.update_players(game)
 
 func client(ip: String, port: int = 0, number: String = "", player_name: String = "", owner_token: String = "", resume_token: String = "", resume_only: bool = false) -> bool:
+	_opening_speed_reported = ""
 	_server_ip = ip
 	_server_port = port if port > 0 else 7500
 	if not resume_only:
@@ -1660,10 +1659,10 @@ func lobby_sync(state: Dictionary) -> void:
 func _report_opening_speed() -> void:
 	if host_mode or not _client_joined or int(lobby.get("owner", -1)) != _local_peer():
 		return
-	var desired := CONFIG.opening_animation_speed
-	if str(lobby.get("opening_speed", "")) == desired:
+	var desired: String = get_node("/root/GameConfig").opening_speed_key()
+	if str(lobby.get("opening_speed", "")) == desired or _opening_speed_reported == desired:
 		return
-	rpc_id(1, "lobby_action", "opening_speed", {"value": desired})
+	set_opening_speed(desired)
 
 @rpc("authority", "call_remote", "reliable")
 func join_rejected(message: String) -> void:

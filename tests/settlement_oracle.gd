@@ -131,55 +131,37 @@ static func expected(round: RoundState) -> Dictionary:
 			for payer in 4:
 				if payer != target_seat and (self_draw or payer == source):
 					base_payers.append(payer)
-			if self_draw:
-				var primary := pattern_fee
-				if primary <= 0.0:
-					if player.ready:
-						primary = 0.0
-					elif float(_chicken_values(round, target_seat, related).total) <= 0.0:
-						var all_chickenless := true
-						for other in 4:
-							if float(chicken_values[other]) > 0.0:
-								all_chickenless = false
-								break
-						primary = 24.0 if all_chickenless else 14.0
-					else:
-						primary = 4.0
-				for payer in base_payers:
-					# 自摸者未报听、付款者报听：只免自摸基础4，牌型分仍付。
-					if not player.ready and round.players[payer].ready:
-						var pattern_share := pattern_fee if pattern_fee > 0.0 else 0.0
-						_credit(matrix, payer, target_seat, pattern_share + 24.0, burned)
+			var dry_fee := 0.0
+			var any_kong: bool = player.melds.any(func(meld): return meld.kind in ["kong", "add_kong"])
+			if pattern.win and chicken_values[target_seat] == 0.0 and not any_kong:
+				dry_fee = 24.0
+				for other in 4:
+					if other == target_seat or not called[other]:
 						continue
-					var add := primary
-					if player.ready:
-						add += 20.0 if pattern_fee > 0.0 else 24.0
-					_credit(matrix, payer, target_seat, add, burned)
-			else:
+					var other_kong: bool = round.players[other].melds.any(func(meld): return meld.kind in ["kong", "add_kong"])
+					if chicken_values[other] > 0.0 or other_kong:
+						dry_fee = 14.0
+						break
+			for payer in base_payers:
+				var components: Array[float] = []
+				if pattern_fee > 0.0: components.append(pattern_fee)
+				if dry_fee > 0.0: components.append(dry_fee)
+				if player.ready:
+					components.append(24.0)
+					if not self_draw and round.players[payer].ready: components.append(24.0)
+				elif round.players[payer].ready:
+					components.append(24.0)
+				if components.is_empty() and self_draw:
+					components.append(4.0)
+				var total := 0.0
+				for fee in components: total += fee
+				_credit(matrix, payer, target_seat, total - 4.0 * maxi(0, components.size() - 1), burned)
+			if not self_draw:
 				var kong_discard := not robbed_kong and _is_post_kong_discard(round.last_discard)
 				var source_called := source >= 0 and source < 4 and RuleEngine.is_tenpai(round.players[source].concealed, round.players[source].melds)
 				var base := 12.0 if robbed_kong else (17.0 if kong_discard and source_called else (21.0 if kong_discard else 0.0))
 				if source in range(4) and base > 0.0:
 					_credit(matrix, source, target_seat, base, burned)
-				if player.ready:
-					# 报听胡牌：点炮时只有点炮者支付
-					if source in range(4) and source != target_seat:
-						if round.players[source].ready:
-							# 双方都报听：赢家 24 + 输家报听补 20。
-							_credit(matrix, source, target_seat, 44.0, burned)
-						else:
-							_credit(matrix, source, target_seat, 20.0 if pattern_fee > 0.0 else 24.0, burned)
-				elif source in range(4) and source != target_seat and round.players[source].ready:
-					# 杀报：赢家未报听，报听者放炮单独支付24。
-					_credit(matrix, source, target_seat, 24.0, burned)
-				# 放炮牌型分只由放炮者支付；一炮多响时每位赢家
-				# 分别向放炮者收取自己的牌型分，赢家之间不互付差额。
-				# 双方都报听时，牌型分里的自摸 4 与报听 24 已含的 4 只保留一个。
-				if pattern_fee > 0.0 and source in range(4) and source != target_seat:
-					var pattern_credit: float = pattern_fee
-					if player.ready and round.players[source].ready:
-						pattern_credit = maxf(0.0, pattern_fee - 4.0)
-					_credit(matrix, source, target_seat, pattern_credit, burned)
 				var own_kong: bool = player.melds.any(func(meld): return meld.kind == "add_kong" or (meld.kind == "kong" and meld.get("concealed", false)))
 				if not robbed_kong and own_kong and pattern_fee <= 0.0 and not player.ready \
 					and not pattern.get("all_triplets", false) and not pattern.get("seven_pairs", false) \

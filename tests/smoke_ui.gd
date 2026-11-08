@@ -12,6 +12,7 @@ var audio_wins := 0
 
 func _initialize() -> void:
 	table = load("res://scenes/GameTable.tscn").instantiate()
+	table.human_seat = 0
 	root.add_child(table)
 	call_deferred("_drive")
 

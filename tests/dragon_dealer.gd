@@ -63,7 +63,9 @@ func _test_dragon() -> void:
 	game.round_meta.win_tile = "wan1"
 	scored = ScoringEngine.settle(game)
 	pattern_items = scored.items[0].filter(func(item): return item.kind == "pattern")
-	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "清龙对" and scored.round_points[0] == 64, "清龙对只计64，不叠普通点炮基础")
+	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "清龙对" and pattern_items[0].amount == 64,
+		"清龙对牌型只计64")
+	t.expect(scored.pairwise[0][2] == 84, "零鸡清龙对叠大干扣，64+24-4，不另计点炮基础")
 	game.players[0].concealed = two_quads
 	game.round_meta.win_tile = "tiao1"
 	scored = ScoringEngine.settle(game)
@@ -104,10 +106,10 @@ func _test_deal() -> void:
 	for dealer in 4:
 		var wall := WallRing.new(TileSetFactory.create_deck(), dealer)
 		for seat in 4:
-			var size := 28 if posmod(seat - dealer, 2) == 0 else 26
-			t.expect(wall.wall_remaining(seat) == size and wall.wall_stack_counts(seat).size() == size / 2, "换庄14和13墩随庄家调整")
+			var size := 28 if seat in [1, 3] else 26
+			t.expect(wall.wall_remaining(seat) == size and wall.wall_stack_counts(seat).size() == size / 2, "四墙长度固定为南北14列、东西13列")
 		for die in range(1, 7):
-			var target := posmod(dealer + (2 if die in [1, 3, 5] else (3 if die == 4 else 1)), 4)
+			var target := posmod(dealer + (2 if die in [1, 3, 5] else (1 if die == 4 else 3)), 4)
 			var segment: Dictionary = wall._wall_seg_for_seat(target)
 			t.expect(WallRing.compute_break(die, dealer) == segment.start + die * 2, "换庄骰子按相对方位破墙")
 			var game := _fixture()

@@ -13,11 +13,16 @@ PROJECT = Path(__file__).resolve().parents[1]
 LOGS = PROJECT / "build"
 
 
-def launch(godot, name, scene, user_args=()):
+def launch(godot, name, scene, user_args=(), graphical=False):
     LOGS.mkdir(parents=True, exist_ok=True)
     stdout = (LOGS / f"{name}.log").open("w", encoding="utf-8")
     stderr = (LOGS / f"{name}.err").open("w", encoding="utf-8")
-    args = [godot, "--headless", "--path", str(PROJECT)]
+    args = [godot, "--path", str(PROJECT), "--log-file", str(LOGS / f"{name}.godot.log")]
+    if graphical:
+        args += ["--audio-driver", "Dummy", "--rendering-method", "gl_compatibility",
+                 "--resolution", "1170x540", "--position=-10000,-10000"]
+    else:
+        args += ["--headless"]
     args += ["--script", scene] if scene.endswith(".gd") else [scene]
     args += ["--quit-after", "60000"]
     if user_args: args += ["--", *user_args]
@@ -62,7 +67,7 @@ def request(base, method="GET", data=None):
         return error.code, json.load(error)
 
 
-def run(godot, lan_interface=False, section="all"):
+def run(godot, lan_interface=False, section="all", graphical_table=False):
     children = []
     try:
         if section in ("all", "lan"):
@@ -81,10 +86,10 @@ def run(godot, lan_interface=False, section="all"):
             finish(late, "lobby_late")
             finish(client, "lobby_client")
             finish(host, "lobby_host")
-            host = launch(godot, "table_host", "res://tests/net_table_ui.tscn", ["--table-host"])
+            host = launch(godot, "table_host", "res://tests/net_table_ui.tscn", ["--table-host"], graphical=graphical_table)
             children.append(host)
             time.sleep(0.5)
-            client = launch(godot, "table_client", "res://tests/net_table_ui.tscn")
+            client = launch(godot, "table_client", "res://tests/net_table_ui.tscn", graphical=graphical_table)
             children.append(client)
             finish(client, "table_client")
             finish(host, "table_host")
@@ -124,7 +129,7 @@ def run(godot, lan_interface=False, section="all"):
         for invalid in ["123", "123456789", "12a34", "-1234", 12345]:
             code, data = request(base, "POST", {"number": invalid})
             assert code == 400, "Invalid room number accepted"
-        code, data = request(base, "POST", {"number": "654321", "name": "在线测试"})
+        code, data = request(base, "POST", {"number": "654321", "name": "在线测试", "opening_speed": "1.25"})
         assert code == 201 and data["room"]["owner_token"], f"Creation failed: {data}"
         room = data["room"]
         code, data = request(base, "POST", {"number": "654321"})
@@ -169,5 +174,6 @@ if __name__ == "__main__":
     parser.add_argument("--godot", required=True)
     parser.add_argument("--lan-interface", action="store_true", help="Require a connected private IPv4 interface; suppress loopback discovery")
     parser.add_argument("--section", choices=("all", "lan", "ready", "online"), default="all")
+    parser.add_argument("--graphical-table", action="store_true", help="Render the real LAN table on both peers and save screenshots")
     args = parser.parse_args()
-    run(args.godot, args.lan_interface, args.section)
+    run(args.godot, args.lan_interface, args.section, args.graphical_table)

@@ -7,6 +7,7 @@ var tile := ""       # 牌值 "tong3"/"tiao1"/"wan9"
 var face_up := true
 var unit := 1.0      # 玩家牌与牌墙/出牌区可分别指定尺寸倍率。
 var highlight := false   # 金框高亮（用于标记鸡牌、报听等）
+var back_depth_top := false  # 牌背白色牌体边朝上（南墙朝桌内）
 var latest_highlight := false   # 最新打出的牌，使用高对比橙色
 var ai_teach_highlight := false   # AI 教学推荐，独立于鸡牌/报听金框
 var score_highlight := false   # 结算预览阶段的记分牌黄色底色
@@ -151,9 +152,10 @@ func _draw() -> void:
 		if Tiles.is_chicken(tile):
 			draw_circle(Vector2(w - 4 * unit, 4 * unit), 2 * unit, Color("#c5993e"))
 	else:
-		_draw_back(w, h - depth)
+		var back_y := depth if back_depth_top else 0.0
+		_draw_back(w, h - depth, back_y)
 		if score_highlight:
-			draw_rect(Rect2(0, 0, w, h - depth), Color(0.95, 0.78, 0.22, 0.40))
+			draw_rect(Rect2(0, back_y, w, h - depth), Color(0.95, 0.78, 0.22, 0.40))
 	if highlight or ai_teach_highlight or latest_highlight or selected or _win_glow > 0:
 		var glow := _tile_style(Color.TRANSPARENT, Color(0.95, 0.80, 0.39, maxf(0.24, _win_glow)))
 		glow.set_border_width_all(4)
@@ -203,12 +205,15 @@ func _tile_style(color: Color, border: Color) -> StyleBoxFlat:
 	return style
 
 ## ---- 程序化牌背（无素材） ----
-func _draw_back(w: float, h: float) -> void:
-	draw_style_box(_tile_style(Color("#286c53"), Color("#75a18b")), Rect2(0, 0, w, h))
-	draw_rect(Rect2(4 * unit, 4 * unit, w - 8 * unit, h - 8 * unit), Color("#5b9177"), false, maxf(0.6, unit))
+func _draw_back(w: float, h: float, offset_y: float = 0.0) -> void:
+	draw_style_box(_tile_style(Color("#286c53"), Color("#75a18b")),
+		Rect2(0, offset_y, w, h))
+	draw_rect(Rect2(4 * unit, offset_y + 4 * unit, w - 8 * unit, h - 8 * unit),
+		Color("#5b9177"), false, maxf(0.6, unit))
 	for i in 3:
 		var x := w * (0.35 + i * 0.15)
-		draw_line(Vector2(x, h * 0.3), Vector2(x, h * 0.7), Color("#3a7d60"), maxf(0.6, unit))
+		draw_line(Vector2(x, offset_y + h * 0.3), Vector2(x, offset_y + h * 0.7),
+			Color("#3a7d60"), maxf(0.6, unit))
 
 ## ---- 程序化牌面（素材缺失时的兜底） ----
 func _draw_face_proc(w: float, h: float) -> void:
@@ -254,6 +259,7 @@ func reset() -> void:
 	set_score_highlight(false)
 	tile = ""
 	face_up = false
+	set_unit(1.0)
 	_table_position = Vector2.ZERO
 	modulate = Color.WHITE
 	visible = true
@@ -267,5 +273,13 @@ func reset() -> void:
 	pivot_offset = Vector2.ZERO
 	self_modulate = Color.WHITE
 	z_index = 0
+	back_depth_top = false
 	tooltip_text = ""
+	# Containers may have assigned a larger size to a pooled tile.  Reset both
+	# the minimum and the current rectangle so a red tile cannot inherit a hand
+	# or draw tile's dimensions when it is reused later in the same refresh.
+	reset_size()
+	if not gui_input.get_connections().is_empty():
+		for conn in gui_input.get_connections():
+			if conn.callable.is_valid(): gui_input.disconnect(conn.callable)
 	for key in get_meta_list(): remove_meta(key)

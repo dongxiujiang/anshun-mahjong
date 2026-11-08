@@ -30,9 +30,7 @@ func export_round(round_state: RoundState, local_seat: int) -> void:
 	_request_id += 1
 	busy = true
 	last_path = ""
-	var hint := "请选择保存位置，建议选择“下载”文件夹。"
-	if _snapshot_only: hint += "\n本机保存牌面与结算快照，完整过程由房主保存。"
-	status_changed.emit(true, hint)
+	status_changed.emit(true, "本机保存牌面与结算快照，完整过程由房主保存。" if _snapshot_only else "")
 	var stamp := Time.get_datetime_string_from_system().replace(":", "-").replace("T", "_")
 	var filename := "安顺麻将-%s-%s.json" % ["牌面快照" if _snapshot_only else "本局记录", stamp]
 	var error := _show_save_dialog(filename, _on_selected.bind(_request_id))
@@ -43,7 +41,7 @@ func _show_save_dialog(filename: String, callback: Callable) -> Error:
 	if not DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE): return ERR_UNAVAILABLE
 	# 安卓让系统提供可写目录；桌面默认打开下载目录。
 	var directory := "" if OS.has_feature("android") else OS.get_system_dir(OS.SYSTEM_DIR_DOWNLOADS)
-	return DisplayServer.file_dialog_show("保存本局记录（建议选择下载文件夹）", directory, filename,
+	return DisplayServer.file_dialog_show("保存本局记录", directory, filename,
 		false, DisplayServer.FILE_DIALOG_MODE_SAVE_FILE, PackedStringArray(FILTERS), callback, get_window().get_window_id())
 
 func _on_selected(selected: bool, paths: PackedStringArray, _filter: int, request_id: int) -> void:

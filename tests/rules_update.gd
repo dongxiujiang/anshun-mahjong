@@ -76,6 +76,7 @@ func _test_claims() -> void:
 	for tile in ["tiao1", "tong8"]:
 		for action in ["pong", "kong"]:
 			var r := fixture()
+			r.wall._ring[106] = "wan6"
 			r.wall._ring[107] = "wan6"
 			r.players[0].concealed = [tile]
 			r.players[0].just_drew = tile
@@ -202,8 +203,8 @@ func _test_uncalled_discard_chicken_payments() -> void:
 			check(r.round_meta.resolved_chicken_discards.size() == 1, "被胡幺鸡保留出牌鸡结算记录")
 			var result := settle(r)
 			check(result.discard_points[1] == expected, "未叫牌被胡幺鸡出牌分为%.0f" % expected)
-			check(result.pairwise[1][0] == -expected and result.pairwise[1][2] == -expected,
-				"未叫牌出牌鸡逐家补给两位叫牌玩家")
+			check(result.pairwise[1][0] == -expected - 24.0 * multiplier and result.pairwise[1][2] == -expected,
+				"未叫牌出牌鸡逐家补给叫牌玩家，大干扣另外只付给赢家")
 			check(result.pairwise[1][3] == 0.0, "未叫牌之间不比较出牌鸡")
 			check(result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 0 and item.get("reason", "") == "未叫牌出牌鸡" and float(item.get("amount", 0.0)) == expected),
 				"付款流水明确记录给赢家的未叫牌出牌鸡")

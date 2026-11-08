@@ -25,10 +25,10 @@ func _run() -> void:
 	_net.set_opening_speed(_argument("--opening-speed", "standard"))
 	_net.test_mode = _argument("--test-mode", "0") == "1"
 	var ai_speed := _argument("--ai-speed", "fast")
-	if ai_speed in ["fast", "medium", "slow"]:
+	var cfg := root.get_node("GameConfig")
+	if cfg.is_ai_speed(ai_speed):
 		_net.ai_speed = ai_speed
-		var cfg := root.get_node("GameConfig")
-		_net.game.ai_delay_seconds = float(cfg.AI_SPEED_DELAYS.get(ai_speed, 0.8))
+		_net.game.ai_delay_seconds = cfg.ai_speed_seconds(ai_speed)
 		_net.game.ai_response_delay_seconds = _net.game.ai_delay_seconds
 	_net.lobby_updated.connect(_write_status)
 	_net.room_empty.connect(func():

@@ -46,9 +46,8 @@ func _run() -> void:
 		net._apply_lobby_action(99999, "seat", {"seat": 0})
 		t.expect(snapshot == net._seat_peer, "Unknown peer cannot move seats")
 		net.set_ready(true)
-		t.expect(await _wait_until(func(): return net.ack_text == "cancelled"), "Ready cancellation arrives")
-		t.expect(net.game.phase == RoundState.Phase.IDLE and net._countdown < 0, "Cancel countdown prevents deal")
-		t.expect(await _wait_until(func(): return net._started), "All ready automatically deal")
+		t.expect(await _wait_until(func(): return net._started), "All ready automatically starts without countdown")
+		t.expect(net._countdown < 0, "Ready start does not create a legacy countdown")
 		t.expect(net.game.dealer_seat == 0, "Only dealer applicant selected after swap")
 		print("[lobby_network] GAME_STARTED")
 		# Leave enough time for the third Godot process to start and attempt

@@ -12,9 +12,9 @@ const WIN_REASONS := ["自摸基础分", "干扣", "大干扣", "报听胡牌", 
 const DRAW_KONG_REASONS := ["暗杠", "加杠", "明杠", "查叫暗杠", "查叫加杠",
 	"查叫明杠", "杠中鸡", "未叫牌杠分", "未叫牌杠中鸡"]
 
-## Each stage has key/matrix; win also has winner. flip/chicken additionally
-## expose gross: each called seat's item total BEFORE pairwise comparison.
-## Uncalled debts are actual payments in matrices, not positive gross income.
+## matrix[seat][other] is the net payment; scores[seat][other] is the
+## signed score contributed by that seat against the other seat.
+## Flip/chicken also expose the called seats' totals before comparison.
 ## Inputs and all their nested arrays/dictionaries are left untouched.
 static func build(result: Dictionary, meta: Dictionary, players: Array, human_seat: int = 0) -> Dictionary:
 	var transfers: Array = result.get("transfers", [])
@@ -46,13 +46,18 @@ static func build(result: Dictionary, meta: Dictionary, players: Array, human_se
 	var chicken_gross := [0.0, 0.0, 0.0, 0.0]
 	if not is_draw:
 		_collect_gross(items, called, burned, gold_tiles, flip_gross, chicken_gross)
-	var flip_matrix := _compare(flip_gross, called, burned)
-	var chicken_matrix := _compare(chicken_gross, called, burned)
-	var kong_matrix := _zero()
-	var win_matrices: Dictionary = {}
+	var flip_stage := _chicken_stage("flip", flip_gross, called)
+	var chicken_stage := _chicken_stage("chicken", chicken_gross, called)
+	var kong_stage := _stage("kong")
+	var other_stage := _stage("other")
+	var win_stages: Dictionary = {}
 	var win_reasons := _win_reasons(items)
 	for winner in winners:
-		win_matrices[winner] = _zero()
+		var stage := _stage("win")
+		stage.winner = winner
+		stage.transfers = []
+		win_stages[winner] = stage
+	var draw_debts := _draw_chicken_debts(items) if is_draw else []
 
 	# These reason-only rows lose their original meld identity. Only classify
 	# them when retained metadata and the actual rows identify their source.
@@ -69,14 +74,17 @@ static func build(result: Dictionary, meta: Dictionary, players: Array, human_se
 		var reason := str(entry.get("reason", ""))
 		if payer not in range(4) or receiver not in range(4) or payer == receiver or receiver == burned or amount <= 0.0:
 			continue
+		# This net payment is already represented by the two gross chicken scores.
+		if reason == "鸡分差额":
+			continue
+		var stage := other_stage
 		if is_draw:
 			if reason in DRAW_KONG_REASONS:
-				_pay(kong_matrix, payer, receiver, amount)
-			continue
-		if reason in ["暗杠", "加杠"] or reversed_kongs.get(index, "") == "kong":
+				stage = kong_stage
+		elif reason in ["暗杠", "加杠", "明杠"] or reversed_kongs.get(index, "") == "kong":
 			# The ledger base payment is used, never the kong item's amount:
 			# chicken_amount/flip_amount already belong to the chicken comparison.
-			_pay(kong_matrix, payer, receiver, amount)
+			stage = kong_stage
 		elif reason in ["未叫牌杠中鸡", "未叫牌出牌鸡", "未叫牌碰鸡"] and not called[payer] and called[receiver]:
 			var category := str(kong_chickens.get(index, ""))
 			if reason == "未叫牌出牌鸡":
@@ -84,38 +92,76 @@ static func build(result: Dictionary, meta: Dictionary, players: Array, human_se
 			elif reason == "未叫牌碰鸡":
 				category = "chicken"
 			if category == "flip":
-				_pay(flip_matrix, payer, receiver, amount)
+				stage = flip_stage
 			elif category == "chicken":
-				_pay(chicken_matrix, payer, receiver, amount)
-		elif win_matrices.has(receiver) and reason in win_reasons:
-			_pay(win_matrices[receiver], payer, receiver, amount)
+				stage = chicken_stage
+		elif win_stages.has(receiver) and reason in win_reasons:
+			stage = win_stages[receiver]
+			stage.transfers.append(entry.duplicate(true))
+		_pay(stage.matrix, payer, receiver, amount)
+		var debt := amount if not called[payer] and reason.begins_with("未叫牌") else 0.0
+		if is_draw and reason == "荒牌包鸡":
+			debt = clampf(draw_debts[payer], 0.0, amount)
+		stage.scores[payer][receiver] -= debt
+		stage.scores[receiver][payer] += amount - debt
 
 	if not is_draw:
-		stages.append({"key": "flip", "matrix": flip_matrix, "gross": flip_gross})
-		stages.append({"key": "chicken", "matrix": chicken_matrix, "gross": chicken_gross})
-	stages.append({"key": "kong", "matrix": kong_matrix})
+		stages.append(flip_stage)
+		stages.append(chicken_stage)
+	stages.append(kong_stage)
 	for winner in winners:
-		stages.append({"key": "win", "matrix": win_matrices[winner], "winner": winner})
-	# Missing item/source data, ambiguous debts, exposed win-round kongs and
-	# penalties remain here. This is only an aggregate display difference;
+		stages.append(win_stages[winner])
+	# Missing item/source data, ambiguous debts and penalties remain here.
+	# This is only an aggregate display difference;
 	# it must never invent scoring rules or a missing base payment.
 	var shown := _zero()
 	for stage in stages:
 		for first in 4:
 			for second in 4:
 				shown[first][second] += stage.matrix[first][second]
-	var residual := _zero()
 	var has_residual := false
 	for first in 4:
 		for second in range(first + 1, 4):
-			var difference: float = final[first][second] - shown[first][second]
-			residual[first][second] = difference
-			residual[second][first] = -difference
-			if difference != 0.0:
+			var residual: float = final[first][second] - shown[first][second]
+			var correction: float = residual - other_stage.matrix[first][second]
+			other_stage.matrix[first][second] = residual
+			other_stage.matrix[second][first] = -residual
+			# Older results may omit source items. Reconcile to the ledger
+			# without assigning an unsupported extra debt to an uncalled seat.
+			if called[first] and (not called[second] or correction >= 0.0):
+				other_stage.scores[first][second] += correction
+			else:
+				other_stage.scores[second][first] -= correction
+			if residual != 0.0 or other_stage.scores[first][second] != 0.0 or other_stage.scores[second][first] != 0.0:
 				has_residual = true
 	if has_residual:
-		stages.append({"key": "other", "matrix": residual})
+		stages.append(other_stage)
 	return plan
+
+static func _stage(key: String) -> Dictionary:
+	return {"key": key, "matrix": _zero(), "scores": _zero()}
+
+static func _chicken_stage(key: String, gross: Array, called: Array) -> Dictionary:
+	var stage := _stage(key)
+	stage.gross = gross
+	for first in 4:
+		for second in range(first + 1, 4):
+			if not called[first] and not called[second]:
+				continue
+			stage.scores[first][second] = gross[first]
+			stage.scores[second][first] = gross[second]
+			var difference: float = gross[first] - gross[second]
+			stage.matrix[first][second] = difference
+			stage.matrix[second][first] = -difference
+	return stage
+
+static func _draw_chicken_debts(items: Array) -> Array:
+	var debts := [0.0, 0.0, 0.0, 0.0]
+	for seat in mini(4, items.size()):
+		for item in items[seat]:
+			if item.get("label", "") in ["未叫牌出牌鸡", "未叫牌碰鸡"]:
+				debts[seat] += absf(float(item.get("amount", 0.0)))
+	return debts
 
 ## 只读已结算的独立项目金额，不重定价、不合计三家收入或借用玩家净分。
 ## 来源方位以该玩家自己为基准，与观看者/庄家位置无关。
@@ -257,19 +303,6 @@ static func _split_chickens(item: Dictionary, amount: float, gold: Array, flip: 
 			flip[seat] += unit
 		else:
 			chicken[seat] += unit
-
-static func _compare(gross: Array, called: Array, burned: int) -> Array:
-	var matrix := _zero()
-	for first in 4:
-		for second in range(first + 1, 4):
-			if not called[first] and not called[second]:
-				continue
-			var difference: float = gross[first] - gross[second]
-			if difference > 0.0 and first != burned:
-				_pay(matrix, second, first, difference)
-			elif difference < 0.0 and second != burned:
-				_pay(matrix, first, second, -difference)
-	return matrix
 
 static func _player_array(players: Array, seat: int, property: String) -> Array:
 	if seat >= players.size() or players[seat] == null:

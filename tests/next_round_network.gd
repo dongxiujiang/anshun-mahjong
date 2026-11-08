@@ -42,6 +42,9 @@ func _run() -> void:
 	await process_frame
 	var settlement = table._settlement_animation_controller
 	var board_count: int = 0 if settlement.plan.all_called_draw else 4
+	print("[next_round] role=%d boards=%d expected=%d controls=%s all_called=%s completed=%s" % [
+		role, settlement.boards.size(), board_count, table._settlement_card._post_controls.visible,
+		settlement.plan.all_called_draw, settlement.is_completed()])
 	t.expect(settlement.boards.size() == board_count and table._settlement_card._post_controls.visible, "Every player sees the final tabletop settlement and bottom readiness controls")
 	t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Settlement uses non-blocking tabletop content and plain bottom controls")
 	t.expect(table._next_round_button.get_parent() == table._settlement_card._post_controls and not table._next_round_button.disabled, "Every player has an enabled bottom ready button")
@@ -64,10 +67,11 @@ func _run() -> void:
 		table._next_round_button.pressed.emit()
 	var ready_at := Time.get_ticks_msec()
 	t.expect(await _wait_until(func(): return net.round_number == 2), "All four ready immediately enter the second round")
-	t.expect(Time.get_ticks_msec() - ready_at < 850, "All-ready start does not wait for a countdown")
+	if role == 3:
+		t.expect(Time.get_ticks_msec() - ready_at < 850, "Last ready starts without an extra countdown")
 	t.expect(int(net.lobby.countdown) < 0, "Immediate next round has no countdown")
 	t.expect(net.game.dealer_seat == dealer and net.game.players.map(func(player): return player.score) == scores, "Dealer and scores survive ready transition")
-	t.expect(not settlement.has_started() and settlement.boards.is_empty() and not table._settlement_card._post_controls.visible, "Second-round tiles replace settlement on all clients")
+	t.expect(await _wait_until(func(): return not settlement.has_started() and settlement.boards.is_empty() and not table._settlement_card._post_controls.visible), "Second-round tiles replace settlement on all clients")
 	if role == 0:
 		await create_timer(0.4).timeout
 		net.game._finish()

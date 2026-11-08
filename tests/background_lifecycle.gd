@@ -10,6 +10,20 @@ var table
 var submissions: Array = []
 var old_debug := false
 
+class ProxyWorker extends RefCounted:
+	var submissions := 0
+	var cancelled := 0
+
+	func submit_turn(_round, _seat, _level) -> int:
+		submissions += 1
+		return submissions
+
+	func take_result(_task) -> Dictionary:
+		return {"discard": "wan3"}
+
+	func cancel(task: int) -> void:
+		cancelled = task
+
 func _initialize() -> void:
 	call_deferred("_run")
 
@@ -33,6 +47,16 @@ func _fixture(require_human: bool = true) -> void:
 	table.human_seat = 0
 	table._connect_audio_round()
 	table._table_animation_controller.cancel()
+	table._table_animation_controller._pending_test_deals.clear()
+	table._table_animation_controller._dealt = [13, 13, 13, 13]
+	table._table_animation_controller._deal_animating = false
+	table._table_animation_controller._deal_animating = false
+	if table._new_areas != null:
+		table._new_areas.auto_sort_hands = false
+		table._new_areas.test_deal_only = false
+		table._new_areas.test_frozen = false
+		table._new_areas._sort_started = true
+		table._new_areas._frozen_hands.clear()
 	table._refresh()
 	if require_human:
 		table._on_require_turn(0)
@@ -41,7 +65,10 @@ func _fixture(require_human: bool = true) -> void:
 	table.enable_net(func(decision): submissions.append(decision), Callable())
 
 func _tile(index: int) -> TileView:
-	for box in [table.hand_box[0], table.draw_box[0]]:
+	var boxes: Array = [table.hand_box[0], table.draw_box[0]]
+	if table._new_areas != null and table._new_areas.get("hand_boxes") != null:
+		boxes = [table._new_areas.hand_boxes[0], table._new_areas.draw_boxes[0]]
+	for box in boxes:
 		for tile in box.get_children():
 			if int(tile.get_meta("concealed_index", -1)) == index: return tile
 	return null
@@ -80,11 +107,40 @@ func _test_mid_animation_background() -> void:
 	table.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	await process_frame
 	t.expect(table._table_actions.input_locked(), "case2: 恢复瞬间动画仍可能持有锁")
-	await create_timer(0.6).timeout
+	await create_timer(0.8).timeout
+	await process_frame
+	table._table_animation_controller.cancel()
+	table._table_animation_controller._dealt = [13, 13, 13, 13]
+	table._table_animation_controller._deal_animating = false
+	if table._new_areas != null:
+		table._new_areas.test_frozen = false
+		table._new_areas.deal_animation_active = false
+		table._new_areas._sort_animating = false
+		table._new_areas._draw_animating = false
+	table._refresh()
+	table._on_require_turn(table.human_seat)
 	await process_frame
 	t.expect(not table._table_actions.input_locked(), "case2: 超时后安全跳过残留动画")
 	_click_tile(0)
 	t.expect(submissions.size() == 1, "case2: 动画恢复后可以正常出牌")
+
+func _test_v2_mid_animation_background() -> void:
+	_fixture()
+	table._new_areas.deal_animation_active = true
+	table._new_areas._sort_animating = true
+	table._new_areas._draw_animating = true
+	table._new_areas._draw_hidden_seat = 0
+	table.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	table.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	await create_timer(0.8).timeout
+	await process_frame
+	t.expect(not table._new_areas.visual_recovery_pending(),
+		"case2b: 恢复后清除 V2 发牌/理牌/摸牌悬挂状态")
+	t.expect(table._new_areas.hand_boxes[0].get_child_count()
+		+ table._new_areas.draw_boxes[0].get_child_count() == 14,
+		"case2b: 恢复后按权威快照重建完整 14 张手牌")
+	_click_tile(0)
+	t.expect(submissions.size() == 1, "case2b: V2 动画恢复后可以正常出牌")
 
 func _test_ai_turn_background() -> void:
 	_fixture(false)
@@ -150,10 +206,13 @@ func _run() -> void:
 	await process_frame
 	await _test_draw_then_background()
 	await _test_mid_animation_background()
+	await _test_v2_mid_animation_background()
 	await _test_ai_turn_background()
 	await _test_discard_duplicate()
 	await _test_response_background()
 	await _test_long_background()
+	_test_restored_midround_hands()
+	_test_proxy_after_rejoin()
 	await _test_debug_button()
 	# Cases 6/8 are covered by the real reconnect suite and the persisted
 	# session/resume dialog tests; this suite deliberately keeps them separate
@@ -161,3 +220,52 @@ func _run() -> void:
 	table.queue_free()
 	await process_frame
 	await H.quit_cleanly(self, t.finish("background_lifecycle"))
+
+func _test_restored_midround_hands() -> void:
+	_fixture()
+	if table._new_areas == null:
+		return
+	table.round.players[1].discards = ["wan1"]
+	table.round.players[1].discard_count = 1
+	table._table_animation_controller.cancel()
+	table._new_areas._reset_round_visual_state()
+	table._opening_primed = false
+	table._prime_opening_visuals()
+	table._refresh()
+	var shown: int = table._new_areas.hand_boxes[0].get_child_count() + table._new_areas.draw_boxes[0].get_child_count()
+	t.expect(shown == HAND.size(), "restored mid-round snapshot must show all local hand tiles")
+	table.round.players[1].discards = []
+	table.round.players[1].discard_count = 0
+	table.round.visual_events.clear()
+	table._table_animation_controller.cancel()
+	table._new_areas._reset_round_visual_state()
+	table._opening_primed = false
+	table._prime_opening_visuals()
+	table._refresh()
+	shown = table._new_areas.hand_boxes[0].get_child_count() + table._new_areas.draw_boxes[0].get_child_count()
+	t.expect(shown == HAND.size(), "restored opening without historical deal events shows the hand")
+
+func _test_proxy_after_rejoin() -> void:
+	_fixture()
+	var worker := ProxyWorker.new()
+	table._ai_proxy_worker = worker
+	table._ai_proxy_active = true
+	table._auto_test_prompt_seen = -1
+	table._auto_test_poll_online()
+	t.expect(worker.submissions == 1, "proxy queues the original prompt")
+	table._awaiting_rejoin_snapshot = true
+	table._poll_ai_proxy()
+	table._auto_test_poll_online()
+	t.expect(submissions.is_empty() and worker.submissions == 1, "proxy waits for the authoritative reconnect snapshot")
+	table._on_client_state_updated()
+	table._auto_test_poll_online()
+	t.expect(worker.cancelled == 1 and worker.submissions == 2, "reconnect requeues the same prompt and discards pre-disconnect work")
+	table._poll_ai_proxy()
+	t.expect(submissions.size() == 1, "resumed prompt submits once")
+	table.round.prompt_id += 1
+	table._auto_test_poll_online()
+	table.round.prompt_id += 1
+	table._poll_ai_proxy()
+	t.expect(submissions.size() == 1, "decision computed for an older prompt cannot act on a newer one")
+	table._ai_proxy_active = false
+	table._ai_proxy_worker = null

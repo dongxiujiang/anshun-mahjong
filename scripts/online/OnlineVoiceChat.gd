@@ -73,9 +73,7 @@ func _setup_audio() -> void:
 		player.stream = generator
 		player.bus = OUTPUT_BUS if AudioServer.get_bus_index(OUTPUT_BUS) >= 0 else "Master"
 		add_child(player)
-		player.play()
 		_output_players[seat] = player
-		_playbacks[seat] = player.get_stream_playback() as AudioStreamGeneratorPlayback
 		_apply_speaker_volume(seat)
 
 func _ensure_capture_bus() -> void:
@@ -186,6 +184,7 @@ func shutdown() -> void:
 		_config.voice_chat_settings_changed.disconnect(_on_settings_changed)
 	for player in _output_players.values():
 		player.stop()
+		player.stream = null
 		player.queue_free()
 	_output_players.clear()
 	_playbacks.clear()
@@ -225,14 +224,13 @@ func _apply_speaker_volume(seat: int) -> void:
 	if value <= 0.0:
 		player.stream_paused = true
 	elif player.stream_paused:
+		player.stream_paused = false
 		# Restart the generator instead of clearing an active buffer; this gives
 		# an unmuted player a clean queue without retaining audio from mute time.
-		player.stop()
-		player.play()
-		_playbacks[seat] = player.get_stream_playback() as AudioStreamGeneratorPlayback
-		player.stream_paused = false
-	elif playback == null:
-		_playbacks[seat] = player.get_stream_playback() as AudioStreamGeneratorPlayback
+		if playback != null:
+			player.stop()
+			player.play()
+			_playbacks[seat] = player.get_stream_playback() as AudioStreamGeneratorPlayback
 
 func _on_settings_changed() -> void:
 	if _config == null:
@@ -319,9 +317,18 @@ func play_packet(packet: PackedByteArray) -> void:
 	if not valid_packet(packet):
 		return
 	var seat := packet_seat(packet)
-	var playback: AudioStreamGeneratorPlayback = _playbacks.get(seat)
-	if playback == null or not speaker_enabled(seat):
+	if not speaker_enabled(seat) or _remote_volume <= 0.0:
 		return
+	var playback: AudioStreamGeneratorPlayback = _playbacks.get(seat)
+	if playback == null:
+		var player: AudioStreamPlayer = _output_players.get(seat)
+		if player == null:
+			return
+		player.play()
+		playback = player.get_stream_playback() as AudioStreamGeneratorPlayback
+		if playback == null:
+			return
+		_playbacks[seat] = playback
 	var sequence := packet_sequence(packet)
 	var now := Time.get_ticks_msec()
 	var state: Dictionary = _rx.get(seat, {})
