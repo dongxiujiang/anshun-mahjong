@@ -332,20 +332,11 @@ docker compose -f compose.prod.yaml up -d app --pull never
 
 ## 五、导出为可执行文件 / APK
 
-工程已配置 Windows 与 Android 导出预设。首次在另一台电脑导出时，需要安装与 Godot 版本相同的导出模板：
+工程仅配置 Android 导出预设，正式包版本为 **1.6.16**，包名为 com.anshun.mahjong，支持 arm64-v8a 横屏。
 
-1. 用 Godot 打开工程 → 顶部菜单 `编辑器 → 管理导出模板…` → 下载并安装 **4.7.2.stable** 模板。
-2. PC：`项目 → 导出…` → 选择预设 **Windows** → `导出项目`，产物在 `build/windows/`。
-3. Android：
-   - 需安装 **Android SDK**（设置 `编辑器 → 编辑器设置 → 导出 → Android → Android SDK 路径`）与 JDK 17+。
-   - 在 `项目 → 导出…` 中配置 **调试密钥库**（Android → 一键创建 debug keystore）。
-   - 选择预设 **Android** → `导出项目`，产物在 `build/android/`。
-   命令行：`godot --headless --export-release "Android" build/android/安顺麻将.apk`
-4. 命令行导出 PC：`godot --headless --export-release "Windows" build/windows/安顺麻将.exe`
+使用 Godot 4.7.2、JDK 17 和 Android SDK，在编辑器导出设置中选择 Android。正式包使用既有签名，覆盖安装保留应用数据。云端构建同时保存 1.6.16-native1 安装基线和签名更新清单。
 
-1.0.0 正式横屏版本已使用提供的游戏图标重新打包，发布文件位于 `build/releases/v1.0.0/`：Windows 安装向导、免安装主程序、Android 正式签名 APK 和更新清单。热更新基线位于 `build/update_baselines/1.0.0-boot1/`。首次发布与以后的小/大版本更新教程见 [docs/publishing.md](docs/publishing.md)；双击根目录 `生成小版本更新.cmd` 可准备后续小补丁。正式 APK 与旧调试版签名不同，首次需卸载旧调试版；后续正式版保持同一签名。
-
-导出预设已写入 `export_presets.cfg`（Android，含包名 `com.anshun.mahjong`、arm64-v8a、沉浸式全屏）。
+GitHub Actions 的完整包、热补丁、基线下载及服务器镜像流程见 [CI/CD 发布说明](docs/ci_release.md)。完整包发布产物为正式签名 APK、update-manifest.json 和 baseline.zip。
 
 ## 六、工程结构
 
