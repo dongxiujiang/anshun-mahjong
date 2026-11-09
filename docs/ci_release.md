@@ -1,6 +1,6 @@
 # GitHub Actions 构建与发布
 
-当前正式安装包版本为 1.6.19，Android 安装基线为 1.6.19-native1。导出预设仅包含 Android。
+当前正式安装包版本为 1.6.18，Android 安装基线为 1.6.18-native1。导出预设仅包含 Android。
 
 ## 检查与构建
 
@@ -22,7 +22,7 @@
 
 在 Build release 选择 release_kind=patch，填写高于完整安装包的版本号。
 
-- baseline_source=release 从所选完整版本的 Release 下载 baseline.zip。当前对应标签为 V1.6.19。
+- baseline_source=release 从所选完整版本的 Release 下载 baseline.zip。当前对应标签为 V1.6.18。
 - baseline_source=artifact 从完整构建的 run id 下载 baseline 构建产物。
 - 工具核对引擎、启动脚本、全局类、原生依赖、工程设置和导出配置，兼容后生成 Android PCK 与签名清单。
 - publish_release=true 通过检查后发布，false 保存构建产物供审阅。

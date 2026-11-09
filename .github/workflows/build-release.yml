@@ -26,7 +26,7 @@ on:
       baseline_release_tag:
         description: "发布完整包时保存的基线标签"
         required: false
-        default: V1.6.19
+        default: V1.6.18
         type: string
       patch_version:
         description: "patch 模式版本号，须高于所选完整包版本"
@@ -103,7 +103,7 @@ jobs:
       RELEASE_KIND: ${{ inputs.release_kind || 'full' }}
       BASELINE_RUN_ID: ${{ inputs.baseline_run_id || '' }}
       BASELINE_SOURCE: ${{ inputs.baseline_source || 'release' }}
-      BASELINE_RELEASE_TAG: ${{ inputs.baseline_release_tag || 'V1.6.19' }}
+      BASELINE_RELEASE_TAG: ${{ inputs.baseline_release_tag || 'V1.6.18' }}
       PATCH_VERSION: ${{ inputs.patch_version || '' }}
       PUBLISH_RELEASE: ${{ inputs.publish_release || github.event_name == 'push' }}
       RELEASE_NOTES: ${{ inputs.release_notes || 'GitHub Actions 自动生成的构建' }}

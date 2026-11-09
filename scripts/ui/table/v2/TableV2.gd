@@ -2768,12 +2768,6 @@ func _build_labels(seats: Array) -> void:
 		score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		score.clip_text = true
 		score.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		var pill := StyleBoxFlat.new()
-		pill.bg_color = Color(0.05, 0.13, 0.10, 0.78)
-		pill.border_color = Color(UI.GOLD, 0.48) if is_turn else Color(UI.FELT_BORDER, 0.45)
-		pill.set_border_width_all(1)
-		pill.set_corner_radius_all(11)
-		score.add_theme_stylebox_override("normal", pill)
 		var displayed_score := float(data.score)
 		if native_settlement_active() and seat < _settlement_display_scores.size():
 			displayed_score = float(_settlement_display_scores[seat])
