@@ -58,7 +58,7 @@ func _run() -> void:
 			north_nodes += 1
 			if int(node.get_meta("meld_sideways", -1)) == 3: sideways = true
 	var ready_seen := false
-	for label in v2._label_layer.get_children():
+	for label in v2._control_layer.get_children():
 		if label is Label and label.text == "听" and label.visible: ready_seen = true
 	print("[missing] hidden=", hidden, " own=", own_face, " north=", north_nodes,
 		" sideways=", sideways, " ready=", ready_seen)

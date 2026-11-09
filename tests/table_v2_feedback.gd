@@ -10,6 +10,7 @@ class Host extends Control:
 	var _table_animation_controller = null
 	var _settlement_card = null
 	func _net_mode(): return ""
+	func _refresh(): pass
 
 func _initialize(): call_deferred("_run")
 
@@ -67,23 +68,50 @@ func _settlement_round():
 
 func _ready_borders(view):
 	var authority = _settlement_round()
-	authority.players[3].ready = true
 	for viewer in 4:
 		var client = RoundState.new()
 		client.apply_sync(authority.serialize_for_seat(viewer))
-		view.set_round(client, viewer)
-		for seat in 4:
-			var cards = view.hand_boxes[seat].get_children()
-			t.expect(cards.size() == 13, "all seats retain every hand tile")
-			for tile in cards:
-				t.expect(tile.get("ready_locked") == (seat == 3), "ready gold border reaches viewer %d seat %d" % [viewer,seat])
-				t.expect(tile.face_up == (seat == viewer), "gold border does not reveal opponents' concealed faces")
-		if viewer == 1: await _capture(view,"02-ready-opponent-backs")
+		view.set_round(client,viewer)
 		var retained = view.hand_boxes[3].get_child(0)
+		var position = retained.position
+		for seat in 4:
+			var frame = view._control_layer.get_node_or_null("ReadyHandFrame%d" % seat)
+			var badge = view._control_layer.get_node_or_null("ReadyMeldBadge%d" % seat)
+			t.expect(frame != null and frame.visible == (seat == 3), "one whole-hand frame follows public ready state for every viewer")
+			t.expect(badge != null and badge.visible == (seat == 3), "enlarged ready badge follows public ready state for every viewer")
+			for tile in view.hand_boxes[seat].get_children()+view.draw_boxes[seat].get_children():
+				t.expect(tile.face_up == (seat == viewer), "whole-hand frame never reveals an opponent's face")
+				if frame != null and frame.visible: t.expect(frame.get_rect().encloses(view._visual_rect(tile)), "one continuous frame encloses the hand and drawn tile")
+			if badge != null and badge.visible:
+				t.expect(badge.text == "听" and badge.size.x >= 56 and badge.size.y >= 56, "meld-area ready marker is visibly enlarged")
+				for layer in view._render_layers():
+					for tile in layer.get_children():
+						t.expect(not badge.get_rect().intersects(view._visual_rect(tile)), "ready marker does not cover a hand, meld, discard or wall")
+		t.expect(view._label_layer.get_children().all(func(node): return not (node is Label) or node.text != "听"), "ready marker is removed from the name area")
+		if viewer == 1:
+			await _capture(view,"02-ready-opponent-backs")
+			if DisplayServer.get_name() != "headless":
+				var image = root.get_texture().get_image()
+				var stretch = Vector2(image.get_size()) / root.get_visible_rect().size
+				var frame = view._control_layer.get_node("ReadyHandFrame3")
+				var rects: Array[Rect2] = []
+				for tile in view.hand_boxes[3].get_children()+view.draw_boxes[3].get_children(): rects.append(view._visual_rect(tile))
+				rects.sort_custom(func(a,b): return a.position.x < b.position.x)
+				for i in range(1,rects.size()):
+					var at = Vector2((rects[i-1].end.x+rects[i].position.x)/2.0,frame.position.y+1.5)*stretch
+					var pixel = image.get_pixelv(Vector2i(at))
+					t.expect(pixel.r > .75 and pixel.g > .6 and pixel.b < .75, "whole-hand border stays continuous across all card gaps")
+				var tile = view.hand_boxes[3].get_child(3)
+				var at = (tile.get_global_transform_with_canvas()*Vector2(1.5*tile.unit,tile.size.y/2.0))*stretch
+				var pixel = image.get_pixelv(Vector2i(at))
+				t.expect(not (pixel.r > .75 and pixel.g > .6 and pixel.b < .75), "individual cards have no ready gold outline")
 		authority.players[3].ready = false
 		client.apply_sync(authority.serialize_for_seat(viewer))
 		view.refresh()
-		t.expect(view.hand_boxes[3].get_child(0) == retained and retained.get("ready_locked") == false, "snapshot clears the border without rebuilding the tile")
+		var frame = view._control_layer.get_node_or_null("ReadyHandFrame3")
+		var badge = view._control_layer.get_node_or_null("ReadyMeldBadge3")
+		t.expect(frame != null and not frame.visible and badge != null and not badge.visible, "snapshot removes both ready decorations immediately")
+		t.expect(view.hand_boxes[3].get_child(0) == retained and retained.position == position, "changing the ready decoration never moves or rebuilds the hand")
 		authority.players[3].ready = true
 	var old_draw = authority.players[3].just_drew
 	authority.players[3].concealed.erase(old_draw)
@@ -94,13 +122,83 @@ func _ready_borders(view):
 	authority.players[3].concealed.append(replacement)
 	view.set_round(authority,3)
 	var drawn = view.draw_boxes[3].get_child(0)
-	t.expect(drawn.get("ready_locked") == true and drawn.interactive, "ready draw shows the status without blocking the legal discard")
-	var pooled = view._tile_pool.acquire()
-	pooled.set("ready_locked",true)
-	view._tile_pool.release(pooled)
-	pooled = view._tile_pool.acquire()
-	t.expect(pooled.get("ready_locked") == false, "pooled tile never leaks a ready border into the next round")
-	view._tile_pool.release(pooled)
+	var frame = view._control_layer.get_node_or_null("ReadyHandFrame3")
+	t.expect(frame != null and frame.get_rect().encloses(view._visual_rect(drawn)) and drawn.interactive, "draw stays in the overall frame without blocking a legal discard")
+
+func _ready_meld_clearance(view):
+	for count in [0,1,2,4]:
+		var r = _round()
+		for seat in 4:
+			r.players[seat].ready = true
+			r.players[seat].concealed = r.players[seat].concealed.slice(0,13-3*count)
+			for i in count: r.players[seat].melds.append({"kind":"kong","tile":Tiles.all_values()[seat*4+i],"from_seat":seat,"concealed":true,"formed_at":i})
+		view.set_round(r,1)
+		var bar = Control.new()
+		view.add_child(bar)
+		view.adopt_action_bar(bar)
+		var rect = view.action_bar_rect(Vector2(750,112))
+		bar.position = rect.position
+		bar.size = rect.size
+		bar.add_child(Button.new())
+		if view.has_method("_layout_ready_badges"): view._layout_ready_badges()
+		for seat in 4:
+			var badge = view._control_layer.get_node_or_null("ReadyMeldBadge%d" % seat)
+			t.expect(badge != null and badge.visible, "ready marker remains visible with %d melds" % count)
+			if badge == null: continue
+			t.expect(G.TABLE_BOUNDS.encloses(badge.get_rect()) and not badge.get_rect().intersects(bar.get_rect()), "ready marker stays inside the table and clear of action buttons")
+			for layer in view._render_layers()+[view._label_layer]:
+				for tile in layer.get_children():
+					if tile is Control and tile.visible: t.expect(not badge.get_rect().intersects(view._visual_rect(tile)), "large ready marker clears every visible tile, name and score")
+		view._action_layer.remove_child(bar)
+		bar.queue_free()
+
+func _ready_border_motion(view):
+	var config = root.get_node("GameConfig")
+	var old_seconds = config.tile_animation_seconds
+	var host = Host.new()
+	root.add_child(host)
+	view.table = host
+	for seconds in [0.0,0.2]:
+		config.set_tile_animation_seconds(seconds,false)
+		for viewer in 4:
+			var r = _settlement_round()
+			host.round = r
+			host.human_seat = viewer
+			view.set_round(r,viewer)
+			var player = r.players[3]
+			var old_draw = player.just_drew
+			player.concealed.erase(old_draw)
+			player.just_drew = ""
+			player.discards.append(old_draw)
+			player.discard_ids.append(0)
+			view.animate_draw_discard(3,func(): pass,old_draw)
+			await create_timer(seconds+.04).timeout
+			var frame = view._control_layer.get_node("ReadyHandFrame3")
+			var narrow = frame.get_rect()
+			var index = r.wall.peek_head_index()
+			var card = r.wall.draw_head()
+			player.concealed.append(card)
+			player.just_drew = card
+			view.animate_draw(3,card,index,func(): pass)
+			if seconds > 0:
+				await create_timer(seconds*.4).timeout
+				if view._draw_flights.has(3): t.expect(frame.position.is_equal_approx(narrow.position) and frame.size.is_equal_approx(narrow.size), "whole frame stays with the hand while a draw flies from the wall")
+			await create_timer(seconds+.04).timeout
+			var drawn = view.draw_boxes[3].get_child(0)
+			t.expect(frame.get_rect().encloses(view._visual_rect(drawn)), "whole frame includes a landed draw without waiting for refresh")
+			player.concealed.erase(card)
+			player.just_drew = ""
+			player.discards.append(card)
+			player.discard_ids.append(1)
+			view.animate_draw_discard(3,func(): pass,card)
+			await create_timer(seconds+.04).timeout
+			t.expect(frame.position.is_equal_approx(narrow.position) and frame.size.is_equal_approx(narrow.size), "whole frame returns to the remaining hand after discard")
+			var badge = view._control_layer.get_node("ReadyMeldBadge3")
+			for layer in [view._red_layer,view._meld_layer]:
+				for tile in layer.get_children(): t.expect(not badge.get_rect().intersects(view._visual_rect(tile)), "ready marker makes room for a chicken discarded into the meld area")
+	config.set_tile_animation_seconds(old_seconds,false)
+	view.table = null
+	host.queue_free()
 
 func _buttons(view):
 	var r = _round()
@@ -232,6 +330,8 @@ func _run():
 	await process_frame
 	await _buttons(view)
 	await _ready_borders(view)
+	_ready_meld_clearance(view)
+	await _ready_border_motion(view)
 	await _settlement(view)
 	view.queue_free()
 	await H.quit_cleanly(self,t.finish("table_v2_feedback"))

@@ -199,8 +199,8 @@ func _run():
 	host.round.players[1].ready = true
 	view.refresh()
 	var ready_badge = false
-	for label in view._label_layer.get_children():
-		if label is Label and label.text=="听": ready_badge = true
+	for label in view._control_layer.get_children():
+		if label is Label and label.text=="听" and label.visible: ready_badge = true
 	t.expect(ready_badge,"ready state has an independent visible badge instead of clipped nickname text")
 	# Capacity geometry fixture, deliberately independent of physical tile values.
 	for seat in 4:

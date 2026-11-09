@@ -99,6 +99,8 @@ var _labels: Array = []
 var _name_labels: Array = []
 var _badges: Array = []
 var _voice_buttons: Array = []
+var _ready_hand_frames: Array[Panel] = []
+var _ready_meld_badges: Array[Label] = []
 
 func _ready() -> void:
 	if _started_ms == 0: _started_ms = Time.get_ticks_msec()
@@ -133,6 +135,7 @@ func _build_layers() -> void:
 	_dice_layer = _layer("DiceLayer")
 	_label_layer = _layer("LabelLayer")
 	_control_layer = _layer("ControlLayer")
+	_control_layer.z_index = 4
 	_action_layer = _layer("ActionLayer")
 	_action_layer.z_index = 90
 	_animation_layer = _layer("AnimationLayer")
@@ -142,6 +145,95 @@ func _build_layers() -> void:
 	_settlement_layer = _layer("SettlementLayer")
 	# 牌墙/手牌使用 z_index，结算卡必须压过它们，否则庄家卡会被南墙和手牌遮住。
 	_settlement_layer.z_index = 100
+	_build_ready_decorations()
+
+func _build_ready_decorations() -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color.TRANSPARENT
+	style.draw_center = false
+	style.border_color = UI.GOLD
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(8)
+	for seat in 4:
+		var frame := Panel.new()
+		frame.name = "ReadyHandFrame%d" % seat
+		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.add_theme_stylebox_override("panel", style)
+		frame.hide()
+		_control_layer.add_child(frame)
+		_ready_hand_frames.append(frame)
+		var badge := _hud_badge("听", Vector2.ZERO, Color("#504221"), UI.GOLD)
+		badge.reparent(_control_layer, false)
+		badge.name = "ReadyMeldBadge%d" % seat
+		badge.add_theme_font_size_override("font_size", 34)
+		badge.get_theme_stylebox("normal").set_border_width_all(2)
+		badge.size = Vector2(56, 56)
+		badge.hide()
+		_ready_meld_badges.append(badge)
+
+func _process(_delta: float) -> void:
+	if visual_recovery_pending(): _update_ready_hand_frames()
+
+func _update_ready_hand_frames() -> void:
+	for seat in _ready_hand_frames.size():
+		var frame: Panel = _ready_hand_frames[seat]
+		frame.visible = round != null and seat < round.players.size() and bool(round.players[seat].ready)
+		if not frame.visible: continue
+		var bounds := Rect2()
+		for box in [hand_boxes[seat], draw_boxes[seat]]:
+			for tile in box.get_children():
+				if tile is TileView and tile.visible:
+					var rect := _visual_rect(tile)
+					bounds = bounds.merge(rect) if bounds.has_area() else rect
+		frame.visible = bounds.has_area()
+		if frame.visible:
+			bounds = bounds.grow(4)
+			frame.position = bounds.position
+			frame.size = bounds.size
+
+func _layout_ready_badges() -> void:
+	if _ready_meld_badges.is_empty(): return
+	if not _ready_hand_frames.any(func(frame): return frame.visible):
+		for badge in _ready_meld_badges: badge.hide()
+		return
+	var obstacles: Array[Rect2] = []
+	for layer in _render_layers():
+		for tile in layer.get_children():
+			if tile is TileView and tile.visible: obstacles.append(_visual_rect(tile).grow(2))
+	for seat in 4: obstacles.append(G.seat_hud_rect(G.relative_seat(human_seat, seat)))
+	for bar in _action_layer.get_children():
+		if bar is Control and bar.visible and bar.get_child_count() > 0: obstacles.append(_visual_rect(bar).grow(4))
+	for seat in 4:
+		var badge: Label = _ready_meld_badges[seat]
+		badge.visible = _ready_hand_frames[seat].visible
+		if not badge.visible: continue
+		var rel := G.relative_seat(human_seat, seat)
+		var along: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][rel]
+		var origin := G.meld_anchor(seat, human_seat)
+		var minimum := INF
+		var maximum := -INF
+		for layer in [_red_layer, _meld_layer]:
+			for tile in layer.get_children():
+				if not (tile is TileView) or not tile.visible or int(tile.get_meta("v2_seat", -1)) != seat: continue
+				var rect := _visual_rect(tile)
+				minimum = minf(minimum, minf(rect.position.dot(along), rect.end.dot(along)))
+				maximum = maxf(maximum, maxf(rect.position.dot(along), rect.end.dot(along)))
+		var candidates: Array[Vector2] = []
+		if minimum == INF:
+			candidates.append(origin)
+			minimum = origin.dot(along)
+			maximum = minimum
+		for step in 16:
+			candidates.append(origin + along * (maximum - origin.dot(along) + 36 + step * 64))
+			candidates.append(origin + along * (minimum - origin.dot(along) - 36 - step * 64))
+		badge.hide()
+		for center: Vector2 in candidates:
+			var rect := Rect2(center - badge.size / 2.0, badge.size)
+			if G.TABLE_BOUNDS.encloses(rect) and obstacles.all(func(other: Rect2): return not rect.intersects(other)):
+				badge.position = rect.position
+				badge.show()
+				obstacles.append(rect.grow(4))
+				break
 
 func clear_dice_visual() -> void:
 	if _dice_tween != null and _dice_tween.is_valid(): _dice_tween.kill()
@@ -944,6 +1036,8 @@ func refresh() -> void:
 	_build_hands()
 	_end_tile_reconcile()
 	_refresh_hud()
+	_update_ready_hand_frames()
+	_layout_ready_badges()
 	if is_instance_valid(_score_inspection):
 		_score_inspection.refresh()
 	if all_dealt_now and not _sort_started:
@@ -960,6 +1054,8 @@ func refresh() -> void:
 
 ## 同一牌桌实例会跨局复用；RoundState 变化时必须清掉上一局的瞬时视觉状态。
 func _reset_round_visual_state() -> void:
+	for frame in _ready_hand_frames: frame.hide()
+	for badge in _ready_meld_badges: badge.hide()
 	if _settlement_started:
 		reset_native_settlement()
 	_deal_generation += 1
@@ -1013,6 +1109,8 @@ func _begin_visual_action() -> int:
 func _complete_visual_action(action_id: int, done: Callable) -> void:
 	if not _visual_actions.erase(action_id): return
 	deal_animation_active = native_actions_pending()
+	_update_ready_hand_frames()
+	_layout_ready_badges()
 	if done.is_valid(): done.call()
 	if not native_actions_pending() and is_instance_valid(table) and table.is_inside_tree():
 		table.call_deferred("_refresh")
@@ -1191,7 +1289,6 @@ func _sync_tile(layer: Control, key: String, card: String, face: bool, center: V
 		node.modulate = Color.WHITE
 		node.visible = true
 	node.scale = visual_scale
-	if not key.begins_with("hand:") and not key.begins_with("draw:"): node.set_ready_locked(false)
 	if _reconciling: _render_seen[node.get_instance_id()] = true
 	return node
 
@@ -1894,7 +1991,6 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 	var start := _wall_center_for_ring_index(wall_index) if has_wall_source else target
 	var tile := _tile(_deal_layer, card, _face_visible(seat),
 		start, hand_unit, G.wall_angle(seat))
-	tile.set_ready_locked(round != null and bool(round.players[seat].ready))
 	tile.scale = Vector2.ONE * (G.WALL_UNIT / hand_unit)
 	for node in _wall_layer.get_children():
 		if int(node.get_meta("wall_ring_index", -2)) == wall_index:
@@ -1904,7 +2000,6 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 		_release_visual_node(tile)
 		var drawn := _tile(draw_boxes[seat], card, _face_visible(seat),
 			target, hand_unit, UI.ROTATIONS[rel])
-		drawn.set_ready_locked(round != null and bool(round.players[seat].ready))
 		drawn.set_meta("new_kind", "draw")
 		drawn.set_meta("v2_seat", seat)
 		drawn.set_meta("drawn", true)
@@ -1982,7 +2077,6 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 	if missing_source:
 		node = _tile(_deal_layer, card, true, target, 1.0, target_angle)
 	if node.get_parent() != _deal_layer: node.reparent(_deal_layer)
-	node.set_ready_locked(false)
 	var target_scale := target_size / node.size
 	var duration := 0.0 if missing_source else GameConfig.tile_motion_seconds()
 	_latest_discard_seat = seat
@@ -2361,7 +2455,6 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			node.set_card(tile if visible_face else "", visible_face)
 			node.set_interactive(false)
 			node.set_latest_highlight(false)
-			node.set_ready_locked(false)
 			node.set_unit(1.0)
 			node.pivot_offset = node.size / 2.0
 			node.scale = Vector2(G.RED_WIDTH / TileView.BASE_W, G.RED_HEIGHT / TileView.BASE_H)
@@ -2398,7 +2491,6 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 		node.set_card(tile if visible_face else "", visible_face)
 		node.set_interactive(false)
 		node.set_latest_highlight(false)
-		node.set_ready_locked(false)
 		var target: Vector2 = targets[i]
 		var tile_size: Vector2 = target_sizes[i]
 		flight.tween_property(node, "position", target - node.size / 2.0, duration)
@@ -2510,7 +2602,6 @@ func _build_hands() -> void:
 			var key := "hand:%d:%d" % [seat, source_index] if source_index >= 0 else "hand:%d:transient:%d" % [seat, slot]
 			var tile: TileView = _sync_tile(hand_boxes[seat], key, str(cards[slot]) if face_visible else "",
 				face_visible, _hand_center(seat, slot, count), unit, angle)
-			tile.set_ready_locked(bool(data.get("ready", false)))
 			tile.set_meta("v2_hand_slot", slot)
 			tile.set_meta("v2_seat", seat)
 			tile.set_meta("new_kind", "hand")
@@ -2528,7 +2619,6 @@ func _build_hands() -> void:
 			var draw_visible := _face_visible(seat)
 			var drawn_tile := _sync_tile(draw_boxes[seat], "draw:%d" % seat, drew if draw_visible else "", draw_visible,
 				_draw_center(seat, count), unit, angle)
-			drawn_tile.set_ready_locked(bool(data.get("ready", false)))
 			var winning: bool = round.phase == ROUND_STATE.Phase.SETTLED and round.round_meta.get("winners", []).has(seat)
 			if winning != (drawn_tile._win_glow > 0.0): drawn_tile.set_winning(winning)
 			drawn_tile.set_meta("new_kind", "draw")
@@ -2725,6 +2815,7 @@ func _build_labels(seats: Array) -> void:
 		var is_turn: bool = int(snapshot.get("turn", -1)) == seat and round.phase == ROUND_STATE.Phase.PLAYING
 		var who: String = names[seat]
 		var caption := ("● " if is_turn else "") + who
+		# 听字移出后保留原姓名占位，避免本次调整改变名字位置。
 		var badge_space := 32.0 * (int(is_dealer) + int(is_ready))
 		var name_width := minf(bounds.size.x - 8.0 - badge_space, ceilf(_hud_text_width(caption, 24)) + 2.0)
 		var left := bounds.get_center().x - (name_width + badge_space) / 2.0
@@ -2744,8 +2835,6 @@ func _build_labels(seats: Array) -> void:
 			dealer_badge = _hud_badge("庄", badge_position, UI.DEALER_BACKGROUND, UI.DEALER_BORDER)
 			badge_position.x += 32.0
 		_badges.append(dealer_badge)
-		if is_ready:
-			_hud_badge("听", badge_position, Color("#504221"), UI.GOLD)
 
 		var score := _table_text(_label_layer, "", 28, UI.GOLD if is_dealer else UI.INK)
 		score.name = "SeatScore%d" % seat

@@ -6,7 +6,6 @@ extends Control
 var tile := ""       # 牌值 "tong3"/"tiao1"/"wan9"
 var face_up := true
 var unit := 1.0      # 玩家牌与牌墙/出牌区可分别指定尺寸倍率。
-var ready_locked := false  # 报听手牌金边，正面和牌背共用。
 var highlight := false   # 金框高亮（用于标记鸡牌、报听等）
 var back_depth_top := false  # 牌背白色牌体边朝上（南墙朝桌内）
 var latest_highlight := false   # 最新打出的牌，使用高对比橙色
@@ -112,11 +111,6 @@ func set_highlight(on: bool) -> void:
 	highlight = on
 	queue_redraw()
 
-func set_ready_locked(on: bool) -> void:
-	if ready_locked == on: return
-	ready_locked = on
-	queue_redraw()
-
 func set_latest_highlight(on: bool) -> void:
 	latest_highlight = on
 	queue_redraw()
@@ -162,9 +156,6 @@ func _draw() -> void:
 		_draw_back(w, h - depth, back_y)
 		if score_highlight:
 			draw_rect(Rect2(0, back_y, w, h - depth), Color(0.95, 0.78, 0.22, 0.40))
-	if ready_locked:
-		draw_rect(Rect2(1.5 * unit, 1.5 * unit, w - 3 * unit, h - 3 * unit),
-			Color("#f1d47f"), false, 2.5 * unit)
 	if highlight or ai_teach_highlight or latest_highlight or selected or _win_glow > 0:
 		var glow := _tile_style(Color.TRANSPARENT, Color(0.95, 0.80, 0.39, maxf(0.24, _win_glow)))
 		glow.set_border_width_all(4)
@@ -263,7 +254,6 @@ func reset() -> void:
 	set_interactive(false)
 	set_winning(false)
 	set_highlight(false)
-	set_ready_locked(false)
 	set_latest_highlight(false)
 	set_ai_teach_highlight(false)
 	set_score_highlight(false)
