@@ -16,7 +16,7 @@ config/name="安顺麻将·捉鸡"
 config/name_localized={
 "en": "Anshun Mahjong"
 }
-config/version="1.6.18"
+config/version="1.6.19"
 run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://res/icons/game_icon.png"
@@ -70,7 +70,7 @@ textures/vram_compression/import_etc2_astc=true
 
 [updates]
 
-base_id="1.6.18-native1"
+base_id="1.6.19-native1"
 tag_prefix="V"
 manifest_asset="update-manifest.json"
 github_repository="dongxiujiang/anshun-mahjong"

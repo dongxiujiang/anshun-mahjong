@@ -134,6 +134,7 @@ func _build_layers() -> void:
 	_label_layer = _layer("LabelLayer")
 	_control_layer = _layer("ControlLayer")
 	_action_layer = _layer("ActionLayer")
+	_action_layer.z_index = 90
 	_animation_layer = _layer("AnimationLayer")
 	_deal_layer = _layer("DealLayer")
 	_deal_layer.z_index = 10
@@ -244,6 +245,14 @@ func _settlement_result_title() -> String:
 			title += "抢" + source_name + "的杠胡牌" if source_name != "" else "抢杠胡"
 		else:
 			title += "胡" + source_name if source_name != "" else "胡牌"
+		var patterns: Array[String] = []
+		var items: Array = round.last_result.get("items", [])
+		for item in items[winner] if winner < items.size() else []:
+			if str(item.get("kind", "")) != "pattern": continue
+			var caption := str(item.get("label", ""))
+			if caption == "清龙对": caption = "清龙七对"
+			if caption != "" and caption not in patterns: patterns.append(caption)
+		if not patterns.is_empty(): title += "-" + "·".join(patterns)
 		titles.append(title)
 	return "、".join(titles)
 
@@ -278,6 +287,9 @@ func _build_native_settlement_panel() -> void:
 	title.name = "ResultTitle"
 	title.position = Vector2(28, 8)
 	title.size = Vector2(964, 44)
+	title.add_theme_font_size_override("font_size", clampi(floori(30.0 * title.size.x / maxf(_hud_text_width(title.text, 30), title.size.x)), 18, 30))
+	title.clip_text = true
+	title.tooltip_text = title.text
 	var multiplier := _table_text(panel, _settlement_multiplier_title(), 24, UI.GOLD)
 	multiplier.name = "MultiplierTitle"
 	multiplier.position = Vector2(28, 50)
@@ -295,11 +307,12 @@ func _build_native_settlement_panel() -> void:
 		direction.size = Vector2(36, 58)
 		direction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var called := bool(_settlement_plan.called[seat])
-		var background := Color("#30784e") if called else UI.DEALER_BACKGROUND
-		var border := Color("#a2d3ac") if called else UI.DEALER_BORDER
+		if not called: continue
+		var background := Color("#30784e")
+		var border := Color("#a2d3ac")
 		var badge := _hud_badge("叫", Vector2(center + 9.0, header_y + 16.0), background, border)
 		badge.name = "CalledStatus%d" % seat
-		badge.tooltip_text = "叫牌" if called else "未叫牌"
+		badge.tooltip_text = "叫牌"
 		badge.reparent(panel, false)
 
 	for row in 3:
@@ -805,6 +818,7 @@ func action_bar_rect(row_size: Vector2) -> Rect2:
 	var obstacles: Array[Rect2] = []
 	var rows: Array[float] = [top]
 	for layer in _render_layers():
+		if layer == _wall_layer: continue
 		for tile in layer.get_children():
 			if not (tile is TileView) or not tile.is_visible_in_tree(): continue
 			var bounds := _visual_rect(tile).grow(6.0)
@@ -1177,6 +1191,7 @@ func _sync_tile(layer: Control, key: String, card: String, face: bool, center: V
 		node.modulate = Color.WHITE
 		node.visible = true
 	node.scale = visual_scale
+	if not key.begins_with("hand:") and not key.begins_with("draw:"): node.set_ready_locked(false)
 	if _reconciling: _render_seen[node.get_instance_id()] = true
 	return node
 
@@ -1879,6 +1894,7 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 	var start := _wall_center_for_ring_index(wall_index) if has_wall_source else target
 	var tile := _tile(_deal_layer, card, _face_visible(seat),
 		start, hand_unit, G.wall_angle(seat))
+	tile.set_ready_locked(round != null and bool(round.players[seat].ready))
 	tile.scale = Vector2.ONE * (G.WALL_UNIT / hand_unit)
 	for node in _wall_layer.get_children():
 		if int(node.get_meta("wall_ring_index", -2)) == wall_index:
@@ -1888,6 +1904,7 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 		_release_visual_node(tile)
 		var drawn := _tile(draw_boxes[seat], card, _face_visible(seat),
 			target, hand_unit, UI.ROTATIONS[rel])
+		drawn.set_ready_locked(round != null and bool(round.players[seat].ready))
 		drawn.set_meta("new_kind", "draw")
 		drawn.set_meta("v2_seat", seat)
 		drawn.set_meta("drawn", true)
@@ -1965,6 +1982,7 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 	if missing_source:
 		node = _tile(_deal_layer, card, true, target, 1.0, target_angle)
 	if node.get_parent() != _deal_layer: node.reparent(_deal_layer)
+	node.set_ready_locked(false)
 	var target_scale := target_size / node.size
 	var duration := 0.0 if missing_source else GameConfig.tile_motion_seconds()
 	_latest_discard_seat = seat
@@ -2343,6 +2361,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			node.set_card(tile if visible_face else "", visible_face)
 			node.set_interactive(false)
 			node.set_latest_highlight(false)
+			node.set_ready_locked(false)
 			node.set_unit(1.0)
 			node.pivot_offset = node.size / 2.0
 			node.scale = Vector2(G.RED_WIDTH / TileView.BASE_W, G.RED_HEIGHT / TileView.BASE_H)
@@ -2379,6 +2398,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 		node.set_card(tile if visible_face else "", visible_face)
 		node.set_interactive(false)
 		node.set_latest_highlight(false)
+		node.set_ready_locked(false)
 		var target: Vector2 = targets[i]
 		var tile_size: Vector2 = target_sizes[i]
 		flight.tween_property(node, "position", target - node.size / 2.0, duration)
@@ -2490,6 +2510,7 @@ func _build_hands() -> void:
 			var key := "hand:%d:%d" % [seat, source_index] if source_index >= 0 else "hand:%d:transient:%d" % [seat, slot]
 			var tile: TileView = _sync_tile(hand_boxes[seat], key, str(cards[slot]) if face_visible else "",
 				face_visible, _hand_center(seat, slot, count), unit, angle)
+			tile.set_ready_locked(bool(data.get("ready", false)))
 			tile.set_meta("v2_hand_slot", slot)
 			tile.set_meta("v2_seat", seat)
 			tile.set_meta("new_kind", "hand")
@@ -2507,6 +2528,7 @@ func _build_hands() -> void:
 			var draw_visible := _face_visible(seat)
 			var drawn_tile := _sync_tile(draw_boxes[seat], "draw:%d" % seat, drew if draw_visible else "", draw_visible,
 				_draw_center(seat, count), unit, angle)
+			drawn_tile.set_ready_locked(bool(data.get("ready", false)))
 			var winning: bool = round.phase == ROUND_STATE.Phase.SETTLED and round.round_meta.get("winners", []).has(seat)
 			if winning != (drawn_tile._win_glow > 0.0): drawn_tile.set_winning(winning)
 			drawn_tile.set_meta("new_kind", "draw")
@@ -2733,6 +2755,21 @@ func _build_labels(seats: Array) -> void:
 		if has_voice and G.relative_seat(human_seat, seat) == 1:
 			score.position.x = bounds.position.x
 			score.size.x = 92
+		if round.phase == ROUND_STATE.Phase.SETTLED:
+			score.position.x = bounds.position.x
+			score.size.x = 106
+			var deltas: Array = round.last_result.get("deltas", [])
+			var value := float(deltas[seat]) if seat < deltas.size() else 0.0
+			var delta := _table_text(_label_layer, _settlement_signed(value), 28, _settlement_net_color(value))
+			delta.name = "SeatDelta%d" % seat
+			score.set_meta("round_delta", delta)
+			delta.position = score.position + Vector2(110, 0)
+			delta.size = Vector2(74, 38)
+			delta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			delta.clip_text = true
+			delta.tooltip_text = "本局结算 " + delta.text
+			delta.add_theme_font_size_override("font_size", clampi(floori(28.0 * (delta.size.x - 4.0) / maxf(_hud_text_width(delta.text, 28), 1.0)), 17, 28))
+			delta.visible = _settlement_started
 		score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		score.clip_text = true
 		score.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -2789,6 +2826,8 @@ func _hud_text_width(caption: String, font_size: int) -> float:
 	return TileView._font().get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 
 func _set_seat_score(label: Label, value: float) -> void:
+	var delta: Label = label.get_meta("round_delta") if label.has_meta("round_delta") else null
+	if delta != null: delta.visible = _settlement_started
 	var caption := "%.0f分" % value
 	if label.text == caption:
 		return

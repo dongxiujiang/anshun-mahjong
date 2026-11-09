@@ -398,11 +398,11 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 		_check(view._settlement_pairs[self_seat][peer] == r.last_result.pairwise[self_seat][peer], "final relative column does not match ledger")
 	var panel: Control = view._native_settlement
 	var titles := {
-		"plain-self-draw": "你自摸", "ready-seven-pairs": "你报听自摸",
-		"triplets-exposed-kong": "你胡上家", "flush-ron": "你胡上家", "dragon-seven-pairs-ron": "你胡上家",
-		"rob-added-kong": "下家抢你的杠胡牌", "kong-draw-last-four": "你杠开海底自摸",
+		"plain-self-draw": "你自摸", "ready-seven-pairs": "你报听自摸-小七对",
+		"triplets-exposed-kong": "你胡上家-大对子", "flush-ron": "你胡上家-清一色", "dragon-seven-pairs-ron": "你胡上家-龙七对",
+		"rob-added-kong": "下家抢你的杠胡牌", "kong-draw-last-four": "你杠开海底自摸-大对子",
 		"double-ron": "下家报听胡对家、上家报听胡对家", "mixed-draw": "本局流局",
-		"all-called-draw": "四家叫牌流局", "dry-pattern-ready": "你报听自摸",
+		"all-called-draw": "四家叫牌流局", "dry-pattern-ready": "你报听自摸-清一色",
 	}
 	var multiplier_titles := {
 		"ready-seven-pairs": "双骰同点 · 本局双倍",
