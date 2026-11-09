@@ -235,5 +235,10 @@ func _test_voice_hud_bounds(deck) -> void:
 	t.expect(not Rect2(voice.position, voice.size).intersects(Rect2(score.position, score.size)), "remote speaker does not cover the score")
 	for seat in 4:
 		t.expect(not Rect2(voice.position, voice.size).intersects(G.hand13_rect(seat, deck.human_seat)), "remote speaker avoids seat %d hand" % seat)
+	var original_score := Rect2(score.position, score.size)
+	deck.round.phase = RoundState.Phase.SETTLED
+	deck._clear(deck._label_layer)
+	deck._build_labels(seats)
+	t.expect(Rect2(deck._labels[remote].position, deck._labels[remote].size) == original_score, "online speaker layout keeps the exact score anchor through settlement")
 	deck.table = null
 	mock.queue_free()

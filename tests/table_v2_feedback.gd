@@ -99,6 +99,10 @@ func _settlement(view):
 	root.add_child(host)
 	host.round = _round()
 	var r = host.round
+	view.table = host
+	view.set_round(r,1)
+	var original_scores = []
+	for score in view._labels: original_scores.append(Rect2(score.position,score.size))
 	r.phase = RoundState.Phase.SETTLED
 	r.round_meta = {"self_draw":true,"winners":[3],"win_tile":"tong7"}
 	r.last_result = {"deltas":[0.0,-56.0,-8.0,64.0],"called":[true,false,true,true],
@@ -134,7 +138,9 @@ func _settlement(view):
 		var expected = str(int(r.last_result.deltas[seat]))
 		if r.last_result.deltas[seat] > 0: expected = "+" + expected
 		t.expect(delta.text == expected, "round delta is the signed ledger total, including zero")
-		t.expect(not score.get_global_rect().intersects(delta.get_global_rect()), "score and delta remain side by side")
+		t.expect(Rect2(score.position,score.size) == original_scores[seat], "settlement never shifts or shrinks the original score area")
+		var ink_right = score.position.x + (score.size.x + view._hud_text_width(score.text,score.get_theme_font_size("font_size"))) / 2.0
+		t.expect(delta.position.x >= ink_right + 4 or delta.position.y >= score.position.y + score.size.y, "delta avoids the running score text")
 		var bounds = G.seat_hud_rect(G.relative_seat(1,seat))
 		t.expect(bounds.encloses(Rect2(delta.position,delta.size)), "delta stays inside the reserved seat corner")
 		t.expect(score.tooltip_text.ends_with("分"), "running total remains separate from the round delta")

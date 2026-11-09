@@ -2751,24 +2751,19 @@ func _build_labels(seats: Array) -> void:
 		score.name = "SeatScore%d" % seat
 		score.position = Vector2(bounds.get_center().x - 71.0, bounds.position.y + 38.0)
 		score.size = Vector2(142, 38)
-		var has_voice: bool = table != null and table._net_mode() != "" and seat != human_seat and bool(data.is_human) and round.phase != ROUND_STATE.Phase.SETTLED
-		if has_voice and G.relative_seat(human_seat, seat) == 1:
+		var remote_voice_layout: bool = table != null and table._net_mode() != "" and seat != human_seat and bool(data.is_human)
+		var has_voice: bool = remote_voice_layout and round.phase != ROUND_STATE.Phase.SETTLED
+		if remote_voice_layout and G.relative_seat(human_seat, seat) == 1:
 			score.position.x = bounds.position.x
 			score.size.x = 92
 		if round.phase == ROUND_STATE.Phase.SETTLED:
-			score.position.x = bounds.position.x
-			score.size.x = 106
 			var deltas: Array = round.last_result.get("deltas", [])
 			var value := float(deltas[seat]) if seat < deltas.size() else 0.0
 			var delta := _table_text(_label_layer, _settlement_signed(value), 28, _settlement_net_color(value))
 			delta.name = "SeatDelta%d" % seat
 			score.set_meta("round_delta", delta)
-			delta.position = score.position + Vector2(110, 0)
-			delta.size = Vector2(74, 38)
-			delta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			delta.clip_text = true
 			delta.tooltip_text = "本局结算 " + delta.text
-			delta.add_theme_font_size_override("font_size", clampi(floori(28.0 * (delta.size.x - 4.0) / maxf(_hud_text_width(delta.text, 28), 1.0)), 17, 28))
 			delta.visible = _settlement_started
 		score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		score.clip_text = true
@@ -2836,6 +2831,23 @@ func _set_seat_score(label: Label, value: float) -> void:
 	var width := _hud_text_width(caption, 28)
 	var font_size := clampi(floori(28.0 * (label.size.x - 16.0) / maxf(width, 1.0)), 17, 28)
 	label.add_theme_font_size_override("font_size", font_size)
+	if delta != null:
+		var seat := int(str(label.name).trim_prefix("SeatScore"))
+		var edge := G.seat_hud_rect(G.relative_seat(human_seat, seat)).end.x
+		var left := label.position.x + (label.size.x + _hud_text_width(caption, font_size)) / 2.0 + 6.0
+		var available := maxf(0.0, edge - left)
+		var delta_font := clampi(floori(24.0 * (available - 2.0) / maxf(_hud_text_width(delta.text, 24), 1.0)), 17, 24)
+		if _hud_text_width(delta.text, delta_font) <= available:
+			delta.position = Vector2(left, label.position.y)
+			delta.size = Vector2(available, label.size.y)
+			delta.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		else:
+			# 极长总分不挪动原分数，净变化使用该座位预留的下方空间。
+			delta.position = label.position + Vector2(0, label.size.y + 6)
+			delta.size = Vector2(label.size.x, 30)
+			delta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			delta_font = 24
+		delta.add_theme_font_size_override("font_size", delta_font)
 
 func _set_voice_button_state(button: Button, seat: int) -> void:
 	var enabled: bool = table._remote_voice_enabled(seat)

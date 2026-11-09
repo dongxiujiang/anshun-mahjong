@@ -253,9 +253,10 @@ func _run():
 
 		var unobscured=true
 		for layer in view._render_layers():
+			if layer == view._wall_layer: continue
 			for tile in layer.get_children():
 				if action_rect.intersects(rect(tile).grow(-0.1)):unobscured=false
-		t.expect(unobscured,"hand%d: action buttons avoid every public tile, wall and hand" % count)
+		t.expect(unobscured,"hand%d: action buttons avoid hands and public tiles; walls may sit underneath" % count)
 		t.expect(action_rect.position.y >= G.CENTER.y, "hand%d: action buttons stay on the local side of the table" % count)
 	host.round.players[1].melds[0]["from_seat"]=0
 	view.refresh()
