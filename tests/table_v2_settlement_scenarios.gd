@@ -338,7 +338,12 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 	var early_score := false
 	var deadline := Time.get_ticks_msec() + 12000
 	while (not view.native_settlement_started() or not view.native_settlement_complete()) and Time.get_ticks_msec() < deadline:
+		# PNG encoding must not advance past short stages on a slow renderer.
+		if is_instance_valid(view._settlement_tween): view._settlement_tween.pause()
 		await process_frame
+		if is_instance_valid(view._settlement_tween):
+			view._settlement_tween.pause()
+			view._settlement_tween.custom_step(1.0 / 30.0)
 		if not view.native_settlement_started():
 			if spec.mode == "kong-self" and view._labels.size() == 4:
 				for label: Label in view._labels:
@@ -385,7 +390,8 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 		_check(win_captions.size() == 2, "two winners must have distinct score announcements")
 	if spec.flip != "":
 		var flip: TileView = view._native_wall_flip_tile()
-		_check(seen.has("wall-reveal") and is_instance_valid(flip) and flip.face_up and not flip.score_highlight, "wall tile did not remain face-up and unhighlighted")
+		_check(seen.has("wall-reveal"), "wall reveal animation stage was not captured")
+		_check(is_instance_valid(flip) and flip.face_up and not flip.score_highlight, "wall tile did not remain face-up and unhighlighted")
 	else:
 		_check(not seen.has("wall-reveal"), "draw must not flip a wall tile")
 	for seat in 4:
