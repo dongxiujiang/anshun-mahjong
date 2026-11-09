@@ -260,12 +260,14 @@ func _check_called_headers() -> void:
 				for index in 4:
 					var seat := posmod(viewer + index, 4)
 					var heading: Label = panel.get_node("SettlementSeat%d" % seat)
-					var badge: Label = panel.get_node("CalledStatus%d" % seat)
+					var badge: Label = panel.get_node_or_null("CalledStatus%d" % seat)
 					var called := bool(deck._settlement_plan.called[seat])
 					t.expect(heading.text == ["我", "上", "对", "下"][index], "header follows the viewer on local and synced tables")
-					t.expect(badge.text == "叫" and badge.size == dealer.size, "called badge matches the dealer badge size and single-character style")
-					t.expect(badge.get_theme_stylebox("normal").bg_color == (Color("#30784e") if called else UI.DEALER_BACKGROUND), "settlement uses green for called and red for uncalled, including winners")
-					t.expect(not badge.get_rect().intersects(heading.get_rect()) and panel.get_rect().size.y > badge.get_rect().end.y, "status badge does not overlap its seat label or leave the panel")
+					t.expect((badge != null) == called, "uncalled seats have no badge on local or synced tables")
+					if badge != null:
+						t.expect(badge.text == "叫" and badge.size == dealer.size, "called badge matches the dealer badge size and single-character style")
+						t.expect(badge.get_theme_stylebox("normal").bg_color == Color("#30784e"), "called seats and winners use green badges")
+						t.expect(not badge.get_rect().intersects(heading.get_rect()) and panel.get_rect().size.y > badge.get_rect().end.y, "status badge does not overlap its seat label or leave the panel")
 				deck.free()
 
 func _run() -> void:
