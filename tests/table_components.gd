@@ -144,6 +144,19 @@ func _run() -> void:
 	await process_frame
 	t.expect(first._settlement_card._post_controls.visible and settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "V2 finished settlement exposes bottom controls without blocking the table")
 	t.expect(var_to_bytes(first.round.serialize()) == settled, "Settlement rendering cannot change scores or pairwise payments")
+	if DisplayServer.get_name() == "headless":
+		await process_frame
+		await process_frame
+		settlement.reset()
+		first._settlement_immediate = false
+		first._new_areas._sort_started = true
+		first._new_areas._sort_animating = true
+		first._refresh()
+		t.expect(not settlement.has_started(), "Settlement waits for the final pending hand sort")
+		first._new_areas._finish_hand_sort()
+		await process_frame
+		await process_frame
+		t.expect(settlement.is_completed(), "Last hand sort resumes settlement without another network snapshot")
 	# Retain one helper externally to ensure it cannot retain a freed table.
 	var controller = first._table_animation_controller
 	t.expect(controller._tile_pool.MAX_POOL_SIZE >= 512,

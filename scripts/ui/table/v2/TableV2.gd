@@ -2692,6 +2692,7 @@ func _finish_hand_sort() -> void:
 	_sort_animating = false
 	refresh()
 	if is_instance_valid(table) and table.round != null:
+		table.call_deferred("_refresh")
 		# 等这一帧手牌重排落地，再开始庄家摸牌。
 		if table.has_method("_on_opening_visual_finished"):
 			table.call_deferred("_on_opening_visual_finished")
