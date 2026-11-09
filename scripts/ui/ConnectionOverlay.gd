@@ -13,6 +13,7 @@ var _panel: Panel
 var _title: Label
 var _body: Label
 var _progress: Label
+var _loading_bar: ProgressBar
 var _retry_button: Button
 var _leave_button: Button
 
@@ -41,10 +42,23 @@ func _ready() -> void:
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_progress = _label("", Vector2(38, 188), Vector2(684, 36), 20, STYLE.GOLD)
-	_retry_button = _button("重试", Vector2(38, 246), Vector2(330, 76), true, func():
+	_loading_bar = ProgressBar.new()
+	_loading_bar.name = "ConnectingProgress"
+	_loading_bar.position = Vector2(38, 230)
+	_loading_bar.size = Vector2(684, 6)
+	_loading_bar.show_percentage = false
+	_loading_bar.indeterminate = true
+	_loading_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for part in ["background", "fill"]:
+		var box := StyleBoxFlat.new()
+		box.bg_color = STYLE.GOLD if part == "fill" else Color("#2d5945")
+		box.set_corner_radius_all(3)
+		_loading_bar.add_theme_stylebox_override(part, box)
+	_panel.add_child(_loading_bar)
+	_retry_button = _button("重试", Vector2(38, 266), Vector2(330, 76), true, func():
 		retry_requested.emit())
 	_retry_button.name = "RetryConnectionButton"
-	_leave_button = _button("返回大厅", Vector2(392, 246), Vector2(330, 76), false, func():
+	_leave_button = _button("返回大厅", Vector2(392, 266), Vector2(330, 76), false, func():
 		leave_requested.emit()
 		close())
 	_leave_button.name = "LeaveConnectionButton"
@@ -86,22 +100,22 @@ func _layout() -> void:
 	_panel.position = bounds.position + (bounds.size - PANEL_SIZE * _panel.scale) * 0.5
 
 func show_reconnecting(attempt: int = 0, maximum: int = 5) -> void:
-	var was_visible := visible
+	MOTION.stop(self)
+	MOTION.stop(_panel)
+	modulate.a = 1.0
 	show()
-	_title.text = "正在恢复连接"
+	_loading_bar.show()
+	_title.text = "连接中"
 	_body.text = "联机连接中断，正在恢复原座位和最新牌局。\n请不要退出游戏，恢复后会继续当前对局。"
 	_progress.text = "正在连接…" if attempt <= 0 else "第 %d / %d 次尝试" % [attempt, maximum]
 	_retry_button.hide()
 	_leave_button.text = "取消并返回大厅"
 	_layout()
-	if not was_visible:
-		MOTION.appear(self)
-		if MOTION.enabled():
-			MOTION.slide_in(_panel)
 
 func show_error(message: String) -> void:
 	var was_visible := visible
 	show()
+	_loading_bar.hide()
 	_title.text = "连接未恢复"
 	_body.text = message.strip_edges() if message.strip_edges() != "" else "无法恢复原房间，请重试或返回大厅。"
 	_progress.text = "原座位会为你保留一段时间。"
@@ -114,21 +128,21 @@ func show_error(message: String) -> void:
 			MOTION.slide_in(_panel)
 
 func show_syncing(message: String = "座位已恢复，正在同步最新牌局…") -> void:
-	var was_visible := visible
+	MOTION.stop(self)
+	MOTION.stop(_panel)
+	modulate.a = 1.0
 	show()
-	_title.text = "正在恢复牌局"
+	_loading_bar.show()
+	_title.text = "连接中"
 	_body.text = message + "\n同步完成前牌桌暂不响应操作，避免点击丢失。"
 	_progress.text = "等待最新牌局…"
 	_retry_button.hide()
 	_leave_button.text = "取消并返回大厅"
 	_layout()
-	if not was_visible:
-		MOTION.appear(self)
-		if MOTION.enabled():
-			MOTION.slide_in(_panel)
 
 func close() -> void:
 	MOTION.stop(self)
+	_loading_bar.hide()
 	hide()
 
 func is_open() -> bool:

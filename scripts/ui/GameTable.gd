@@ -424,8 +424,12 @@ func _ready() -> void:
 	_build_static_ui()
 	_build_table_overlays()
 	# 新牌区已显示真实牌墙，debug 牌墙测试不再提供。
+	var connection_layer := CanvasLayer.new()
+	connection_layer.name = "ConnectionLayer"
+	connection_layer.layer = 30
+	add_child(connection_layer)
 	_connection_overlay = CONNECTION_OVERLAY.new()
-	add_child(_connection_overlay)
+	connection_layer.add_child(_connection_overlay)
 	_connection_overlay.retry_requested.connect(_retry_connection)
 	_connection_overlay.leave_requested.connect(func(): _on_quit(true))
 	_connect_voice_ui()

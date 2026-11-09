@@ -55,12 +55,13 @@ func setup(owner: Node, allow_audio: bool) -> void:
 		_java = Engine.get_singleton("JavaClassWrapper")
 		set_process(true)
 		return
-	# Windows/Linux/headless retain the existing PCM path until a native GME
-	# Windows extension is available.
+	_setup_pcm_fallback()
+
+func _setup_pcm_fallback() -> void:
 	_fallback = load("res://scripts/online/OnlineVoiceChat.gd").new()
 	_fallback.name = "GMEPcmFallback"
 	add_child(_fallback)
-	_fallback.setup(owner, allow_audio)
+	_fallback.setup(owner_node, audio_available)
 	_fallback.status_changed.connect(_on_fallback_status)
 	_fallback.speaker_changed.connect(func(seat: int, value: bool): speaker_changed.emit(seat, value))
 	enabled = bool(_fallback.enabled)
@@ -78,6 +79,10 @@ func can_toggle() -> bool:
 	return audio_available and owner_node != null and owner_node.has_method("voice_chat_allowed") and owner_node.voice_chat_allowed()
 
 func connect_room(room_number: String, seat: int, _player_name: String, member_token: String = "") -> void:
+	# LAN seats belong to their local host, not the online auth directory.
+	if _use_gme and owner_node != null and not bool(owner_node.get("online_room")):
+		_use_gme = false
+		_setup_pcm_fallback()
 	if not _use_gme or seat < 0 or room_number.length() < 4:
 		return
 	_member_token = member_token

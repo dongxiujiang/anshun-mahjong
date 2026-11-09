@@ -92,6 +92,7 @@ func resume_saved_session() -> bool:
 		clear_saved_session()
 		return false
 	mode = "client"
+	net_node.online_room = bool(saved_session.get("online", false))
 	return net_node.client(saved_session.host, saved_session.port, saved_session.number,
 		saved_session.player_name, "", saved_session.token, true)
 
@@ -122,6 +123,7 @@ func start_host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = 
 
 func start_client(ip: String, port: int = 0, number: String = "", owner_token: String = "") -> bool:
 	room_generation += 1
+	net_node.online_room = bool(lobby_preferences.online)
 	if not net_node.client(ip, port if port > 0 else def_port, number, GameConfig.player_name, owner_token):
 		return false
 	mode = "client"

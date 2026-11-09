@@ -159,7 +159,7 @@ func _run() -> void:
 	t.expect(client._resume_sync_pending, "An outdated snapshot cannot unlock reconnect input")
 	state.revision = 3
 	client._on_client_sync(state)
-	t.expect(not client._resume_sync_pending, "Applying current state restores input")
+	t.expect(not client._resume_sync_pending and client._resume_sync_deadline_ms == 0, "Applying current state restores input and clears the synchronization deadline")
 	client.free()
 	var resumed := NetGameNode.new()
 	root.add_child(resumed)
@@ -169,4 +169,36 @@ func _run() -> void:
 	resumed._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	t.expect(resumed._reconnecting and resumed._reconnect_attempt == 0, "Resuming Android restarts an exhausted reconnect budget")
 	resumed.free()
+	var lost := NetGameNode.new()
+	root.add_child(lost)
+	lost.set_process(false)
+	lost.game = _fixture()
+	lost._server_ip = "127.0.0.1"
+	lost._client_joined = true
+	root.multiplayer.multiplayer_peer = null
+	var progress: Array = []
+	lost.reconnecting.connect(func(attempt, _maximum): progress.append(attempt))
+	lost.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	t.expect(lost._reconnecting and not lost._client_joined, "Foreground return reconnects a missing socket instead of trusting the old joined flag")
+	t.expect(progress.size() == 1, "Foreground return immediately tells the table to show connection progress")
+	lost._reconnecting = true
+	lost._reconnect_attempt = 2
+	lost._reconnect_wait = 4.0
+	progress.clear()
+	lost.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	t.expect(lost._reconnect_wait == 0.0 and progress == [2], "Returning during reconnect refreshes the visible progress and retries immediately")
+	lost._client_joined = true
+	lost._reconnecting = false
+	lost._resume_sync_pending = true
+	lost._resume_sync_deadline_ms = Time.get_ticks_msec() - 1
+	root.multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	lost.heartbeat_pong(1)
+	var blocked := {"discard":"tong9"}
+	lost.submit_client_turn(blocked)
+	t.expect(not blocked.has("prompt_id"), "A heartbeat alone cannot unlock a stale hand before the fresh snapshot")
+	progress.clear()
+	lost._poll_heartbeat()
+	t.expect(lost._reconnecting and progress.size() == 1, "A live heartbeat cannot leave snapshot synchronization stuck forever")
+	lost.free()
+	root.multiplayer.multiplayer_peer = null
 	quit(t.finish("reconnect_control"))

@@ -37,6 +37,7 @@ const BACKGROUND_AI_DELAY_MS := 30000
 const BACKGROUND_VOTE_DELAY_MS := 5000
 var host_mode := false
 var dedicated := false
+var online_room := true
 var my_seat := -1
 var game: RoundState
 var round_number := 0
@@ -76,6 +77,7 @@ var _reconnect_attempt := 0
 var _reconnect_wait := -1.0
 var _reconnecting := false
 var _resume_sync_pending := false
+var _resume_sync_deadline_ms := 0
 var _resume_requested := false
 var _pending_snapshot: Dictionary = {}
 var _client_joined := false
@@ -150,6 +152,7 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	multiplayer.multiplayer_peer = peer
 	host_mode = true
 	dedicated = server_only
+	online_room = server_only
 	if not dedicated:
 		var config := get_node("/root/GameConfig")
 		ai_speed = config.ai_speed
@@ -207,7 +210,11 @@ func _notification(what: int) -> void:
 		if _client_joined and multiplayer.multiplayer_peer != null:
 			rpc_id(1, "lobby_action", "background", {"value": true})
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
-		if _resume_requested and not _client_joined and not _reconnecting:
+		if _reconnecting:
+			_reconnect_wait = 0.0
+			reconnecting.emit(_reconnect_attempt, 5)
+			return
+		if _resume_requested and not _client_joined:
 			# The five-attempt retry budget may have elapsed while Android
 			# kept the process frozen. Resume the same token flow on return
 			# instead of leaving the player stuck on the error dialog.
@@ -217,15 +224,21 @@ func _notification(what: int) -> void:
 			_last_pong_ms = Time.get_ticks_msec()
 			reconnecting.emit(0, 5)
 			return
-		if not _client_joined or multiplayer.multiplayer_peer == null:
+		if not _client_joined:
 			return
-		# A long Android/desktop pause stops _process; do not count the paused
-		# interval as heartbeat loss. The next ping verifies the server again.
+		var peer := multiplayer.multiplayer_peer
+		if peer == null or peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+			_begin_reconnect("返回前台时连接已失效")
+			return
+		# A joined flag can survive a suspended socket; wait for fresh authority.
 		_last_pong_ms = Time.get_ticks_msec()
 		_last_ping_ms = 0
+		_resume_sync_pending = game != null and game.phase != RoundState.Phase.IDLE
+		if _resume_sync_pending:
+			_resume_sync_deadline_ms = Time.get_ticks_msec() + 5000
+			reconnecting.emit(0, 5)
 		rpc_id(1, "lobby_action", "background", {"value": false})
-		if _reconnecting:
-			_reconnect_wait = 0.0
+		_request_full_state_throttled()
 
 func _apply_background(peer: int, backgrounded: bool) -> void:
 	if not host_mode: return
@@ -1529,6 +1542,7 @@ func _begin_reconnect(_reason: String) -> void:
 	_client_sync_cache.clear()
 	_pending_snapshot.clear()
 	_resume_sync_pending = game != null and game.phase != RoundState.Phase.IDLE
+	_resume_sync_deadline_ms = 0
 	_reconnect_attempt = 0
 	_reconnect_wait = 0.2
 	reconnecting.emit(0, 5)
@@ -1547,9 +1561,16 @@ func retry_connection() -> bool:
 	return true
 
 func _poll_heartbeat() -> void:
-	if not _client_joined or multiplayer.multiplayer_peer == null:
+	if not _client_joined:
+		return
+	var peer := multiplayer.multiplayer_peer
+	if peer == null or peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		_begin_reconnect("连接已失效")
 		return
 	var now := Time.get_ticks_msec()
+	if _resume_sync_pending and _resume_sync_deadline_ms > 0 and now >= _resume_sync_deadline_ms:
+		_begin_reconnect("恢复牌局同步超时")
+		return
 	if _last_pong_ms == 0:
 		_last_pong_ms = now
 		return
@@ -1670,6 +1691,7 @@ func _on_client_sync(state: Dictionary) -> void:
 	_client_sync_cache = state
 	game.apply_sync(state)
 	_resume_sync_pending = false
+	_resume_sync_deadline_ms = 0
 	_sync_voice_room()
 	state_updated.emit()
 	if first: game_started.emit()
@@ -1687,6 +1709,7 @@ func seat_assign(seat: int, issued_token: String = "") -> void:
 	_last_pong_ms = Time.get_ticks_msec()
 	_reconnecting = false
 	_reconnect_attempt = 0
+	if _resume_sync_pending: _resume_sync_deadline_ms = Time.get_ticks_msec() + 5000
 	my_seat = seat
 	# 入座/换座后把本机音色上传到房间并立即同步。
 	call_deferred("_upload_my_seat_voice")
@@ -1711,7 +1734,9 @@ func lobby_sync(state: Dictionary) -> void:
 	for seat in 4:
 		voice_packs[seat] = VOICE_PACKS.normalize(packs[seat] if seat < packs.size() else "default")
 	_ensure_unique_voice_packs()
-	if not bool(state.get("started", false)) and _client_joined: _resume_sync_pending = false
+	if not bool(state.get("started", false)) and _client_joined:
+		_resume_sync_pending = false
+		_resume_sync_deadline_ms = 0
 	_report_room_settings()
 	lobby_updated.emit()
 

@@ -3,7 +3,7 @@
 ## 1. 当前状态
 
 - LiveKit 已从客户端代码、服务器编排和更新清单中移除。
-- Android 使用 GME Android SDK 2.9.17（arm64）。
+- Android 在线房间使用 GME Android SDK 2.9.17（arm64）；局域网房间使用现有 PCM 语音采集和房主转发，不请求在线房间鉴权。
 - Windows 客户端已移除；仅保留 Android GME。
 - 小米 15 的 1.3.0 启动崩溃不再使用 LiveKit 原生库。
 

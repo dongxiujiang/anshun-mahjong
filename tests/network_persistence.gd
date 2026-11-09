@@ -58,6 +58,7 @@ func _run() -> void:
 	t.expect(network.has_saved_session(), "Transport reset retains retryable identity")
 	t.expect(network.resume_saved_session(), "Restart opens resume-only connection")
 	t.expect(network.net_node._resume_sync_pending and network.net_node._resume_requested, "Gameplay locked before authoritative resume snapshot")
+	t.expect(network.net_node.online_room, "Restart restores the saved online voice transport")
 	network.net_node._reconnect_attempt = 5
 	network.net_node._reconnect_step()
 	t.expect(network.has_saved_session(), "Temporary network failure retains identity for retry")
@@ -66,6 +67,7 @@ func _run() -> void:
 	network.reset()
 	# Reservation survives longer than the 30-second readiness wait.
 	t.expect(network.start_host(false, true, 7595, "001234"), "Reservation fixture host opens")
+	t.expect(not network.net_node.online_room, "Local host uses LAN voice transport")
 	var net: NetGameNode = network.net_node
 	net.set_ready(true)
 	net._orphaned[0] = {"until": Time.get_ticks_msec() + NetGameNode.RESUME_GRACE_MS,

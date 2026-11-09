@@ -39,7 +39,28 @@ func _run() -> void:
 	t.expect(overlay._retry_button.get_theme_font_size("font_size") == 28, "connection actions use the shared button size")
 	overlay.show_reconnecting(2, 5)
 	t.expect(overlay.visible and not overlay._retry_button.visible and overlay._leave_button.text == "取消并返回大厅", "reconnect progress has one clear exit action")
+	overlay.modulate.a = 0.0
+	overlay.show_reconnecting(2, 5)
+	t.expect(overlay.modulate.a == 1.0, "Returning during an interrupted appearance makes the reconnect card immediately visible")
+	var loading = overlay.get_node_or_null("ConnectionCard/ConnectingProgress")
+	t.expect(loading is ProgressBar and loading.indeterminate and loading.is_visible_in_tree(), "Reconnect has a continuously animated waiting indicator")
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		var before: Image = root.get_texture().get_image()
+		var region: Rect2 = root.get_final_transform() * loading.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, loading.size)
+		await create_timer(0.45).timeout
+		await RenderingServer.frame_post_draw
+		var after: Image = root.get_texture().get_image()
+		t.expect(before.get_region(Rect2i(region)).get_data() != after.get_region(Rect2i(region)).get_data(), "Waiting animation keeps moving while the server is unavailable")
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://build/foreground-reconnect"))
+		before.save_png("res://build/foreground-reconnect/waiting-before.png")
+		after.save_png("res://build/foreground-reconnect/waiting-after.png")
+	if loading != null:
+		t.expect(loading.position.y + loading.size.y <= overlay._leave_button.position.y, "Waiting animation does not overlap the return button")
+	overlay.show_syncing()
+	t.expect(overlay.modulate.a == 1.0 and loading != null and loading.is_visible_in_tree(), "Fresh-seat synchronization keeps the waiting indicator visible")
 	overlay.show_error("测试断线")
+	if loading != null: t.expect(not loading.visible, "Failed connection stops the waiting indicator")
 	t.expect(overlay.visible and overlay._retry_button.visible and overlay._leave_button.text == "返回大厅", "connection error offers retry and return")
 	overlay.queue_free()
 	await process_frame

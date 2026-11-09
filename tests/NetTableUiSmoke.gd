@@ -11,6 +11,8 @@ var audio_events := 0
 var audio_ids := {}
 var graphical := false
 var captured_opening_wall := false
+var tested_resume_turn := false
+var tested_resume_settlement := false
 
 func _ready() -> void:
 	AudioManager.event_played.connect(_on_audio_event)
@@ -58,6 +60,10 @@ func _run() -> void:
 				_expect(visible_tiles == 108, "Client keeps all 108 wall tiles visible while the dice roll")
 				await _capture("opening-wall")
 		if round.phase == RoundState.Phase.SETTLED:
+			if not host_mode and not tested_resume_settlement:
+				tested_resume_settlement = true
+				await _check_foreground_restore("settlement")
+				continue
 			var settlement_deadline := Time.get_ticks_msec() + 10000
 			while not table._settlement_animation_done() and Time.get_ticks_msec() < settlement_deadline:
 				await get_tree().process_frame
@@ -104,6 +110,10 @@ func _run() -> void:
 				await _finish_test()
 				return
 		elif table._selecting:
+			if not host_mode and not tested_resume_turn:
+				tested_resume_turn = true
+				await _check_foreground_restore("turn")
+				continue
 			var player: PlayerState = round.players[seat]
 			var ui_deadline := Time.get_ticks_msec() + 3000
 			while table._table_actions.input_locked() and Time.get_ticks_msec() < ui_deadline:
@@ -140,6 +150,36 @@ func _run() -> void:
 	print("[net_table] timeout host=%s turns=%d responses=%d phase=%d turn=%d awaiting=%s locked=%s dealt=%s pending=%s" % [host_mode, turns, responses, table.round.phase, table.round.current_turn, table.round.awaiting, table._table_actions.input_locked(), table._table_animation_controller._dealt, table._table_animation_controller.has_pending()])
 	push_error("Network UI test timed out")
 	await _finish_test(1)
+
+func _check_foreground_restore(stage: String) -> void:
+	var net: NetGameNode = Network.net_node
+	var revision: int = net._received_revision
+	var seat: int = net.my_seat
+	var hand: Array = net.game.players[seat].concealed.duplicate()
+	get_tree().multiplayer_poll = false
+	if stage == "settlement": table._sound_settings.open()
+	net.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	net.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	_expect(net._resume_sync_pending and table._awaiting_rejoin_snapshot, "Foreground return gates table input until a fresh snapshot")
+	_expect(table._connection_overlay.is_open() and table._connection_overlay.modulate.a == 1.0, "Foreground connection feedback appears immediately")
+	_expect(table._connection_overlay.get_parent() is CanvasLayer and table._connection_overlay.get_parent().layer > table._sound_settings.layer, "Connection progress stays above an already-open settings panel")
+	_expect(table._connection_overlay._loading_bar.indeterminate, "Foreground wait has an animated progress indicator")
+	var blocked := {"discard":net.game.players[seat].just_drew}
+	net.submit_client_turn(blocked)
+	_expect(not blocked.has("prompt_id"), "No stale turn is submitted during the foreground wait")
+	if graphical:
+		await _capture("resume-" + stage + "-connecting")
+		await get_tree().create_timer(0.45).timeout
+		await _capture("resume-" + stage + "-waiting")
+	get_tree().multiplayer_poll = true
+	var deadline := Time.get_ticks_msec() + 5000
+	while table._awaiting_rejoin_snapshot and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	_expect(not net._resume_sync_pending and not table._awaiting_rejoin_snapshot and net._received_revision > revision, "Fresh authority restores the foreground table")
+	_expect(not table._connection_overlay.is_open(), "Successful synchronization removes the connection overlay")
+	_expect(net.my_seat == seat and net.game.players[seat].concealed == hand, "Foreground resume keeps the original seat and hand")
+	if stage == "settlement": table._sound_settings.close(false)
+	if graphical: await _capture("resume-" + stage + "-restored")
 
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
