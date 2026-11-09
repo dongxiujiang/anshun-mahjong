@@ -1623,6 +1623,10 @@ func send_local_voice(packet: PackedByteArray) -> void:
 		return
 	if not voice_chat_allowed() or packet.size() < 6 or packet.size() > 1024:
 		return
+	if not host_mode and (_reconnecting or _resume_sync_pending or not _client_joined
+		or multiplayer.multiplayer_peer == null
+		or multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED):
+		return
 	packet[1] = clampi(my_seat, 0, 3)
 	if host_mode:
 		_relay_voice(packet, 0)

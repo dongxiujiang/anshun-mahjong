@@ -75,6 +75,19 @@ func _run() -> void:
 	net.my_seat = 1
 	net._started = false
 	t.expect(net.voice_chat_allowed(), "a guest can use voice before the host-only started flag is set")
+	var connecting := ENetMultiplayerPeer.new()
+	t.expect(connecting.create_client("127.0.0.1", 7599) == OK, "Voice disconnect fixture starts a pending peer")
+	root.multiplayer.multiplayer_peer = connecting
+	net._reconnecting = true
+	packet[1] = 2
+	net.send_local_voice(packet)
+	t.expect(packet[1] == 2, "Disconnected voice frames are dropped before using the stale seat")
+	net._reconnecting = false
+	net._client_joined = true
+	net._resume_sync_pending = true
+	net.send_local_voice(packet)
+	t.expect(packet[1] == 2, "Foreground synchronization does not send stale voice frames")
+	root.multiplayer.multiplayer_peer = null
 	net.queue_free()
 	await process_frame
 
