@@ -158,25 +158,25 @@ static func wall_angle(seat: int) -> float:
 	return -PI / 2.0
 
 ## row=0 上层，row=1 下层。
-static func wall_block_center(seat: int, slot: int, row: int) -> Vector2:
+static func wall_block_center(seat: int, slot: int, row: int, columns: int = 0) -> Vector2:
 	var size := TILE_BASE * WALL_UNIT
 	var half := CENTRAL_SIZE / 2.0
 	var step := size.x + WALL_BLOCK_GAP
-	var total_h := 14.0 * size.x + 13.0 * WALL_BLOCK_GAP
-	var total_v := 13.0 * size.x + 12.0 * WALL_BLOCK_GAP
+	if columns == 0: columns = 14 if seat in [1, 3] else 13
+	var span := columns * step - WALL_BLOCK_GAP
 	var center := Vector2.ZERO
 	if seat == 3:
-		center = Vector2(CENTER.x - total_h / 2.0 + size.x / 2.0 + slot * step,
+		center = Vector2(CENTER.x - span / 2.0 + size.x / 2.0 + slot * step,
 			CENTER.y - half.y - WALL_EDGE_GAP - size.y / 2.0 + NORTH_WALL_SHIFT)
 	elif seat == 1:
-		center = Vector2(CENTER.x - total_h / 2.0 + size.x / 2.0 + slot * step,
+		center = Vector2(CENTER.x - span / 2.0 + size.x / 2.0 + slot * step,
 			CENTER.y + half.y + WALL_EDGE_GAP + size.y / 2.0 + SOUTH_WALL_SHIFT)
 	elif seat == 0:
 		center = Vector2(CENTER.x + half.x + WALL_EDGE_GAP + size.y / 2.0 + side_wall_shift(),
-			CENTER.y - total_v / 2.0 + size.x / 2.0 + slot * step + SIDE_WALL_Y_SHIFT)
+			CENTER.y - span / 2.0 + size.x / 2.0 + slot * step + SIDE_WALL_Y_SHIFT)
 	else:
 		center = Vector2(CENTER.x - half.x - WALL_EDGE_GAP - size.y / 2.0 - side_wall_shift(),
-			CENTER.y - total_v / 2.0 + size.x / 2.0 + slot * step + SIDE_WALL_Y_SHIFT)
+			CENTER.y - span / 2.0 + size.x / 2.0 + slot * step + SIDE_WALL_Y_SHIFT)
 	if row == 0:
 		center += wall_upper_offset(seat)
 	return center

@@ -17,7 +17,6 @@ var avatars := {}
 var dealer_badges := {}
 var name_labels := {}
 var ready_frames := {}
-var voice_speaker_buttons := {}
 var _status_labels := {}
 var _exposed_layouts := {}
 var _exposed_layout_key := PackedByteArray()
@@ -108,13 +107,6 @@ func build() -> void:
 		wind.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		wind_labels[seat] = wind
 		wind.hide()
-		var speaker: Button = table._button("喇叭", func(): table._toggle_remote_voice(seat), Vector2(92, 42))
-		speaker.name = "VoiceSpeaker%d" % seat
-		speaker.add_theme_font_size_override("font_size", 20)
-		speaker.tooltip_text = "开关该玩家语音"
-		speaker.hide()
-		table.surface.add_child(speaker)
-		voice_speaker_buttons[seat] = speaker
 
 func _refresh_identity(seat: int) -> void:
 	if seat >= table.round.players.size(): return
@@ -176,18 +168,6 @@ func _refresh_identity(seat: int) -> void:
 	nickname.position.y = maxf(bounds.position.y + 12.0, nickname.position.y)
 	nickname.tooltip_text = "%s位 · %s · 音色：%s" % [wind, player_text, AudioManager.get_seat_voice_pack(seat)]
 	nickname.visible = true
-	var speaker: Button = voice_speaker_buttons.get(seat)
-	if speaker != null:
-		var remote_human: bool = table._net_mode() != "" and seat != table.human_seat and player.is_human and table.round.phase != RoundState.Phase.SETTLED
-		speaker.visible = remote_human
-		if remote_human:
-			# Keep the remote mute control beside the score instead of the
-			# nickname, so it does not hang over the discard river.
-			speaker.position = label.position + Vector2(
-				(label.size.x - speaker.size.x) / 2.0, label.size.y + 4.0)
-			var speaker_on: bool = table._remote_voice_enabled(seat)
-			speaker.text = "喇叭" if speaker_on else "静音"
-			speaker.modulate = Color.WHITE if speaker_on else Color(0.62, 0.62, 0.62)
 	var badge: Label = dealer_badges[seat]
 	var score_width := TileView._font().get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	badge.position = label.position + Vector2((label.size.x + score_width) / 2.0 + 8.0, (label.size.y - badge.size.y) / 2.0)
@@ -539,9 +519,8 @@ func _prepare_exposed_layouts() -> void:
 		if control.visible: occupied.append(Rect2(control.position, control.size).grow(6.0))
 	occupied.append(Rect2(table._settings_button.position + table._settings_button.touch_rect().position,
 		table._settings_button.touch_rect().size).grow(6.0))
-	for control in [table._ai_teach_button, table._voice_button]:
-		if control != null and control.visible:
-			occupied.append(Rect2(control.position, control.size).grow(6.0))
+	if table._ai_teach_button != null and table._ai_teach_button.visible:
+		occupied.append(Rect2(table._ai_teach_button.position, table._ai_teach_button.size).grow(6.0))
 	occupied.append(table._table_layout.center_rect().grow(UI.TURN_LIGHT_SPREAD + 6.0))
 	for seat in 4:
 		var hand_unit: float = table._hand_tile_unit(seat)

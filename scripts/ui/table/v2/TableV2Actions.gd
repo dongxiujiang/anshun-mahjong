@@ -38,7 +38,7 @@ func _layout_actions() -> void:
 		return
 	if table._new_areas != null and action_bar.get_parent() == table._new_areas._action_layer:
 		_layout_actions_v2()
-		table._new_areas._layout_ready_badges()
+		table._new_areas._layout_meld_badges()
 		return
 	var right: float = table._table_center().x + 574.0
 	var top: float = table._table_center().y + float(table._seat_metrics(table.human_seat).hand_y)

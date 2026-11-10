@@ -97,10 +97,15 @@ var _latest_discard_seat := -1
 var _latest_discard_id := -1
 var _labels: Array = []
 var _name_labels: Array = []
-var _badges: Array = []
-var _voice_buttons: Array = []
+const SEAT_BADGE_SIZE := 56.0
+const SPEAKER_ICON_SIZE := 44.0
+const SPEAKER_ON := preload("res://res/icons/seat-speaker.svg")
+const SPEAKER_MUTED := preload("res://res/icons/seat-speaker-muted.svg")
+
+var _voice_buttons: Dictionary = {}
 var _ready_hand_frames: Array[Panel] = []
 var _ready_meld_badges: Array[Label] = []
+var _dealer_meld_badges: Array[Label] = []
 
 func _ready() -> void:
 	if _started_ms == 0: _started_ms = Time.get_ticks_msec()
@@ -162,14 +167,18 @@ func _build_ready_decorations() -> void:
 		frame.hide()
 		_control_layer.add_child(frame)
 		_ready_hand_frames.append(frame)
-		var badge := _hud_badge("听", Vector2.ZERO, Color("#504221"), UI.GOLD)
-		badge.reparent(_control_layer, false)
-		badge.name = "ReadyMeldBadge%d" % seat
-		badge.add_theme_font_size_override("font_size", 34)
-		badge.get_theme_stylebox("normal").set_border_width_all(2)
-		badge.size = Vector2(56, 56)
-		badge.hide()
-		_ready_meld_badges.append(badge)
+		_ready_meld_badges.append(_meld_badge("听", "ReadyMeldBadge%d" % seat, Color("#504221"), UI.GOLD))
+		_dealer_meld_badges.append(_meld_badge("庄", "DealerMeldBadge%d" % seat, UI.DEALER_BACKGROUND, UI.DEALER_BORDER))
+
+func _meld_badge(caption: String, node_name: String, background: Color, border: Color) -> Label:
+	var badge := _hud_badge(caption, Vector2.ZERO, background, border)
+	badge.reparent(_control_layer, false)
+	badge.name = node_name
+	badge.add_theme_font_size_override("font_size", 34)
+	badge.get_theme_stylebox("normal").set_border_width_all(2)
+	badge.size = Vector2.ONE * SEAT_BADGE_SIZE
+	badge.hide()
+	return badge
 
 func _process(_delta: float) -> void:
 	if visual_recovery_pending(): _update_ready_hand_frames()
@@ -191,22 +200,28 @@ func _update_ready_hand_frames() -> void:
 			frame.position = bounds.position
 			frame.size = bounds.size
 
-func _layout_ready_badges() -> void:
-	if _ready_meld_badges.is_empty(): return
-	if not _ready_hand_frames.any(func(frame): return frame.visible):
-		for badge in _ready_meld_badges: badge.hide()
-		return
+func _layout_meld_badges() -> void:
+	if round == null or _ready_meld_badges.is_empty(): return
 	var obstacles: Array[Rect2] = []
 	for layer in _render_layers():
 		for tile in layer.get_children():
 			if tile is TileView and tile.visible: obstacles.append(_visual_rect(tile).grow(2))
-	for seat in 4: obstacles.append(G.seat_hud_rect(G.relative_seat(human_seat, seat)))
+	for seat in 4:
+		var bounds := G.seat_hud_rect(G.relative_seat(human_seat, seat))
+		if _voice_buttons.has(seat): bounds = bounds.merge(_voice_buttons[seat].get_rect())
+		obstacles.append(bounds)
+		if _ready_hand_frames[seat].visible: obstacles.append(_ready_hand_frames[seat].get_rect())
 	for bar in _action_layer.get_children():
 		if bar is Control and bar.visible and bar.get_child_count() > 0: obstacles.append(_visual_rect(bar).grow(4))
 	for seat in 4:
-		var badge: Label = _ready_meld_badges[seat]
-		badge.visible = _ready_hand_frames[seat].visible
-		if not badge.visible: continue
+		var dealer := _dealer_meld_badges[seat]
+		var ready_badge := _ready_meld_badges[seat]
+		dealer.hide()
+		ready_badge.hide()
+		var badges: Array[Label] = []
+		if round.dealer_seat == seat: badges.append(dealer)
+		if _ready_hand_frames[seat].visible: badges.append(ready_badge)
+		if badges.is_empty(): continue
 		var rel := G.relative_seat(human_seat, seat)
 		var along: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][rel]
 		var origin := G.meld_anchor(seat, human_seat)
@@ -218,20 +233,23 @@ func _layout_ready_badges() -> void:
 				var rect := _visual_rect(tile)
 				minimum = minf(minimum, minf(rect.position.dot(along), rect.end.dot(along)))
 				maximum = maxf(maximum, maxf(rect.position.dot(along), rect.end.dot(along)))
+		var step_size := SEAT_BADGE_SIZE + 8.0
+		var group_size := Vector2.ONE * SEAT_BADGE_SIZE + along.abs() * step_size * (badges.size() - 1)
+		var half_span := group_size.dot(along.abs()) / 2.0
 		var candidates: Array[Vector2] = []
 		if minimum == INF:
 			candidates.append(origin)
 			minimum = origin.dot(along)
 			maximum = minimum
 		for step in 16:
-			candidates.append(origin + along * (maximum - origin.dot(along) + 36 + step * 64))
-			candidates.append(origin + along * (minimum - origin.dot(along) - 36 - step * 64))
-		badge.hide()
+			candidates.append(origin + along * (maximum - origin.dot(along) + half_span + 8.0 + step * step_size))
+			candidates.append(origin + along * (minimum - origin.dot(along) - half_span - 8.0 - step * step_size))
 		for center: Vector2 in candidates:
-			var rect := Rect2(center - badge.size / 2.0, badge.size)
+			var rect := Rect2(center - group_size / 2.0, group_size)
 			if G.TABLE_BOUNDS.encloses(rect) and obstacles.all(func(other: Rect2): return not rect.intersects(other)):
-				badge.position = rect.position
-				badge.show()
+				for index in badges.size():
+					badges[index].position = rect.position + along.abs() * index * step_size
+					badges[index].show()
 				obstacles.append(rect.grow(4))
 				break
 
@@ -639,7 +657,7 @@ func _restore_native_wall_flip(reveal: bool) -> void:
 	_settlement_flip_revealed = reveal and card != "" and _settlement_flip_index >= 0
 	var tile := _native_wall_flip_tile()
 	if tile != null:
-		tile.position = _wall_center_for_ring_index(_settlement_flip_index) - tile.size / 2.0
+		tile.position = wall_center_for_index(_settlement_flip_index) - tile.size / 2.0
 		tile.scale = Vector2.ONE
 		# A revealed lower tile still needs to be readable if its upper tile remains.
 		tile.z_index = 2 if _settlement_flip_revealed else int(_settlement_flip_index % 2 == 0)
@@ -986,23 +1004,27 @@ func _chicken_index(p, idx: int) -> int:
 
 ## WallRing 单张下标 -> 牌墙牌背中心。
 func wall_center_for_index(index: int) -> Vector2:
-	if index < 0 or index >= 108: return G.CENTER
-	var seat := 3
-	var slot := 0
-	var row := index % 2
-	if index < 28:
-		seat = 3
-		slot = int(index / 2)
-	elif index < 54:
-		seat = 0
-		slot = int((index - 28) / 2)
-	elif index < 82:
-		seat = 1
-		slot = 13 - int((index - 54) / 2)
-	else:
-		seat = 2
-		slot = 12 - int((index - 82) / 2)
-	return G.wall_block_center(seat, slot, row)
+	var segment := _wall_segment_for_index(index)
+	if segment.is_empty(): return G.CENTER
+	var side := _wall_screen_seat(int(segment.seat))
+	var columns := int(segment.len) / 2
+	var slot := (index - int(segment.start)) / 2
+	if side in [1, 2]: slot = columns - 1 - slot
+	return G.wall_block_center(side, slot, index % 2, columns)
+
+func _wall_screen_seat(seat: int) -> int:
+	# 牌墙逻辑座位固定，屏幕南侧始终对应本家。
+	return posmod(seat - human_seat + 1, 4)
+
+func _wall_segment_for_index(index: int) -> Dictionary:
+	for segment in WallRing.SEG.values():
+		if index >= int(segment.start) and index < int(segment.start) + int(segment.len):
+			return segment
+	return {}
+
+func _wall_angle_for_index(index: int) -> float:
+	var segment := _wall_segment_for_index(index)
+	return G.wall_angle(_wall_screen_seat(int(segment.seat))) if not segment.is_empty() else 0.0
 
 func refresh() -> void:
 	if table != null and table.round != null \
@@ -1037,7 +1059,7 @@ func refresh() -> void:
 	_end_tile_reconcile()
 	_refresh_hud()
 	_update_ready_hand_frames()
-	_layout_ready_badges()
+	_layout_meld_badges()
 	if is_instance_valid(_score_inspection):
 		_score_inspection.refresh()
 	if all_dealt_now and not _sort_started:
@@ -1055,7 +1077,7 @@ func refresh() -> void:
 ## 同一牌桌实例会跨局复用；RoundState 变化时必须清掉上一局的瞬时视觉状态。
 func _reset_round_visual_state() -> void:
 	for frame in _ready_hand_frames: frame.hide()
-	for badge in _ready_meld_badges: badge.hide()
+	for badge in _ready_meld_badges + _dealer_meld_badges: badge.hide()
 	if _settlement_started:
 		reset_native_settlement()
 	_deal_generation += 1
@@ -1110,7 +1132,7 @@ func _complete_visual_action(action_id: int, done: Callable) -> void:
 	if not _visual_actions.erase(action_id): return
 	deal_animation_active = native_actions_pending()
 	_update_ready_hand_frames()
-	_layout_ready_badges()
+	_layout_meld_badges()
 	if done.is_valid(): done.call()
 	if not native_actions_pending() and is_instance_valid(table) and table.is_inside_tree():
 		table.call_deferred("_refresh")
@@ -1810,9 +1832,10 @@ func _sync_wall_tile(seat: int, slot: int, row: int, card: String, face: bool) -
 		_render_seen[_settlement_flip_view.get_instance_id()] = true
 		return _settlement_flip_view
 	var revealed := _settlement_flip_revealed and index == _settlement_flip_index
+	var side := _wall_screen_seat(seat)
 	var tile := _sync_tile(_wall_layer, "wall:%d" % index, _native_flip_tile() if revealed else card,
-		revealed or face, G.wall_block_center(seat, slot, row), G.WALL_UNIT, G.wall_angle(seat))
-	tile.back_depth_top = seat == 1
+		revealed or face, wall_center_for_index(index), G.WALL_UNIT, G.wall_angle(side))
+	tile.back_depth_top = side == 1
 	tile.z_index = 2 if revealed else (1 if row == 0 else 0)
 	tile.set_meta("new_kind", "wall")
 	tile.set_meta("wall_ring_index", index)
@@ -1850,18 +1873,13 @@ func animate_deal_group(seat: int, cards: Array, indices: Array, existing: int, 
 	var rel := G.relative_seat(human_seat, seat)
 	var hand_unit := G.hand_unit(seat, human_seat)
 	var entries: Array = []
-	var sum := Vector2.ZERO
 	for i in cards.size():
 		var idx := int(indices[i])
-		var center := _wall_center_for_ring_index(idx)
-		entries.append({"card": str(cards[i]), "index": idx, "center": center,
-			"row": idx % 2, "pos": i})
-		sum += center
+		entries.append({"card": str(cards[i]), "index": idx, "row": idx % 2, "pos": i})
 	# 下层(index奇数)在左，上层(index偶数)在右；同层保持摸牌先后。
 	entries.sort_custom(func(a, b):
 		if a.row == b.row: return a.pos < b.pos
 		return a.row > b.row)
-	var mid: Vector2 = sum / float(entries.size())
 	var final_count := existing + cards.size()
 	# 四家统一用实际手牌槽位推导“右方向”和步进，不写死座位方向。
 	var slot0 := G.hand_slot_center(seat, 0, human_seat, final_count, false)
@@ -1870,11 +1888,6 @@ func animate_deal_group(seat: int, cards: Array, indices: Array, existing: int, 
 	var hand_step: float = slot0.distance_to(slot1)
 
 	if dir == Vector2.ZERO: dir = Vector2(1, 0)
-	var wall_step: float = TileView.BASE_W * G.WALL_UNIT + 4.0
-	var starts: Array = []
-	for k in entries.size():
-		var off := (k - (entries.size() - 1) * 0.5) * wall_step
-		starts.append(mid + dir * off)
 	var last_center := Vector2.ZERO
 	if existing > 0:
 		last_center = G.hand_slot_center(seat, existing - 1, human_seat, existing, false)
@@ -1890,8 +1903,10 @@ func animate_deal_group(seat: int, cards: Array, indices: Array, existing: int, 
 	var moving: Array = []
 	_deal_moving = moving
 	_deal_done_callback = done
-	for k in entries.size():
-		var tile := _tile(_deal_layer, entries[k].card, _face_visible(seat), starts[k], hand_unit, G.wall_angle(seat))
+	for entry in entries:
+		var index := int(entry.index)
+		var tile := _tile(_deal_layer, entry.card, _face_visible(seat),
+			wall_center_for_index(index), hand_unit, _wall_angle_for_index(index))
 		tile.scale = Vector2.ONE * (G.WALL_UNIT / hand_unit)
 		moving.append(tile)
 	# 起飞前移除对应墙牌。
@@ -1945,21 +1960,6 @@ func _finish_deal_group(moving: Array, done: Callable) -> void:
 	deal_animation_active = false
 	if done.is_valid(): done.call()
 
-func _wall_center_for_ring_index(index: int) -> Vector2:
-	if index < 0 or index >= 108: return G.CENTER
-	var starts := {3: 0, 0: 28, 1: 54, 2: 82}
-	var counts := {3: 14, 0: 13, 1: 14, 2: 13}
-	var seat := 0
-	for s in starts:
-		if index >= int(starts[s]) and index < int(starts[s]) + int(counts[s]) * 2:
-			seat = s
-			break
-	var logical := int((index - int(starts[seat])) / 2)
-	var row := index % 2
-	var physical := logical
-	if seat in [1, 2]: physical = int(counts[seat]) - 1 - logical
-	return G.wall_block_center(seat, physical, row)
-
 ## 排序后摸牌：从墙牌位置飞到摸牌区，同时放大到手牌尺寸。
 func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> void:
 	_finish_pending_draw(seat)
@@ -1988,9 +1988,9 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 		node.position = _hand_center(seat, slot, hand_count) - node.size / 2.0
 	var target := _draw_center(seat, hand_count)
 	var has_wall_source := wall_index >= 0 and wall_index < WallRing.N
-	var start := _wall_center_for_ring_index(wall_index) if has_wall_source else target
+	var start := wall_center_for_index(wall_index) if has_wall_source else target
 	var tile := _tile(_deal_layer, card, _face_visible(seat),
-		start, hand_unit, G.wall_angle(seat))
+		start, hand_unit, _wall_angle_for_index(wall_index))
 	tile.scale = Vector2.ONE * (G.WALL_UNIT / hand_unit)
 	for node in _wall_layer.get_children():
 		if int(node.get_meta("wall_ring_index", -2)) == wall_index:
@@ -2767,7 +2767,7 @@ func _refresh_hud() -> void:
 	var seats: Array = snapshot.get("seats", [])
 	var signature := str([snapshot.get("turn", -1), seats.map(
 		func(data): return [data.name, data.score, data.ready, data.is_dealer, data.is_human]),
-		round.phase, AudioManager.seat_voice_packs])
+		round.phase, AudioManager.seat_voice_packs, table != null and table._net_mode() != ""])
 	if signature == _label_signature and not _labels.is_empty():
 		return
 	_label_signature = signature
@@ -2805,21 +2805,19 @@ func _seat_display_names(seats: Array) -> Dictionary:
 func _build_labels(seats: Array) -> void:
 	_labels.clear()
 	_name_labels.clear()
-	_badges.clear()
 	_voice_buttons.clear()
 	var names := _seat_display_names(seats)
 	for data in seats:
 		var seat := int(data.seat)
 		var bounds := G.seat_hud_rect(G.relative_seat(human_seat, seat))
-		var is_ready := bool(data.ready)
 		var is_dealer := bool(data.is_dealer)
+		var has_voice: bool = table != null and table._net_mode() != "" and (seat == human_seat or bool(data.is_human))
 		var is_turn: bool = int(snapshot.get("turn", -1)) == seat and round.phase == ROUND_STATE.Phase.PLAYING
 		var who: String = names[seat]
 		var caption := ("● " if is_turn else "") + who
-		# 听字移出后保留原姓名占位，避免本次调整改变名字位置。
-		var badge_space := 32.0 * (int(is_dealer) + int(is_ready))
-		var name_width := minf(bounds.size.x - 8.0 - badge_space, ceilf(_hud_text_width(caption, 24)) + 2.0)
-		var left := bounds.get_center().x - (name_width + badge_space) / 2.0
+		var name_edge := bounds.end.x - (SPEAKER_ICON_SIZE + 4.0 if has_voice else 4.0)
+		var name_width := minf(name_edge - bounds.position.x - 4.0, ceilf(_hud_text_width(caption, 24)) + 2.0)
+		var left := minf(bounds.get_center().x - name_width / 2.0, name_edge - name_width)
 		var name_label := _table_text(_label_layer, caption, 24, UI.GOLD if is_turn else UI.INK)
 		name_label.name = "SeatName%d" % seat
 		name_label.position = Vector2(left, bounds.position.y)
@@ -2830,22 +2828,10 @@ func _build_labels(seats: Array) -> void:
 		name_label.tooltip_text = who
 		_name_labels.append(name_label)
 
-		var badge_position := name_label.position + Vector2(name_width + 4.0, 3)
-		var dealer_badge: Label = null
-		if is_dealer:
-			dealer_badge = _hud_badge("庄", badge_position, UI.DEALER_BACKGROUND, UI.DEALER_BORDER)
-			badge_position.x += 32.0
-		_badges.append(dealer_badge)
-
 		var score := _table_text(_label_layer, "", 28, UI.GOLD if is_dealer else UI.INK)
 		score.name = "SeatScore%d" % seat
 		score.position = Vector2(bounds.get_center().x - 71.0, bounds.position.y + 38.0)
 		score.size = Vector2(142, 38)
-		var remote_voice_layout: bool = table != null and table._net_mode() != "" and seat != human_seat and bool(data.is_human)
-		var has_voice: bool = remote_voice_layout and round.phase != ROUND_STATE.Phase.SETTLED
-		if remote_voice_layout and G.relative_seat(human_seat, seat) == 1:
-			score.position.x = bounds.position.x
-			score.size.x = 92
 		if round.phase == ROUND_STATE.Phase.SETTLED:
 			var deltas: Array = round.last_result.get("deltas", [])
 			var value := float(deltas[seat]) if seat < deltas.size() else 0.0
@@ -2869,24 +2855,47 @@ func _build_labels(seats: Array) -> void:
 		_set_seat_score(score, displayed_score)
 		_labels.append(score)
 
-		var voice_button: Button = null
 		if has_voice:
-			voice_button = Button.new()
-			voice_button.name = "VoiceSpeaker%d" % seat
-			voice_button.position = Vector2(bounds.get_center().x - 46.0, bounds.position.y + 82.0)
-			voice_button.size = Vector2(92, 34)
-			if G.relative_seat(human_seat, seat) == 1:
-				voice_button.position = bounds.position + Vector2(96, 38)
-				voice_button.size = Vector2(88, 38)
-			voice_button.focus_mode = Control.FOCUS_NONE
-			voice_button.add_theme_font_size_override("font_size", 20)
-			voice_button.tooltip_text = "开关该玩家语音"
-			_set_voice_button_state(voice_button, seat)
-			voice_button.pressed.connect(func():
-				table._toggle_remote_voice(seat)
-				_set_voice_button_state(voice_button, seat))
-			_label_layer.add_child(voice_button)
-		_voice_buttons.append(voice_button)
+			_build_voice_control(seat, bounds)
+
+func _build_voice_control(seat: int, bounds: Rect2) -> void:
+	var button := Button.new()
+	button.name = "SeatVoice%d" % seat
+	button.position = bounds.position - Vector2(0, 20)
+	button.size = Vector2(bounds.size.x, 100)
+	button.flat = true
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var icon := TextureRect.new()
+	icon.name = "SpeakerIcon"
+	icon.position = Vector2(bounds.size.x - SPEAKER_ICON_SIZE, 12)
+	icon.size = Vector2.ONE * SPEAKER_ICON_SIZE
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(icon)
+	button.pressed.connect(func():
+		if seat == human_seat:
+			table._toggle_voice_chat()
+		else:
+			table._toggle_remote_voice(seat)
+		refresh_voice_control(seat))
+	_label_layer.add_child(button)
+	_voice_buttons[seat] = button
+	refresh_voice_control(seat)
+
+func refresh_voice_control(seat: int, message: String = "") -> void:
+	var button: Button = _voice_buttons.get(seat)
+	if button == null: return
+	var local := seat == human_seat
+	var enabled: bool = table._local_voice_enabled() if local else table._remote_voice_enabled(seat)
+	var icon: TextureRect = button.get_node("SpeakerIcon")
+	icon.texture = SPEAKER_ON if enabled else SPEAKER_MUTED
+	button.disabled = local and not table._can_toggle_voice_chat()
+	var hint := ("关闭麦克风" if enabled else "开启麦克风") if local else ("静音该玩家" if enabled else "播放该玩家语音")
+	if not message.is_empty():
+		button.set_meta("voice_status", message)
+	var status := str(button.get_meta("voice_status", ""))
+	button.tooltip_text = hint if status.is_empty() else "%s\n%s" % [hint, status]
 
 func _hud_badge(caption: String, at: Vector2, background: Color, border: Color) -> Label:
 	var badge := _table_text(_label_layer, caption, 18, UI.INK)
@@ -2932,11 +2941,6 @@ func _set_seat_score(label: Label, value: float) -> void:
 			delta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			delta_font = 24
 		delta.add_theme_font_size_override("font_size", delta_font)
-
-func _set_voice_button_state(button: Button, seat: int) -> void:
-	var enabled: bool = table._remote_voice_enabled(seat)
-	button.text = "喇叭" if enabled else "静音"
-	button.modulate = Color.WHITE if enabled else Color(0.62, 0.62, 0.62)
 
 func _on_hand_tile_input(event: InputEvent, seat: int, slot: int) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:

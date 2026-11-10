@@ -368,7 +368,6 @@ var _sound_settings: SoundSettings
 var _audio_round: RoundState
 var _sound_button: Button
 var _settings_button: Button
-var _voice_button: Button
 var _ai_proxy_button: Button
 var _test_pattern_button: Button
 var _ai_teach_button: Button
@@ -472,15 +471,10 @@ func _connect_voice_ui() -> void:
 		return
 	if net.has_signal("voice_status") and not net.voice_status.is_connected(_on_voice_status):
 		net.voice_status.connect(_on_voice_status)
-	if net.has_signal("game_started") and not net.game_started.is_connected(_refresh_voice_button):
-		net.game_started.connect(_refresh_voice_button)
-	if net.has_signal("host_game_started") and not net.host_game_started.is_connected(_refresh_voice_button):
-		net.host_game_started.connect(_refresh_voice_button)
 	if net.has_signal("returned_to_lobby") and not net.returned_to_lobby.is_connected(_on_returned_to_lobby):
 		net.returned_to_lobby.connect(_on_returned_to_lobby)
 	if net.has_signal("return_vote_updated") and not net.return_vote_updated.is_connected(_on_return_vote_updated):
 		net.return_vote_updated.connect(_on_return_vote_updated)
-	_refresh_voice_button()
 
 func _ensure_return_vote_ui() -> void:
 	if _return_vote_overlay != null:
@@ -560,7 +554,6 @@ func _toggle_voice_chat() -> void:
 	if net == null or not net.has_method("toggle_voice_chat"):
 		return
 	net.toggle_voice_chat()
-	_refresh_voice_button()
 
 func _build_table_overlays() -> void:
 	_return_vote_status = Label.new()
@@ -684,8 +677,9 @@ func _refresh_test_pattern_ui() -> void:
 	_test_vote_buttons.visible = me not in yes
 	_test_vote_panel.show()
 
-func _on_voice_status(_enabled: bool, _message: String) -> void:
-	_refresh_voice_button()
+func _on_voice_status(_enabled: bool, message: String) -> void:
+	if _new_areas != null:
+		_new_areas.refresh_voice_control(human_seat, message)
 
 func _on_ai_assist_pressed() -> void:
 	if _ai_teach_button == null:
@@ -869,16 +863,13 @@ func _recommendation_tiles(result: Dictionary) -> Array:
 func _strength_label() -> String:
 	return {"weak": "弱", "medium": "中", "strong": "强"}.get(GameConfig.effective_ai_strength(), "中")
 
-func _refresh_voice_button() -> void:
-	if _voice_button == null:
-		return
+func _can_toggle_voice_chat() -> bool:
 	var net = _net_node()
-	var online: bool = _net_mode() != "" and net != null and net.has_method("voice_chat_enabled")
-	_voice_button.visible = online
-	if not online:
-		return
-	_voice_button.text = "麦克风 开" if net.voice_chat_enabled() else "麦克风 关"
-	_voice_button.disabled = not net.voice_chat_allowed()
+	return net != null and net.voice_chat_allowed()
+
+func _local_voice_enabled() -> bool:
+	var net = _net_node()
+	return net != null and net.voice_chat_enabled()
 
 func _toggle_remote_voice(seat: int) -> void:
 	var net = _net_node()
@@ -886,8 +877,6 @@ func _toggle_remote_voice(seat: int) -> void:
 	if chat == null or not chat.has_method("speaker_enabled"):
 		return
 	chat.set_speaker_enabled(seat, not bool(chat.speaker_enabled(seat)))
-	if _player_tile_areas != null:
-		_player_tile_areas._refresh_identity(seat)
 
 func _remote_voice_enabled(seat: int) -> bool:
 	var net = _net_node()

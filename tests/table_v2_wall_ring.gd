@@ -48,7 +48,41 @@ func _run() -> void:
 	for i in 108:
 		if str(all_pairs[i]) != str(ring[i]): connected = false
 	t.expect(connected, "2×54数组首尾相连")
+	_double_six_opening(deck)
 	deck.queue_free()
 	host.queue_free()
 	await process_frame
 	quit(t.finish("table_v2_wall_ring"))
+
+func _double_six_opening(deck) -> void:
+	const FIRST_INDEX := [12, 40, 66, 94]
+	for dealer in 4:
+		var r := RoundState.new()
+		r.next_dealer_seat = dealer
+		r.start_round(1, 6, 6)
+		var break_index: int = FIRST_INDEX[dealer]
+		t.expect(r.round_meta.dice_double and r.round_meta.break == break_index,
+			"双6只用红骰，庄家下家墙跳过六蹲")
+		var actual: Array = r.wall.draw_log.slice(0, 4).map(func(draw): return draw.index)
+		t.expect(actual == range(break_index, break_index + 4), "庄家首组拿下家墙的第七、八蹲")
+		for viewer in 4:
+			var client := RoundState.new()
+			client.apply_sync(r.serialize_for_seat(viewer))
+			deck.set_round(client, viewer)
+			var batch: Dictionary = client.visual_events.filter(func(event): return event.type == "deal_batch")[0]
+			var first: Dictionary = batch.deals[0]
+			t.expect(first.indices == actual, "所有客户端收到同一组取牌下标")
+			var wall_side := posmod(dealer - viewer, 4)
+			var source: Vector2 = deck.wall_center_for_index(break_index)
+			var source_side: Vector2 = [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP][wall_side]
+			var offset := source - G.CENTER
+			t.expect(offset.dot(source_side) > 280 and absf(offset.cross(source_side)) < 100,
+				"庄家%d 视角%d：开牌墙跟随座位旋转" % [dealer, viewer])
+			deck.animate_deal_group(dealer, first.cards, first.indices, 0, func(): pass)
+			var display_order := [break_index + 1, break_index + 3, break_index, break_index + 2]
+			for i in display_order.size():
+				var tile: TileView = deck._deal_moving[i]
+				var origin: Vector2 = deck.wall_center_for_index(display_order[i])
+				t.expect((tile.position + tile.size / 2.0).is_equal_approx(origin),
+					"开局飞牌从各自真实墙槽起飞")
+			deck._finish_deal_group(deck._deal_moving, Callable())

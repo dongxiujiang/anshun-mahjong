@@ -140,7 +140,17 @@ func _ready_meld_clearance(view):
 		bar.position = rect.position
 		bar.size = rect.size
 		bar.add_child(Button.new())
-		if view.has_method("_layout_ready_badges"): view._layout_ready_badges()
+		view._layout_meld_badges()
+		var dealer = view._dealer_meld_badges[r.dealer_seat]
+		var dealer_ready = view._ready_meld_badges[r.dealer_seat]
+		t.expect(dealer.visible and dealer.size == dealer_ready.size, "dealer and ready badges are equally sized")
+		t.expect(dealer.get_rect().merge(dealer_ready.get_rect()).size.length() <= Vector2(120,56).length() + 0.01
+			and not dealer.get_rect().intersects(dealer_ready.get_rect()), "both badges stay together without overlapping")
+		t.expect(not dealer.get_rect().intersects(bar.get_rect()), "dealer badge stays clear of action buttons")
+		for layer in view._render_layers() + [view._label_layer]:
+			for node in layer.get_children():
+				if node is Control and node.visible:
+					t.expect(not dealer.get_rect().intersects(view._visual_rect(node)), "dealer badge stays clear of every visible tile, name and score")
 		for seat in 4:
 			var badge = view._control_layer.get_node_or_null("ReadyMeldBadge%d" % seat)
 			t.expect(badge != null and badge.visible, "ready marker remains visible with %d melds" % count)

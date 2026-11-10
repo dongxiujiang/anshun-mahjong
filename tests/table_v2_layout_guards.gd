@@ -6,9 +6,18 @@ const G := preload("res://scripts/ui/table/v2/TableV2Geometry.gd")
 var t := H.new()
 
 class VoiceTable extends Control:
-	func _net_mode(): return "online"
-	func _remote_voice_enabled(_seat): return true
-	func _toggle_remote_voice(_seat): pass
+	var round: RoundState
+	var human_seat := 1
+	var _table_animation_controller = null
+	var mode := "online"
+	var microphone := false
+	var speakers := [true, true, true, true]
+	func _net_mode(): return mode
+	func _can_toggle_voice_chat(): return true
+	func _local_voice_enabled(): return microphone
+	func _toggle_voice_chat(): microphone = not microphone
+	func _remote_voice_enabled(seat): return speakers[seat]
+	func _toggle_remote_voice(seat): speakers[seat] = not speakers[seat]
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -155,10 +164,9 @@ func _test_hud_clearance(deck) -> void:
 				clear = false
 		occupied.append(rect)
 	t.expect(clear, "long names, large scores, ready badges and dealer badge avoid every visible tile and one another")
-	var dealer_name: Label = deck._name_labels[r.dealer_seat]
-	var badge: Label = deck._badges[r.dealer_seat]
-	t.expect(badge.position.x > dealer_name.position.x + dealer_name.size.x
-		and badge.position.y < dealer_name.position.y + dealer_name.size.y, "dealer badge sits beside the name")
+	var badge: Label = deck._dealer_meld_badges[r.dealer_seat]
+	t.expect(badge.visible and not occupied.any(func(rect): return rect.intersects(_rect(badge))),
+		"dealer badge is visible outside the name and score areas")
 
 	var audio := root.get_node("AudioManager")
 	var old_packs: Array = audio.seat_voice_packs.duplicate()
@@ -209,7 +217,7 @@ func _run() -> void:
 	_test_meld_clearance(deck)
 	_test_scaled_layout(deck)
 	await _test_hud_clearance(deck)
-	_test_voice_hud_bounds(deck)
+	await _test_voice_hud_bounds(deck)
 	_test_new_round_reset(deck)
 	deck.queue_free()
 	await process_frame
@@ -218,27 +226,58 @@ func _run() -> void:
 func _test_voice_hud_bounds(deck) -> void:
 	var mock := VoiceTable.new()
 	root.add_child(mock)
-	deck.table = mock
-	deck.round = _fixture()
-	deck.human_seat = 1
-	deck.snapshot = {"turn": 0}
-	var seats := []
+	mock.round = _fixture()
 	for seat in 4:
-		seats.append({"seat": seat, "ready": false, "is_dealer": false,
-			"name": "玩家", "score": 200, "is_human": true})
-	deck._clear(deck._label_layer)
-	deck._build_labels(seats)
-	var remote := 0 # relative seat 1, at the bottom right
-	var voice: Button = deck._voice_buttons[remote]
-	var score: Label = deck._labels[remote]
-	t.expect(G.TABLE_BOUNDS.encloses(Rect2(voice.position, voice.size)), "remote speaker button stays inside the table")
-	t.expect(not Rect2(voice.position, voice.size).intersects(Rect2(score.position, score.size)), "remote speaker does not cover the score")
-	for seat in 4:
-		t.expect(not Rect2(voice.position, voice.size).intersects(G.hand13_rect(seat, deck.human_seat)), "remote speaker avoids seat %d hand" % seat)
-	var original_score := Rect2(score.position, score.size)
+		var player: PlayerState = mock.round.players[seat]
+		player.name_label = "玩家名字需要在语音图标前截断"
+		player.score = 200
+		player.is_human = seat != 3
+		player.melds.clear()
+	mock.round.players[mock.round.dealer_seat].ready = true
+	deck.set_table(mock)
+	deck.set_round(mock.round, mock.human_seat)
+	for mode in ["online", "lan"]:
+		mock.mode = mode
+		await process_frame
+		t.expect(not deck._voice_buttons.has(3), "AI seats have no live voice control")
+		for seat in [0, 1, 2]:
+			var voice: Button = deck._voice_buttons[seat]
+			var icon: TextureRect = voice.get_node("SpeakerIcon")
+			var score: Label = deck._labels[seat]
+			var nickname: Label = deck._name_labels[seat]
+			t.expect(G.TABLE_BOUNDS.encloses(voice.get_rect()), "whole voice control stays inside the table")
+			t.expect(voice.get_rect().encloses(score.get_rect()) and voice.get_rect().encloses(nickname.get_rect()),
+				"name and score both lie inside the same touch target")
+			t.expect(icon.size.x < deck._dealer_meld_badges[seat].size.x and not _rect(icon).intersects(_rect(nickname))
+				and not _rect(icon).intersects(_rect(score)), "speaker icon is smaller than the dealer badge and clears the text")
+			for other in 4:
+				t.expect(not voice.get_rect().intersects(G.hand13_rect(other, deck.human_seat)), "voice control does not intercept the hand")
+			var original_icon := icon.texture
+			var original_mic := mock.microphone
+			var original_speaker: bool = mock.speakers[seat]
+			_click(nickname)
+			t.expect(icon.texture != original_icon, "clicking a name changes its speaker icon")
+			t.expect(mock.microphone == (not original_mic if seat == 1 else original_mic)
+				and mock.speakers[seat] == (not original_speaker if seat != 1 else original_speaker),
+				"own click changes the microphone, remote click changes only that player's playback")
+			_click(score)
+			t.expect(icon.texture == original_icon, "clicking the score toggles the same voice control back")
+	if DisplayServer.get_name() != "headless":
+		_click(deck._name_labels[2])
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png("res://build/seat-controls-online.png")
+	var original_score: Rect2 = deck._labels[0].get_rect()
 	deck.round.phase = RoundState.Phase.SETTLED
-	deck._clear(deck._label_layer)
-	deck._build_labels(seats)
-	t.expect(Rect2(deck._labels[remote].position, deck._labels[remote].size) == original_score, "online speaker layout keeps the exact score anchor through settlement")
+	deck.refresh()
+	t.expect(deck._labels[0].get_rect() == original_score and deck._voice_buttons.has(0),
+		"settlement keeps the same score anchor and voice control")
 	deck.table = null
 	mock.queue_free()
+
+func _click(control: Control) -> void:
+	for pressed in [true, false]:
+		var event := InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = pressed
+		event.position = control.get_global_transform_with_canvas() * (control.size / 2.0)
+		root.push_input(event, true)

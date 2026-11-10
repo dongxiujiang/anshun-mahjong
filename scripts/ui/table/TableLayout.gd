@@ -62,13 +62,6 @@ func _build_static_ui() -> void:
 	ai_proxy_button.visible = false
 	surface.add_child(ai_proxy_button)
 	table._ai_proxy_button = ai_proxy_button
-	var voice_button: Button = table._button("麦克风 关", table._toggle_voice_chat, Vector2(164, UI.SETTINGS_BUTTON_SIZE.y))
-	voice_button.name = "VoiceChatButton"
-	voice_button.add_theme_font_size_override("font_size", UI.SETTINGS_FONT_SIZE - 6)
-	voice_button.tooltip_text = "联机语音聊天，默认关闭"
-	voice_button.visible = false
-	surface.add_child(voice_button)
-	table._voice_button = voice_button
 	var test_button: Button = table._button("测试牌型", table._on_test_pattern_pressed,
 		Vector2(136, UI.SETTINGS_BUTTON_SIZE.y))
 	test_button.name = "TestPatternButton"
@@ -117,7 +110,6 @@ func _hide_legacy_visuals(areas) -> void:
 		if areas.discard_scroll.has(seat): areas.discard_scroll[seat].hide()
 		if areas.meld_box.has(seat): areas.meld_box[seat].hide()
 		if areas.chicken_box.has(seat): areas.chicken_box[seat].hide()
-		if areas.voice_speaker_buttons.has(seat): areas.voice_speaker_buttons[seat].hide()
 
 func _hide_legacy_table(areas) -> void:
 	# 只有首次构建时做一次建层；_refresh 里只需藏旧视觉，避免反复重建。
@@ -174,20 +166,16 @@ func _layout() -> void:
 	table._sound_button.size = table._sound_button.custom_minimum_size
 	if table._ai_teach_button != null:
 		table._ai_teach_button.position = table._sound_button.position - Vector2(table._ai_teach_button.size.x + 10.0, 0.0)
-	if table._voice_button != null:
-		table._voice_button.visible = table._net_mode() != ""
-		table._voice_button.position = table._ai_teach_button.position - Vector2(table._voice_button.size.x + 10.0, 0.0)
-		table._refresh_voice_button()
 	if table._ai_proxy_button != null:
 		table._ai_proxy_button.visible = table._net_mode() != ""
-		table._ai_proxy_button.position = table._voice_button.position - Vector2(table._ai_proxy_button.size.x + 10.0, 0.0)
+		table._ai_proxy_button.position = table._ai_teach_button.position - Vector2(table._ai_proxy_button.size.x + 10.0, 0.0)
 		table._refresh_ai_proxy_button()
 	if table._test_pattern_button != null:
 		# 测试牌型只对调试构建/开启 debug 的测试环境开放，正式包不显示。
 		var test_net = table._net_node()
 		table._test_pattern_button.visible = table._net_mode() != "" and GameConfig.debug_enabled \
 			and test_net != null and bool(test_net.test_mode)
-		var test_anchor = table._ai_proxy_button if table._ai_proxy_button.visible else table._voice_button
+		var test_anchor = table._ai_proxy_button if table._ai_proxy_button.visible else table._ai_teach_button
 		table._test_pattern_button.position = test_anchor.position - Vector2(table._test_pattern_button.size.x + 10.0, 0.0)
 	# Actions sit immediately above the local player's draw slot.
 	table._layout_actions()
