@@ -865,11 +865,11 @@ func _strength_label() -> String:
 
 func _can_toggle_voice_chat() -> bool:
 	var net = _net_node()
-	return net != null and net.voice_chat_allowed()
+	return net != null and net.has_method("voice_chat_allowed") and net.voice_chat_allowed()
 
 func _local_voice_enabled() -> bool:
 	var net = _net_node()
-	return net != null and net.voice_chat_enabled()
+	return net != null and net.has_method("voice_chat_enabled") and net.voice_chat_enabled()
 
 func _toggle_remote_voice(seat: int) -> void:
 	var net = _net_node()
