@@ -110,8 +110,8 @@ func _test_uncalled_discard_chicken() -> void:
 			var result := ScoringEngine.settle(r)
 			ORACLE.check(r, result, t, "未叫牌被胡出牌鸡 charge=%s x%d" % [charge, multiplier])
 			t.expect(result.discard_points[1] == expected, "被胡幺鸡仍计入未叫牌出牌鸡")
-			t.expect(result.pairwise[1][0] == -expected - 24.0 * multiplier and result.pairwise[1][2] == -expected and result.pairwise[1][3] == 0.0,
-				"未叫牌出牌鸡逐家补付，大干扣另付给赢家，未叫牌者不收")
+			t.expect(result.pairwise[1][0] == -expected and result.pairwise[1][2] == -expected and result.pairwise[1][3] == 0.0,
+				"未叫牌出牌鸡逐家补付，点炮不加干扣，未叫牌者不收")
 
 func _test_uncalled_kong_chicken() -> void:
 	var r := RoundState.new()

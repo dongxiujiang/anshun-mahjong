@@ -531,7 +531,7 @@ func _test_patterns() -> void:
 		var result := settle(r)
 		eq([241],"只一个牌型付款项",result.items[0].filter(func(x): return x.kind=="pattern").size(),1,"scripts/core/WinScoring.gd:9")
 		eq([252],"大牌不叠干扣",label_amount(result,0,"干扣"),0.0,"scripts/core/WinScoring.gd:9")
-		eq([252],"零鸡牌型叠大干扣，基础4去重",label_amount(result,0,"大干扣"),20.0,"scripts/core/WinScoring.gd:9")
+		eq([252],"零鸡牌型不叠大干扣",label_amount(result,0,"大干扣"),0.0,"scripts/core/WinScoring.gd:9")
 	for s in [["closed_big",BIG,"big_triplet_single_wait",[239]],["closed_flush_sequences",FLUSH,"clean_single_wait",[238,239]],["closed_clean_big",clean_big,"clean_single_wait",[238,239]]]:
 		var r := fixture()
 		r.players[0].concealed = s[1].duplicate()
@@ -560,14 +560,14 @@ func _test_ready_and_win_fees() -> void:
 		r.players[0].concealed = BIG.duplicate() if special else PLAIN.duplicate()
 		r.players[0].ready = true
 		win_meta(r,0,-1,"wan2" if special else "wan9")
-		begin("ready_self_big" if special else "ready_self_plain",r,"0报听自摸，零鸡大干扣，有无大对子两种组合")
+		begin("ready_self_big" if special else "ready_self_plain",r,"0报听自摸，零鸡，有无大对子两种组合")
 		var result := settle(r)
 		for payer in [1,2,3]:
-			eq([158,242,287],"座%d另付报听分" % payer,fee(result,payer,0,"报听胡牌"),20.0,"scripts/core/WinScoring.gd:54")
-			eq([158,287],"座%d牌型加报听" % payer,result.pairwise[0][payer],54.0 if special else 44.0,"scripts/core/WinScoring.gd:54")
+			eq([158,242,287],"座%d另付报听分" % payer,fee(result,payer,0,"报听胡牌"),20.0 if special else 24.0,"scripts/core/WinScoring.gd:54")
+			eq([158,287],"座%d牌型加报听" % payer,result.pairwise[0][payer],34.0 if special else 24.0,"scripts/core/WinScoring.gd:54")
 			eq([158,287],"座%d赢家报听自摸不再叠加杀报" % payer,fee(result,payer,0,"杀报"),0.0,"scripts/core/WinScoring.gd:9")
 		eq([251],"不叠干扣",label_amount(result,0,"干扣"),0.0,"scripts/core/WinScoring.gd:9")
-		eq([251],"叠大干扣",label_amount(result,0,"大干扣"),20.0 if special else 24.0,"scripts/core/WinScoring.gd:9")
+		eq([251],"不叠大干扣",label_amount(result,0,"大干扣"),0.0,"scripts/core/WinScoring.gd:9")
 	for source_ready in [false,true]:
 		var r := fixture()
 		r.players[0].concealed = PLAIN.duplicate()
@@ -579,9 +579,9 @@ func _test_ready_and_win_fees() -> void:
 		begin("ready_ron_source_"+str(source_ready),r,"A=0 B=1均报听; C=2打wan9 → A胡; C报听="+str(source_ready))
 		var result := settle(r)
 		for payer in [1,2,3]:
-			eq([160,165 if payer==2 else (166 if payer==1 else 167),269,279],"座%d定向报听付款" % payer,fee(result,payer,0,"报听胡牌"),(24.0 if source_ready else 20.0) if payer==2 else 0.0,"scripts/core/WinScoring.gd:9")
+			eq([160,165 if payer==2 else (166 if payer==1 else 167),269,279],"座%d定向报听付款" % payer,fee(result,payer,0,"报听胡牌"),24.0 if payer==2 else 0.0,"scripts/core/WinScoring.gd:9")
 		eq([161],"无额外杀报",fee(result,2,0,"杀报"),0.0,"scripts/core/WinScoring.gd:9")
-		eq([161],"放炮者也报听时补20",result.pairwise[0][2],64.0 if source_ready else 44.0,"scripts/core/WinScoring.gd:9")
+		eq([161],"放炮者也报听时补20",result.pairwise[0][2],44.0 if source_ready else 24.0,"scripts/core/WinScoring.gd:9")
 		eq([161],"没有44杀报流水",result.transfers.any(func(x): return x.reason=="杀报" and x.amount==44.0),false,"scripts/core/WinScoring.gd:9")
 	for source_ready in [false, true]:
 		var r := fixture()
@@ -589,19 +589,19 @@ func _test_ready_and_win_fees() -> void:
 		r.players[0].ready = false
 		r.players[2].ready = source_ready
 		win_meta(r, 0, 2)
-		begin("kill_ready_discard_" + str(source_ready), r, "赢家零鸡，放炮者报听时另付杀报20")
+		begin("kill_ready_discard_" + str(source_ready), r, "赢家零鸡，放炮者报听时付杀报24")
 		var result := settle(r)
-		eq([161], "杀报金额", fee(result, 2, 0, "杀报"), 20.0 if source_ready else 0.0, "scripts/core/WinScoring.gd:9")
-		eq([161], "大干扣和杀报按基础4去重", result.pairwise[0][2], 44.0 if source_ready else 24.0, "scripts/core/WinScoring.gd:9")
+		eq([161], "杀报金额", fee(result, 2, 0, "杀报"), 24.0 if source_ready else 0.0, "scripts/core/WinScoring.gd:9")
+		eq([161], "点炮不付大干扣", result.pairwise[0][2], 24.0 if source_ready else 0.0, "scripts/core/WinScoring.gd:9")
 	var self_ready := fixture()
 	self_ready.players[0].concealed = PLAIN.duplicate()
 	self_ready.players[1].ready = true
 	win_meta(self_ready, 0, -1)
-	begin("kill_ready_selfdraw", self_ready, "赢家未报听且零鸡，报听者在大干扣之外另付杀报20")
+	begin("kill_ready_selfdraw", self_ready, "赢家未报听且零鸡，报听付款者只付杀报")
 	var self_result := settle(self_ready)
-	eq([161], "报听者另付杀报20", fee(self_result, 1, 0, "杀报"), 20.0, "scripts/core/WinScoring.gd:9")
+	eq([161], "报听者只付杀报24", fee(self_result, 1, 0, "杀报"), 24.0, "scripts/core/WinScoring.gd:9")
 	eq([161], "非报听者不付杀报", fee(self_result, 2, 0, "杀报"), 0.0, "scripts/core/WinScoring.gd:9")
-	eq([161], "杀报只由报听者支付", fee(self_result, 1, 0, "杀报") - fee(self_result, 2, 0, "杀报"), 20.0, "scripts/core/WinScoring.gd:9")
+	eq([161], "报听者不付大干扣", fee(self_result, 1, 0, "大干扣"), 0.0, "scripts/core/WinScoring.gd:9")
 	for mode in ["normal","gan","big_gan","ron","rob"]:
 		var r := fixture()
 		r.players[0].concealed = PLAIN.duplicate()
@@ -618,7 +618,7 @@ func _test_ready_and_win_fees() -> void:
 		if mode in ["ron","rob","big_gan"]:
 			eq([250,253,276],"不叠干扣14",label_amount(result,0,"干扣"),0.0,"scripts/core/WinScoring.gd:9")
 		if mode in ["ron","rob"]:
-			eq([253,276],"点炮或抢杠也可收大干扣24",label_amount(result,0,"大干扣"),24.0,"scripts/core/WinScoring.gd:9")
+			eq([253,276],"点炮和抢杠不收大干扣",label_amount(result,0,"大干扣"),0.0,"scripts/core/WinScoring.gd:9")
 	for called in [false,true]:
 		var r := fixture()
 		r.players[0].concealed = BIG.duplicate()
@@ -628,8 +628,8 @@ func _test_ready_and_win_fees() -> void:
 		begin("kong_ron_called_"+str(called),r,"1暗杠后首打wan2 → 0大对子胡; 1叫牌="+str(called))
 		var result := settle(r)
 		eq([249,277],"杠放炮基础17或21",fee(result,1,0,"点炮基础分（叫牌）")+fee(result,1,0,"点炮基础分（未叫牌）"),17.0 if called else 21.0,"scripts/core/WinScoring.gd:9")
-		eq([277],"杠放炮加牌型和大干扣",result.pairwise[0][1],51.0 if called else 55.0,"scripts/core/WinScoring.gd:9")
-		eq([249],"杠放炮不扣独立基础费，牌型与大干扣去重",label_amount(result,0,"大干扣"),20.0,"scripts/core/WinScoring.gd:9")
+		eq([277],"杠放炮加牌型",result.pairwise[0][1],31.0 if called else 35.0,"scripts/core/WinScoring.gd:9")
+		eq([249],"杠放炮不叠大干扣",label_amount(result,0,"大干扣"),0.0,"scripts/core/WinScoring.gd:9")
 	var ron := fixture()
 	ron.players[0].concealed = BIG.duplicate()
 	ron.players[0].discards = ["tiao1"]
@@ -645,9 +645,9 @@ func _test_ready_and_win_fees() -> void:
 	ready_diff.players[2].concealed = waiting()
 	ready_diff.players[2].discards = ["tiao1","tong8"]
 	win_meta(ready_diff,0,2)
-	begin("ready_direct",ready_diff,"2打wan9 → 0报听胡; 2鸡4，0鸡0; 干扣14+报听20且鸡差额反向4")
+	begin("ready_direct",ready_diff,"2打wan9 → 0报听胡; 2鸡4，0鸡0; 报听24且鸡差额反向4")
 	result = settle(ready_diff)
-	eq([269],"定向报听和干扣去重",fee(result,2,0,"报听胡牌") + fee(result,2,0,"干扣"),34.0,"scripts/core/WinScoring.gd:9")
+	eq([269],"定向报听不叠干扣",fee(result,2,0,"报听胡牌") + fee(result,2,0,"干扣"),24.0,"scripts/core/WinScoring.gd:9")
 	eq([269],"鸡差额另付4",fee(result,0,2,"鸡分差额"),4.0,"scripts/core/PaymentLedger.gd:60")
 
 func _test_kong_and_burn_payments() -> void:
@@ -751,7 +751,7 @@ func _test_ledger_and_draws() -> void:
 	eq([258,266,267,268,280],"赢家之间不再互付牌型差额",result.pairwise[1][0],0.0,"scripts/core/WinScoring.gd:9")
 	eq([275,280],"放炮者付0小七对24",fee(result,2,0,"小七对"),24.0,"scripts/core/WinScoring.gd:81")
 	eq([275,280],"放炮者付1清七对44",fee(result,2,1,"清七对"),44.0,"scripts/core/WinScoring.gd:81")
-	eq([275,280],"放炮者向两位无鸡赢家各付54",result.deltas[2],-108.0,"scripts/core/WinScoring.gd:81")
+	eq([275,280],"放炮者分别付24和44",result.deltas[2],-68.0,"scripts/core/WinScoring.gd:81")
 	for all_called in [true,false]:
 		var draw := fixture()
 		for seat in (range(4) if all_called else [0,1]): draw.players[seat].concealed = waiting()

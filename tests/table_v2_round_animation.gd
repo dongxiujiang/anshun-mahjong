@@ -355,7 +355,7 @@ func _chicken_kong_privacy():
 				host.round.players[seat].discard_count=discards
 				deck.snapshot=deck.MODEL.build(host.round,1)
 				deck._clear(deck._red_layer)
-				deck._build_red()
+				deck._build_melds()
 				var face_count=0
 				for node in deck._red_layer.get_children():
 					if node.face_up: face_count+=1
@@ -363,7 +363,7 @@ func _chicken_kong_privacy():
 			host.round.phase=RoundState.Phase.SETTLED
 			deck.snapshot=deck.MODEL.build(host.round,1)
 			deck._clear(deck._red_layer)
-			deck._build_red()
+			deck._build_melds()
 			t.expect(deck._red_layer.get_child_count()==4 and deck._red_layer.get_child(0).face_up,"settlement reveals chicken concealed kong")
 			await _cleanup(host)
 
@@ -375,7 +375,6 @@ func _meld_zones():
 			var tile="tiao1" if chicken else "wan5"
 			host.round.players[1].melds=[{"kind":kind,"tile":tile}]
 			deck.snapshot=deck.MODEL.build(host.round,1)
-			deck._build_red()
 			deck._build_melds()
 			var count=3 if kind=="pung" else 4
 			t.expect(deck._red_layer.get_child_count()==(count if chicken else 0),"red zone contains only chicken melds with correct cardinality: "+kind)
@@ -434,10 +433,16 @@ func _settlement_faces():
 		if node.tile=="tiao1" and node.score_highlight:highlighted+=1
 	t.expect(highlighted==1,"opponent hand chicken participates in native settlement highlight")
 	deck._clear_hand_tiles()
+	host.round.round_meta.winners=[]
 	host.round.round_meta.all_called_draw=true
+	for seat in [0,2]:
+		host.round.players[seat].concealed.pop_back()
+		host.round.players[seat].just_drew=""
 	deck.snapshot=deck.MODEL.build(host.round,1)
 	deck._build_hands()
-	t.expect(not deck.hand_boxes[0].get_child(0).face_up,"all-called draw retains the no-reveal presentation exception")
+	for seat in 4:
+		t.expect(deck.hand_boxes[seat].get_child_count()==13 and deck.hand_boxes[seat].get_children().all(
+			func(node):return node.face_up and node.tile!=""),"all-called draw exposes every hand tile for seat%d" % seat)
 	await _cleanup(host)
 
 func _speed_settings():
@@ -564,8 +569,14 @@ func _authoritative_melds():
 		await RenderingServer.frame_post_draw
 		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://build/meld-motion"))
 		root.get_texture().get_image().save_png("res://build/meld-motion/authority-" + kind + ".png")
-		await create_timer(1.1).timeout
 		var deck=table._new_areas
+		if kind == "kong":
+			var deadline := Time.get_ticks_msec() + 950
+			while not deck._draw_animating and Time.get_ticks_msec() < deadline:
+				await process_frame
+			t.expect(deck._draw_animating, "actual kong supplement is visible in flight")
+			await _capture_motion("kong-tail-draw")
+		await create_timer(1.1).timeout
 		t.expect(p.melds.size()==1 and deck._meld_layer.get_child_count()==(3 if kind=="pung" else 4),kind+": authority and rendered meld cardinality agree")
 		t.expect(not table._table_animation_controller.has_pending(),kind+": authoritative sequence finishes without stuck visuals")
 		if kind!="pung":
@@ -574,6 +585,9 @@ func _authoritative_melds():
 		else:
 			t.expect(deck.hand_boxes[1].get_child_count()==11 and deck.draw_boxes[1].get_child_count()==0,"pung starts discard turn without drawing")
 			r._discard(1,str(p.concealed[0]),0)
+			await create_timer(0.08).timeout
+			t.expect(not deck._discard_flights.is_empty(), "real post-pung discard is visible in flight")
+			await _capture_motion("discard-after-pong")
 			await create_timer(0.7).timeout
 			t.expect(deck.hand_boxes[1].get_child_count()==10 and not table._table_animation_controller.has_pending(),"real post-pung discard animates and completes")
 		if table._ai_service!=null:table._ai_service.stop()
@@ -736,6 +750,11 @@ func _held_after_meld():
 					root.get_texture().get_image().save_png("res://build/meld-motion/held-%d-%s.png" % [seat, kind])
 				await _cleanup(host)
 	config.set_tile_animation_seconds(0.3, false)
+
+func _capture_motion(name: String) -> void:
+	DirAccess.make_dir_recursive_absolute("res://build/equal-table/motion")
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://build/equal-table/motion/" + name + ".png")
 
 func _run():
 	# Tests use a known baseline without persisting user preferences.

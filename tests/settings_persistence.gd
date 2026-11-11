@@ -28,6 +28,7 @@ func _test_defaults_and_recovery() -> void:
 	var config = _game(path)
 	t.expect(config.ai_speed == "0.80" and config.tile_animation_seconds == 0.20 and config.settlement_speed == "0.70", "new installation uses short durations")
 	t.expect(not config.score_details_enabled, "new installation defaults to score details off")
+	t.expect(config.hand_sort_priority == "wide", "new installation prioritizes wide waits")
 	t.expect(not FileAccess.file_exists(path), "loading missing settings never writes defaults")
 	config.set_settlement_speed("slow")
 	t.expect(STORE.read_config(path).get_value("game", "settlement_speed") == "1.00", "explicitly choosing the current default is still saved for future upgrades")
@@ -68,6 +69,10 @@ func _test_defaults_and_recovery() -> void:
 	loaded.set_ai_speed("invalid")
 	t.expect(FileAccess.get_sha256(path) == digest, "loading and invalid selections do not rewrite the saved file")
 	loaded.set_tile_animation_seconds(0.40)
+	loaded.set_hand_sort_priority("pattern")
+	var sort_preference = _game(path)
+	t.expect(sort_preference.hand_sort_priority == "pattern", "personal sorting preference survives a restart")
+	sort_preference.free()
 	t.expect(STORE.read_config(path).get_value("future", "keep") == "from-newer-version", "saving preserves unfamiliar settings for updates and rollback")
 	config.free()
 	recovered.free()
@@ -105,11 +110,15 @@ func _test_controls() -> void:
 	var settings = load("res://scripts/ui/SoundSettings.gd").new()
 	settings.table_mode = true
 	root.add_child(settings)
-	t.expect(settings.score_details_button.text == "详细展示：关闭", "settings show the default off state")
+	t.expect(settings.score_details_button.text == "详细：关", "settings show the default off state")
+	t.expect(settings.hand_sort_button.text == "排序：宽张", "settings show the default wide waits preference")
 	settings.score_details_button.pressed.emit()
-	t.expect(settings.score_details_button.text == "详细展示：开启", "settings show the enabled state")
+	t.expect(settings.score_details_button.text == "详细：开", "settings show the enabled state")
+	settings.hand_sort_button.pressed.emit()
+	t.expect(settings.hand_sort_button.text == "排序：牌型", "settings show the selected pattern preference")
 	var reloaded = _game(config.settings_path)
 	t.expect(reloaded.score_details_enabled, "enabled score details survive reloading settings")
+	t.expect(reloaded.hand_sort_priority == "pattern", "sorting preference selected in settings survives reloading")
 	reloaded.free()
 	settings.tile_speed_slider.value = 0.7
 	t.expect(is_equal_approx(STORE.read_config(config.settings_path).get_value("game", "tile_animation_seconds"), 0.7), "tile duration is saved while settings is open")
@@ -131,7 +140,9 @@ func _test_controls() -> void:
 	settings.tile_speed_slider.value = 0.0
 	settings.settlement_speed_slider.value = 2.0
 	settings.score_details_button.pressed.emit()
-	t.expect(not config.score_details_enabled and settings.score_details_button.text == "详细展示：关闭", "settings can turn score details off again")
+	t.expect(not config.score_details_enabled and settings.score_details_button.text == "详细：关", "settings can turn score details off again")
+	settings.hand_sort_button.pressed.emit()
+	t.expect(config.hand_sort_priority == "wide" and settings.hand_sort_button.text == "排序：宽张", "settings can switch back to wide waits")
 	settings.sliders.voice.value = 19
 	settings.close()
 	t.expect(FileAccess.get_sha256(config.settings_path) == game_hash and FileAccess.get_sha256(audio.settings_path) == audio_hash, "preview/test controls cannot overwrite saved preferences")

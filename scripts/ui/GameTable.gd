@@ -471,6 +471,8 @@ func _connect_voice_ui() -> void:
 		return
 	if net.has_signal("voice_status") and not net.voice_status.is_connected(_on_voice_status):
 		net.voice_status.connect(_on_voice_status)
+	if net.has_signal("lobby_updated") and not net.lobby_updated.is_connected(_refresh_remote_voice):
+		net.lobby_updated.connect(_refresh_remote_voice)
 	if net.has_signal("returned_to_lobby") and not net.returned_to_lobby.is_connected(_on_returned_to_lobby):
 		net.returned_to_lobby.connect(_on_returned_to_lobby)
 	if net.has_signal("return_vote_updated") and not net.return_vote_updated.is_connected(_on_return_vote_updated):
@@ -681,6 +683,11 @@ func _on_voice_status(_enabled: bool, message: String) -> void:
 	if _new_areas != null:
 		_new_areas.refresh_voice_control(human_seat, message)
 
+func _refresh_remote_voice() -> void:
+	if _new_areas == null: return
+	for seat in 4:
+		if seat != human_seat: _new_areas.refresh_voice_control(seat)
+
 func _on_ai_assist_pressed() -> void:
 	if _ai_teach_button == null:
 		return
@@ -882,6 +889,10 @@ func _remote_voice_enabled(seat: int) -> bool:
 	var net = _net_node()
 	var chat = net.get("voice_chat") if net != null else null
 	return chat != null and chat.has_method("speaker_enabled") and bool(chat.speaker_enabled(seat))
+
+func _remote_microphone_on(seat: int) -> bool:
+	var net = _net_node()
+	return net != null and net.has_method("seat_microphone_on") and net.seat_microphone_on(seat)
 
 func _process(_delta: float) -> void:
 	if round == null:
@@ -1531,7 +1542,7 @@ func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_FOCUS_IN,
 		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_RESUMED]:
 		_on_input_focus_changed()
-	if what == NOTIFICATION_APPLICATION_RESUMED and not _quitting and round != null:
+	if what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN] and not _quitting and round != null:
 		# Android can lose the pressed-touch/UI prompt while backgrounded.
 		# Re-arm the current authoritative prompt after returning to foreground,
 		# then safely skip any animation that did not resume within a short

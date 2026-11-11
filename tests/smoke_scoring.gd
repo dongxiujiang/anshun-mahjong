@@ -117,9 +117,9 @@ func _check_pattern_discard(pattern_name: String, hand: Array, melds: Array, til
 	t.expect(pattern_items.size() == 1, "%s放炮只有一个牌型项" % pattern_name)
 	if pattern_items.size() == 1:
 		t.expect(str(pattern_items[0].get("label", "")) == label and float(pattern_items[0].get("amount", 0.0)) == score, "%s放炮牌型分为%.0f" % [pattern_name, score])
-	var expected := score + 24.0 - 4.0 # 此组牌无鸡无杠，叠大干扣并去重基础4。
-	t.expect(float(result.round_points[0]) == expected, "%s放炮牌型与大干扣各算一次" % pattern_name)
-	t.expect(float(result.pairwise[0][3]) == expected, "%s放炮者付牌型和大干扣" % pattern_name)
+	var expected := score
+	t.expect(float(result.round_points[0]) == expected, "%s放炮只算牌型" % pattern_name)
+	t.expect(float(result.pairwise[0][3]) == expected, "%s放炮者付牌型" % pattern_name)
 	t.expect(float(result.pairwise[0][1]) == 0.0 and float(result.pairwise[0][2]) == 0.0, "%s其他两家不付牌型分" % pattern_name)
 	t.expect(float(result.deltas[0]) == expected and float(result.deltas[3]) == -expected, "%s赢家收、放炮者付" % pattern_name)
 	t.expect(float(result.deltas[1]) == 0.0 and float(result.deltas[2]) == 0.0, "%s其他两家净变化为0" % pattern_name)
@@ -161,10 +161,10 @@ func _test_multi_winner_pattern_discards() -> void:
 	var result := ScoringEngine.settle(r)
 	t.expect(result.items[0].any(func(item): return item.get("label", "") == "小七对" and float(item.get("amount", 0.0)) == 24.0), "多赢家：小七对24")
 	t.expect(result.items[1].any(func(item): return item.get("label", "") == "清七对" and float(item.get("amount", 0.0)) == 44.0), "多赢家：清七对44")
-	t.expect(float(result.pairwise[0][3]) == 44.0 and float(result.pairwise[1][3]) == 64.0, "放炮者分别付两家牌型和大干扣")
+	t.expect(float(result.pairwise[0][3]) == 24.0 and float(result.pairwise[1][3]) == 44.0, "放炮者分别付两家牌型")
 	t.expect(float(result.pairwise[1][0]) == 0.0, "多赢家之间不再互付牌型差额")
 	t.expect(not result.transfers.any(func(transfer): return str(transfer.get("reason", "")) == "牌型差额"), "多赢家没有牌型差额流水")
-	t.expect(result.deltas == [44.0, 64.0, 0.0, -108.0], "多赢家：放炮者付44+64，旁家0，实际 %s" % str(result.deltas))
+	t.expect(result.deltas == [24.0, 44.0, 0.0, -68.0], "多赢家：放炮者付24+44，旁家0，实际 %s" % str(result.deltas))
 	var pattern_total := 0.0
 	for transfer in result.transfers:
 		if str(transfer.get("reason", "")) in ["小七对", "清七对"]:

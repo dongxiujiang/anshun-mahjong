@@ -67,23 +67,27 @@ func _run() -> void:
 	t.expect(north_nodes == 3 + 3 + 4, "多组碰杠全部渲染")
 	t.expect(not sideways, "加杠四张竖放")
 	t.expect(ready_seen, "报听标记显示")
-	# 红色区/普通弃牌上限 + V2 AI教学高亮。
+	# 共用牌河槽位与 V2 AI 教学高亮。
 	var p2 = table.round.players[2]
-	# 独立测试鸡牌容量，清掉前一阶段的普通暗杠；混合容量由布局守卫覆盖。
+	# 清掉前一阶段的暗杠，分别检查侧家满槽与本家混合牌河。
 	p1.melds.clear()
 	for i in 50:
 		p2.discards.append("wan2")
 		p2.discard_ids.append(i)
-	for i in 30:
-		p1.discards.append("tiao1")
+	var own_cap := G.river_capacity(G.relative_seat(1, 1))
+	for i in own_cap:
+		p1.discards.append("wan3" if i < own_cap - 8 else ("tiao1" if i % 2 == 0 else "tong8"))
 		p1.discard_ids.append(100 + i)
 	p1.concealed[0] = "wan1"
 	table._refresh()
 	await create_timer(0.2).timeout
 	var ordinary_count := 0
+	var own_ordinary_count := 0
 	var red_count := 0
 	for node in v2._discard_layer.get_children():
-		if int(node.get_meta("v2_seat", -1)) == 2: ordinary_count += 1
+		var seat := int(node.get_meta("v2_seat", -1))
+		if seat == 2: ordinary_count += 1
+		if seat == 1: own_ordinary_count += 1
 	for node in v2._red_layer.get_children():
 		if int(node.get_meta("v2_seat", -1)) == 1: red_count += 1
 	v2.highlight_ai_teach(["wan1"])
@@ -91,9 +95,9 @@ func _run() -> void:
 	for node in v2.hand_boxes[1].get_children():
 		if node is TileView and node.ai_teach_highlight: highlighted += 1
 	print("[missing] ordinary_cap=", ordinary_count, " red_cap=", red_count, " teach=", highlighted)
-	var ordinary_cap := 40 if G.relative_seat(1, 2) in [1, 3] else 36
+	var ordinary_cap := G.river_capacity(G.relative_seat(1, 2))
 	t.expect(ordinary_count == ordinary_cap, "普通弃牌上限%d" % ordinary_cap)
-	t.expect(red_count == 24, "红色区上限24")
+	t.expect(red_count == 8 and own_ordinary_count + red_count == own_cap, "本家满槽时普通弃牌与八张鸡牌共存")
 	t.expect(highlighted >= 1, "V2 AI教学高亮")
 	# 翻鸡沿用原牌墙实体。
 	table._table_animation_controller.cancel()

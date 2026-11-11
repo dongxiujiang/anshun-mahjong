@@ -133,7 +133,7 @@ static func expected(round: RoundState) -> Dictionary:
 					base_payers.append(payer)
 			var dry_fee := 0.0
 			var any_kong: bool = player.melds.any(func(meld): return meld.kind in ["kong", "add_kong"])
-			if pattern.win and chicken_values[target_seat] == 0.0 and not any_kong:
+			if self_draw and not player.ready and pattern_fee == 0.0 and pattern.win and chicken_values[target_seat] == 0.0 and not any_kong:
 				dry_fee = 24.0
 				for other in 4:
 					if other == target_seat or not called[other]:
@@ -145,14 +145,13 @@ static func expected(round: RoundState) -> Dictionary:
 			for payer in base_payers:
 				var components: Array[float] = []
 				if pattern_fee > 0.0: components.append(pattern_fee)
-				if dry_fee > 0.0: components.append(dry_fee)
 				if player.ready:
 					components.append(24.0)
 					if not self_draw and round.players[payer].ready: components.append(24.0)
 				elif round.players[payer].ready:
 					components.append(24.0)
 				if components.is_empty() and self_draw:
-					components.append(4.0)
+					components.append(dry_fee if dry_fee > 0.0 else 4.0)
 				var total := 0.0
 				for fee in components: total += fee
 				_credit(matrix, payer, target_seat, total - 4.0 * maxi(0, components.size() - 1), burned)

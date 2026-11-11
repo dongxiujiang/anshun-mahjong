@@ -155,12 +155,28 @@ func _ready_meld_clearance(view):
 			var badge = view._control_layer.get_node_or_null("ReadyMeldBadge%d" % seat)
 			t.expect(badge != null and badge.visible, "ready marker remains visible with %d melds" % count)
 			if badge == null: continue
+			var marker_bounds: Rect2 = badge.get_rect()
+			if seat == r.dealer_seat: marker_bounds = marker_bounds.merge(dealer.get_rect())
+			var rel := G.relative_seat(view.human_seat, seat)
+			var center := marker_bounds.get_center()
+			t.expect(is_equal_approx(center.y, G.CENTER.y) if rel in [1,3] else is_equal_approx(center.x, G.CENTER.x),
+				"dealer and ready badges stay on the hand centerline")
 			t.expect(G.TABLE_BOUNDS.encloses(badge.get_rect()) and not badge.get_rect().intersects(bar.get_rect()), "ready marker stays inside the table and clear of action buttons")
 			for layer in view._render_layers()+[view._label_layer]:
 				for tile in layer.get_children():
 					if tile is Control and tile.visible: t.expect(not badge.get_rect().intersects(view._visual_rect(tile)), "large ready marker clears every visible tile, name and score")
 		view._action_layer.remove_child(bar)
 		bar.queue_free()
+		for player in r.players: player.ready = false
+		for dealer_seat in 4:
+			r.dealer_seat = dealer_seat
+			view.refresh()
+			var single: Label = view._dealer_meld_badges[dealer_seat]
+			var rel := G.relative_seat(view.human_seat, dealer_seat)
+			var center := single.get_rect().get_center()
+			t.expect(single.visible and not view._ready_meld_badges[dealer_seat].visible
+				and (is_equal_approx(center.y, G.CENTER.y) if rel in [1,3] else is_equal_approx(center.x, G.CENTER.x)),
+				"dealer badge alone stays centered in each seat")
 
 func _ready_border_motion(view):
 	var config = root.get_node("GameConfig")
@@ -270,7 +286,10 @@ func _settlement(view):
 	r.last_result.items[3] = [{"kind":"pattern","label":"小七对","amount":24.0}]
 	r.round_meta.self_draw = false
 	r.round_meta.discard_seat = 0
-	t.expect(view._settlement_result_title() == "对家报听胡下家-小七对", "discard win keeps source, ready and pattern")
+	t.expect(view._settlement_result_title() == "下家放炮 · 对家报听胡牌-小七对", "discard win keeps source, ready and pattern")
+	r.round_meta.burn_chicken_reason = "after_kong_discard"
+	t.expect(view._settlement_result_title() == "下家杠后放炮 · 对家报听胡牌-小七对", "kong discard is identified separately")
+	r.round_meta.erase("burn_chicken_reason")
 	r.round_meta.self_draw = true
 	r.round_meta.discard_seat = -1
 	r.last_result = scored.duplicate(true)

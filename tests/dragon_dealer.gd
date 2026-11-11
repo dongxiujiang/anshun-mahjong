@@ -65,7 +65,7 @@ func _test_dragon() -> void:
 	pattern_items = scored.items[0].filter(func(item): return item.kind == "pattern")
 	t.expect(pattern_items.size() == 1 and pattern_items[0].label == "清龙对" and pattern_items[0].amount == 64,
 		"清龙对牌型只计64")
-	t.expect(scored.pairwise[0][2] == 84, "零鸡清龙对叠大干扣，64+24-4，不另计点炮基础")
+	t.expect(scored.pairwise[0][2] == 64, "零鸡清龙对只付64，不计大干扣和点炮基础")
 	game.players[0].concealed = two_quads
 	game.round_meta.win_tile = "tiao1"
 	scored = ScoringEngine.settle(game)

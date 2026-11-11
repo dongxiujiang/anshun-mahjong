@@ -164,6 +164,8 @@ func _run() -> void:
 	var resumed := NetGameNode.new()
 	root.add_child(resumed)
 	resumed._resume_requested = true
+	resumed._server_ip = "127.0.0.1"
+	resumed._resume_token = "existing-seat-token"
 	resumed._reconnecting = false
 	resumed._client_joined = false
 	resumed._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
@@ -181,6 +183,9 @@ func _run() -> void:
 	lost.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	t.expect(lost._reconnecting and not lost._client_joined, "Foreground return reconnects a missing socket instead of trusting the old joined flag")
 	t.expect(progress.size() == 1, "Foreground return immediately tells the table to show connection progress")
+	lost.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	t.expect(progress.size() == 1, "Focus and resume notifications rebuild the connection only once")
+	lost.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
 	lost._reconnecting = true
 	lost._reconnect_attempt = 2
 	lost._reconnect_wait = 4.0

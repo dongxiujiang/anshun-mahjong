@@ -7,6 +7,10 @@ var t := H.new()
 func _initialize() -> void: call_deferred("_run")
 
 func _run() -> void:
+	if DisplayServer.get_name() != "headless":
+		root.content_scale_size = Vector2i(G.DESIGN_SIZE)
+		root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_IGNORE
 	var host = load("res://scenes/GameTable.tscn").instantiate()
 	root.add_child(host)
 	host.round.controllers = [null, null, null, null]
@@ -48,41 +52,101 @@ func _run() -> void:
 	for i in 108:
 		if str(all_pairs[i]) != str(ring[i]): connected = false
 	t.expect(connected, "2×54数组首尾相连")
-	_double_six_opening(deck)
+	host.hide()
+	await _opening_matrix(deck)
 	deck.queue_free()
 	host.queue_free()
 	await process_frame
 	quit(t.finish("table_v2_wall_ring"))
 
-func _double_six_opening(deck) -> void:
-	const FIRST_INDEX := [12, 40, 66, 94]
+func _opening_matrix(deck) -> void:
+	const WALL_START := [28, 54, 82, 0]
+	const WALL_OFFSETS := [2, 3, 2, 1, 2, 3]
+	var visual := DisplayServer.get_name() != "headless"
+	if visual:
+		DirAccess.make_dir_recursive_absolute("res://build/equal-table/openings")
 	for dealer in 4:
-		var r := RoundState.new()
-		r.next_dealer_seat = dealer
-		r.start_round(1, 6, 6)
-		var break_index: int = FIRST_INDEX[dealer]
-		t.expect(r.round_meta.dice_double and r.round_meta.break == break_index,
-			"双6只用红骰，庄家下家墙跳过六蹲")
-		var actual: Array = r.wall.draw_log.slice(0, 4).map(func(draw): return draw.index)
-		t.expect(actual == range(break_index, break_index + 4), "庄家首组拿下家墙的第七、八蹲")
-		for viewer in 4:
-			var client := RoundState.new()
-			client.apply_sync(r.serialize_for_seat(viewer))
-			deck.set_round(client, viewer)
-			var batch: Dictionary = client.visual_events.filter(func(event): return event.type == "deal_batch")[0]
-			var first: Dictionary = batch.deals[0]
-			t.expect(first.indices == actual, "所有客户端收到同一组取牌下标")
-			var wall_side := posmod(dealer - viewer, 4)
-			var source: Vector2 = deck.wall_center_for_index(break_index)
-			var source_side: Vector2 = [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP][wall_side]
-			var offset := source - G.CENTER
-			t.expect(offset.dot(source_side) > 280 and absf(offset.cross(source_side)) < 100,
-				"庄家%d 视角%d：开牌墙跟随座位旋转" % [dealer, viewer])
-			deck.animate_deal_group(dealer, first.cards, first.indices, 0, func(): pass)
-			var display_order := [break_index + 1, break_index + 3, break_index, break_index + 2]
-			for i in display_order.size():
-				var tile: TileView = deck._deal_moving[i]
-				var origin: Vector2 = deck.wall_center_for_index(display_order[i])
-				t.expect((tile.position + tile.size / 2.0).is_equal_approx(origin),
-					"开局飞牌从各自真实墙槽起飞")
-			deck._finish_deal_group(deck._deal_moving, Callable())
+		for die in range(1, 7):
+			var r := RoundState.new()
+			r.next_dealer_seat = dealer
+			var seed_value := 4910 + dealer * 6 + die
+			r.set_rng_seed(seed_value)
+			r.pause_after_opening = true
+			r.start_round(dealer, die, die)
+			r.controllers = [null, null, null, null]
+			var logical_side := posmod(dealer + int(WALL_OFFSETS[die - 1]), 4)
+			var first: int = WALL_START[logical_side] + die * 2
+			var name := "dealer%d-red%d" % [dealer, die]
+			var dealt: Array = r.wall.draw_log.map(func(draw): return int(draw.index))
+			var want: Array = range(first, first + 52).map(func(i): return i % 108)
+			t.expect(r.round_meta.dice_double and r.round_meta.break == first and dealt == want,
+				name + ": red die alone sets break; all 52 tiles follow the real wall ring")
+			t.expect(r.wall.remaining == 56 and r.players.all(func(p): return p.concealed.size() == 13),
+				name + ": four full hands and 56 tiles remain before first draw")
+			var first_four: Array = want.slice(0, 4)
+			for viewer in 4:
+				var label := name + "-viewer%d" % viewer
+				var client := RoundState.new()
+				client.apply_sync(r.serialize_for_seat(viewer))
+				deck.set_round(r, viewer)
+				var local := _visible_wall(deck)
+				deck.set_round(client, viewer)
+				var remote := _visible_wall(deck)
+				t.expect(_same_wall(local, remote, 56)
+					and dealt.all(func(index): return not remote.has(index)),
+					label + ": local and synced clients keep the same 56 real wall slots")
+				var batch: Dictionary = client.visual_events.filter(func(event): return event.type == "deal_batch")[0]
+				var opening: Dictionary = batch.deals[0]
+				t.expect(int(opening.seat) == dealer and opening.indices == first_four,
+					label + ": the actual dealer receives the correct opening indices")
+				var screen := posmod(logical_side - viewer + 1, 4)
+				var wall_bounds: Rect2 = G.WALL_BOUNDS[screen]
+				t.expect(wall_bounds.has_point(deck.wall_center_for_index(first)), label + ": break is on the expected rotated wall")
+				deck.animate_deal_group(dealer, opening.cards, opening.indices, 0, func(): pass)
+				var display_order := [first + 1, first + 3, first, first + 2]
+				var matching: bool = deck._deal_moving.size() == 4
+				for i in deck._deal_moving.size():
+					var tile: TileView = deck._deal_moving[i]
+					matching = matching and (tile.position + tile.size / 2.0).is_equal_approx(
+						deck.wall_center_for_index(display_order[i]))
+				t.expect(matching, label + ": all four deal sprites take off from their physical slots")
+				deck._finish_deal_group(deck._deal_moving, Callable())
+				if visual and viewer == dealer:
+					deck.set_round(r, viewer)
+					await process_frame
+					await RenderingServer.frame_post_draw
+					root.get_texture().get_image().save_png("res://build/equal-table/openings/" + name + ".png")
+			r.resume_after_opening()
+			t.expect(r.current_turn == dealer and r.wall.remaining == 55
+				and int(r.wall.draw_log.back().index) == (first + 52) % 108,
+				name + ": dealer's first draw takes the next live wall slot")
+			for viewer in 4:
+				var client := RoundState.new()
+				client.apply_sync(r.serialize_for_seat(viewer))
+				deck.set_round(r, viewer)
+				var local := _visible_wall(deck)
+				deck.set_round(client, viewer)
+				t.expect(_same_wall(local, _visible_wall(deck), 55)
+					and not local.has((first + 52) % 108), name + ": first draw leaves the same half-stack on both peers")
+
+			for white in range(1, 7):
+				if white == die: continue
+				var single := RoundState.new()
+				single.next_dealer_seat = dealer
+				single.set_rng_seed(seed_value)
+				single.pause_after_opening = true
+				single.start_round(dealer, die, white)
+				t.expect(not single.round_meta.dice_double and int(single.round_meta.die_white) == white
+					and single.round_meta.break == first and single.wall.draw_log == r.wall.draw_log.slice(0, 52),
+					name + "-white%d: white die does not move the wall break or change dealt cards" % white)
+
+func _visible_wall(deck) -> Dictionary:
+	var slots := {}
+	for tile in deck._wall_layer.get_children():
+		var index := int(tile.get_meta("wall_ring_index", -1))
+		slots[index] = tile.position
+	return slots
+
+func _same_wall(local: Dictionary, remote: Dictionary, count: int) -> bool:
+	return local.size() == count and remote.size() == count and local.keys().all(
+		func(index): return remote.has(index) and Vector2(local[index]).is_equal_approx(remote[index]))

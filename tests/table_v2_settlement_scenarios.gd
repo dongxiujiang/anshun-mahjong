@@ -153,7 +153,7 @@ func _fixture(r: RoundState) -> Dictionary:
 			mode = "double"
 			ready = true
 			hands[2] = OTHER_WAIT.duplicate()
-			fees = [[1, 0, "干扣", 14], [1, 0, "报听胡牌", 20], [1, 2, "报听胡牌", 24]]
+			fees = [[1, 0, "报听胡牌", 24], [1, 2, "报听胡牌", 24]]
 		"mixed-draw", "all-called-draw":
 			mode = "draw"
 			flip = ""
@@ -311,14 +311,14 @@ func _check_ledger(r: RoundState, spec: Dictionary) -> void:
 		var actual_fee := int(expected[3]) * int(r.round_meta.chicken_multiplier)
 		_check(amount == actual_fee, "%d→%d %s: expected %d, got %.0f" % [expected[0], expected[1], expected[2], actual_fee, amount])
 	if _case in ["flush-ron", "dry-pattern-ready"]:
-		# 总纲 8.5/10.1: verify the total, independent of which component keeps 基础4.
+		# 总纲 8.5/10.1: verify the total and absence of 大干扣.
 		for payer in ([1] if _case == "flush-ron" else [1, 2, 3]):
 			var amount := 0.0
 			for entry: Dictionary in result.transfers:
 				if entry.from == payer and entry.to == 0 and entry.reason in ["清一色", "大干扣", "报听胡牌"]:
 					amount += float(entry.amount)
-			var expected := 44 if _case == "flush-ron" else 64
-			_check(amount == expected, "%d→0 清一色＋大干扣%s: expected %d, got %.0f" % [payer, "＋报听" if expected == 64 else "", expected, amount])
+			var expected := 24 if _case == "flush-ron" else 44
+			_check(amount == expected, "%d→0 清一色%s: expected %d, got %.0f" % [payer, "＋报听" if expected == 44 else "", expected, amount])
 	if spec.mode == "draw":
 		_check(r.next_chicken_multiplier == 2, "any draw must double next round")
 		_check(bool(r.round_meta.all_called_draw) == (_case == "all-called-draw"), "incorrect all-called draw status")
@@ -398,6 +398,16 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 		_check(view._settlement_display_scores[seat] == r.players[seat].score, "final UI score does not match ledger")
 		for tile: TileView in view._native_tiles_for_seat(seat):
 			_check(not tile.score_highlight, "tile remained highlighted after animation")
+	if spec.mode == "draw":
+		var synced := RoundState.new()
+		synced.apply_sync(r.serialize_for_seat(table.human_seat))
+		for seat in 4:
+			var hand: Array = view.hand_boxes[seat].get_children() + view.draw_boxes[seat].get_children()
+			var values: Array = synced.players[seat].concealed.duplicate()
+			_check(hand.size() == values.size(), "draw settlement keeps every concealed tile")
+			for tile: TileView in hand:
+				_check(tile.face_up and values.has(tile.tile), "draw reveals each actual tile, including on the online snapshot")
+				values.erase(tile.tile)
 	var self_seat: int = table.human_seat
 	for offset in [1, 2, 3]:
 		var peer := posmod(self_seat + offset, 4)
@@ -405,9 +415,9 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 	var panel: Control = view._native_settlement
 	var titles := {
 		"plain-self-draw": "你自摸", "ready-seven-pairs": "你报听自摸-小七对",
-		"triplets-exposed-kong": "你胡上家-大对子", "flush-ron": "你胡上家-清一色", "dragon-seven-pairs-ron": "你胡上家-龙七对",
-		"rob-added-kong": "下家抢你的杠胡牌", "kong-draw-last-four": "你杠开海底自摸-大对子",
-		"double-ron": "下家报听胡对家、上家报听胡对家", "mixed-draw": "本局流局",
+		"triplets-exposed-kong": "上家放炮 · 你胡牌-大对子", "flush-ron": "上家放炮 · 你胡牌-清一色", "dragon-seven-pairs-ron": "上家放炮 · 你胡牌-龙七对",
+		"rob-added-kong": "你被抢杠 · 下家抢杠胡", "kong-draw-last-four": "你杠开海底自摸-大对子",
+		"double-ron": "对家放炮 · 下家报听胡牌、上家报听胡牌", "mixed-draw": "本局流局",
 		"all-called-draw": "四家叫牌流局", "dry-pattern-ready": "你报听自摸-清一色",
 	}
 	var multiplier_titles := {
@@ -428,6 +438,9 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 		_check(panel.is_visible_in_tree() and bounds.encloses(panel.get_global_rect()), "settlement panel clipped at %s" % dimensions)
 		_check(next.is_visible_in_tree() and bounds.encloses(next.get_global_rect()), "next round control clipped at %s" % dimensions)
 		_check(not panel.get_global_rect().intersects(next.get_global_rect()), "next round control overlaps settlement")
+		for badge: Label in view._dealer_meld_badges + view._ready_meld_badges:
+			if badge.is_visible_in_tree():
+				_check(not panel.get_global_rect().intersects(badge.get_global_rect()), "settlement leaves dealer and ready badges visible")
 		for tile: TileView in view._native_tiles_for_seat(table.human_seat):
 			_check(not next.get_global_rect().intersects(tile.get_global_rect()), "next round control overlaps own tile")
 		await _capture("%02d-final-%dx%d" % [index, dimensions.x, dimensions.y])
@@ -446,12 +459,12 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 				"plain-self-draw": ["自摸 4分"],
 				"ready-seven-pairs": ["小七对 24分", "报听 20分", "7筒 · 翻鸡 2分"],
 				"triplets-exposed-kong": ["大对子 14分"],
-				"flush-ron": ["清一色 24分", "大干扣 20分"],
+				"flush-ron": ["清一色 24分"],
 				"dragon-seven-pairs-ron": ["龙七对 44分"],
 				"rob-added-kong": ["抢杠 12分"],
 				"kong-draw-last-four": ["大对子 14分", "杠开 5分", "海底捞 5分"],
-				"double-ron": ["干扣 14分", "报听 20分"],
-				"dry-pattern-ready": ["清一色 24分", "大干扣 20分", "报听 20分"],
+				"double-ron": ["报听 24分"],
+				"dry-pattern-ready": ["清一色 24分", "报听 20分"],
 			}.get(_case, [])
 			var parts: String = details._breakdown.text
 			_check(expected_parts.all(func(part): return parts.contains(part)), "winning tile splits single-rate scores: %s" % [parts])
@@ -504,6 +517,10 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 			await process_frame
 			_check(root.get_visible_rect().encloses(details._detail_panel.get_global_rect()), "player details fit the screen")
 			_check(not details._detail_panel.get_global_rect().intersects(panel.get_global_rect()), "player details do not overlap settlement")
+			for badge: Label in view._dealer_meld_badges + view._ready_meld_badges:
+				if badge.is_visible_in_tree():
+					_check(not panel.get_global_rect().intersects(badge.get_global_rect())
+						and not details._detail_panel.get_global_rect().intersects(badge.get_global_rect()), "score inspection leaves dealer and ready badges visible")
 			for wall: TileView in view._wall_layer.get_children():
 				var bounds: Rect2 = wall.get_global_transform() * Rect2(Vector2.ZERO, wall.size)
 				_check(not details._detail_panel.get_global_rect().intersects(bounds), "player details must not cover the remaining wall")

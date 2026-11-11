@@ -128,9 +128,6 @@ func _apply_without_animation(event: Dictionary) -> void:
 		var cards: Array = event.get("cards", [])
 		_dealt[seat] = int(_dealt[seat]) + cards.size()
 		_dealt_cards[seat].append_array(cards)
-		if table.round != null and seat == int(table.round.dealer_seat) \
-				and int(_dealt[seat]) >= 8:
-			clear_dice()
 	table.call_deferred("_refresh")
 
 func visual_hold_active() -> bool:
@@ -162,7 +159,6 @@ func _test_deal_tick() -> void:
 			_dealt[seat] += packet.cards.size()
 			_dealt_cards[seat].append_array(_deal_display_order(packet.cards, packet.indices))
 		_pending_test_deals.clear()
-		clear_dice()
 		table._refresh()
 		return
 	var event: Dictionary = _pending_test_deals.pop_front()
@@ -183,9 +179,6 @@ func _test_deal_tick() -> void:
 			_dealt[deal_seat] = int(_dealt[deal_seat]) + deal_cards.size()
 			_dealt_cards[deal_seat].append_array(show_cards)
 			_deal_animating = false
-			if table.round != null and deal_seat == int(table.round.dealer_seat) \
-					and int(_dealt[deal_seat]) >= 8:
-				clear_dice()
 			table._refresh()
 			if not _pending_test_deals.is_empty(): _schedule_deal_tick()
 		_deal_complete_callback = complete
@@ -219,9 +212,6 @@ func clear_dice() -> void:
 
 func _process(_delta: float) -> void:
 	var now := Time.get_ticks_msec()
-	if table != null and table.round != null and now >= _dice_gate_until \
-			and int(_dealt[int(table.round.dealer_seat)]) >= 8:
-		clear_dice()
 	if not _deal_animating and not _pending_test_deals.is_empty() and now >= _dice_gate_until:
 		_test_deal_tick()
 
@@ -369,6 +359,9 @@ func _dispatch_visual_event(event: Dictionary) -> void:
 		return
 	if pause_after_dice and event_type != "dice":
 		return
+	if event_type == "discard" and _dice_pending and table.round != null \
+			and int(event.get("seat", -1)) == int(table.round.dealer_seat):
+		clear_dice()
 	if event_type == "draw" and _meld_animating:
 		_pending_draw_after_meld = event.duplicate(true)
 		return
@@ -1149,9 +1142,6 @@ func _on_visual_animation_finished() -> void:
 		var dealt_now: Array = _event.get("cards", [])
 		_dealt[deal_seat] += dealt_now.size()
 		_dealt_cards[deal_seat].append_array(dealt_now)
-		if table.round != null and deal_seat == int(table.round.dealer_seat) \
-				and int(_dealt[deal_seat]) >= 8:
-			_animation_layer.clear_dice()
 		# Commit this packet to the persistent hand immediately.  The hand area is
 		# rendered only up to _dealt[seat], so the just-landed cards remain visible
 		# without covering a prebuilt final hand.

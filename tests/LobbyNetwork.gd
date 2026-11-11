@@ -32,6 +32,14 @@ func _run() -> void:
 		var net := Network.net_node
 		t.expect(await _wait_until(func(): return net._members.size() == 2), "Client joins discovered room")
 		t.expect(net.game.phase == RoundState.Phase.IDLE and net.game.players.is_empty(), "Join doesn't deal")
+		var voice_seat := 0
+		for peer in net._peer_seat:
+			if int(peer) > 1: voice_seat = int(net._peer_seat[peer])
+		t.expect(not net.seat_microphone_on(voice_seat), "New microphone state defaults off")
+		t.expect(await _wait_until(func(): return net.seat_microphone_on(voice_seat)), "Guest microphone on reaches the host")
+		net._on_microphone_status(true, "")
+		t.expect(await _wait_until(func(): return not net.seat_microphone_on(voice_seat)), "Guest microphone off reaches the host")
+		net._on_microphone_status(false, "")
 		t.expect(await _wait_until(func(): return int(net._seat_peer[2]) > 1 and bool(net._members[int(net._seat_peer[2])].ready)), "Client selects AI seat and readies")
 		t.expect(not net.all_ready(), "Host unready blocks start")
 		net.select_seat(2)
@@ -84,6 +92,13 @@ func _run() -> void:
 		var net := Network.net_node
 		t.expect(await _wait_until(func(): return not net.lobby.is_empty()), "Receives lobby state")
 		t.expect(net.game.phase == RoundState.Phase.IDLE and net.game.players.is_empty(), "No hidden early deal")
+		t.expect(not net.seat_microphone_on(net.my_seat), "New microphone state defaults off on the guest")
+		net._on_microphone_status(true, "")
+		t.expect(await _wait_until(func(): return net.seat_microphone_on(net.my_seat)), "Authority relays microphone on to the guest")
+		t.expect(await _wait_until(func(): return net.seat_microphone_on(1)), "Host microphone on reaches the guest")
+		net._on_microphone_status(false, "")
+		t.expect(await _wait_until(func(): return not net.seat_microphone_on(net.my_seat)), "Authority relays microphone off to the guest")
+		t.expect(await _wait_until(func(): return not net.seat_microphone_on(1)), "Host microphone off reaches the guest")
 		net.select_seat(2)
 		t.expect(await _wait_until(func(): return net.my_seat == 2), "AI seat selectable")
 		net.set_wants_dealer(true)

@@ -48,6 +48,7 @@ var auto_test_button: Button
 var auto_test_500_button: Button
 var exit_room_button: Button
 var score_details_button: Button
+var hand_sort_button: Button
 var replay_exporter: Node
 
 func _ready() -> void:
@@ -122,8 +123,10 @@ func _ready() -> void:
 	continue_button = _button("继续游戏" if table_mode else "关闭", Vector2(348, 682) if table_mode else Vector2(404, 422), Vector2(296, 80) if table_mode else Vector2(240, 72), close)
 	continue_button.name = "ContinueGameButton"
 	if table_mode:
-		score_details_button = _button("详细展示", Vector2(584, 552), Vector2(500, 64), _toggle_score_details)
+		score_details_button = _button("", Vector2(584, 552), Vector2(240, 64), _toggle_score_details)
 		score_details_button.name = "ScoreDetailsButton"
+		hand_sort_button = _button("", Vector2(844, 552), Vector2(240, 64), _toggle_hand_sort_priority)
+		hand_sort_button.name = "HandSortPriorityButton"
 		tile_speed_slider = _timing_slider("牌面动画 · 摸牌 / 出牌 / 发牌", 126, _set_tile_speed)
 		ai_speed_slider = _timing_slider("人机出牌等待", 226, _set_ai_speed)
 		settlement_speed_slider = _timing_slider("结算速度 · 每项计分", 326, _set_settlement_speed)
@@ -299,6 +302,12 @@ func _sync() -> void:
 		percentages[channel].text = "%d%%" % roundi(float(AudioManager.volumes[channel]) * 100.0)
 	_sync_voice_settings()
 	_sync_score_details_button()
+	if hand_sort_button != null:
+		hand_sort_button.text = "排序：宽张" if GameConfig.hand_sort_priority == "wide" else "排序：牌型"
+
+func _toggle_hand_sort_priority() -> void:
+	GameConfig.set_hand_sort_priority("pattern" if GameConfig.hand_sort_priority == "wide" else "wide", persist_changes)
+	_sync()
 
 func _sync_voice_settings() -> void:
 	if mic_gain_slider == null or remote_volume_slider == null:
@@ -360,7 +369,7 @@ func _toggle_score_details() -> void:
 func _sync_score_details_button() -> void:
 	if score_details_button == null:
 		return
-	score_details_button.text = "详细展示：开启" if GameConfig.score_details_enabled else "详细展示：关闭"
+	score_details_button.text = "详细：开" if GameConfig.score_details_enabled else "详细：关"
 	score_details_button.modulate = Color("#f4df9f") if GameConfig.score_details_enabled else Color.WHITE
 
 func _sync_ai_strength() -> void:

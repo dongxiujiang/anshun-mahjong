@@ -49,7 +49,8 @@ func _ready() -> void:
 	_detail_panel = Panel.new()
 	_detail_panel.name = "PlayerScoreDetail"
 	_detail_panel.position = settlement.position - Vector2(0, 244)
-	_detail_panel.size = Vector2(G.wall_inner_rect().size.x - 24.0, 148)
+	# Details sit above the side badges and keep enough width for two readable lines.
+	_detail_panel.size = Vector2(1020, 128)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("#102c24")
 	style.border_color = Color(UI.GOLD, 0.65)
@@ -62,7 +63,7 @@ func _ready() -> void:
 	_heading.size = Vector2(_detail_panel.size.x - 100, 36)
 	_breakdown = view._table_text(_detail_panel, "", 24, UI.INK)
 	_breakdown.position = Vector2(24, 48)
-	_breakdown.size = Vector2(_detail_panel.size.x - 48.0, 88)
+	_breakdown.size = Vector2(_detail_panel.size.x - 48.0, 76)
 	_breakdown.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	var close := Button.new()
 	close.text = "×"
@@ -160,10 +161,10 @@ func _show_seat(seat: int) -> void:
 	_fit_two_lines(terms)
 	var view = _view_ref.get_ref()
 	var settlement: Control = view._native_settlement
-	var inner := G.wall_inner_rect()
+	var inner := G.SETTLEMENT_AREA
 	var height: float = _detail_panel.size.y + 12.0 + settlement.size.y
 	var top: float = inner.position.y + (inner.size.y - height) / 2.0
-	_detail_panel.position = Vector2(inner.position.x + 12.0, top)
+	_detail_panel.position = Vector2(inner.get_center().x - _detail_panel.size.x / 2.0, top)
 	settlement.position.y = top + _detail_panel.size.y + 12.0
 	_detail_panel.show()
 

@@ -39,42 +39,8 @@ static func build(round, human_seat: int) -> Dictionary:
 	var seats: Array = []
 	for player in round.players:
 		var charges: Array = []
-		var timeline: Array = []
-		var exposed: Array = []
-		var melds_out: Array = []
 		for index in player.discards.size():
-			var charge: bool = round.is_charge_discard(player.seat, index)
-			charges.append(charge)
-			var card := str(player.discards[index])
-			if not TILES.is_chicken(card): continue
-			timeline.append({"kind": "charge" if charge else "ordinary", "tile": card,
-				"order": int(player.discard_ids[index]) if index < player.discard_ids.size() else index})
-			exposed.append(timeline.back().duplicate())
-		for mi in player.melds.size():
-			var meld: Dictionary = player.melds[mi]
-			var shown := meld.duplicate(true)
-			shown["revealed"] = round.is_meld_revealed(player.seat, mi)
-			melds_out.append(shown)
-			var exposed_kind := str(meld.get("kind", ""))
-			exposed.append({"kind": "pung" if exposed_kind == "add_kong" else exposed_kind,
-				"tile": str(meld.get("tile", "")), "meld_index": mi,
-				"order": int(meld.get("formed_at", meld.get("after_discard", player.discard_count))),
-				"add_kong": exposed_kind == "add_kong", "concealed": bool(meld.get("concealed", false)),
-				"from_seat": int(meld.get("from_seat", -1)),
-				"revealed": bool(shown.revealed)})
-			if not TILES.is_chicken(str(meld.get("tile", ""))): continue
-			var kind := str(meld.get("kind", ""))
-			var formed := int(meld.get("formed_at", meld.get("after_discard", player.discard_count)))
-			if kind == "add_kong":
-				timeline.append({"kind": "pung", "tile": str(meld.get("tile", "")),
-					"order": formed, "add_kong": true, "meld_index": mi})
-			elif kind in ["pung", "kong"]:
-				timeline.append({"kind": kind, "tile": str(meld.get("tile", "")),
-					"order": formed, "meld_index": mi,
-					"concealed": bool(meld.get("concealed", false)),
-					"revealed": bool(shown.revealed)})
-		timeline.sort_custom(func(a, b): return int(a.order) < int(b.order))
-		exposed.sort_custom(func(a, b): return int(a.order) < int(b.order))
+			charges.append(round.is_charge_discard(player.seat, index))
 		seats.append({
 			"seat": player.seat,
 			"name": player.name_label,
@@ -88,9 +54,7 @@ static func build(round, human_seat: int) -> Dictionary:
 			"discards": player.discards.duplicate(),
 			"discard_ids": player.discard_ids.duplicate(),
 			"discard_charge": charges,
-			"red_timeline": timeline,
-			"exposed_timeline": exposed,
-			"melds": melds_out,
+			"melds": melds_for_seat(round, player.seat),
 		})
 	var wall_slots: Array = []
 	if round.wall != null:
@@ -116,3 +80,10 @@ static func build(round, human_seat: int) -> Dictionary:
 		"die_white": int(round.round_meta.get("die_white", 1)),
 		"seats": seats,
 	}
+
+
+static func melds_for_seat(round, seat: int) -> Array:
+	var melds: Array = round.players[seat].melds.duplicate(true)
+	for index in melds.size():
+		melds[index]["revealed"] = round.is_meld_revealed(seat, index)
+	return melds

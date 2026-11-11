@@ -123,9 +123,12 @@ var animation_speed := "standard"
 
 const SETTINGS_STORE := preload("res://scripts/core/UserSettingsStore.gd")
 const SETTINGS_PATH := "user://game_settings.cfg"
+const HAND_SORT_PRIORITIES := {"wide": "宽张优先", "pattern": "牌型优先"}
+var hand_sort_priority := "wide"
 const PREFERENCE_CHOICES := {
 	"ai_strength": AI_STRENGTHS,
 	"animation_speed": ANIMATION_SPEEDS,
+	"hand_sort_priority": HAND_SORT_PRIORITIES,
 }
 var settings_path := SETTINGS_PATH
 # Dedicated servers and headless tests must not read/write a player's settings.
@@ -218,6 +221,11 @@ static func ai_speed_seconds(value: String) -> float:
 func set_ai_strength(value: String, persist: bool = true) -> void:
 	if AI_STRENGTHS.has(value):
 		ai_strength = value
+		_save_preference(persist)
+
+func set_hand_sort_priority(value: String, persist: bool = true) -> void:
+	if HAND_SORT_PRIORITIES.has(value):
+		hand_sort_priority = value
 		_save_preference(persist)
 
 func effective_ai_strength() -> String:

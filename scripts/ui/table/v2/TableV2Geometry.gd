@@ -6,16 +6,23 @@ extends RefCounted
 const DESIGN_SIZE := Vector2(2280, 1280)
 const TABLE_BOUNDS := Rect2(24, 80, 2232, 1120)
 const CENTER := Vector2(1140, 640)
-const CENTRAL_SIZE := Vector2(1320, 520)
 
 const TILE_BASE := Vector2(48, 64)
 const TILE_GAP := 4.0
 const OWN_UNIT := 2.4          # 115.2 × 153.6
 const OPPONENT_UNIT := 1.35    # 64.8 × 86.4
-const WALL_UNIT := 1.0         # 48 × 64
-const WALL_EDGE_GAP := 8.0
+const WALL_UNIT := OPPONENT_UNIT
 const WALL_LAYER_SHIFT := 8.0
-const WALL_BLOCK_GAP := 0.0
+const MELD_SIZE := TILE_BASE * OPPONENT_UNIT
+const MELD_SPAN := MELD_SIZE.x * 3.0 + MELD_SIZE.y + TILE_GAP * 3.0
+const STACK_SPAN := MELD_SIZE.x * 3.0 + TILE_GAP * 2.0
+const ACTION_TOP := 816.8
+const SETTLEMENT_AREA := Rect2(690, 389, 900, 420)
+const WALL_BOUNDS := [
+	Rect2(2047.2, 106.8, 94.4, 915.2), Rect2(682.4, 830, 915.2, 94.4),
+	Rect2(350, 106.8, 94.4, 915.2), Rect2(682.4, 284.8, 915.2, 94.4),
+]
+const MELD_BADGES := [Vector2(1080, 954), Vector2(1628.4, 580), Vector2(1080, 210), Vector2(627.2, 580)]
 
 const HAND_TOP := 100.0
 const HAND_BOTTOM := 1180.0
@@ -23,28 +30,9 @@ const HAND_LEFT := 44.0
 const HAND_RIGHT := 2236.0
 const DRAW_GAP_TILES := 0.5
 
-const ORDINARY_UNIT := 1.25    # 60 × 80
-const ORDINARY_STEP_X := 64.0
-const ORDINARY_STEP_Y := 84.0
-const ORDINARY_ROW_WIDTH := 768.0
-## 东/西弃牌旋转后视觉尺寸 80×60，槽位必须按旋转后的步进。
-const ORDINARY_SIDE_STEP_X := 84.0
-const ORDINARY_SIDE_STEP_Y := 64.0
-
-const RED_WIDTH := 44.0
+const ORDINARY_UNIT := 1.1     # 52.8 × 70.4
+const RED_WIDTH := 44.0       # 单张出牌鸡；为横放的冲锋鸡预留56×56。
 const RED_HEIGHT := 56.0
-const RED_LINE_GAP := 4.0
-const RED_HAND_GAP := 8.0
-const RED_GROUP_GAP := 8.0
-const RED_CATEGORY_GAP := 12.0
-const SIDE_RED_GAP := 8.0
-## 东/西两行红牌最宽占位：56 + 4 + 56。
-const SIDE_RED_RESERVE := 116.0
-## 东/西牌墙中心对齐牌墙内框中心 y=606.4。
-const SIDE_WALL_Y_SHIFT := -33.6
-## A 方案：北/南牌墙为“墙—红8、红—手8”整体移动。
-const NORTH_WALL_SHIFT := -49.6
-const SOUTH_WALL_SHIFT := -17.6
 
 static func relative_seat(human_seat: int, seat: int) -> int:
 	return posmod(human_seat - seat, 4)
@@ -136,115 +124,119 @@ static func wall_upper_offset(seat: int) -> Vector2:
 	if seat == 0: return Vector2(WALL_LAYER_SHIFT, WALL_LAYER_SHIFT)    # 东：左=+y，手=+x
 	return Vector2(-WALL_LAYER_SHIFT, -WALL_LAYER_SHIFT)                # 西：左=-y，手=-x
 
-## 东/西牌墙外移量：让墙—红—手都留 8。
-static func side_wall_shift() -> float:
-	var hand_edge := HAND_RIGHT - TILE_BASE.y * OPPONENT_UNIT
-	var wall_outer := CENTER.x + CENTRAL_SIZE.x / 2.0 + WALL_EDGE_GAP + TILE_BASE.y * WALL_UNIT
-	return hand_edge - (SIDE_RED_RESERVE + SIDE_RED_GAP * 2.0) - wall_outer
-
-## 东/西牌墙外沿 x 坐标。
-static func wall_outer_x(seat: int) -> float:
-	var half := CENTRAL_SIZE.x / 2.0
-	var wall_w := TILE_BASE.y * WALL_UNIT
-	var shift := side_wall_shift()
-	if seat == 0:
-		return CENTER.x + half + WALL_EDGE_GAP + wall_w + shift
-	return CENTER.x - half - WALL_EDGE_GAP - wall_w - shift
-
 static func wall_angle(seat: int) -> float:
-	if seat == 3: return 0.0
-	if seat == 1: return 0.0
 	if seat == 0: return PI / 2.0
-	return -PI / 2.0
+	if seat == 2: return -PI / 2.0
+	return 0.0
 
-## row=0 上层，row=1 下层。
+## 保留逻辑墙的蹲数与固定槽位。两层偏移后的包围盒也不占用手牌或牌河。
 static func wall_block_center(seat: int, slot: int, row: int, columns: int = 0) -> Vector2:
-	var size := TILE_BASE * WALL_UNIT
-	var half := CENTRAL_SIZE / 2.0
-	var step := size.x + WALL_BLOCK_GAP
 	if columns == 0: columns = 14 if seat in [1, 3] else 13
-	var span := columns * step - WALL_BLOCK_GAP
-	var center := Vector2.ZERO
-	if seat == 3:
-		center = Vector2(CENTER.x - span / 2.0 + size.x / 2.0 + slot * step,
-			CENTER.y - half.y - WALL_EDGE_GAP - size.y / 2.0 + NORTH_WALL_SHIFT)
-	elif seat == 1:
-		center = Vector2(CENTER.x - span / 2.0 + size.x / 2.0 + slot * step,
-			CENTER.y + half.y + WALL_EDGE_GAP + size.y / 2.0 + SOUTH_WALL_SHIFT)
-	elif seat == 0:
-		center = Vector2(CENTER.x + half.x + WALL_EDGE_GAP + size.y / 2.0 + side_wall_shift(),
-			CENTER.y - span / 2.0 + size.x / 2.0 + slot * step + SIDE_WALL_Y_SHIFT)
-	else:
-		center = Vector2(CENTER.x - half.x - WALL_EDGE_GAP - size.y / 2.0 - side_wall_shift(),
-			CENTER.y - span / 2.0 + size.x / 2.0 + slot * step + SIDE_WALL_Y_SHIFT)
-	if row == 0:
-		center += wall_upper_offset(seat)
-	return center
+	var bounds: Rect2 = WALL_BOUNDS[seat]
+	var offset := wall_upper_offset(seat)
+	var side := seat in [0, 2]
+	var axis := Vector2.DOWN if side else Vector2.RIGHT
+	var depth := Vector2.RIGHT if side else Vector2.DOWN
+	var center := bounds.get_center() + axis * ((slot + 0.5 - columns * 0.5) * MELD_SIZE.x)
+	center -= axis * offset.dot(axis) / 2.0 + depth * offset.dot(depth) / 2.0
+	return center + (offset if row == 0 else Vector2.ZERO)
 
-## 普通弃牌先按中央四块互不重叠的槽位区分配：
-## 北/南横条 768×164，东/西竖条 244×500，四区之间留 20 边距。
-## 牌墙围出的内框。
-static func wall_inner_rect() -> Rect2:
-	var top: float = wall_block_center(3, 0, 1).y + TILE_BASE.y * WALL_UNIT / 2.0
-	var bottom: float = wall_block_center(1, 0, 1).y - TILE_BASE.y * WALL_UNIT / 2.0
-	var left: float = wall_block_center(2, 6, 1).x + TILE_BASE.y * WALL_UNIT / 2.0
-	var right: float = wall_block_center(0, 6, 1).x - TILE_BASE.y * WALL_UNIT / 2.0
-	return Rect2(left, top, right - left, bottom - top)
+static func river_capacity(relative: int) -> int:
+	return 21 if relative in [1, 3] else 20
 
-## 北/南：12张×3行=36；东/西：8张×5行=40。
-## 四家最外一行到牌墙内框统一 8。
+static func meld_badge_rect(relative: int) -> Rect2:
+	return Rect2(MELD_BADGES[relative], Vector2(56, 120) if relative in [1, 3] else Vector2(120, 56))
+
+## 普通弃牌独立使用牌河，出牌鸡留在各自碰杠区。
 static func ordinary_slot_center(seat: int, index: int, human_seat: int) -> Vector2:
 	var rel := relative_seat(human_seat, seat)
-	var inner := wall_inner_rect()
-	var half := TILE_BASE * ORDINARY_UNIT / 2.0
-	var gap := 8.0
-	if rel == 0:
-		var left := CENTER.x - ORDINARY_ROW_WIDTH / 2.0
-		var first_y: float = inner.end.y - gap - half.y - 2.0 * ORDINARY_STEP_Y
-		return Vector2(left + 30.0 + (index % 12) * ORDINARY_STEP_X,
-			first_y + (index / 12) * ORDINARY_STEP_Y)
-	if rel == 2:
-		# 北家与南家镜像：从右向左。
-		var right := CENTER.x + ORDINARY_ROW_WIDTH / 2.0
-		var first_y_n: float = inner.position.y + gap + half.y + 2.0 * ORDINARY_STEP_Y
-		return Vector2(right - 30.0 - (index % 12) * ORDINARY_STEP_X,
-			first_y_n - (index / 12) * ORDINARY_STEP_Y)
-	var center_y := (inner.position.y + inner.end.y) / 2.0
-	if rel == 1:
-		# 东家本地视角：8张一行×5行；从下向上，和西家镜像。
-		# 第一行在桌内，逐行向右侧牌墙外递进。
-		var outer_x: float = inner.end.x - gap - half.y
-		var first_x: float = outer_x - 4.0 * ORDINARY_SIDE_STEP_X
-		return Vector2(first_x + (index / 8) * ORDINARY_SIDE_STEP_X,
-			center_y + 254.0 - half.x - (index % 8) * ORDINARY_SIDE_STEP_Y)
-	# 西家本地视角：8张一行×5行；从上向下，和东家镜像。
-	var outer_x_w: float = inner.position.x + gap + half.y
-	var first_x_w: float = outer_x_w + 4.0 * ORDINARY_SIDE_STEP_X
-	return Vector2(first_x_w - (index / 8) * ORDINARY_SIDE_STEP_X,
-		center_y - 254.0 + half.x + (index % 8) * ORDINARY_SIDE_STEP_Y)
+	if rel in [1, 3]:
+		var column := index / 7
+		var row := index % 7
+		if rel == 1: return Vector2(1448.0 + column * 72.0, 782.2 - row * 61.5)
+		return Vector2(864.0 - column * 72.0, 413.2 + row * 61.5)
+	if index >= 16:
+		var extra := index - 16
+		return Vector2(1187.8 + extra * 64.0 if rel == 0 else 1123.8 - extra * 64.0, 603.0)
+	var y := 687.0 + (index / 8) * 84.0 if rel == 0 else 507.2 - (index / 8) * 84.0
+	var x := 931.8 + (index % 8) * 64.0 if rel == 0 else 1379.8 - (index % 8) * 64.0
+	return Vector2(x, y)
 
-static func red_anchor(seat: int, human_seat: int, line: int) -> Vector2:
+static func chicken_slot_centers(seat: int, human_seat: int, meld_tiles: Array) -> Array[Vector2]:
 	var rel := relative_seat(human_seat, seat)
-	var ref := hand13_rect(seat, human_seat)
-	var step := RED_HEIGHT + RED_LINE_GAP
-	if rel == 0:
-		return Vector2(ref.position.x, ref.position.y - RED_HAND_GAP - RED_HEIGHT - line * step)
-	if rel == 2:
-		return Vector2(ref.end.x, ref.end.y + RED_HAND_GAP + line * step)
-	if rel == 1:
-		return Vector2(ref.position.x - RED_HAND_GAP - RED_HEIGHT - line * step, ref.end.y)
-	return Vector2(ref.end.x + RED_HAND_GAP + line * step, ref.position.y)
+	var bands: Array[Rect2] = []
+	if rel in [0, 2]:
+		bands.append(Rect2(138.4, 952.4 if rel == 0 else 202.4, 1904.8, 64))
+		bands.append(Rect2(228.8, 816.8, 117.2, 64) if rel == 0 else Rect2(448.4, 284.8, 178, 64))
+	elif rel == 3:
+		bands.assign([Rect2(138.4, 354, 207.6, 458), Rect2(448.4, 354, 178, 458)])
+	else:
+		bands.append(Rect2(1684, 354, 359.2, 458))
+	var obstacles: Array[Rect2] = []
+	for wall: Rect2 in WALL_BOUNDS: obstacles.append(wall.grow(4))
+	for spec in meld_tiles:
+		var extent := MELD_SIZE
+		if bool(spec.sideways) != (rel in [1, 3]): extent = Vector2(extent.y, extent.x)
+		obstacles.append(Rect2(Vector2(spec.center) - extent / 2, extent).grow(1))
+	for relative in 4: obstacles.append(meld_badge_rect(relative).grow(1))
+	var out: Array[Vector2] = []
+	for slot in 8:
+		var found := false
+		for band in bands:
+			var xs: Array[float] = [band.position.x]
+			var ys: Array[float] = [band.position.y]
+			for obstacle in obstacles:
+				if obstacle.end.x >= band.position.x and obstacle.end.x + 56 <= band.end.x: xs.append(obstacle.end.x)
+				if obstacle.end.y >= band.position.y and obstacle.end.y + 56 <= band.end.y: ys.append(obstacle.end.y)
+			xs.sort()
+			ys.sort()
+			for y in ys:
+				for x in xs:
+					var rect := Rect2(x, y, 56, 56)
+					if not band.encloses(rect) or obstacles.any(func(other): return rect.intersects(other)): continue
+					out.append(rect.get_center())
+					obstacles.append(rect.grow(4))
+					found = true
+					break
+				if found: break
+			if found: break
+		if not found: break
+	return out
 
-## 普通碰杠固定锚点。锚点只读 13 张手牌参考线，不随当前手牌长度漂移。
-static func meld_anchor(seat: int, human_seat: int) -> Vector2:
-	var rel := relative_seat(human_seat, seat)
-	var ref := hand13_rect(seat, human_seat)
-	match rel:
-		0:
-			return Vector2(CENTER.x, ref.position.y - RED_HAND_GAP - RED_HEIGHT * 0.5)
-		2:
-			return Vector2(CENTER.x, ref.end.y + RED_HAND_GAP + RED_HEIGHT * 0.5)
-		1:
-			return Vector2(ref.position.x - RED_HAND_GAP - RED_HEIGHT * 0.5, CENTER.y)
-		_:
-			return Vector2(ref.end.x + RED_HAND_GAP + RED_HEIGHT * 0.5, CENTER.y)
+## 槽位原点沿玩家视角从左到右，纵深朝桌内。
+static func meld_origins(relative: int, inline_count: int, stack_count: int) -> Array[Vector2]:
+	var inline_origins: Array[Vector2] = []
+	var stack_origins: Array[Vector2] = []
+	if relative in [0, 2]:
+		var y := 1018.4 if relative == 0 else 194.4
+		var direction := 1.0 if relative == 0 else -1.0
+		var left_count := ceili(inline_count / 2.0)
+		for i in inline_count:
+			# Keep a 128px opening on the hand centerline for the dealer/ready badges.
+			var x := -64.0 - (left_count - i) * (MELD_SPAN + TILE_GAP) if i < left_count \
+				else 64.0 + (i - left_count) * (MELD_SPAN + TILE_GAP)
+			inline_origins.append(Vector2(CENTER.x + direction * x, y))
+		for i in stack_count:
+			var x: float = [138.4, 448.4, 1605.6, 1839.0][i]
+			stack_origins.append(Vector2(x + (STACK_SPAN if relative == 2 else 0.0), y))
+	else:
+		# 成组贴边排列。混合列最靠下的一组是平放组，给本家的按钮让位。
+		var templates: Array = [
+			[[false, false], [false, false]], [[true, false], [false, false]],
+			[[true, true], [false, false]], [[true, false], [true, true]], [[true, true], [true, true]],
+		][stack_count]
+		var edges := Vector2(2043.2, 1862.4) if relative == 1 else Vector2(138.4, 448.4)
+		for column in 2:
+			var depth := edges[column]
+			var y := 354.0
+			var serial: bool = templates[column].has(true)
+			for stacked in templates[column]:
+				if stacked and stack_origins.size() == stack_count: continue
+				if not stacked and inline_origins.size() == inline_count: continue
+				var span := STACK_SPAN if stacked else MELD_SPAN
+				var origin := Vector2(depth, y + (span if relative == 1 else 0.0))
+				if stacked: stack_origins.append(origin)
+				else: inline_origins.append(origin)
+				if serial: y += span + TILE_GAP
+				else: depth += (MELD_SIZE.y + TILE_GAP) * (-1.0 if relative == 1 else 1.0)
+	return inline_origins + stack_origins

@@ -20,10 +20,13 @@ def run(godot):
     install.mkdir(exist_ok=True)
     target = install / "麻将测试.exe"
     fresh = FIXTURE / "新版.exe"
-    powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
     if os.name != "nt":
         raise RuntimeError("Windows replacement integration test requires Windows")
-    compile_script = FIXTURE / "compile-fixture.ps1"
+    windows = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    powershell = windows / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    framework = windows / "Microsoft.NET/Framework/v4.0.30319"
+    compiler = framework / "csc.exe"
+    fixture_source = FIXTURE / "UpdateFixture.cs"
     def ps_literal(value): return "'" + str(value).replace("'", "''") + "'"
     source = r'''
 using System;
@@ -34,18 +37,13 @@ public class UpdateFixture {
     }
 }
 '''
-    code = "$ErrorActionPreference = 'Stop'\n"
     for path, marker in [(target, "old"), (fresh, "new")]:
         if path.exists(): path.unlink()
-        code += "$fixtureCode = @'\n" + source.replace("MARKER", marker).strip() + "\n'@\n"
-        code += f"Add-Type -TypeDefinition $fixtureCode -OutputAssembly {ps_literal(path)} -OutputType ConsoleApplication\n"
-    # Different class names avoid Add-Type's cache reusing the old class.
-    code = code.replace('public class UpdateFixture {', 'public class UpdateFixtureOld {', 1)
-    code = code.replace('public class UpdateFixture {', 'public class UpdateFixtureNew {', 1)
-    compile_script.write_text(code, encoding="utf-8-sig")
-    compiled = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-File", str(compile_script)], capture_output=True, text=True)
-    if compiled.returncode:
-        raise AssertionError(compiled.stderr)
+        fixture_source.write_text(source.replace("MARKER", marker), encoding="utf-8")
+        compiled = subprocess.run([str(compiler), "/nologo", "/target:exe", f"/out:{path}", str(fixture_source)],
+                                  capture_output=True, text=True)
+        if compiled.returncode:
+            raise AssertionError(compiled.stdout + compiled.stderr)
     package = fresh.read_bytes()
     sha = hashlib.sha256(package).hexdigest()
     old_hash = hashlib.sha256(target.read_bytes()).hexdigest()
@@ -143,8 +141,15 @@ func _initialize():
             raise AssertionError(text + "\n" + error_text)
         print(text.splitlines()[-1], flush=True)
         info = json.loads((FIXTURE / "test-result.json").read_text())
-        applied = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", info["helper"]], capture_output=True, timeout=15)
-        if applied.returncode: raise AssertionError(applied.stderr.decode(errors="replace"))
+        helper_text = Path(info["helper"]).read_text(encoding="utf-8-sig")
+        apply_script = FIXTURE / "apply-fixture.ps1"
+        helper_text = "\n".join(line for line in helper_text.splitlines() if "Start-Process -FilePath 'notepad.exe'" not in line)
+        helper_text = helper_text.replace("Start-Process -FilePath $updateTarget", "Start-Process -WindowStyle Hidden -FilePath $updateTarget")
+        apply_script.write_text(helper_text, encoding="utf-8-sig")
+        args = [str(powershell), "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File"]
+        with (FIXTURE / "apply-fixture.log").open("wb") as output:
+            applied = subprocess.run([*args, str(apply_script)], stdout=output, stderr=subprocess.STDOUT, timeout=20)
+        if applied.returncode: raise AssertionError((FIXTURE / "apply-fixture.log").read_text(errors="replace"))
         assert hashlib.sha256(target.read_bytes()).hexdigest() == sha, "Helper failed to replace executable"
         backup = Path(str(target) + ".previous")
         assert backup.exists() and hashlib.sha256(backup.read_bytes()).hexdigest() == old_hash, "Old version backup missing"
@@ -163,17 +168,16 @@ func _initialize():
         invalid_source = FIXTURE / "invalid.exe"
         invalid_source.write_bytes(b"MZ" + b"invalid-binary" * 10)
         rollback_script = FIXTURE / "rollback.ps1"
-        script_text = Path(info["helper"]).read_text(encoding="utf-8-sig")
         lines = []
-        for line in script_text.splitlines():
+        for line in helper_text.splitlines():
             if line.startswith("$updateTarget ="): line = "$updateTarget = " + ps_literal(rollback_target)
             elif line.startswith("$updateSource ="): line = "$updateSource = " + ps_literal(invalid_source)
             elif line.startswith("$updateHash ="): line = "$updateHash = " + ps_literal(hashlib.sha256(invalid_source.read_bytes()).hexdigest())
-            elif "Start-Process -FilePath 'notepad.exe'" in line: line = "    # No desktop notification during automated rollback test."
             lines.append(line)
         rollback_script.write_text("\n".join(lines), encoding="utf-8-sig")
-        rolled_back = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-File", str(rollback_script)], capture_output=True, timeout=15)
-        assert rolled_back.returncode == 0, rolled_back.stderr.decode(errors="replace")
+        with (FIXTURE / "rollback-fixture.log").open("wb") as output:
+            rolled_back = subprocess.run([*args, str(rollback_script)], stdout=output, stderr=subprocess.STDOUT, timeout=20)
+        assert rolled_back.returncode == 0, (FIXTURE / "rollback-fixture.log").read_text(errors="replace")
         assert hashlib.sha256(rollback_target.read_bytes()).hexdigest() == old_hash, "Failed restart did not restore original"
         status = (FIXTURE / "update-result.txt").read_text(encoding="utf-8-sig")
         assert "自动更新失败" in status, "No failure report after rollback"

@@ -79,6 +79,7 @@ var _reconnecting := false
 var _resume_sync_pending := false
 var _resume_sync_deadline_ms := 0
 var _resume_requested := false
+var _foreground_active := false
 var _pending_snapshot: Dictionary = {}
 var _client_joined := false
 var _orphaned: Dictionary = {}
@@ -204,41 +205,26 @@ func _notification(what: int) -> void:
 		_host_broadcast()
 	if host_mode:
 		return
-	if what == NOTIFICATION_APPLICATION_PAUSED:
-		# Tell the authority immediately so its reconnect window can start
-		# before ENet itself times out.
+	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED]:
+		if not _foreground_active: return
+		_foreground_active = false
 		if _client_joined and multiplayer.multiplayer_peer != null:
 			rpc_id(1, "lobby_action", "background", {"value": true})
-	elif what == NOTIFICATION_APPLICATION_RESUMED:
+	elif what in [NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_APPLICATION_RESUMED]:
+		if _foreground_active: return
+		_foreground_active = true
 		if _reconnecting:
 			_reconnect_wait = 0.0
 			reconnecting.emit(_reconnect_attempt, 5)
 			return
 		if _resume_requested and not _client_joined:
-			# The five-attempt retry budget may have elapsed while Android
-			# kept the process frozen. Resume the same token flow on return
-			# instead of leaving the player stuck on the error dialog.
-			_reconnecting = true
-			_reconnect_attempt = 0
-			_reconnect_wait = 0.0
-			_last_pong_ms = Time.get_ticks_msec()
-			reconnecting.emit(0, 5)
+			retry_connection()
 			return
-		if not _client_joined:
-			return
-		var peer := multiplayer.multiplayer_peer
-		if peer == null or peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
-			_begin_reconnect("返回前台时连接已失效")
-			return
-		# A joined flag can survive a suspended socket; wait for fresh authority.
-		_last_pong_ms = Time.get_ticks_msec()
-		_last_ping_ms = 0
-		_resume_sync_pending = game != null and game.phase != RoundState.Phase.IDLE
-		if _resume_sync_pending:
-			_resume_sync_deadline_ms = Time.get_ticks_msec() + 5000
-			reconnecting.emit(0, 5)
-		rpc_id(1, "lobby_action", "background", {"value": false})
-		_request_full_state_throttled()
+		if not _client_joined: return
+		# Android can retain a connected ENet handle after its socket stops
+		# delivering packets. Reclaim the same seat with a fresh transport.
+		_begin_reconnect("返回前台，恢复原座位")
+		_reconnect_wait = 0.0
 
 func _apply_background(peer: int, backgrounded: bool) -> void:
 	if not host_mode: return
@@ -268,7 +254,7 @@ func _ready() -> void:
 	voice_chat.name = "VoiceChat"
 	add_child(voice_chat)
 	voice_chat.setup(self, DisplayServer.get_name() != "headless")
-	voice_chat.status_changed.connect(func(enabled: bool, message: String): voice_status.emit(enabled, message))
+	voice_chat.status_changed.connect(_on_microphone_status)
 
 func _process(delta: float) -> void:
 	if voice_chat != null:
@@ -454,6 +440,7 @@ func request_join(number: String, player_name: String, token: String = "", resum
 		assigned_token = new_resume_token()
 	_members[peer] = saved if resumed else {"name": member_name, "ready": false, "wants_dealer": false}
 	_members[peer]["resume_token"] = assigned_token
+	_members[peer]["microphone_on"] = false
 	if _started and game != null and (game.pause_after_opening or game.phase == RoundState.Phase.DEALING):
 		_opening_waiters[peer] = true
 		game.pause_after_opening = true
@@ -660,6 +647,7 @@ func _publish_lobby() -> void:
 		# disconnected seats have an orphan record with the retained member.
 		if _orphaned.has(seat): member = _orphaned[seat].member
 		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": (not _waiting_for_reconnect(seat) and ai) if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
+		seats.back()["microphone_on"] = not disconnected and peer > 0 and bool(member.get("microphone_on", false))
 	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "opening_speed": opening_speed, "settlement_speed": settlement_speed, "ai_strength": ai_strength, "test_mode": test_mode, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "voice_packs": voice_packs.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer): rpc_id(peer, "lobby_sync", lobby)
@@ -829,6 +817,13 @@ func lobby_action(action: String, data: Dictionary) -> void:
 
 func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 	if not _members.has(peer): return
+	if action == "microphone":
+		if not _peer_seat.has(peer) or not (data.get("on") is bool): return
+		var enabled: bool = data.on
+		if bool(_members[peer].get("microphone_on", false)) != enabled:
+			_members[peer]["microphone_on"] = enabled
+			_publish_lobby()
+		return
 	if action == "background":
 		_apply_background(peer, bool(data.get("value", false)))
 		return
@@ -1587,7 +1582,7 @@ func _reconnect_step() -> void:
 	if _reconnect_attempt >= 5:
 		_reconnecting = false
 		multiplayer.multiplayer_peer = null
-		connection_error.emit("暂时无法恢复连接，请在联机房间点击“返回上次房间”重试")
+		connection_error.emit("暂时无法恢复连接，请检查网络后重试。")
 		return
 	_reconnect_attempt += 1
 	reconnecting.emit(_reconnect_attempt, 5)
@@ -1617,6 +1612,20 @@ func toggle_voice_chat() -> bool:
 
 func voice_chat_enabled() -> bool:
 	return voice_chat != null and bool(voice_chat.enabled)
+
+func seat_microphone_on(seat: int) -> bool:
+	var seats: Array = lobby.get("seats", [])
+	return seat >= 0 and seat < seats.size() and bool(seats[seat].get("microphone_on", false))
+
+func _on_microphone_status(enabled: bool, message: String) -> void:
+	_report_microphone(enabled)
+	voice_status.emit(enabled, message)
+
+func _report_microphone(enabled: bool) -> void:
+	var peer := multiplayer.multiplayer_peer
+	if host_mode or (peer != null and peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED \
+			and multiplayer.get_unique_id() != 1):
+		_submit_lobby("microphone", {"on": enabled})
 
 func send_local_voice(packet: PackedByteArray) -> void:
 	if voice_chat == null or not voice_chat.uses_network_pcm():
@@ -1694,9 +1703,11 @@ func _on_client_sync(state: Dictionary) -> void:
 	round_number = int(state.get("round_number", 1))
 	_client_sync_cache = state
 	game.apply_sync(state)
+	var resumed := _resume_sync_pending
 	_resume_sync_pending = false
 	_resume_sync_deadline_ms = 0
 	_sync_voice_room()
+	if resumed: _report_microphone(voice_chat_enabled())
 	state_updated.emit()
 	if first: game_started.emit()
 	if DisplayServer.get_name() == "headless": report_opening_finished()
@@ -1705,6 +1716,7 @@ func _on_client_sync(state: Dictionary) -> void:
 @rpc("authority", "call_remote", "reliable")
 func seat_assign(seat: int, issued_token: String = "") -> void:
 	_client_joined = true
+	_foreground_active = true
 	_opening_ack_session = ""
 	_client_sync_cache.clear()
 	if issued_token != "":

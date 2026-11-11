@@ -12,11 +12,13 @@ class VoiceTable extends Control:
 	var mode := "online"
 	var microphone := false
 	var speakers := [true, true, true, true]
+	var remote_microphones := [false, false, false, false]
 	func _net_mode(): return mode
 	func _can_toggle_voice_chat(): return true
 	func _local_voice_enabled(): return microphone
 	func _toggle_voice_chat(): microphone = not microphone
 	func _remote_voice_enabled(seat): return speakers[seat]
+	func _remote_microphone_on(seat): return remote_microphones[seat]
 	func _toggle_remote_voice(seat): speakers[seat] = not speakers[seat]
 
 func _initialize() -> void:
@@ -62,29 +64,31 @@ func _seat_tiles(layer: Control, seat: int) -> Array[Rect2]:
 	return out
 
 func _test_red_cap(deck) -> void:
-	var timeline: Array = []
-	for i in 30:
-		timeline.append({"kind": "ordinary", "tile": "tiao1", "order": i})
 	var seats: Array = []
 	for seat in 4:
-		seats.append({
-			"seat": seat,
-			"discards": [],
-			"discard_charge": [],
-			"red_timeline": timeline.duplicate(true),
-			"melds": [],
-		})
+		var capacity := G.river_capacity(G.relative_seat(deck.human_seat, seat))
+		var cards := []
+		for i in capacity:
+			cards.append("tiao1" if i % 3 == 0 else "wan2")
+		var charges := []
+		charges.resize(capacity)
+		charges.fill(false)
+		seats.append({"seat": seat, "discards": cards, "discard_ids": range(capacity),
+			"discard_charge": charges})
 	deck.snapshot = {"seats": seats}
 	deck._clear(deck._red_layer)
-	deck._build_red()
+	deck._clear(deck._discard_layer)
+	deck._build_discards()
 	for seat in 4:
-		var rects := _seat_tiles(deck._red_layer, seat)
-		t.expect(rects.size() == 24, "seat%d: 红色区超过24张时只显示24张" % seat)
-		var in_bounds := true
-		for rect in rects:
-			if not G.TABLE_BOUNDS.grow(-1.0).encloses(rect):
-				in_bounds = false
-		t.expect(in_bounds, "seat%d: 24张红牌不越出牌桌安全边界" % seat)
+		var rects := _seat_tiles(deck._red_layer, seat) + _seat_tiles(deck._discard_layer, seat)
+		t.expect(rects.size() == G.river_capacity(G.relative_seat(deck.human_seat, seat)),
+			"seat%d: full mixed river keeps every tile" % seat)
+		var clear := true
+		for i in rects.size():
+			clear = clear and G.TABLE_BOUNDS.encloses(rects[i])
+			for j in range(i):
+				clear = clear and not rects[i].intersects(rects[j].grow(-0.05))
+		t.expect(clear, "seat%d: mixed chicken and ordinary slots stay clear" % seat)
 
 func _test_short_hand_anchor(deck) -> void:
 	deck.set_round(_fixture(13), 1)
@@ -136,7 +140,7 @@ func _test_scaled_layout(deck) -> void:
 	deck.scale = Vector2(1.25, 0.78)
 	deck.refresh()
 	for seat in 4:
-		t.expect(_first_position(deck._red_layer, seat) == before[seat],
+		t.expect(_first_position(deck._red_layer, seat).is_equal_approx(before[seat]),
 			"seat%d: Android 非等比缩放下红牌本地落点不变" % seat)
 	deck.scale = Vector2.ONE
 
@@ -252,6 +256,11 @@ func _test_voice_hud_bounds(deck) -> void:
 				and not _rect(icon).intersects(_rect(score)), "speaker icon is smaller than the dealer badge and clears the text")
 			for other in 4:
 				t.expect(not voice.get_rect().intersects(G.hand13_rect(other, deck.human_seat)), "voice control does not intercept the hand")
+			var closed_icon := icon.texture
+			if seat != mock.human_seat:
+				mock.remote_microphones[seat] = true
+				deck.refresh_voice_control(seat)
+				t.expect(icon.texture != closed_icon, "remote microphone must be on before the icon shows sound")
 			var original_icon := icon.texture
 			var original_mic := mock.microphone
 			var original_speaker: bool = mock.speakers[seat]
@@ -262,6 +271,10 @@ func _test_voice_hud_bounds(deck) -> void:
 				"own click changes the microphone, remote click changes only that player's playback")
 			_click(score)
 			t.expect(icon.texture == original_icon, "clicking the score toggles the same voice control back")
+			if seat != mock.human_seat:
+				mock.remote_microphones[seat] = false
+				deck.refresh_voice_control(seat)
+				t.expect(icon.texture == closed_icon, "remote microphone off returns the icon to mute")
 	if DisplayServer.get_name() != "headless":
 		_click(deck._name_labels[2])
 		await RenderingServer.frame_post_draw

@@ -57,18 +57,18 @@ func _run() -> void:
 			if a.intersects(b): overlap = true
 	t.expect(not overlap, "静态新牌桌：牌墙与手牌不重叠")
 
-	# 普通弃牌 24 张上限。
+	# 四家牌河全部填满。
 	for seat in 4:
 		var p = host.round.players[seat]
 		p.discards = []
-		for i in 24:
+		for i in G.river_capacity(G.relative_seat(1, seat)):
 			p.discards.append(["wan1", "wan2", "wan3", "wan4", "wan5", "wan6",
 				"wan7", "wan8", "wan9", "tiao2", "tiao3", "tong2"][i % 12])
-		p.discard_ids = range(24)
+		p.discard_ids = range(p.discards.size())
 		p.melds = []
 	deck.refresh()
 	await process_frame
-	t.expect(deck.count_kind("ordinary") == 96, "静态新牌桌：普通弃牌24张显示")
+	t.expect(deck.count_kind("ordinary") == 82, "all 82 ordinary river slots are visible")
 	t.expect(deck.count_kind("red") == 0, "静态新牌桌：普通弃牌不进入红色区")
 
 	# 红色区几何容量夹具：8 张单张鸡 + 4 个鸡杠 = 24 张（允许重复牌值）。
@@ -92,90 +92,18 @@ func _run() -> void:
 	await process_frame
 	t.expect(deck.count_kind("red") == 96, "静态新牌桌：红色区24张显示")
 	t.expect(deck.count_kind("ordinary") == 0, "静态新牌桌：红色区不含普通弃牌")
-	var red_size_ok := true
+	var sizes_ok := true
+	var rects: Array[Rect2] = []
 	for child in deck._red_layer.get_children():
 		if not (child is TileView): continue
-		if not child.size.is_equal_approx(Vector2(48.0, 64.0)):
-			red_size_ok = false
-		if not child.scale.is_equal_approx(Vector2(44.0 / 48.0, 56.0 / 64.0)):
-			red_size_ok = false
-	t.expect(red_size_ok, "对象池复用后红牌保持固定44×56视觉尺寸")
-
-	# 使用实际牌面外边界校验整体居中；横放鸡牌与竖牌宽度不同。
-	var red_centers_ok := true
-	for seat in 4:
-		var rel := G.relative_seat(1, seat)
-		var lo := INF
-		var hi := -INF
-		for child in deck._red_layer.get_children():
-			if not (child is TileView) or int(child.get_meta("v2_seat", -1)) != seat: continue
-			var bounds: Rect2 = deck._visual_rect(child)
-			lo = minf(lo, bounds.position.x if rel in [0, 2] else bounds.position.y)
-			hi = maxf(hi, bounds.end.x if rel in [0, 2] else bounds.end.y)
-		var target := G.CENTER.x if rel in [0, 2] else G.CENTER.y
-		if not is_equal_approx((lo + hi) / 2.0, target): red_centers_ok = false
-	t.expect(red_centers_ok, "红色区整体沿牌桌轴居中")
-
-	# 东/西：牌墙外沿 = 红色区最靠近牌墙的边缘 + 10。
-	var east_lo := INF
-	var west_hi := -INF
-	for child in deck._red_layer.get_children():
-		if not (child is TileView): continue
-		if int(child.get_meta("v2_seat", -1)) == 0:
-			east_lo = minf(east_lo, _rect(child).position.x)
-		elif int(child.get_meta("v2_seat", -1)) == 2:
-			west_hi = maxf(west_hi, _rect(child).end.x)
-	t.expect(is_equal_approx(east_lo, G.wall_outer_x(0) + G.SIDE_RED_GAP), "东家牌墙—红区间距8")
-	t.expect(is_equal_approx(west_hi, G.wall_outer_x(2) - G.SIDE_RED_GAP), "西家牌墙—红区间距8")
-	var east_hi := -INF
-	var west_lo := INF
-	for child in deck._red_layer.get_children():
-		if not (child is TileView): continue
-		if int(child.get_meta("v2_seat", -1)) == 0:
-			east_hi = maxf(east_hi, _rect(child).end.x)
-		elif int(child.get_meta("v2_seat", -1)) == 2:
-			west_lo = minf(west_lo, _rect(child).position.x)
-	print("[gap8] east lo/hi=", east_lo, "/", east_hi, " width=", east_hi - east_lo,
-		" hand=", G.hand13_rect(0, 1).position.x, " wall=", G.wall_outer_x(0),
-		" | west=", west_lo, "/", west_hi, " hand=", G.hand13_rect(2, 1).end.x, " wall=", G.wall_outer_x(2))
-	t.expect(is_equal_approx(G.hand13_rect(0, 1).position.x - east_hi, G.SIDE_RED_GAP),
-		"东家红区—手牌间距8")
-	t.expect(is_equal_approx(west_lo - G.hand13_rect(2, 1).end.x, G.SIDE_RED_GAP),
-		"西家红区—手牌间距8")
-
-	# 北/南同步 A：牌墙—红8、红—手8。
-	var north_lo := INF
-	var north_hi := -INF
-	var south_lo := INF
-	var south_hi := -INF
-	for child in deck._red_layer.get_children():
-		if not (child is TileView): continue
-		var sid := int(child.get_meta("v2_seat", -1))
-		var rr := _rect(child)
-		if sid == 1:
-			south_lo = minf(south_lo, rr.position.y)
-			south_hi = maxf(south_hi, rr.end.y)
-		elif sid == 3:
-			north_lo = minf(north_lo, rr.position.y)
-			north_hi = maxf(north_hi, rr.end.y)
-	var north_wall_top: float = G.wall_block_center(3, 0, 1).y - 32.0
-	var south_wall_bottom: float = G.wall_block_center(1, 0, 1).y + 32.0
-	t.expect(is_equal_approx(G.hand13_rect(1, 1).position.y - south_hi, 8.0), "南家红区—手牌间距8")
-	t.expect(is_equal_approx(south_lo - south_wall_bottom, 8.0), "南家牌墙—红区间距8")
-	t.expect(is_equal_approx(north_lo - G.hand13_rect(3, 1).end.y, 8.0), "北家红区—手牌间距8")
-	t.expect(is_equal_approx(north_wall_top - north_hi, 8.0), "北家牌墙—红区间距8")
-
-	# 不同红牌类型的实际间距：普通4、同类型8、不同类型12。
-	var south_nodes: Array = []
-	for child in deck._red_layer.get_children():
-		if child is TileView and int(child.get_meta("v2_seat", -1)) == 1:
-			south_nodes.append(child)
-	south_nodes.sort_custom(func(a, b): return a.position.x < b.position.x)
-	var red_rects: Array[Rect2] = []
-	for n in south_nodes: red_rects.append(_rect(n))
-	t.expect(is_equal_approx(red_rects[3].position.x - red_rects[2].end.x, 4.0), "普通幺鸡八筒之间间距4")
-	t.expect(is_equal_approx(red_rects[8].position.x - red_rects[7].end.x, 12.0), "单张与杠之间间距12")
-	t.expect(is_equal_approx(red_rects[12].position.x - red_rects[11].end.x, 8.0), "同类型杠之间间距8")
+		var meld: bool = int(child.get_meta("meld_index", -1)) >= 0
+		var want := G.MELD_SIZE if meld else Vector2(G.RED_WIDTH, G.RED_HEIGHT)
+		var rect := _rect(child)
+		sizes_ok = sizes_ok and (child.size * child.scale).is_equal_approx(want)
+		for other in rects:
+			if rect.intersects(other.grow(-0.05)): sizes_ok = false
+		rects.append(rect)
+	t.expect(sizes_ok, "pooled chicken discards and equal-size melds retain their own size and do not overlap")
 
 	# 冲锋标记只读规则权威值，视图不得把每家前两张强行标成冲锋鸡。
 	var charge_nodes: Array = []

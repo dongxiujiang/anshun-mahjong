@@ -158,9 +158,11 @@ func _check_foreground_restore(stage: String) -> void:
 	var hand: Array = net.game.players[seat].concealed.duplicate()
 	get_tree().multiplayer_poll = false
 	if stage == "settlement": table._sound_settings.open()
-	net.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
-	net.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	net.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT if stage == "turn" else Node.NOTIFICATION_APPLICATION_PAUSED)
+	net.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN if stage == "turn" else Node.NOTIFICATION_APPLICATION_RESUMED)
 	_expect(net._resume_sync_pending and table._awaiting_rejoin_snapshot, "Foreground return gates table input until a fresh snapshot")
+	_expect(net._reconnecting and net._reconnect_wait == 0.0, "Foreground return immediately replaces a possibly suspended socket")
+	_expect(table._connection_overlay._title.text == "重连中", "Foreground feedback explicitly shows reconnection")
 	_expect(table._connection_overlay.is_open() and table._connection_overlay.modulate.a == 1.0, "Foreground connection feedback appears immediately")
 	_expect(table._connection_overlay.get_parent() is CanvasLayer and table._connection_overlay.get_parent().layer > table._sound_settings.layer, "Connection progress stays above an already-open settings panel")
 	_expect(table._connection_overlay._loading_bar.indeterminate, "Foreground wait has an animated progress indicator")

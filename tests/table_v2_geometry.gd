@@ -62,52 +62,28 @@ func _run() -> void:
 		t.expect(is_equal_approx(gap, 20.0),
 			"%s家摸牌区距手牌20" % ["南", "东", "北", "西"][seat])
 
-	var wall := G.wall_block_center(3, 0, 1)
-	t.expect(wall.y < G.CENTER.y and wall.x < G.CENTER.x, "北墙在中心上方")
-	t.expect(not own.intersects(Rect2(wall - Vector2(24, 32), Vector2(48, 64))), "牌墙不压自己手牌")
-
-	var inner_center_y := (G.wall_block_center(3, 0, 1).y + 32.0 + G.wall_block_center(1, 0, 1).y - 32.0) / 2.0
-	t.expect(is_equal_approx(G.wall_block_center(0, 6, 1).y, inner_center_y),
-		"东墙中心对齐牌墙内框中心")
-	t.expect(is_equal_approx(G.wall_block_center(2, 6, 1).y, inner_center_y),
-		"西墙中心对齐牌墙内框中心")
-
-	# 北/南、东/西弃牌方向镜像：第一张靠桌心。
-	var south_first: Vector2 = G.ordinary_slot_center(1, 0, 1)
-	var south_second: Vector2 = G.ordinary_slot_center(1, 12, 1)
-	var north_first: Vector2 = G.ordinary_slot_center(3, 0, 1)
-	var north_second: Vector2 = G.ordinary_slot_center(3, 12, 1)
-	t.expect(absf(south_first.y - G.CENTER.y) < absf(south_second.y - G.CENTER.y), "南家第一行靠桌心")
-	t.expect(absf(north_first.y - G.CENTER.y) < absf(north_second.y - G.CENTER.y), "北家第一行靠桌心")
-
-	# 东/西弃牌旋转后 80×60，8张一行、5行，步进 84/64。
-	var east_col0: Vector2 = G.ordinary_slot_center(0, 0, 1)
-	var east_next_in_row: Vector2 = G.ordinary_slot_center(0, 1, 1)
-	var east_next_row: Vector2 = G.ordinary_slot_center(0, 8, 1)
-	t.expect(is_equal_approx(east_next_in_row.y - east_col0.y, -64.0), "东家本地一行第2张沿y镜像步进64")
-	t.expect(is_equal_approx(east_next_row.x - east_col0.x, 84.0), "东家本地下一行沿x向牌墙外步进84")
-	t.expect(G.ordinary_slot_center(0, 39, 1).x > G.ordinary_slot_center(0, 31, 1).x,
-		"东家可显示第40张")
-	t.expect(G.ordinary_slot_center(3, 35, 1).y < G.ordinary_slot_center(3, 23, 1).y,
-		"北家可显示第36张")
-
-	var inner := G.wall_inner_rect()
-	var south_last: Vector2 = G.ordinary_slot_center(1, 35, 1)
-	var north_last: Vector2 = G.ordinary_slot_center(3, 35, 1)
-	var east_discard_last: Vector2 = G.ordinary_slot_center(0, 39, 1)
-	var west_discard_last: Vector2 = G.ordinary_slot_center(2, 39, 1)
-	t.expect(is_equal_approx(inner.end.y - (south_last.y + 40.0), 8.0), "南家最外一行距内框8")
-	t.expect(is_equal_approx((north_last.y - 40.0) - inner.position.y, 8.0), "北家最外一行距内框8")
-	t.expect(is_equal_approx(inner.end.x - (east_discard_last.x + 40.0), 8.0), "东家最外一排距内框8")
-	t.expect(is_equal_approx((west_discard_last.x - 40.0) - inner.position.x, 8.0), "西家最外一排距内框8")
-
-	var ordinary_ok := true
-	for i in 24:
-		var p: Vector2 = G.ordinary_slot_center(human, i, human)
-		if not G.TABLE_BOUNDS.grow(-20.0).has_point(p): ordinary_ok = false
-	t.expect(ordinary_ok, "24张普通弃牌在桌内")
-
-	var red := G.red_anchor(human, human, 0)
-	t.expect(is_equal_approx(red.x, own.position.x), "红色区起始边对齐13张手牌左边缘")
+	var river: Array[Rect2] = []
+	for seat in 4:
+		var rel := G.relative_seat(human, seat)
+		var side := rel in [1, 3]
+		var wall_size := G.MELD_SIZE if seat in [1, 3] else Vector2(G.MELD_SIZE.y, G.MELD_SIZE.x)
+		var wall_clear := true
+		for columns in [13, 14]:
+			for column in columns:
+				for layer in 2:
+					var center := G.wall_block_center(seat, column, layer, columns)
+					var bounds: Rect2 = G.WALL_BOUNDS[seat]
+					wall_clear = wall_clear and bounds.grow(0.01).encloses(Rect2(center - wall_size / 2, wall_size))
+		t.expect(wall_clear, "both equal-size layers fit all wall columns: %d" % seat)
+		var size := G.TILE_BASE * G.ORDINARY_UNIT
+		if side: size = Vector2(size.y, size.x)
+		for i in G.river_capacity(rel):
+			var center := G.ordinary_slot_center(seat, i, human)
+			var rect := Rect2(center - size / 2, size)
+			var clear := G.TABLE_BOUNDS.encloses(rect)
+			for obstacle in river + G.WALL_BOUNDS:
+				if rect.intersects(obstacle): clear = false
+			t.expect(clear, "river slot %d/%d clears other slots and walls" % [seat, i])
+			river.append(rect)
 
 	quit(t.finish("table_v2_geometry"))

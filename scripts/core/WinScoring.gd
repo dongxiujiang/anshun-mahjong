@@ -42,7 +42,8 @@ static func settle_winner(round, winner: int, chicken_points: Array, called_seat
 
 	var dry_label := ""
 	var dry_amount := 0.0
-	if pattern.get("win", false) and chicken_points[winner] == 0.0 and not _has_any_kong(player):
+	if self_draw and not player.ready and pattern_amount <= 0.0 \
+		and pattern.get("win", false) and chicken_points[winner] == 0.0 and not _has_any_kong(player):
 		var big_dry := true
 		for other in 4:
 			if other != winner and called_seats[other] and (chicken_points[other] > 0.0 or _has_any_kong(round.players[other])):
@@ -53,12 +54,11 @@ static func settle_winner(round, winner: int, chicken_points: Array, called_seat
 
 	# 含基础4的项目逐付款人合并。双方报听点炮时保留原有的24与20两条流水。
 	var both_ready: bool = not self_draw and player.ready and source in range(4) and source != winner and round.players[source].ready
-	var has_primary := pattern_amount > 0.0 or dry_amount > 0.0
 	var pattern_paid := pattern_amount - CFG.SCORE_SELF_DRAW if both_ready and pattern_amount > 0.0 else pattern_amount
-	var dry_paid := dry_amount - CFG.SCORE_SELF_DRAW if dry_amount > 0.0 and (pattern_amount > 0.0 or both_ready) else dry_amount
-	var ready_paid := CFG.SCORE_READY_PATTERN if has_primary and not both_ready else CFG.SCORE_READY
-	var kill_paid := CFG.SCORE_KILL_READY - CFG.SCORE_SELF_DRAW if has_primary else CFG.SCORE_KILL_READY
+	var ready_paid := CFG.SCORE_READY_PATTERN if pattern_amount > 0.0 and not both_ready else CFG.SCORE_READY
+	var kill_paid := CFG.SCORE_KILL_READY - CFG.SCORE_SELF_DRAW if pattern_amount > 0.0 else CFG.SCORE_KILL_READY
 	var has_payer := false
+	var dry_collected := false
 	var ordinary_draw_paid := false
 	var dealer := int(meta.get("dealer_seat", 0))
 	for payer in 4:
@@ -66,7 +66,6 @@ static func settle_winner(round, winner: int, chicken_points: Array, called_seat
 			continue
 		has_payer = true
 		PAY.transfer(deltas, transfers, payer, winner, pattern_paid, pattern_label)
-		PAY.transfer(deltas, transfers, payer, winner, dry_paid, dry_label)
 		if player.ready:
 			PAY.transfer(deltas, transfers, payer, winner, ready_paid, "报听胡牌")
 			if both_ready:
@@ -75,7 +74,10 @@ static func settle_winner(round, winner: int, chicken_points: Array, called_seat
 			PAY.transfer(deltas, transfers, payer, winner, kill_paid, "杀报")
 			items[winner].append(_item("ready", "杀报", kill_paid, "%s报听，单独支付" % _nm(payer, dealer)))
 			lines.append("杀报：%s付 %.0f" % [_nm(payer, dealer), kill_paid])
-		elif self_draw and not has_primary:
+		elif dry_amount > 0.0:
+			PAY.transfer(deltas, transfers, payer, winner, dry_amount, dry_label)
+			dry_collected = true
+		elif self_draw and pattern_amount <= 0.0:
 			PAY.transfer(deltas, transfers, payer, winner, CFG.SCORE_SELF_DRAW, "自摸基础分")
 			ordinary_draw_paid = true
 	if has_payer:
@@ -83,9 +85,9 @@ static func settle_winner(round, winner: int, chicken_points: Array, called_seat
 		if pattern_paid > 0.0:
 			items[winner].append(_item("pattern", pattern_label, pattern_paid, payer_note))
 			lines.append("%s：%s %.0f" % [pattern_label, payer_note, pattern_paid])
-		if dry_paid > 0.0:
-			items[winner].append(_item("bonus", dry_label, dry_paid, payer_note))
-			lines.append("%s：%s %.0f" % [dry_label, payer_note, dry_paid])
+		if dry_collected:
+			items[winner].append(_item("bonus", dry_label, dry_amount, "未报听玩家各付"))
+			lines.append("%s：未报听玩家各付 %.0f" % [dry_label, dry_amount])
 		if player.ready:
 			items[winner].append(_item("ready", "报听胡牌", ready_paid, payer_note))
 			lines.append("报听胡牌：%s %.0f" % [payer_note, ready_paid])

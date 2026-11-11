@@ -136,7 +136,10 @@ func _draw() -> void:
 	var w := BASE_W * unit
 	var h := BASE_H * unit
 	var depth := 5.0 * unit
-	draw_style_box(_tile_style(Color(0, 0, 0, 0.30), Color.TRANSPARENT), Rect2(2 * unit, 4 * unit, w, h))
+	var river := has_meta("discard_id") and int(get_meta("meld_index", -1)) < 0 \
+		and str(get_meta("new_kind", "")) in ["ordinary", "red"]
+	if not river:
+		draw_style_box(_tile_style(Color(0, 0, 0, 0.30), Color.TRANSPARENT), Rect2(2 * unit, 4 * unit, w, h))
 	draw_style_box(_tile_style(Color("#becbb9"), Color("#8a9c86")), Rect2(0, 0, w, h))
 	if face_up and tile != "":
 		var face_color := Color("#f6f7ed") if not score_highlight else Color("#f3d875")
@@ -159,10 +162,10 @@ func _draw() -> void:
 	if highlight or ai_teach_highlight or latest_highlight or selected or _win_glow > 0:
 		var glow := _tile_style(Color.TRANSPARENT, Color(0.95, 0.80, 0.39, maxf(0.24, _win_glow)))
 		glow.set_border_width_all(4)
-		draw_style_box(glow, Rect2(-4, -4, w + 8, h + 8))
+		draw_style_box(glow, Rect2(0, 0, w, h) if river else Rect2(-4, -4, w + 8, h + 8))
 		var outline := _tile_style(Color.TRANSPARENT, Color("#f1d47f"))
 		outline.set_border_width_all(2)
-		draw_style_box(outline, Rect2(-1, -1, w + 2, h + 2))
+		draw_style_box(outline, Rect2(0, 0, w, h) if river else Rect2(-1, -1, w + 2, h + 2))
 		if highlight:
 			draw_circle(Vector2(w / 2, -5 * unit), 2.5 * unit, Color("#f1d47f"))
 		if ai_teach_highlight:
@@ -174,10 +177,10 @@ func _draw() -> void:
 			# 最新弃牌用亮橙色，和鸡牌/报听的暗金色区分。
 			var latest_glow := _tile_style(Color.TRANSPARENT, Color(1.0, 0.38, 0.12, 0.45))
 			latest_glow.set_border_width_all(8)
-			draw_style_box(latest_glow, Rect2(-7, -7, w + 14, h + 14))
+			draw_style_box(latest_glow, Rect2(0, 0, w, h) if river else Rect2(-7, -7, w + 14, h + 14))
 			var latest_outline := _tile_style(Color.TRANSPARENT, Color("#ff7a2f"))
 			latest_outline.set_border_width_all(5)
-			draw_style_box(latest_outline, Rect2(-3, -3, w + 6, h + 6))
+			draw_style_box(latest_outline, Rect2(0, 0, w, h) if river else Rect2(-3, -3, w + 6, h + 6))
 	if bool(get_meta("charge_chicken", false)) and bool(get_meta("gold_chicken", false)):
 		_draw_badge(Vector2(w - 12 * unit, 12 * unit), Color("#d5af4e"), "冲金")
 	elif bool(get_meta("charge_chicken", false)):

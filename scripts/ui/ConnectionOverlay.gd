@@ -105,7 +105,7 @@ func show_reconnecting(attempt: int = 0, maximum: int = 5) -> void:
 	modulate.a = 1.0
 	show()
 	_loading_bar.show()
-	_title.text = "连接中"
+	_title.text = "重连中"
 	_body.text = "联机连接中断，正在恢复原座位和最新牌局。\n请不要退出游戏，恢复后会继续当前对局。"
 	_progress.text = "正在连接…" if attempt <= 0 else "第 %d / %d 次尝试" % [attempt, maximum]
 	_retry_button.hide()
@@ -133,7 +133,7 @@ func show_syncing(message: String = "座位已恢复，正在同步最新牌局�
 	modulate.a = 1.0
 	show()
 	_loading_bar.show()
-	_title.text = "连接中"
+	_title.text = "重连中"
 	_body.text = message + "\n同步完成前牌桌暂不响应操作，避免点击丢失。"
 	_progress.text = "等待最新牌局…"
 	_retry_button.hide()
