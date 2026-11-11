@@ -86,4 +86,16 @@ func _run() -> void:
 			t.expect(clear, "river slot %d/%d clears other slots and walls" % [seat, i])
 			river.append(rect)
 
+	for viewer in 4:
+		for seat in 4:
+			var size := G.hand_tile_size(seat, viewer)
+			if G.relative_seat(viewer, seat) in [1, 3]: size = Vector2(size.y, size.x)
+			for count in [1, 4, 7, 10, 13]:
+				var draw := Rect2(G.draw_slot_center(seat, viewer, count) - size / 2.0, size)
+				var clear := true
+				for wall: Rect2 in G.WALL_BOUNDS:
+					clear = clear and G.TABLE_BOUNDS.encloses(wall.grow(6))
+					clear = clear and not wall.grow(6).intersects(draw)
+					clear = clear and not wall.grow(6).intersects(G.hand13_rect(seat, viewer))
+				t.expect(clear, "viewer%d seat%d count%d: full walls and shadows leave hand and draw slots clear" % [viewer, seat, count])
 	quit(t.finish("table_v2_geometry"))

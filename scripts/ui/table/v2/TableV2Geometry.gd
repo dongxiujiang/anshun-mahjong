@@ -11,7 +11,7 @@ const TILE_BASE := Vector2(48, 64)
 const TILE_GAP := 4.0
 const SOUTH_WALL_SHIFT := -89.2
 const NORTH_WALL_SHIFT := 16.6
-const SIDE_WALL_Y_SHIFT := -24.0
+const SIDE_WALL_Y_SHIFT := -88.0 # 留出本家第14张摸牌的完整高度及牌墙阴影。
 const SIDE_RED_RESERVE := 91.8
 const SIDE_RED_GAP := 8.0
 const RED_LINE_GAP := 4.0
@@ -28,8 +28,8 @@ const MELD_SIZE := TILE_BASE * OPPONENT_UNIT
 const ACTION_TOP := 816.8
 const SETTLEMENT_AREA := Rect2(690, 389, 900, 420)
 const WALL_BOUNDS := [
-	Rect2(1943.4, 162.4, 94.4, 915.2), Rect2(678.4, 818.8, 915.2, 94.4),
-	Rect2(242.2, 154.4, 94.4, 915.2), Rect2(686.4, 294.2, 915.2, 94.4),
+	Rect2(1943.4, 98.4, 94.4, 915.2), Rect2(678.4, 818.8, 915.2, 94.4),
+	Rect2(242.2, 90.4, 94.4, 915.2), Rect2(686.4, 294.2, 915.2, 94.4),
 ]
 
 const HAND_TOP := 100.0
