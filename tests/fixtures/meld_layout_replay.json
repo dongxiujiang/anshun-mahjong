@@ -1,0 +1,782 @@
+{
+  "seed": 2026111201,
+  "dealer": 0,
+  "red": 1,
+  "white": 2,
+  "actions": [
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan4"
+      },
+      "elapsed_ms": 13.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong4"
+      },
+      "elapsed_ms": 29.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong8"
+      },
+      "elapsed_ms": 45.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao1"
+      },
+      "elapsed_ms": 60.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan8"
+      },
+      "elapsed_ms": 61.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao2"
+      },
+      "elapsed_ms": 61.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong6"
+      },
+      "elapsed_ms": 62.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "action": "pong"
+      },
+      "elapsed_ms": 63.0,
+      "kind": "response",
+      "seat": 1.0,
+      "source": 2.0,
+      "stage": 3.0,
+      "tile": "tong6"
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan6"
+      },
+      "elapsed_ms": 63.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong1"
+      },
+      "elapsed_ms": 64.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "action": "pong"
+      },
+      "elapsed_ms": 64.0,
+      "kind": "response",
+      "seat": 3.0,
+      "source": 0.0,
+      "stage": 3.0,
+      "tile": "tong1"
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao9"
+      },
+      "elapsed_ms": 64.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao1"
+      },
+      "elapsed_ms": 65.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan5"
+      },
+      "elapsed_ms": 66.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong8"
+      },
+      "elapsed_ms": 67.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan9"
+      },
+      "elapsed_ms": 67.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao2"
+      },
+      "elapsed_ms": 68.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong2"
+      },
+      "elapsed_ms": 69.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan9"
+      },
+      "elapsed_ms": 70.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao4"
+      },
+      "elapsed_ms": 70.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "action": "pong"
+      },
+      "elapsed_ms": 71.0,
+      "kind": "response",
+      "seat": 0.0,
+      "source": 3.0,
+      "stage": 3.0,
+      "tile": "tiao4"
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong7"
+      },
+      "elapsed_ms": 71.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "action": "pong"
+      },
+      "elapsed_ms": 72.0,
+      "kind": "response",
+      "seat": 2.0,
+      "source": 0.0,
+      "stage": 3.0,
+      "tile": "tong7"
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan8"
+      },
+      "elapsed_ms": 72.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong5"
+      },
+      "elapsed_ms": 73.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "action": "pong"
+      },
+      "elapsed_ms": 73.0,
+      "kind": "response",
+      "seat": 0.0,
+      "source": 1.0,
+      "stage": 3.0,
+      "tile": "tong5"
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong4"
+      },
+      "elapsed_ms": 73.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao7"
+      },
+      "elapsed_ms": 74.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong8"
+      },
+      "elapsed_ms": 75.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan2"
+      },
+      "elapsed_ms": 75.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "action": "pong"
+      },
+      "elapsed_ms": 76.0,
+      "kind": "response",
+      "seat": 0.0,
+      "source": 1.0,
+      "stage": 3.0,
+      "tile": "wan2"
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao7"
+      },
+      "elapsed_ms": 76.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan1"
+      },
+      "elapsed_ms": 76.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao5"
+      },
+      "elapsed_ms": 77.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong8"
+      },
+      "elapsed_ms": 78.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao2"
+      },
+      "elapsed_ms": 79.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan5"
+      },
+      "elapsed_ms": 79.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan6"
+      },
+      "elapsed_ms": 80.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao7"
+      },
+      "elapsed_ms": 81.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan4"
+      },
+      "elapsed_ms": 81.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong2"
+      },
+      "elapsed_ms": 82.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong4"
+      },
+      "elapsed_ms": 83.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao9"
+      },
+      "elapsed_ms": 83.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "add_kong": [
+          "wan2"
+        ]
+      },
+      "elapsed_ms": 84.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan5"
+      },
+      "elapsed_ms": 85.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong7"
+      },
+      "elapsed_ms": 85.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan4"
+      },
+      "elapsed_ms": 86.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan9"
+      },
+      "elapsed_ms": 87.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong4"
+      },
+      "elapsed_ms": 88.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "add_kong": [
+          "tong1"
+        ]
+      },
+      "elapsed_ms": 88.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan1"
+      },
+      "elapsed_ms": 89.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao5"
+      },
+      "elapsed_ms": 90.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong3"
+      },
+      "elapsed_ms": 90.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "action": "pong"
+      },
+      "elapsed_ms": 91.0,
+      "kind": "response",
+      "seat": 2.0,
+      "source": 1.0,
+      "stage": 3.0,
+      "tile": "tong3"
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan1"
+      },
+      "elapsed_ms": 91.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan1"
+      },
+      "elapsed_ms": 92.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "add_kong": [
+          "tiao4"
+        ]
+      },
+      "elapsed_ms": 92.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao2"
+      },
+      "elapsed_ms": 93.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong3"
+      },
+      "elapsed_ms": 93.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong5"
+      },
+      "elapsed_ms": 94.0,
+      "kind": "turn",
+      "seat": 2.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan8"
+      },
+      "elapsed_ms": 95.0,
+      "kind": "turn",
+      "seat": 1.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong2"
+      },
+      "elapsed_ms": 95.0,
+      "kind": "turn",
+      "seat": 0.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao6"
+      },
+      "elapsed_ms": 96.0,
+      "kind": "turn",
+      "seat": 3.0,
+      "source": -1.0,
+      "stage": 0.0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "action": "kong"
+      },
+      "elapsed_ms": 97.0,
+      "kind": "response",
+      "seat": 0.0,
+      "source": 3.0,
+      "stage": 2.0,
+      "tile": "tiao6"
+    }
+  ]
+}

@@ -1,10 +1,10 @@
 # GitHub Actions 构建与发布
 
-当前正式安装包版本为 1.6.22，Android 安装基线为 1.6.22-native1。导出预设仅包含 Android。
+本次构建目标为 1.6.22，Android version/code 为 82，安装基线为 1.6.22-native1。导出预设仅包含 Android；实际已发布版本以 GitHub Release 和线上签名更新清单为准。
 
 ## 检查与构建
 
-- ci.yml 在 main/master 推送、PR 和手动触发时执行规则、计分、声音、牌桌、明细和同步检查。
+- ci.yml 在 main/master 推送、PR 和手动触发时执行规则、计分、声音、牌桌、明细和同步检查，包含报听过胡整局锁定专项。
 - build-release.yml 执行完整回归、至少 50 局 AI 自战、多进程联机和断线重连检查，通过后生成正式签名 APK 或累计 PCK 补丁。
 - 图形化检查覆盖 12 FPS 客户端的开局完成确认、碰杠飞行和结算布局，截图保存在 table-ui-review 构建产物中。任意客户端未理牌完成时不得提前开始摸牌。
 - Windows 任务验证热更新启动、回滚和恢复逻辑，只生成隔离测试程序。

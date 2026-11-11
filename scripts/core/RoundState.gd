@@ -326,7 +326,7 @@ func _begin_turn() -> void:
 		_penzu()
 		return
 	var player: PlayerState = players[current_turn]
-	# 过胡/过碰锁只持续到本人的下一次摸牌；摸牌前清除碰后禁打牌。
+	# 普通过胡/过碰锁在下一摸解除，报听过胡锁保留整局。
 	_clear_draw_locks(player)
 	player.just_drew = tile
 	player.concealed.append(tile)
@@ -582,6 +582,9 @@ func _apply_turn_action(seat: int, decision: Dictionary) -> void:
 	if decision.get("ready", false):
 		player.ready = true
 		player.announced_ready = true
+		var ready_hand := player.concealed.duplicate()
+		ready_hand.erase(discard)
+		player.ready_wait_tiles.assign(RuleEngine.waiting_tiles(ready_hand, player.melds))
 		_emit_audio_event("ready", seat)
 		_emit_visual_event("ready", {"seat": seat})
 	_discard(seat, discard, discard_index)
@@ -716,7 +719,7 @@ func _seat_order(source: int) -> Array:
 	return [posmod(source + CFG.TURN_DIRECTION, 4), posmod(source + CFG.TURN_DIRECTION * 2, 4), posmod(source + CFG.TURN_DIRECTION * 3, 4)]
 
 func _clear_draw_locks(player: PlayerState) -> void:
-	player.passed_win_until_draw = false
+	if not player.ready: player.passed_win_until_draw = false
 	player.passed_pong_tiles.clear()
 	player.forbidden_discard_tile = ""
 
@@ -876,7 +879,7 @@ func _process_response(seat: int, source: int, tile: String, decision: Dictionar
 		_ask_next_responder(source, tile)
 		return
 	if action == "pass":
-		if _response_stage in [ResponseStage.WIN, ResponseStage.ROB]:
+		if options.can_win and _response_stage in [ResponseStage.WIN, ResponseStage.ROB]:
 			player.passed_win_until_draw = true
 		elif _response_stage == ResponseStage.MELD and options.can_pong and not player.passed_pong_tiles.has(tile):
 			player.passed_pong_tiles.append(tile)

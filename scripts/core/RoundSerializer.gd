@@ -38,6 +38,7 @@ static func _serialize_player(player: PlayerState) -> Dictionary:
 		"discard_history": player.discard_history.duplicate(),
 		"discard_ids": player.discard_ids.duplicate(), "discard_count": player.discard_count,
 		"score": player.score, "ready": player.ready, "name": player.name_label,
+		"ready_wait_tiles": player.ready_wait_tiles.duplicate(),
 		"is_human": player.is_human, "is_dealer": player.is_dealer, "just_drew": player.just_drew,
 		"first_turn_done": player.first_turn_done, "charge_chicken": player.charge_chicken,
 		"passed_win_until_draw": player.passed_win_until_draw,
@@ -61,6 +62,7 @@ static func apply_sync(round_state, state: Dictionary) -> void:
 		player.discard_count = int(data.get("discard_count", player.discard_history.size()))
 		player.score = float(data.score)
 		player.ready = data.ready
+		player.ready_wait_tiles.assign(data.get("ready_wait_tiles", []))
 		player.name_label = data.name
 		player.is_human = data.is_human
 		player.is_dealer = data.get("is_dealer", player.seat == round_state.dealer_seat)
@@ -114,6 +116,7 @@ static func mask_for_seat(state: Dictionary, round_state, seat: int) -> Dictiona
 		hidden.concealed = player.get("concealed", []).duplicate()
 		hidden.concealed.fill("hidden0")
 		hidden.just_drew = "hidden0" if str(hidden.get("just_drew", "")) != "" else ""
+		hidden.ready_wait_tiles = []
 		hidden.melds = player.get("melds", []).duplicate(true)
 		for meld_index in hidden.melds.size():
 			if not round_state.is_meld_revealed(int(player.get("seat", -1)), meld_index):

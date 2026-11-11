@@ -237,7 +237,7 @@ func _test_actions() -> void:
 		eq([87], "响应座位顺序%d" % source, r._seat_order(source), [posmod(source+CFG.TURN_DIRECTION,4),posmod(source+CFG.TURN_DIRECTION*2,4),posmod(source+CFG.TURN_DIRECTION*3,4)], "scripts/core/RoundState.gd:497")
 	r.current_turn = 2
 	r._begin_turn()
-	eq([88], "本人摸牌解除过胡", r.players[2].passed_win_until_draw, false, "scripts/core/RoundState.gd:273")
+	eq([88], "报听者摸牌不解除本局过胡锁", r.players[2].passed_win_until_draw, true, "scripts/core/RoundState.gd:273")
 	var pong := fixture()
 	pong.players[0].concealed = ["wan5"]
 	pong.players[2].concealed = ["wan5","wan5","tong2"]

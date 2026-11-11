@@ -39,7 +39,8 @@ func _new_net_node() -> void:
 	net_node.session_invalidated.connect(clear_saved_session)
 
 func load_settings() -> void:
-	saved_session = SESSIONS.read_session(settings_path)
+	# A new process starts a fresh session. In-process network recovery remains active.
+	clear_saved_session()
 	var config := STORE.read_config(settings_path)
 	for key in lobby_preferences:
 		var value = config.get_value("lobby", key, lobby_preferences[key])

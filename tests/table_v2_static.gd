@@ -68,12 +68,14 @@ func _run() -> void:
 		p.melds = []
 	deck.refresh()
 	await process_frame
-	t.expect(deck.count_kind("ordinary") == 82, "all 82 ordinary river slots are visible")
+	t.expect(deck.count_kind("ordinary") == 96, "all 96 ordinary river slots are visible")
 	t.expect(deck.count_kind("red") == 0, "静态新牌桌：普通弃牌不进入红色区")
 
 	# 红色区几何容量夹具：8 张单张鸡 + 4 个鸡杠 = 24 张（允许重复牌值）。
 	for seat in 4:
 		var p = host.round.players[seat]
+		p.concealed = ["wan9"]
+		p.just_drew = ""
 		p.discards = []
 		for i in 8:
 			p.discards.append("tiao1" if i % 2 == 0 else "tong8")
@@ -97,7 +99,7 @@ func _run() -> void:
 	for child in deck._red_layer.get_children():
 		if not (child is TileView): continue
 		var meld: bool = int(child.get_meta("meld_index", -1)) >= 0
-		var want := G.MELD_SIZE if meld else Vector2(G.RED_WIDTH, G.RED_HEIGHT)
+		var want: Vector2 = deck._exposed_size(int(child.get_meta("v2_seat")))
 		var rect := _rect(child)
 		sizes_ok = sizes_ok and (child.size * child.scale).is_equal_approx(want)
 		for other in rects:

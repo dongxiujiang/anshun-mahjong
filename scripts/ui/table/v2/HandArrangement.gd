@@ -7,11 +7,18 @@ var _patterns := {}
 var _layouts := {}
 var _distance := 9
 
-static func build(hand: Array, pattern_first: bool) -> Array:
+static func waiting_patterns(hand: Array) -> Dictionary:
+	var patterns := {}
+	for tile in Tiles.all_values():
+		if hand.count(tile) >= 4: continue
+		var pattern := RuleEngine.analyze(hand + [tile], [], tile)
+		if pattern.win: patterns[Tiles.value_index(tile)] = pattern
+	return patterns
+
+static func build(hand: Array, pattern_first: bool, patterns: Dictionary = {}) -> Array:
 	var search := new()
 	search._counts = Tiles.hand_to_counts_array(hand)
-	for tile in RuleEngine.waiting_tiles(hand, []):
-		search._patterns[Tiles.value_index(tile)] = RuleEngine.analyze(hand + [tile], [], tile)
+	search._patterns = waiting_patterns(hand) if patterns.is_empty() else patterns
 	search._split(0, [], [], [], [])
 	var pairs: Array = []
 	var singles: Array = []
@@ -30,6 +37,8 @@ static func build(hand: Array, pattern_first: bool) -> Array:
 	return layouts
 
 func _split(index: int, melds: Array, pairs: Array, partials: Array, singles: Array) -> void:
+	# A 13-tile normal wait has at most one single/partial or two pairs.
+	if not _patterns.is_empty() and (singles.size() > 1 or partials.size() > 1 or pairs.size() > 2): return
 	while index < 27 and _counts[index] == 0: index += 1
 	if index == 27:
 		var has_pair := int(not pairs.is_empty())
@@ -98,7 +107,7 @@ func _add(groups: Array, loose: Array, distance: int, waits: Array, mode: String
 			cards.append_array(group)
 		entry = {"key": key, "groups": groups, "lengths": lengths, "grouped": cards.size(),
 			"cards": (cards + loose).map(func(index): return Tiles.from_index(index)), "waits": {},
-			"width": 0, "score": 0.0}
+			"width": 0, "score": 0.0, "patterns": {}}
 		_layouts[key] = entry
 	for index in waits:
 		entry.waits[index] = true
@@ -109,7 +118,9 @@ func _add(groups: Array, loose: Array, distance: int, waits: Array, mode: String
 		if mode == "sequences":
 			pattern["all_triplets"] = false
 			pattern["clean_big_triplets"] = false
-		entry.score = maxf(entry.score, float(SCORING._pattern_info(pattern).get("score", 0)))
+		var info := SCORING._pattern_info(pattern)
+		entry.score = maxf(entry.score, float(info.get("score", 0)))
+		entry.patterns[index] = str(info.get("label", "平胡"))
 	entry.width = entry.waits.size()
 
 static func retained_groups(previous: Dictionary, next: Dictionary) -> int:
@@ -121,3 +132,52 @@ static func retained_groups(previous: Dictionary, next: Dictionary) -> int:
 			shared += group.size()
 			remaining.remove_at(index)
 	return shared
+
+static func with_one_tile_changes(hand: Array, pattern_first: bool) -> Array:
+	var result := build(hand, pattern_first)
+	for outgoing in Tiles.to_counts(hand):
+		for incoming in Tiles.all_values():
+			if incoming == outgoing or hand.count(incoming) >= 4: continue
+			var changed := hand.duplicate()
+			changed.erase(outgoing)
+			changed.append(incoming)
+			var patterns := waiting_patterns(changed)
+			if not patterns.values().any(func(pattern): return not SCORING._pattern_info(pattern).is_empty()): continue
+			for layout in build(changed, pattern_first, patterns):
+				if layout.score <= 0 or layout.width == 0: continue
+				var entry: Dictionary = layout.duplicate(true)
+				var groups: Array = []
+				var loose: Array = []
+				var removed := false
+				var incoming_index := Tiles.value_index(incoming)
+				for group in entry.groups:
+					if not removed and group.has(incoming_index):
+						var partial: Array = group.duplicate()
+						partial.erase(incoming_index)
+						loose.append_array(partial.map(func(i): return Tiles.from_index(i)))
+						removed = true
+					else: groups.append(group)
+				var grouped_count := int(entry.grouped)
+				var tail: Array = entry.cards.slice(grouped_count)
+				if not removed: tail.erase(incoming)
+				loose.append_array(tail)
+				loose.append(outgoing)
+				entry.groups = groups
+				entry.lengths = groups.map(func(group): return group.size())
+				entry.cards = []
+				for group in groups: entry.cards.append_array(group.map(func(i): return Tiles.from_index(i)))
+				entry.grouped = entry.cards.size()
+				entry.cards.append_array(loose)
+				entry.change_from = outgoing
+				entry.change_to = incoming
+				entry.key = "%s>%s|%s" % [outgoing, incoming, entry.key]
+				assert(Tiles.sort_hand(entry.cards) == Tiles.sort_hand(hand))
+				result.append(entry)
+	result.sort_custom(func(a, b):
+		# A live wait always precedes a hypothetical exchange.
+		if a.has("change_from") != b.has("change_from"): return not a.has("change_from")
+		if pattern_first and a.score != b.score: return a.score > b.score
+		if a.width != b.width: return a.width > b.width
+		if a.score != b.score: return a.score > b.score
+		return a.key < b.key)
+	return result

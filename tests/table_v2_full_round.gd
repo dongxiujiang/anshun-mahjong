@@ -3,6 +3,7 @@ extends SceneTree
 const H=preload("res://tests/test_harness.gd")
 var t=H.new()
 var events={}
+var capture_case := ""
 
 class DrawOnly extends RefCounted:
 	func decide_turn(round,seat): return {"discard":round.players[seat].just_drew}
@@ -12,6 +13,12 @@ func _initialize():call_deferred("_run")
 func _observe(event):
 	var kind=str(event.get("type",""))
 	events[kind]=int(events.get(kind,0))+1
+	_capture_event.call_deferred("%03d-%s" % [int(event.get("id",0)),kind])
+
+func _capture_event(label: String):
+	await create_timer(0.05).timeout
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://build/change-20261112/full-" + capture_case + "/" + label + ".png")
 
 func _run():
 	if DisplayServer.get_name()=="headless":
@@ -21,6 +28,8 @@ func _run():
 	var kind="win"
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--case="):kind=arg.substr(7)
+	capture_case = kind
+	DirAccess.make_dir_recursive_absolute("res://build/change-20261112/full-"+kind)
 	var config=root.get_node("GameConfig")
 	config.set_tile_animation_seconds(0.15 if kind=="draw" else 0.54,false)
 	config.set_settlement_speed("fast",false)
@@ -60,6 +69,7 @@ func _run():
 					if not node.face_up or node.tile=="":all_public=false
 			t.expect(all_public,"settlement hand values are public at all four seats")
 		t.expect(not table._table_animation_controller.has_pending(),"no native flight remains at settlement completion")
+		await _capture_event("settlement")
 		var scores=table.round.players.map(func(player):return player.score)
 		var dealer=table.round.next_dealer_seat
 		table._next_round()

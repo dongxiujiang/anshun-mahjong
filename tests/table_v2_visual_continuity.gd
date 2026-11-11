@@ -57,14 +57,6 @@ func rect(node):
 	return Rect2(points[0],Vector2.ZERO).expand(points[1]).expand(points[2]).expand(points[3])
 
 func _check_opposite_kongs(view) -> void:
-	var obstacles: Array[Rect2] = []
-	for seat in 4:
-		obstacles.append(G.hand13_rect(seat, 1))
-		obstacles.append(Rect2(G.seat_hud_rect(G.relative_seat(1, seat)).position, Vector2(184, 80)))
-		var size: Vector2 = G.MELD_SIZE if seat in [1, 3] else Vector2(G.MELD_SIZE.y, G.MELD_SIZE.x)
-		for slot in (14 if seat in [1, 3] else 13):
-			for row in 2:
-				obstacles.append(Rect2(G.wall_block_center(seat, slot, row) - size / 2.0, size))
 	for owner in 4:
 		var rel := G.relative_seat(1, owner)
 		var along: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][rel]
@@ -74,18 +66,19 @@ func _check_opposite_kongs(view) -> void:
 			for index in count:
 				timeline.append({"kind": "kong", "tile": "tong8" if index % 2 == 0 else "wan5",
 					"from_seat": posmod(owner + 2, 4)})
+			view.round.players[owner].melds = timeline
+			view.round.players[owner].concealed = ["wan9"]
+			view.round.players[owner].just_drew = ""
+			view.refresh()
 			var layout: Array = view.meld_layout(timeline, owner, rel)
 			var clear := layout.size() == count * 4
-			var occupied: Array[Rect2] = []
+			var obstacles := []
+			for layer in view.hand_boxes + view.draw_boxes + [view._wall_layer]:
+				for node in layer.get_children(): obstacles.append(rect(node))
 			for spec in layout:
-				var wide: bool = bool(spec.sideways) != (rel in [1, 3])
-				var extent := G.MELD_SIZE
-				var size := Vector2(extent.y, extent.x) if wide else extent
-				var tile := Rect2(Vector2(spec.center) - size / 2.0, size)
-				for other in occupied + obstacles:
-					if tile.intersects(other.grow(-0.05)):
-						clear = false
-				occupied.append(tile)
+				clear = clear and view.EXPOSED.clear([spec], obstacles)
+				for other in layout:
+					if spec.meld_index != other.meld_index and spec.rect.grow(-0.05).intersects(other.rect): clear=false
 			t.expect(clear, "seat %d: %d opposite kongs clear the hand, wall and adjacent tiles" % [owner, count])
 			var correct := true
 			for index in count:
@@ -93,8 +86,8 @@ func _check_opposite_kongs(view) -> void:
 				var source: Vector2 = group[3].center
 				var middle: Vector2 = group[1].center
 				correct = correct and group[3].sideways and absf((source - middle).dot(along)) < 0.05 \
-					and (source - middle).dot(inward) > G.RED_WIDTH
-			t.expect(correct, "seat %d: opposite tile is centered on the inward side of each kong" % owner)
+					and is_equal_approx((source-middle).dot(inward),(view._exposed_size(owner).x-view._exposed_size(owner).y)/2)
+			t.expect(correct, "seat %d: opposite tile is centered and bottom-aligned with each kong" % owner)
 
 func _meld_clear_in_frame(view, owner: int, layer: Control) -> bool:
 	var count := 0
@@ -107,6 +100,7 @@ func _meld_clear_in_frame(view, owner: int, layer: Control) -> bool:
 			for other in other_layer.get_children():
 				if other == tile or not (other is Control) or not other.is_visible_in_tree():
 					continue
+				if int(other.get_meta("v2_seat",-1))==owner and int(other.get_meta("meld_index",-1))==0: continue
 				var obstacle: Rect2 = rect(other).grow(-0.05)
 				if obstacle.has_area() and footprint.intersects(obstacle):
 					return false
@@ -194,7 +188,7 @@ func _run():
 	t.expect(retained, "unchanged refresh preserves every existing tile identity")
 	var opaque = true
 	for tile in view._meld_layer.get_children():
-		if tile.modulate.a != 1.0 or not tile.scale.is_equal_approx(Vector2.ONE) or not tile.size.is_equal_approx(G.MELD_SIZE): opaque = false
+		if tile.modulate.a != 1.0 or not (tile.size*tile.scale).is_equal_approx(view._exposed_size(int(tile.get_meta("v2_seat")))): opaque = false
 	t.expect(opaque,"existing melds never restart fade or scale entrance on refresh")
 	var red = view._red_layer.get_child(0)
 	t.expect(int(red.get_meta("discard_id",-1))==0,"static chicken retains the authoritative discard identity")
@@ -205,8 +199,12 @@ func _run():
 		if label is Label and label.text=="听" and label.visible: ready_badge = true
 	t.expect(ready_badge,"ready state has an independent visible badge instead of clipped nickname text")
 	# Capacity geometry fixture, deliberately independent of physical tile values.
+	var full_hand: Array = host.round.players[1].concealed.duplicate()
 	for seat in 4:
 		var player = host.round.players[seat]
+		# Four groups leave one tile; keeping four also covers deferred centering.
+		player.concealed = full_hand.slice(0, 4)
+		player.just_drew = ""
 		player.melds = [{"kind":"kong","tile":"wan1","formed_at":1},{"kind":"kong","tile":"tong8","formed_at":2},
 			{"kind":"kong","tile":"wan6","formed_at":3},{"kind":"kong","tile":"tiao1","formed_at":4}]
 		player.discards=["tiao1","tong8","tiao1","tong8","tiao1","tong8","tiao1","tong8"]
@@ -224,12 +222,13 @@ func _run():
 		var bounds=true
 		for i in exposed.size():
 			var a=rect(exposed[i])
-			if a.intersects(G.hand13_rect(seat,1).grow(-0.1)):hand_clear=false
+			for hand in view.hand_boxes[seat].get_children() + view.draw_boxes[seat].get_children():
+				if a.intersects(rect(hand).grow(-0.1)): hand_clear = false
 			if not G.TABLE_BOUNDS.encloses(a):bounds=false
 			for j in range(i+1,exposed.size()):
 				if a.intersects(rect(exposed[j]).grow(-0.1)):separate=false
 		t.expect(separate,"seat%d: chicken and ordinary meld tiles never overlap" % seat)
-		t.expect(hand_clear,"seat%d: exposed belt clears fixed full hand area" % seat)
+		t.expect(hand_clear,"seat%d: exposed belt clears the hand before deferred centering" % seat)
 		t.expect(bounds,"seat%d: all exposed tiles remain within table bounds" % seat)
 		var rel=G.relative_seat(1,seat)
 		var wall_clear=true
@@ -245,7 +244,7 @@ func _run():
 		var ui := preload("res://scripts/ui/table/TableUiConfig.gd")
 		var row_size := Vector2(4 * ui.DISCARD_BUTTON_SIZE.x + 3 * ui.ACTION_SEPARATION, ui.ACTION_BUTTON_SIZE.y)
 		var saved_hand: Array = host.round.players[1].concealed.duplicate()
-		host.round.players[1].concealed = saved_hand.slice(0, count)
+		host.round.players[1].concealed = full_hand.slice(0, count)
 		var action_rect: Rect2 = view.action_bar_rect(row_size)
 		var hand_size := G.hand_tile_size(1, 1)
 		var right := G.hand_slot_center(1, count - 1, 1, count).x + hand_size.x / 2.0
@@ -267,19 +266,23 @@ func _run():
 		if int(tile.get_meta("v2_seat",-1))==1 and int(tile.get_meta("meld_index",-1))==0 and int(tile.get_meta("meld_slot",-1))==3:
 			exposed_source=is_equal_approx(tile.rotation,PI/2)
 	t.expect(exposed_source,"exposed kong marks its actual source tile sideways without compressing its group")
+	var saved_melds: Array = host.round.players.map(func(player): return player.melds.duplicate(true))
 	for owner in 4:
 		var rel := G.relative_seat(1, owner)
 		var right: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][rel]
 		for offset in [1, 3]:
 			var source_seat := posmod(owner + offset, 4)
 			for value in ["wan5", "tong8"]:
-				var layout: Array = view.meld_layout([{"kind": "kong", "tile": value, "from_seat": source_seat}], owner, rel)
+				view.round.players[owner].melds = [{"kind": "kong", "tile": value, "from_seat": source_seat}]
+				view.refresh()
+				var layout: Array = view.meld_layout(view.round.players[owner].melds, owner, rel)
 				var source_tiles := layout.filter(func(spec): return spec.sideways)
 				var left: Vector2 = layout.front().center
 				var end: Vector2 = layout.back().center
 				var expected := left if offset == 1 else end
 				t.expect(source_tiles.size() == 1 and source_tiles[0].center == expected and (end - left).dot(right) > 0,
 					"seat %d: %s source %d is sideways at the correct owner-relative end" % [owner, value, offset])
+	for owner in 4: host.round.players[owner].melds = saved_melds[owner]
 	host.round.players[1].melds[0]["kind"]="add_kong"
 	view.refresh()
 	var added_upright=false

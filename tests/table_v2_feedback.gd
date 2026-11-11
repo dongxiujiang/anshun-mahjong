@@ -66,7 +66,7 @@ func _settlement_round():
 	r.round_meta = {"winner":3,"winners":[3],"self_draw":true,"discard_seat":-1,"win_tile":"tong7", "flip_tile":"tong8","flip_wall_index":r.wall.peek_head_index(),"chicken_multiplier":1}
 	return r
 
-func _ready_borders(view):
+func _ready_markers(view):
 	var authority = _settlement_round()
 	for viewer in 4:
 		var client = RoundState.new()
@@ -77,11 +77,10 @@ func _ready_borders(view):
 		for seat in 4:
 			var frame = view._control_layer.get_node_or_null("ReadyHandFrame%d" % seat)
 			var badge = view._control_layer.get_node_or_null("ReadyMeldBadge%d" % seat)
-			t.expect(frame != null and frame.visible == (seat == 3), "one whole-hand frame follows public ready state for every viewer")
+			t.expect(frame == null, "ready state creates no whole-hand gold frame for any viewer")
 			t.expect(badge != null and badge.visible == (seat == 3), "enlarged ready badge follows public ready state for every viewer")
 			for tile in view.hand_boxes[seat].get_children()+view.draw_boxes[seat].get_children():
-				t.expect(tile.face_up == (seat == viewer), "whole-hand frame never reveals an opponent's face")
-				if frame != null and frame.visible: t.expect(frame.get_rect().encloses(view._visual_rect(tile)), "one continuous frame encloses the hand and drawn tile")
+				t.expect(tile.face_up == (seat == viewer), "ready marker never reveals an opponent's face")
 			if badge != null and badge.visible:
 				t.expect(badge.text == "听" and badge.size.x >= 56 and badge.size.y >= 56, "meld-area ready marker is visibly enlarged")
 				for layer in view._render_layers():
@@ -93,14 +92,6 @@ func _ready_borders(view):
 			if DisplayServer.get_name() != "headless":
 				var image = root.get_texture().get_image()
 				var stretch = Vector2(image.get_size()) / root.get_visible_rect().size
-				var frame = view._control_layer.get_node("ReadyHandFrame3")
-				var rects: Array[Rect2] = []
-				for tile in view.hand_boxes[3].get_children()+view.draw_boxes[3].get_children(): rects.append(view._visual_rect(tile))
-				rects.sort_custom(func(a,b): return a.position.x < b.position.x)
-				for i in range(1,rects.size()):
-					var at = Vector2((rects[i-1].end.x+rects[i].position.x)/2.0,frame.position.y+1.5)*stretch
-					var pixel = image.get_pixelv(Vector2i(at))
-					t.expect(pixel.r > .75 and pixel.g > .6 and pixel.b < .75, "whole-hand border stays continuous across all card gaps")
 				var tile = view.hand_boxes[3].get_child(3)
 				var at = (tile.get_global_transform_with_canvas()*Vector2(1.5*tile.unit,tile.size.y/2.0))*stretch
 				var pixel = image.get_pixelv(Vector2i(at))
@@ -110,7 +101,7 @@ func _ready_borders(view):
 		view.refresh()
 		var frame = view._control_layer.get_node_or_null("ReadyHandFrame3")
 		var badge = view._control_layer.get_node_or_null("ReadyMeldBadge3")
-		t.expect(frame != null and not frame.visible and badge != null and not badge.visible, "snapshot removes both ready decorations immediately")
+		t.expect(frame == null and badge != null and not badge.visible, "snapshot removes the ready badge without leaving a hand frame")
 		t.expect(view.hand_boxes[3].get_child(0) == retained and retained.position == position, "changing the ready decoration never moves or rebuilds the hand")
 		authority.players[3].ready = true
 	var old_draw = authority.players[3].just_drew
@@ -123,7 +114,7 @@ func _ready_borders(view):
 	view.set_round(authority,3)
 	var drawn = view.draw_boxes[3].get_child(0)
 	var frame = view._control_layer.get_node_or_null("ReadyHandFrame3")
-	t.expect(frame != null and frame.get_rect().encloses(view._visual_rect(drawn)) and drawn.interactive, "draw stays in the overall frame without blocking a legal discard")
+	t.expect(frame == null and drawn.interactive, "draw remains usable without a hand frame")
 
 func _ready_meld_clearance(view):
 	for count in [0,1,2,4]:
@@ -178,7 +169,7 @@ func _ready_meld_clearance(view):
 				and (is_equal_approx(center.y, G.CENTER.y) if rel in [1,3] else is_equal_approx(center.x, G.CENTER.x)),
 				"dealer badge alone stays centered in each seat")
 
-func _ready_border_motion(view):
+func _ready_marker_motion(view):
 	var config = root.get_node("GameConfig")
 	var old_seconds = config.tile_animation_seconds
 	var host = Host.new()
@@ -199,8 +190,8 @@ func _ready_border_motion(view):
 			player.discard_ids.append(0)
 			view.animate_draw_discard(3,func(): pass,old_draw)
 			await create_timer(seconds+.04).timeout
-			var frame = view._control_layer.get_node("ReadyHandFrame3")
-			var narrow = frame.get_rect()
+			var badge = view._control_layer.get_node("ReadyMeldBadge3")
+			t.expect(badge.visible and view._control_layer.get_node_or_null("ReadyHandFrame3") == null, "ready badge remains after discard with no hand frame")
 			var index = r.wall.peek_head_index()
 			var card = r.wall.draw_head()
 			player.concealed.append(card)
@@ -208,18 +199,17 @@ func _ready_border_motion(view):
 			view.animate_draw(3,card,index,func(): pass)
 			if seconds > 0:
 				await create_timer(seconds*.4).timeout
-				if view._draw_flights.has(3): t.expect(frame.position.is_equal_approx(narrow.position) and frame.size.is_equal_approx(narrow.size), "whole frame stays with the hand while a draw flies from the wall")
+				t.expect(badge.visible and view._control_layer.get_node_or_null("ReadyHandFrame3") == null, "draw flight keeps the ready badge without recreating a hand frame")
 			await create_timer(seconds+.04).timeout
 			var drawn = view.draw_boxes[3].get_child(0)
-			t.expect(frame.get_rect().encloses(view._visual_rect(drawn)), "whole frame includes a landed draw without waiting for refresh")
+			t.expect(drawn.visible and badge.visible and view._control_layer.get_node_or_null("ReadyHandFrame3") == null, "landed draw keeps its ready badge and no hand frame")
 			player.concealed.erase(card)
 			player.just_drew = ""
 			player.discards.append(card)
 			player.discard_ids.append(1)
 			view.animate_draw_discard(3,func(): pass,card)
 			await create_timer(seconds+.04).timeout
-			t.expect(frame.position.is_equal_approx(narrow.position) and frame.size.is_equal_approx(narrow.size), "whole frame returns to the remaining hand after discard")
-			var badge = view._control_layer.get_node("ReadyMeldBadge3")
+			t.expect(badge.visible and view._control_layer.get_node_or_null("ReadyHandFrame3") == null, "another discard does not restore a hand frame")
 			for layer in [view._red_layer,view._meld_layer]:
 				for tile in layer.get_children(): t.expect(not badge.get_rect().intersects(view._visual_rect(tile)), "ready marker makes room for a chicken discarded into the meld area")
 	config.set_tile_animation_seconds(old_seconds,false)
@@ -310,10 +300,10 @@ func _settlement(view):
 		var expected = str(int(r.last_result.deltas[seat]))
 		if r.last_result.deltas[seat] > 0: expected = "+" + expected
 		t.expect(delta.text == expected, "round delta is the signed ledger total, including zero")
-		t.expect(Rect2(score.position,score.size) == original_scores[seat], "settlement never shifts or shrinks the original score area")
+		t.expect(view._seat_hud_rect(seat).encloses(score.get_rect()), "settlement score remains within the hand-follow panel")
 		var ink_right = score.position.x + (score.size.x + view._hud_text_width(score.text,score.get_theme_font_size("font_size"))) / 2.0
 		t.expect(delta.position.x >= ink_right + 4 or delta.position.y >= score.position.y + score.size.y, "delta avoids the running score text")
-		var bounds = G.seat_hud_rect(G.relative_seat(1,seat))
+		var bounds = view._seat_hud_rect(seat)
 		t.expect(bounds.encloses(Rect2(delta.position,delta.size)), "delta stays inside the reserved seat corner")
 		t.expect(score.tooltip_text.ends_with("分"), "running total remains separate from the round delta")
 	await _capture(view,"03-settlement-pattern-deltas")
@@ -358,9 +348,9 @@ func _run():
 	view.size = G.DESIGN_SIZE
 	await process_frame
 	await _buttons(view)
-	await _ready_borders(view)
+	await _ready_markers(view)
 	_ready_meld_clearance(view)
-	await _ready_border_motion(view)
+	await _ready_marker_motion(view)
 	await _settlement(view)
 	view.queue_free()
 	await H.quit_cleanly(self,t.finish("table_v2_feedback"))

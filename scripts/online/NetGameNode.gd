@@ -406,9 +406,6 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	if dedicated and _owner_peer == 0 and _owner_token != "" and token != _owner_token:
 		_reject(peer, "房主尚未进入，请稍后加入")
 		return
-	if _started and not resumed:
-		_reject(peer, "该房间已开局，或重连座位已过期")
-		return
 	if not resumed:
 		for candidate in JOIN_SEAT_ORDER:
 			if int(_seat_peer.get(candidate, -1)) < 1 and not _orphaned.has(candidate):
@@ -450,7 +447,7 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	if _owner_peer == 0:
 		_owner_peer = peer
 		_owner_token = ""
-	if not resumed: _invalidate_ready()
+	if not resumed and not _started: _invalidate_ready()
 	if _started:
 		# Do not inherit readiness from an older round played by the substitute.
 		if resumed and int(saved.get("round_number", round_number)) != round_number: _members[peer].ready = false
@@ -460,11 +457,10 @@ func request_join(number: String, player_name: String, token: String = "", resum
 		rpc_id(peer, "seat_assign", seat, assigned_token)
 	else:
 		rpc_id(peer, "seat_assign", seat)
-	if resumed:
-		# The returning client has no cached frame after a disconnect, so push
-		# one full snapshot (or the lobby) right after seat_assign.
+	if resumed or _started:
+		# New and returning clients need the current authoritative table immediately.
 		if _started: _host_broadcast()
-		else: _publish_lobby()
+		_publish_lobby()
 	_check_start()
 	_publish_lobby()
 	if _return_vote_active: _publish_return_vote()

@@ -29,7 +29,7 @@ def run(godot):
 
 
 def run_restart(godot, runner):
-    """A new OS process must recover from disk, including a settled round."""
+    """A new OS process retains preferences but abandons the old room."""
     children = []
     runner.LOGS.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="restart_reconnect_", dir=runner.LOGS) as temporary:
@@ -69,14 +69,8 @@ def run_restart(godot, runner):
             first = launch("first")
             wait_marker("first_ready")
             kill_client(first, "restart_reconnect_first")
-            restarted = launch("resume")
-            wait_marker("settled_ready")
-            kill_client(restarted, "restart_reconnect_resume")
-            settled = launch("settled")
-            runner.finish(settled, "restart_reconnect_settled", 25)
-            wait_marker("replacement_ready")
-            expired = launch("expired")
-            runner.finish(expired, "restart_reconnect_expired", 20)
+            restarted = launch("fresh")
+            runner.finish(restarted, "restart_reconnect_fresh", 25)
             runner.finish(host, "restart_reconnect_host", 15)
         finally:
             for item, _ in children:

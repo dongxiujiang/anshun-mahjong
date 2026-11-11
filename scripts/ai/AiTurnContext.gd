@@ -63,6 +63,7 @@ static func build(round, seat_value: int) -> RefCounted:
 		# present but is_meld_revealed() decides whether their tile value is public.
 		if index == seat_value:
 			player.concealed = source.concealed.duplicate()
+			player.ready_wait_tiles = source.ready_wait_tiles.duplicate()
 			player.just_drew = source.just_drew
 		else:
 			player.concealed = []

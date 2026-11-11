@@ -172,6 +172,26 @@ def run(godot, lan_interface=False, section="all", graphical_table=False):
         flow = launch(godot, "online_lobby_flow", "res://tests/smoke_lobby_flow.gd", [f"--directory={base}"])
         cloud_clients.append(flow)
         finish(flow, "online_lobby_flow", 40)
+        room_process = launch(godot, "feedback_server", "res://server/RoomServer.gd",
+                              ["--room-port=7596", "--room-number=112233"])
+        cloud_clients.append(room_process)
+        time.sleep(0.5)
+        replacements = {}
+        for role, marker in [("owner", "JOINED"), ("guest", "OWNER_LEFT"), ("third", None)]:
+            item = launch(godot, "feedback_" + role, "res://tests/feedback_room_lifecycle.gd", [role])
+            cloud_clients.append(item)
+            replacements[role] = item
+            if marker:
+                deadline = time.monotonic() + 20
+                while marker not in (LOGS / "feedback_owner.log").read_text(encoding="utf-8-sig"):
+                    if time.monotonic() >= deadline:
+                        raise AssertionError("Room lifecycle did not reach " + marker)
+                    time.sleep(0.1)
+        for role in ("owner", "third", "guest"):
+            finish(replacements[role], "feedback_" + role, 30)
+        room_exit = room_process[0].wait(timeout=5)
+        assert room_exit == 0, f"Empty room process did not exit cleanly: {room_exit}"
+        print("[ok] owner leaves, third player fills vacant seat, last human closes room", flush=True)
         print("[ok] online HTTP validation, real room creation, private ownership, stale removal", flush=True)
     finally:
         for process, stdout, stderr in cloud_clients:

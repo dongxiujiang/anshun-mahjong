@@ -1,5 +1,5 @@
 extends SceneTree
-## Driven by run_reconnect.py: kill the client process, then launch a fresh one.
+## Forced process termination must never resurrect an old-room prompt.
 const H := preload("res://tests/test_harness.gd")
 var t := H.new()
 var network: Node
@@ -48,51 +48,17 @@ func _run() -> void:
 		_marker("first_ready", {"seat": net.my_seat, "hand": net.game.players[net.my_seat].concealed, "score": net.game.players[net.my_seat].score, "prompt": net.game.prompt_id})
 		# The Python driver terminates this process without running cleanup.
 		return
-	if role == "expired":
-		await _expired()
-		return
-	t.expect(config.player_name == "重启小明", "Fresh process loads nickname")
-	t.expect(network.has_saved_session(), "Fresh process loads reconnect identity")
+	t.expect(config.player_name == "重启小明", "Fresh process retains nickname")
+	t.expect(not network.has_saved_session(), "Fresh process abandons previous room identity")
 	var menu = load("res://scenes/MainMenu.tscn").instantiate()
 	root.add_child(menu)
 	current_scene = menu
 	await process_frame
-	t.expect(menu.resume_dialog != null, "Startup offers the previous room")
-	menu.resume_dialog.confirmed.emit()
-	if not await _wait(func(): return current_scene != null and current_scene.has_method("_on_net_prompt"), "Startup restores through lobby into real table"): return
-	net = network.net_node
-	var table = current_scene
-	t.expect(net.my_seat == 0 and table.human_seat == 0, "Restart keeps original seat")
-	t.expect(not net._resume_sync_pending and not table._awaiting_rejoin_snapshot, "Only authoritative snapshot unlocks restored table")
-	t.expect(net.game.players[0].name_label == "重启小明", "Restored table keeps player name")
-	var total := 0.0
-	for player in net.game.players:
-		total += player.score
-		if player.seat != net.my_seat and net.game.phase != RoundState.Phase.SETTLED:
-			t.expect(player.concealed.all(func(tile): return tile == "hidden0"), "Other hands remain private on restart")
-	t.expect(is_equal_approx(total, 800.0), "Restart preserves score conservation")
-	if role == "resume":
-		var expected: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(folder + "/first_ready.json"))
-		t.expect(net.game.players[0].concealed == expected.hand, "No redeal during restart")
-		t.expect(net.game.players[0].score == -12, "Negative cumulative score survives restart")
-		t.expect(net.game.prompt_id == int(expected.prompt), "Current prompt survives restart")
-		net.rpc_id(1, "ack", "resumed-playing")
-		if not await _wait(func(): return net.game.phase == RoundState.Phase.SETTLED, "Client receives settlement before second process termination"): return
-		_marker("settled_ready", {"scores": net.game.players.map(func(player): return player.score)})
-		return
-	t.expect(net.game.phase == RoundState.Phase.SETTLED, "Second restart restores settled round")
-	t.expect(table._settlement_animation_controller.is_completed(), "Restored settlement goes directly to final display")
-	var settled: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(folder + "/settled_ready.json"))
-	t.expect(net.game.players.map(func(player): return player.score) == settled.scores, "Settled scores are not applied twice")
-	net.rpc_id(1, "ack", "resumed-settled")
-	# Preserve a stale identity only in the isolated test fixture for expiry rejection.
-	DirAccess.copy_absolute(network.settings_path, folder + "/stale.cfg")
-	DirAccess.copy_absolute(network.settings_path + ".session", folder + "/stale.session")
-	table.queue_free()
-	await process_frame
-	await network.leave_room()
-	t.expect(not network.has_saved_session(), "Explicit leave clears persisted record")
-	_marker("left")
+	t.expect(menu.resume_dialog == null, "Startup has no old-room reconnect prompt")
+	t.expect(network.mode == "" and not net._client_joined, "Startup does not reconnect in the background")
+	t.expect(network.lobby_preferences.number == "4321", "Room input preference survives clearing session")
+	_marker("fresh_done")
+	menu.queue_free()
 	await H.quit_cleanly(self, t.finish("restart_reconnect_" + role))
 
 func _host() -> void:
@@ -104,37 +70,7 @@ func _host() -> void:
 	net.game.players[1].score = 412
 	net.game.players[0].score = -12
 	net._host_broadcast()
-	if not await _wait(func(): return net.ack_text == "resumed-playing", "New process restores playing round", 25.0): return
-	t.expect(net._members.size() == 2 and net._peer_seat.size() == 2, "Restart creates no duplicate membership")
-	t.expect(net.game.controllers[0] == null, "Restart hands control back to human")
-	t.expect(net._orphaned.is_empty(), "Restart consumes seat reservation")
-	net.game._finish()
-	if not await _wait(func(): return net.ack_text == "resumed-settled", "Second new process restores settlement", 25.0): return
-	if not await _wait(func(): return net._members.size() == 1, "Explicit leave reaches server"): return
-	t.expect(not net.has_reconnect_reservations(), "Explicit leave immediately releases server reservation")
-	network.reset()
-	t.expect(network.start_host(false, true, 7594, "4321", "同号新房间"), "Replacement room reuses the original number")
-	net = network.net_node
-	_marker("replacement_ready")
-	if not await _wait(func(): return FileAccess.file_exists(folder + "/expired_done.json"), "Expired identity rejected"): return
-	t.expect(net._members.size() == 1, "Expired identity does not join as a new player")
+	if not await _wait(func(): return FileAccess.file_exists(folder + "/fresh_done.json"), "Restart completes without reconnecting", 25.0): return
+	t.expect(net._members.size() <= 2, "Restart creates no extra membership")
 	network.reset()
 	await H.quit_cleanly(self, t.finish("restart_reconnect_host"))
-
-func _expired() -> void:
-	# Sessions written by 1.4.17 keep the token in the encrypted companion
-	# file; restore both halves of the captured stale identity.
-	DirAccess.remove_absolute(ProjectSettings.globalize_path(network.settings_path + ".session"))
-	DirAccess.copy_absolute(folder + "/stale.session", network.settings_path + ".session")
-	DirAccess.copy_absolute(folder + "/stale.cfg", network.settings_path)
-	network.load_settings()
-	t.expect(network.has_saved_session(), "Expiry fixture has previous credential")
-	var errors: Array = []
-	net.connection_error.connect(func(message): errors.append(message))
-	t.expect(network.resume_saved_session(), "Expired session attempts resume")
-	if not await _wait(func(): return not errors.is_empty(), "Server rejects released seat"): return
-	t.expect(not network.has_saved_session(), "Authoritative rejection clears stale local identity")
-	t.expect(net.my_seat == -1, "Rejected resume never silently joins a different seat")
-	_marker("expired_done")
-	network.reset()
-	await H.quit_cleanly(self, t.finish("restart_reconnect_expired"))

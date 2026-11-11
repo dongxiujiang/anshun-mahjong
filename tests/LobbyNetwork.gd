@@ -19,11 +19,12 @@ func _wait_until(predicate: Callable, seconds: float = 12.0) -> bool:
 
 func _run() -> void:
 	if is_late:
-		var error_text := ""
-		Network.net_node.connection_error.connect(func(message): _stage = message)
 		Network.start_client("127.0.0.1", 7533, "456789")
-		t.expect(await _wait_until(func(): return _stage != ""), "Late join receives rejection")
-		t.expect(_stage.contains("开局"), "Late join cannot replace AI")
+		var net := Network.net_node
+		t.expect(await _wait_until(func(): return net._client_joined and net.game.phase != RoundState.Phase.IDLE), "Late join receives the running round")
+		t.expect(net.my_seat == 0 and net.game.players[0].is_human, "Late join takes the first vacant AI seat without moving existing players")
+		t.expect(not net.lobby.is_empty() and bool(net.lobby.started), "Late join receives matching room state")
+		Network.leave_room()
 		get_tree().quit(t.finish("lobby_network_late"))
 		return
 	if is_host:

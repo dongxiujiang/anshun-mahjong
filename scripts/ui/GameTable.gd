@@ -1031,7 +1031,7 @@ func _auto_test_poll_online() -> void:
 			else:
 				get_tree().create_timer(0.15).timeout.connect(_auto_test_next)
 		return
-	if round.phase != RoundState.Phase.PLAYING:
+	if round.phase != RoundState.Phase.PLAYING or _table_actions.input_locked():
 		return
 	if not round._awaiting_response.is_empty():
 		var response_seat := int(round._awaiting_response.get("seat", -1))
@@ -1066,6 +1066,10 @@ func toggle_ai_proxy() -> void:
 				_ai_proxy_worker.stop_async(tree)
 			_ai_proxy_worker = null
 		_ai_proxy_task = 0
+		_ai_proxy_response_pending = false
+		_ai_proxy_response_tile = ""
+		_auto_test_prompt_seen = -1
+		_on_net_prompt(human_seat)
 	_refresh_ai_proxy_button()
 
 func _refresh_ai_proxy_button() -> void:
@@ -1078,7 +1082,7 @@ func _submitted_proxy_level() -> String:
 	return {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.effective_ai_strength(), "medium")
 
 func _poll_ai_proxy() -> void:
-	if _awaiting_rejoin_snapshot or _ai_proxy_task <= 0 or _ai_proxy_worker == null:
+	if not _ai_proxy_active or _awaiting_rejoin_snapshot or _ai_proxy_task <= 0 or _ai_proxy_worker == null or _table_actions.input_locked():
 		return
 	var decision: Dictionary = _ai_proxy_worker.take_result(_ai_proxy_task)
 	if decision.is_empty():

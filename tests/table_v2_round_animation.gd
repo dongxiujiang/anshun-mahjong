@@ -72,6 +72,7 @@ func _lifecycle():
 	t.expect(state.draw==1 and state.insert==1 and not deck.native_actions_pending(),"draw and insertion each complete once and release their holds")
 	_card(deck,deck.draw_boxes[1],"wan9",1,13)
 	host.round.players[1].discards=["wan9"]
+	host.round.players[1].discard_ids=[0]
 	deck.animate_draw_discard(1,func():state.discard+=1)
 	t.expect(state.discard==0 and host._table_animation_controller.input_locked(),"draw discard stays locked until its flight lands")
 	await create_timer(0.35).timeout
@@ -174,8 +175,8 @@ func _kong_sources():
 						middle = node
 				var center := claimed.position + claimed.size / 2.0
 				t.expect(middle != null and is_equal_approx(center.x, (middle.position + middle.size / 2.0).x)
-					and center.y < (middle.position + middle.size / 2.0).y,
-					"%s opposite discard lands centered above the upright row" % value)
+					and is_equal_approx(center.y + claimed.size.x * claimed.scale.x / 2.0, (middle.position + middle.size / 2.0).y + middle.size.y * middle.scale.y / 2.0),
+					"%s opposite discard lands centered with the upright bottom edge" % value)
 			await _cleanup(host)
 
 func _discard_sources():
@@ -200,6 +201,44 @@ func _discard_sources():
 		t.expect(correct.position!=correct_before,"meld uses exact source seat and discard id, including in-flight discard")
 		t.expect(deck._discard_flights.is_empty(),"claimed flying discard cannot later create a ghost landing")
 		await _cleanup(host)
+
+func _river_centering():
+	root.get_node("GameConfig").set_tile_animation_seconds(0.4,false)
+	for seat in 4:
+		var rel := G.relative_seat(1,seat)
+		var columns := 6 if rel in [1,3] else 12
+		var axis: Vector2 = [Vector2.RIGHT,Vector2.UP,Vector2.LEFT,Vector2.DOWN][rel]
+		for count in [1,columns-1,columns,columns+1]:
+			var host = _fixture()
+			var deck = host._new_areas
+			var p = host.round.players[seat]
+			for i in count:
+				p.discards.append("wan%d" % (i%9+1))
+				p.discard_ids.append(i)
+			deck.refresh()
+			var previous = deck._take_river_node(seat,count-1)
+			var old_position: Vector2 = previous.position
+			var source = _card(deck,deck.draw_boxes[seat],"tong2",seat,13,G.hand_slot_center(seat,0,1,1))
+			p.discards.append("tong2")
+			p.discard_ids.append(count)
+			var done := {"count":0}
+			deck._fly_discard(source,seat,"tong2",func():done.count+=1)
+			var flight: Dictionary = deck._discard_flights.values()[0]
+			var expected := G.ordinary_slot_center(seat,count,1,count+1)
+			if count%columns>0:
+				expected = old_position+previous.size/2+axis*68.8
+			t.expect(flight.target.is_equal_approx(expected),"new discard first lands on owner's right, or at new row centre")
+			await create_timer(0.10).timeout
+			t.expect(previous.position.is_equal_approx(old_position) and done.count==0,"existing row stays still during discard flight")
+			if seat==1 and count==1 and DisplayServer.get_name()!="headless":await _capture_motion("river-right-flight")
+			await create_timer(0.36).timeout
+			t.expect(done.count==1 and deck._take_river_node(seat,count-1)==previous,"centering keeps tile identity and completes once")
+			for i in count+1:
+				var tile = deck._take_river_node(seat,i)
+				t.expect(tile!=null and (tile.position+tile.size/2).is_equal_approx(G.ordinary_slot_center(seat,i,1,count+1)),"every row ends centred after flight")
+			if seat==1 and count==1 and DisplayServer.get_name()!="headless":await _capture_motion("river-centered")
+			await _cleanup(host)
+	root.get_node("GameConfig").set_tile_animation_seconds(0.3,false)
 
 func _remote_discards():
 	for from_draw in [false,true]:
@@ -767,6 +806,7 @@ func _run():
 	if selected_case in ["all","held_after_meld"]: await _held_after_meld()
 	if selected_case in ["all","kong_sources"]: await _kong_sources()
 	if selected_case in ["all","discard_sources"]: await _discard_sources()
+	if selected_case in ["all","river_centering"]: await _river_centering()
 	if selected_case in ["all","remote_discards"]: await _remote_discards()
 	if selected_case in ["all","discard_during_draw"]: await _discard_during_draw()
 	if selected_case in ["all","remote_discard_without_draw"]: await _remote_discard_without_draw()

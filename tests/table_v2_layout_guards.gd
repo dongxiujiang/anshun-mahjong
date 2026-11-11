@@ -24,7 +24,7 @@ class VoiceTable extends Control:
 func _initialize() -> void:
 	call_deferred("_run")
 
-func _fixture(hand_count: int = 13) -> RoundState:
+func _fixture(hand_count: int = 1) -> RoundState:
 	var round := RoundState.new()
 	round.set_rng_seed(20261105)
 	round.build_players(1)
@@ -64,21 +64,15 @@ func _seat_tiles(layer: Control, seat: int) -> Array[Rect2]:
 	return out
 
 func _test_red_cap(deck) -> void:
-	var seats: Array = []
+	var r := _fixture(13)
 	for seat in 4:
-		var capacity := G.river_capacity(G.relative_seat(deck.human_seat, seat))
-		var cards := []
-		for i in capacity:
-			cards.append("tiao1" if i % 3 == 0 else "wan2")
-		var charges := []
-		charges.resize(capacity)
-		charges.fill(false)
-		seats.append({"seat": seat, "discards": cards, "discard_ids": range(capacity),
-			"discard_charge": charges})
-	deck.snapshot = {"seats": seats}
-	deck._clear(deck._red_layer)
-	deck._clear(deck._discard_layer)
-	deck._build_discards()
+		var player = r.players[seat]
+		player.melds.clear()
+		player.discards = ["tiao1", "tong8"]
+		for i in 22: player.discards.append("wan2")
+		player.discard_ids = range(24)
+	deck.set_round(r, 1)
+	deck.refresh()
 	for seat in 4:
 		var rects := _seat_tiles(deck._red_layer, seat) + _seat_tiles(deck._discard_layer, seat)
 		t.expect(rects.size() == G.river_capacity(G.relative_seat(deck.human_seat, seat)),
@@ -91,37 +85,41 @@ func _test_red_cap(deck) -> void:
 		t.expect(clear, "seat%d: mixed chicken and ordinary slots stay clear" % seat)
 
 func _test_short_hand_anchor(deck) -> void:
-	deck.set_round(_fixture(13), 1)
-	deck.refresh()
-	var label_before: Array[Vector2] = []
-	var name_before: Array[Vector2] = []
-	var red_before: Array[Vector2] = []
-	var meld_before: Array[Vector2] = []
-	for seat in 4:
-		label_before.append(deck._labels[seat].position)
-		name_before.append(deck._name_labels[seat].position)
-		red_before.append(_first_position(deck._red_layer, seat))
-		meld_before.append(_first_position(deck._meld_layer, seat))
-	deck.set_round(_fixture(3), 1)
-	deck.refresh()
-	for seat in 4:
-		t.expect(deck._labels[seat].position == label_before[seat],
-			"seat%d: 手牌缩短后分数锚点不变" % seat)
-		t.expect(deck._name_labels[seat].position == name_before[seat],
-			"seat%d: 手牌缩短后昵称锚点不变" % seat)
-		t.expect(_first_position(deck._red_layer, seat) == red_before[seat],
-			"seat%d: 手牌缩短后红色区锚点不变" % seat)
-		t.expect(_first_position(deck._meld_layer, seat) == meld_before[seat],
-			"seat%d: 手牌缩短后碰杠区锚点不变" % seat)
+	# Real shuffled game: reaching four melds leaves one hand tile and a kong draw.
+	var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/meld_layout_replay.json"))
+	var r := RoundState.new()
+	r.set_rng_seed(int(record.seed))
+	r.next_dealer_seat = int(record.dealer)
+	r.controllers = [null, null, null, null]
+	r.pause_after_opening = true
+	r.start_round(1, int(record.red), int(record.white))
+	r.resume_after_opening()
+	for action in record.actions:
+		var accepted: bool = r.submit_turn(int(action.seat), action.decision) if action.kind == "turn" else r.submit_response(int(action.seat), str(action.tile), action.decision)
+		t.expect(accepted, "layout regression replays only legal game actions")
+	t.expect(r.players[0].melds.size() == 4 and r.players[0].concealed.size() == 2,
+		"fourth meld regression contains a real single hand tile and replacement draw")
+	for viewer in 4:
+		deck.set_round(r, viewer)
+		deck.refresh()
+		var positions := []
+		for seat in 4:
+			positions.append([deck._labels[seat].position, deck._name_labels[seat].position,
+				_first_position(deck._red_layer, seat), _first_position(deck._meld_layer, seat)])
+		deck.refresh()
+		for seat in 4:
+			t.expect(positions[seat] == [deck._labels[seat].position, deck._name_labels[seat].position,
+				_first_position(deck._red_layer, seat), _first_position(deck._meld_layer, seat)],
+				"same legal state keeps names, scores, chickens and melds stable for every viewer")
 
 func _test_meld_clearance(deck) -> void:
 	deck.set_round(_fixture(), 1)
 	deck.refresh()
 	for seat in 4:
-		var hand_rect := G.hand13_rect(seat, deck.human_seat)
+		var hand_rects := _seat_tiles(deck.hand_boxes[seat], seat)
 		var hand_clearance := true
 		for rect in _seat_tiles(deck._red_layer, seat) + _seat_tiles(deck._meld_layer, seat):
-			if rect.intersects(hand_rect.grow(-0.5)):
+			if hand_rects.any(func(hand): return rect.intersects(hand.grow(-0.5))):
 				hand_clearance = false
 		t.expect(hand_clearance, "seat%d: 鸡牌与普通碰杠不压固定手牌区" % seat)
 		var overlap := false
@@ -233,7 +231,7 @@ func _test_voice_hud_bounds(deck) -> void:
 	mock.round = _fixture()
 	for seat in 4:
 		var player: PlayerState = mock.round.players[seat]
-		player.name_label = "玩家名字需要在语音图标前截断"
+		player.name_label = "玩家名字过长时需要截断"
 		player.score = 200
 		player.is_human = seat != 3
 		player.melds.clear()
@@ -246,35 +244,46 @@ func _test_voice_hud_bounds(deck) -> void:
 		t.expect(not deck._voice_buttons.has(3), "AI seats have no live voice control")
 		for seat in [0, 1, 2]:
 			var voice: Button = deck._voice_buttons[seat]
-			var icon: TextureRect = voice.get_node("SpeakerIcon")
+			t.expect(voice.get_node_or_null("SpeakerIcon") == null, "voice control has no speaker icon")
 			var score: Label = deck._labels[seat]
 			var nickname: Label = deck._name_labels[seat]
-			t.expect(G.TABLE_BOUNDS.encloses(voice.get_rect()), "whole voice control stays inside the table")
+			t.expect(Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(voice.get_rect()), "whole voice control stays inside the screen")
 			t.expect(voice.get_rect().encloses(score.get_rect()) and voice.get_rect().encloses(nickname.get_rect()),
 				"name and score both lie inside the same touch target")
-			t.expect(icon.size.x < deck._dealer_meld_badges[seat].size.x and not _rect(icon).intersects(_rect(nickname))
-				and not _rect(icon).intersects(_rect(score)), "speaker icon is smaller than the dealer badge and clears the text")
+			t.expect(nickname.get_theme_color("font_color") == deck.UI.INK, "closed voice uses white name even on its turn")
 			for other in 4:
-				t.expect(not voice.get_rect().intersects(G.hand13_rect(other, deck.human_seat)), "voice control does not intercept the hand")
-			var closed_icon := icon.texture
+				t.expect(not _seat_tiles(deck.hand_boxes[other], other).any(func(rect): return voice.get_rect().intersects(rect)), "voice control does not intercept the hand")
+			var closed_color := nickname.get_theme_color("font_color")
 			if seat != mock.human_seat:
 				mock.remote_microphones[seat] = true
 				deck.refresh_voice_control(seat)
-				t.expect(icon.texture != closed_icon, "remote microphone must be on before the icon shows sound")
-			var original_icon := icon.texture
+				t.expect(nickname.get_theme_color("font_color") == deck.UI.GOLD, "remote microphone on makes the name yellow")
+			var original_color := nickname.get_theme_color("font_color")
 			var original_mic := mock.microphone
 			var original_speaker: bool = mock.speakers[seat]
 			_click(nickname)
-			t.expect(icon.texture != original_icon, "clicking a name changes its speaker icon")
+			t.expect(nickname.get_theme_color("font_color") != original_color, "clicking a name changes its voice color")
 			t.expect(mock.microphone == (not original_mic if seat == 1 else original_mic)
 				and mock.speakers[seat] == (not original_speaker if seat != 1 else original_speaker),
 				"own click changes the microphone, remote click changes only that player's playback")
 			_click(score)
-			t.expect(icon.texture == original_icon, "clicking the score toggles the same voice control back")
+			t.expect(nickname.get_theme_color("font_color") == original_color, "clicking the score toggles the same voice control back")
 			if seat != mock.human_seat:
 				mock.remote_microphones[seat] = false
 				deck.refresh_voice_control(seat)
-				t.expect(icon.texture == closed_icon, "remote microphone off returns the icon to mute")
+				t.expect(nickname.get_theme_color("font_color") == closed_color, "remote microphone off returns name to white")
+		var name_position: Vector2 = deck._name_labels[1].position
+		for turn in 4:
+			mock.round.current_turn = turn
+			deck.refresh()
+			t.expect(deck._name_labels[1].position == name_position, "turn changes do not move the name")
+			for seat in 4:
+				var marker = deck._label_layer.get_node_or_null("SeatTurn%d" % seat)
+				t.expect((marker != null) == (seat == turn), "only the current player has a turn marker")
+				t.expect(deck._name_labels[seat].get_theme_color("font_color") == deck.UI.INK, "turn alone never makes a name yellow")
+				if marker != null:
+					t.expect(marker.get_theme_color("font_color") == deck.UI.GOLD, "turn marker stays yellow")
+					t.expect(not marker.get_rect().intersects(deck._name_labels[seat].get_rect()), "turn marker clears the name")
 	if DisplayServer.get_name() != "headless":
 		_click(deck._name_labels[2])
 		await RenderingServer.frame_post_draw

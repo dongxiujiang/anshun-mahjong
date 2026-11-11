@@ -138,7 +138,7 @@ func _loop() -> void:
 			continue
 		var computed := _compute(job)
 		_mutex.lock()
-		if not _stopping and token >= _cancel_before:
+		if not _stopping and token > _cancel_before:
 			_result = computed
 			_result_token = token
 		_mutex.unlock()

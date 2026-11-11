@@ -47,6 +47,15 @@ func _run() -> void:
 	var first: Array = view._local_arrangement.cards
 	view._sort_own_hand()
 	t.expect(first != view._local_arrangement.cards and view._restore_button.visible, "second tap cycles layouts and shows Restore")
+	var deadline := Time.get_ticks_msec()+5000
+	while view._arrangement_thread != null and Time.get_ticks_msec()<deadline:
+		await process_frame
+	t.expect(view._arrangement_thread == null and view._arrangement_choices.any(func(choice):return choice.has("change_from")), "background search adds the complete one-tile upgrade choices")
+	var seen := {}
+	for i in view._arrangement_choices.size():
+		view._sort_own_hand()
+		seen[view._local_arrangement.key] = true
+	t.expect(seen.size()==view._arrangement_choices.size(), "repeated taps visit every distinct arrangement instead of stopping after one")
 	t.expect(player.concealed == hand, "view sort leaves authoritative indices unchanged")
 	var arranged: Array = view._local_arrangement.cards
 	player.concealed.append("wan9")
@@ -86,6 +95,15 @@ func _run() -> void:
 		await RenderingServer.frame_post_draw
 		DirAccess.make_dir_recursive_absolute("res://build/feedback-next")
 		t.expect(root.get_texture().get_image().save_png("res://build/feedback-next/hand-arrangement.png") == OK, "capture sort and restore controls")
+		deadline = Time.get_ticks_msec()+5000
+		while view._arrangement_thread != null and Time.get_ticks_msec()<deadline:
+			await process_frame
+		for i in view._arrangement_choices.size():
+			view._sort_own_hand()
+			if view._local_arrangement.has("change_from"):break
+		t.expect(view._arrangement_caption.text.contains("换入"), "hypothetical upgrade names the discarded and replacement tiles")
+		await RenderingServer.frame_post_draw
+		t.expect(root.get_texture().get_image().save_png("res://build/feedback-next/hand-upgrade.png")==OK,"capture one-tile upgrade without changing real hand")
 		table._sound_settings.open()
 		await create_timer(0.3).timeout
 		await RenderingServer.frame_post_draw

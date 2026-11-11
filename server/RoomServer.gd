@@ -4,6 +4,7 @@ var _status_path := ""
 var _tick := 0.0
 var _empty_seconds := 0.0
 var _net: NetGameNode
+var _closing := false
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -31,22 +32,35 @@ func _run() -> void:
 		_net.game.ai_delay_seconds = cfg.ai_speed_seconds(ai_speed)
 		_net.game.ai_response_delay_seconds = _net.game.ai_delay_seconds
 	_net.lobby_updated.connect(_write_status)
-	_net.room_empty.connect(func():
-		_write_status()
-		quit())
+	_net.room_empty.connect(func(): _close_room.call_deferred())
 	_write_status()
 
 func _process(delta: float) -> bool:
-	if _net == null or not _net.host_mode: return false
+	if _closing or _net == null or not _net.host_mode: return false
 	_tick += delta
 	_empty_seconds = _empty_seconds + delta if _net._members.is_empty() else 0.0
-	if _empty_seconds > 60.0 and not _net.has_reconnect_reservations():
-		quit()
+	# Keep only a short transport-recovery window, never an AI-only room for 30 minutes.
+	if _empty_seconds > float(NetGameNode.RESUME_GRACE_MS) / 1000.0:
+		_close_room()
 		return false
 	if _tick >= 1.0:
 		_tick = 0.0
 		_write_status()
 	return false
+
+func _close_room() -> void:
+	if _closing: return
+	_closing = true
+	_net.set_process(false)
+	_net.game.cancel_opening()
+	_net.game.phase = RoundState.Phase.IDLE
+	# Join before engine shutdown; the table's async stop cannot outlive its tree.
+	if _net._ai_service != null:
+		_net._ai_service.stop()
+		_net._ai_service = null
+		_net.game.ai_service = null
+	_write_status()
+	quit()
 
 func _token_digest(token: String) -> String:
 	if token == "": return ""

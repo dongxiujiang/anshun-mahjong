@@ -24,6 +24,7 @@ static func build(round, seat: int) -> Dictionary:
 			"discard_count": p.discard_count,
 			"score": p.score,
 			"ready": p.ready,
+			"ready_wait_tiles": p.ready_wait_tiles.duplicate() if own else [],
 			"name": p.name_label,
 			"is_human": p.is_human,
 			"is_dealer": p.is_dealer,
