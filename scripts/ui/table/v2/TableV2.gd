@@ -289,21 +289,32 @@ func _refresh_hand_arrangement() -> void:
 			var label := str(_local_arrangement.patterns.get(i, "平胡")) + ("%d分" % score if score > 0 else "")
 			if not by_pattern.has(label): by_pattern[label] = []
 			by_pattern[label].append(AiTeaching._display(Tiles.from_index(i)))
-		for label in by_pattern: waits.append("、".join(by_pattern[label]) + "(" + label + ")")
+		for label in by_pattern:
+			var suits := {}
+			for tile in by_pattern[label]:
+				var suit: String = tile.right(1)
+				if not suits.has(suit): suits[suit] = []
+				suits[suit].append(tile.left(-1))
+			var names: Array = []
+			for suit in suits: names.append("、".join(suits[suit]) + suit)
+			waits.append(" / ".join(names) + "（" + label + "）")
 		var change := ""
 		if _local_arrangement.has("change_from"):
-			change = "打%s、换入%s后 " % [AiTeaching._display(_local_arrangement.change_from), AiTeaching._display(_local_arrangement.change_to)]
+			change = "若摸到%s，再打%s，" % [AiTeaching._display(_local_arrangement.change_to), AiTeaching._display(_local_arrangement.change_from)]
 		elif _local_arrangement.has("discard"):
-			change = "打%s后 " % AiTeaching._display(_local_arrangement.discard)
+			change = "打%s后，" % AiTeaching._display(_local_arrangement.discard)
 		var player = round.players[human_seat]
-		var note := "单倍牌型；平胡需满足通行条件"
-		if player.ready: note = "已报听 · 手牌锁定"
+		var note := "再点排序，换个摆法看看"
+		if not waits.is_empty():
+			note = "牌型分按单倍算"
+			if by_pattern.has("平胡"): note += "；平胡不一定能接炮"
+		if player.ready: note = "你已报听，手牌锁定"
 		if player.passed_win_until_draw:
-			note = "已报听 · 过胡后本局只能自摸" if player.ready else "过胡后，下次摸牌前只能自摸"
-		if player.passed_self_draw: note = "已放弃本次自摸" + (" · 报听仍锁牌" if player.ready else "")
-		_arrangement_caption.text = "%d/%d  %s%s%s\n%s" % [at+1, _arrangement_choices.size(), change, note,
-			" · 计算换牌方案中" if _arrangement_thread != null and _arrangement_job_key == _arrangement_key else "",
-			"听 " + "、".join(waits) if not waits.is_empty() else "尚未叫牌 · 最接近叫牌的拆法"]
+			note = "报听后过了胡，本局只能自摸" if player.ready else "刚才过了胡，下次摸牌前不能接炮"
+		if player.passed_self_draw: note = "这次自摸已经放弃" + ("；报听仍锁牌" if player.ready else "")
+		_arrangement_caption.text = "排法 %d/%d · %s%s\n%s%s" % [at+1, _arrangement_choices.size(), note,
+			" · 还在找其他排法…" if _arrangement_thread != null and _arrangement_job_key == _arrangement_key else "",
+			change, "听 " + "；".join(waits) if not waits.is_empty() else "还没叫牌，成组的放左边，散牌留右边。"]
 		_arrangement_caption.tooltip_text = _arrangement_caption.text
 		var font := TileView._font()
 		var font_size := 22

@@ -66,11 +66,11 @@ func _run() -> void:
 	t.expect(is_equal_approx(claimed, expected), "claim adjustment does not pre-apply the round multiplier")
 
 	var teaching := AiTeaching.recommend(round, 0)
-	t.expect(not teaching.is_empty() and str(teaching.get("message", "")).begins_with("AI教学"), "AI teaching returns a bounded recommendation")
+	t.expect(not teaching.is_empty() and not str(teaching.get("message", "")).is_empty(), "AI teaching returns a bounded recommendation")
 	var teaching_tile := str(teaching.get("tile", ""))
 	t.expect(teaching_tile == "" or round.legal_turn_options(0).discards.has(teaching_tile), "AI teaching recommends a legal tile")
 	var fast: Dictionary = AiTeaching.recommend_fast(round, 0)
-	t.expect(str(fast.get("message", "")).begins_with("AI教学") and round.legal_turn_options(0).discards.has(str(fast.get("tile", ""))),
+	t.expect(not str(fast.get("message", "")).is_empty() and round.legal_turn_options(0).discards.has(str(fast.get("tile", ""))),
 		"fast teaching recommends a legal tile without a worker")
 	var fast_response: Dictionary = AiTeaching.recommend_response_fast(round, 0, 1, "tong8",
 		{"can_win": false, "can_pong": true, "can_kong": false})
@@ -97,8 +97,15 @@ func _run() -> void:
 	while worker_result.is_empty() and Time.get_ticks_msec() < deadline:
 		await process_frame
 		worker_result = worker.take_result(token)
-	t.expect(not worker_result.is_empty() and str(worker_result.get("message", "")).begins_with("AI教学"),
+	t.expect(not worker_result.is_empty() and not str(worker_result.get("message", "")).is_empty(),
 		"compact teaching snapshot still produces advice")
+	var hint_decision := {"discard": "wan9", "recommendations": [
+		{"tile": "tiao2", "distance": 0, "outs": 8}, {"tile": "wan9", "distance": 2, "outs": 12}]}
+	var hint_before := hint_decision.duplicate(true)
+	var hint := AiTeaching.turn_message(hint_decision)
+	t.expect(hint.begins_with("先打9万") and hint.contains("还差2张") and hint.contains("也可以考虑2条") and not hint.contains("打完就能叫牌"),
+		"teaching explains the chosen discard, not the first alternative's analysis")
+	t.expect(hint_decision == hint_before and not hint.contains("12张"), "wording neither changes the decision nor presents unseen tiles as wall contents")
 	worker.stop()
 	await H.quit_cleanly(self, t.finish("ai_safety"))
 

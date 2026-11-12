@@ -115,7 +115,9 @@ func _hide_legacy_table(areas) -> void:
 	# 只有首次构建时做一次建层；_refresh 里只需藏旧视觉，避免反复重建。
 	_hide_legacy_visuals(areas)
 	table._table_actions.build()
-	status_label = table._label(surface, "", Vector2(60, 1464), Vector2(710, 30), 20, UI.MUTED)
+	status_label = table._label(surface, "", Vector2(60, 1464), Vector2(430, 64), 20, UI.MUTED)
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_label.clip_text = true
 	status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	status_label.hide()
 	table._settlement_card.build()
@@ -179,7 +181,7 @@ func _layout() -> void:
 		table._test_pattern_button.position = test_anchor.position - Vector2(table._test_pattern_button.size.x + 10.0, 0.0)
 	# Actions sit immediately above the local player's draw slot.
 	table._layout_actions()
-	status_label.position = Vector2(60, design.y - 54)
+	status_label.position = Vector2(60, design.y - 88)
 	table._settlement_card.refresh_layout()
 	table._settlement_animation_controller.refresh_layout()
 	if table.round != null and changed:

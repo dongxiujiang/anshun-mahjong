@@ -68,6 +68,15 @@ func _run() -> void:
 	view._sort_own_hand()
 	t.expect(view.draw_boxes[table.human_seat].get_child_count() == 0
 		and view._local_arrangement.cards.size() == 14 and view.hand_boxes[table.human_seat].get_child_count() == 14, "sorting merges the drawn tile without changing the authoritative hand")
+	if DisplayServer.get_name() != "headless":
+		table._ai_assist_enabled = true
+		table._apply_proxy_teach({"discard": "wan9", "recommendations": [
+			{"tile": "wan9", "distance": 0, "outs": 12}, {"tile": "wan1"}, {"tile": "wan5"}]})
+		t.expect(not table.status_label.get_global_rect().intersects(view._arrangement_caption.get_global_rect()), "teaching and sorting keep separate readable text areas")
+		await _capture("teaching-and-sorting")
+		table._ai_assist_enabled = false
+		table._clear_ai_teach()
+		table._refresh()
 	await _capture("sorting-with-draw")
 	var merged_draw = view.hand_boxes[table.human_seat].get_children().filter(func(tile): return tile.get_meta("drawn", false))[0]
 	player.concealed.pop_back()
@@ -216,7 +225,7 @@ func _run() -> void:
 		for i in view._arrangement_choices.size():
 			view._sort_own_hand()
 			if view._local_arrangement.has("change_from"):break
-		t.expect(view._arrangement_caption.text.contains("换入"), "hypothetical upgrade names the discarded and replacement tiles")
+		t.expect(view._arrangement_caption.text.contains("若摸到") and view._arrangement_caption.text.contains("再打"), "hypothetical upgrade clearly distinguishes a future draw from the current hand")
 		await RenderingServer.frame_post_draw
 		t.expect(root.get_texture().get_image().save_png("res://build/feedback-next/hand-upgrade.png")==OK,"capture one-tile upgrade without changing real hand")
 		table._sound_settings.open()

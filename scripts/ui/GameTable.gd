@@ -760,7 +760,7 @@ func request_ai_teach() -> void:
 	_clear_ai_teach()
 	if _ai_proxy_active:
 		# 两个开关同时开时，教打必须展示代打真正会提交的牌，不能再独立算一套。
-		_ai_teach_message = "AI代打分析中…"
+		_ai_teach_message = "正在替你挑一张合适的牌…"
 		if status_label != null:
 			status_label.text = _ai_teach_message
 			status_label.show()
@@ -772,7 +772,7 @@ func request_ai_teach() -> void:
 	if token <= 0:
 		return
 	_ai_teach_task = token
-	_ai_teach_message = "AI分析中…"
+	_ai_teach_message = "看看这手牌怎么打更合适…"
 	if status_label != null:
 		status_label.text = _ai_teach_message
 		status_label.show()
@@ -791,7 +791,7 @@ func request_ai_response_teach(source: int, tile: String, options: Dictionary) -
 	_ai_teach_response_options = options.duplicate(true)
 	_ai_teach_task = int(_ai_teach_worker.submit_response(round, human_seat, source, tile,
 		options, _submitted_proxy_level()))
-	_ai_teach_message = "AI分析中…"
+	_ai_teach_message = "看看这张牌要不要接…"
 	if status_label != null:
 		status_label.text = _ai_teach_message
 		status_label.show()
@@ -820,33 +820,23 @@ func _poll_ai_teach() -> void:
 		return
 	_ai_teach_task = 0
 	if _ai_teach_response_pending:
+		var response_tile := _ai_teach_response_tile
 		_ai_teach_response_pending = false
 		_ai_teach_response_tile = ""
 		_ai_teach_response_options = {}
 		var action := str(result.get("action", "pass"))
 		var label: String = {"win": "胡", "kong": "杠", "pong": "碰", "pass": "过"}.get(action, "过")
-		var text: String = {"win": "胡", "kong": "杠", "pong": "碰", "pass": "过"}.get(action, "过")
-		_ai_teach_message = "AI教学：建议%s；当前强度：%s" % [text, _strength_label()]
+		_ai_teach_message = AiTeaching.response_message(action, response_tile)
 		_apply_ai_teach_result({"message": _ai_teach_message})
 		if _table_actions != null:
 			_table_actions._highlight_ai_action_buttons("" if action == "pass" else label)
 		return
 	var tile := str(result.get("discard", result.get("tile", "")))
-	var message := ""
-	if bool(result.get("self_win", false)):
-		message = "AI教学：建议自摸；当前强度：%s" % _strength_label()
-	elif not result.get("kong_declares", []).is_empty():
+	if not result.get("kong_declares", []).is_empty():
 		tile = str(result.kong_declares[0])
-		message = "AI教学：建议暗杠；当前强度：%s" % _strength_label()
 	elif not result.get("add_kong", []).is_empty():
 		tile = str(result.add_kong[0])
-		message = "AI教学：建议加杠；当前强度：%s" % _strength_label()
-	elif tile != "":
-		var tiles := _recommendation_tiles(result)
-		if tiles.is_empty():
-			tiles = [tile]
-		message = "AI教学：建议打%s；当前强度：%s" % [" / ".join(tiles), _strength_label()]
-	_apply_ai_teach_result({"tile": tile, "tiles": _recommendation_ids(result), "message": message})
+	_apply_ai_teach_result({"tile": tile, "tiles": _recommendation_ids(result), "message": AiTeaching.turn_message(result)})
 
 func _recommendation_ids(result: Dictionary) -> Array:
 	var output: Array = []
@@ -855,20 +845,6 @@ func _recommendation_ids(result: Dictionary) -> Array:
 		if tile != "" and not output.has(tile):
 			output.append(tile)
 	return output
-
-func _recommendation_tiles(result: Dictionary) -> Array:
-	var output: Array = []
-	for item in result.get("recommendations", []):
-		var tile := str(item.get("tile", "")) if item is Dictionary else str(item)
-		if tile == "":
-			continue
-		var label := AiTeaching._display(tile)
-		if not output.has(label):
-			output.append(label)
-	return output
-
-func _strength_label() -> String:
-	return {"weak": "弱", "medium": "中", "strong": "强"}.get(GameConfig.effective_ai_strength(), "中")
 
 func _can_toggle_voice_chat() -> bool:
 	var net = _net_node()
@@ -1105,7 +1081,7 @@ func _apply_proxy_response_teach(tile: String, decision: Dictionary) -> void:
 		return
 	var action := str(decision.get("action", "pass"))
 	var label: String = {"win": "胡", "kong": "杠", "pong": "碰", "pass": "过"}.get(action, "过")
-	_ai_teach_message = "AI教学：建议%s；当前强度：%s" % [label, _strength_label()]
+	_ai_teach_message = AiTeaching.response_message(action, tile)
 	_apply_ai_teach_result({"message": _ai_teach_message})
 	if _table_actions != null:
 		_table_actions._highlight_ai_action_buttons("" if action == "pass" else label)
@@ -1116,19 +1092,16 @@ func _apply_proxy_teach(decision: Dictionary) -> void:
 	var result := {}
 	var tile := str(decision.get("discard", decision.get("tile", "")))
 	if bool(decision.get("self_win", false)):
-		result = {"message": "AI教学：建议自摸；当前强度：%s" % _strength_label()}
+		result = {"message": AiTeaching.turn_message(decision)}
 	elif not decision.get("kong_declares", []).is_empty():
 		result = {"tile": str(decision.kong_declares[0]),
-			"message": "AI教学：建议暗杠；当前强度：%s" % _strength_label()}
+			"message": AiTeaching.turn_message(decision)}
 	elif not decision.get("add_kong", []).is_empty():
 		result = {"tile": str(decision.add_kong[0]),
-			"message": "AI教学：建议加杠；当前强度：%s" % _strength_label()}
+			"message": AiTeaching.turn_message(decision)}
 	elif tile != "":
-		var tiles := _recommendation_tiles(decision)
-		if tiles.is_empty():
-			tiles = [AiTeaching._display(tile)]
 		result = {"tile": tile, "tiles": _recommendation_ids(decision),
-			"message": "AI教学：建议打%s；当前强度：%s" % [" / ".join(tiles), _strength_label()]}
+			"message": AiTeaching.turn_message(decision)}
 	if not result.is_empty():
 		_apply_ai_teach_result(result)
 
