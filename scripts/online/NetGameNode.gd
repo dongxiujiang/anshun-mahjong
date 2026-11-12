@@ -123,6 +123,7 @@ var state_metrics := {"sent": 0, "coalesced": 0, "bytes": 0, "full_bytes": 0}
 var measure_state_traffic := false
 var ack_flag := false
 var ack_text := ""
+var _round_submitter: Node
 
 static func valid_room_number(value: String) -> bool:
 	if value.length() < 4 or value.length() > 8:
@@ -647,6 +648,7 @@ func _publish_lobby() -> void:
 		seats.append({"seat": seat, "peer": peer, "ai": ai, "disconnected": disconnected, "name": member.get("name", "人机" if ai else "空位"), "ready": (not _waiting_for_reconnect(seat) and ai) if disconnected else member.get("ready", ai), "wants_dealer": member.get("wants_dealer", false)})
 		seats.back()["microphone_on"] = not disconnected and peer > 0 and bool(member.get("microphone_on", false))
 	lobby = {"number": room_number, "name": room_name, "owner": _owner_peer, "started": _started, "ai_speed": ai_speed, "opening_speed": opening_speed, "settlement_speed": settlement_speed, "ai_strength": ai_strength, "test_mode": test_mode, "ready_round": _ready_round, "countdown": ceili(_countdown) if _countdown >= 0.0 else -1, "seats": seats, "swap": _swap.duplicate(), "voice_packs": voice_packs.duplicate(), "return_vote": _return_vote_data(), "test_vote": _test_vote.duplicate(true)}
+	if _round_submitter != null: lobby["record_submission"] = _round_submitter.state.duplicate()
 	for peer in _peer_seat:
 		if peer > 1 and _peer_connected(peer): rpc_id(peer, "lobby_sync", lobby)
 	lobby_updated.emit()
@@ -815,6 +817,16 @@ func lobby_action(action: String, data: Dictionary) -> void:
 
 func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 	if not _members.has(peer): return
+	if action == "submit_record":
+		if not _peer_seat.has(peer) or game == null or str(data.get("session", "")) != game.audio_session: return
+		if _round_submitter == null:
+			_round_submitter = preload("res://scripts/ui/ReplayExport.gd").new()
+			add_child(_round_submitter)
+			if dedicated: _round_submitter.base_url = OS.get_environment("MAHJONG_RECORDS_URL")
+			_round_submitter.status_changed.connect(func(_busy, _message): _publish_lobby())
+		_round_submitter.submit_round(game, "online" if online_room else "lan")
+		_publish_lobby()
+		return
 	if action == "microphone":
 		if not _peer_seat.has(peer) or not (data.get("on") is bool): return
 		var enabled: bool = data.on

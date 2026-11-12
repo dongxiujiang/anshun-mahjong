@@ -158,6 +158,7 @@ func _forward_audio_event(event: Dictionary) -> void:
 	audio_event.emit(event)
 
 func _forward_visual_event(event: Dictionary) -> void:
+	_recorder.event(self, event)
 	visual_event.emit(event)
 
 func _reset_audio_events() -> void:
@@ -1220,10 +1221,10 @@ func _finish() -> void:
 	last_result = build_result()
 	if round_meta.has("ledger_error"):
 		last_result["ledger_error"] = _last_total
-	_recorder.finish(self)
 	if int(round_meta.winner) >= 0:
 		_emit_visual_event("win", {"seat": int(round_meta.winner), "winners": round_meta.get("winners", [int(round_meta.winner)]).duplicate(), "tile": str(round_meta.get("win_tile", "")), "self_draw": bool(round_meta.get("self_draw", false))})
 	_audio.emit_win(round_meta)
+	_recorder.finish(self)
 	round_finished.emit(last_result)
 	state_update.emit()
 

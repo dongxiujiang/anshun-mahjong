@@ -141,7 +141,7 @@ func _ready() -> void:
 			ai_strength_buttons[strength_key] = strength_button
 		exit_room_button = _button("退出房间", Vector2(716, 682), Vector2(368, 80), func(): exit_requested.emit())
 		exit_room_button.name = "ExitRoomButton"
-		replay_export_button = _button("保存本局记录", Vector2(36, 682), Vector2(296, 80), func(): replay_export_requested.emit())
+		replay_export_button = _button("提交本局记录", Vector2(36, 682), Vector2(296, 80), func(): replay_export_requested.emit())
 		replay_export_button.name = "SaveRoundButton"
 		replay_status = _label("", Vector2(36, 766), Vector2(660, 60), 18)
 		replay_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -413,19 +413,16 @@ func confirm_exit() -> void:
 	open()
 	if exit_confirmation != null: exit_confirmation.show()
 
-func export_replay(round_state: RoundState, local_seat: int) -> void:
-	if replay_exporter != null: replay_exporter.export_round(round_state, local_seat)
+func submit_replay(round_state: RoundState) -> void:
+	if replay_exporter != null: replay_exporter.submit_round(round_state)
 
 func _on_export_status(busy: bool, message: String) -> void:
 	replay_export_button.disabled = busy
-	replay_export_button.text = "选择保存位置…" if busy else "保存本局记录"
-	continue_button.disabled = busy
-	exit_room_button.disabled = busy
+	replay_export_button.text = ("已登记提交" if message.contains("结束后") else "正在提交…") if busy else "提交本局记录"
 	replay_status.text = message
 	replay_status.tooltip_text = message
 
 func close(persist: bool = true) -> void:
-	if replay_exporter != null and replay_exporter.busy: return
 	if persist and persist_changes:
 		AudioManager.save_settings()
 	MOTION.stop(overlay)

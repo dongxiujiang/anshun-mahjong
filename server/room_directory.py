@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import secrets
 import socket
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -20,6 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gme_auth import make_auth_buffer
+from round_records import RoundRecords, MAX_BODY
 
 NUMBER = re.compile(r"[0-9]{4,8}\Z")
 OPEN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
@@ -380,6 +382,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.connection.settimeout(10)
         path = urlsplit(self.path).path
+        if path == "/round-records":
+            key = self.server.records_api_key
+            if not key:
+                return self._reply(503, {"error": "分析接口尚未配置访问密钥"})
+            if not hmac.compare_digest(self.headers.get("Authorization", "").encode(), ("Bearer " + key).encode()):
+                return self._reply(401, {"error": "需要有效的分析接口密钥"})
+            try:
+                limit = int(parse_qs(urlsplit(self.path).query).get("limit", ["10"])[0])
+                return self._reply(200, self.server.records.latest(limit))
+            except ValueError:
+                return self._reply(400, {"error": "limit 必须是1到10000的整数"})
+            except sqlite3.Error:
+                return self._reply(503, {"error": "记录存储暂不可用"})
         if path == "/healthz":
             rooms = self.server.directory.list()
             return self._reply(200, {
@@ -420,6 +435,8 @@ class Handler(BaseHTTPRequestHandler):
         self._reply(200, {"rooms": self.server.directory.list()})
 
     def do_POST(self):
+        if urlsplit(self.path).path == "/round-records":
+            return self._submit_record()
         if urlsplit(self.path).path != "/rooms":
             return self._reply(404, {"error": "接口不存在"})
         self.connection.settimeout(10)
@@ -439,6 +456,30 @@ class Handler(BaseHTTPRequestHandler):
         except RuntimeError as error: self._reply(500, {"error": str(error)})
         except (OSError, TimeoutError): self._reply(408, {"error": "请求超时"})
 
+    def _submit_record(self):
+        self.connection.settimeout(15)
+        client = rate_limit_key(client_identity(self.client_address[0], self.headers.get("X-Forwarded-For", "")))
+        if not self.server.records.allow_submit(client):
+            return self._reply(429, {"error": "提交过于频繁，请稍后重试"})
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if self.headers.get("Transfer-Encoding") or not 0 < length <= MAX_BODY:
+                return self._reply(413, {"error": "记录不能为空或超过2MB"})
+            body = self.rfile.read(length)
+            if len(body) != length:
+                raise ValueError("记录传输不完整")
+            data = json.loads(body)
+            result = self.server.records.submit(data)
+            return self._reply(200 if result["duplicate"] else 201, {"ok": True, **result})
+        except FileExistsError as error:
+            self._reply(409, {"error": str(error)})
+        except (ValueError, TypeError, RecursionError, OverflowError):
+            self._reply(400, {"error": "记录格式无效或尚未完成结算"})
+        except (OSError, TimeoutError):
+            self._reply(408, {"error": "提交超时，请重试"})
+        except sqlite3.Error:
+            self._reply(503, {"error": "记录未保存，请稍后重试"})
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -457,12 +498,17 @@ def main():
     server = ThreadingHTTPServer((args.bind, args.http_port), Handler)
     server.daemon_threads = True
     server.directory = directory
+    server.records = RoundRecords(directory.runtime / "round-records.sqlite3", int(os.environ.get("RECORDS_LIMIT", "100")))
+    server.records_api_key = os.environ.get("RECORDS_API_KEY", "")
+    # Dedicated rooms submit to this directory, never to a player's saved URL.
+    os.environ["MAHJONG_RECORDS_URL"] = f"http://127.0.0.1:{server.server_port}"
     print(f"Room directory listening on {args.bind}:{args.http_port}", flush=True)
     try: server.serve_forever()
     except KeyboardInterrupt: pass
     finally:
         server.server_close()
         directory.close()
+        server.records.close()
 
 if __name__ == "__main__": main()
 

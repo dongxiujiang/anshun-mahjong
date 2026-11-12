@@ -77,10 +77,43 @@ X-Room-Token: <该座位当前 resume_token>
 
 建房接口默认同一来源每分钟最多成功创建 3 个房间，可用 `MAX_CREATES_PER_MINUTE` 调整；超限返回 429。只有来自 `TRUSTED_PROXIES`（默认 `127.0.0.1/32,::1/128`）的请求才会读取 `X-Forwarded-For`，直连请求始终使用 TCP 对端地址，避免伪造来源绕过配额。生产环境应关闭后端 HTTP 端口的公网访问，只允许代理访问。
 
-## 验证
+## 对局记录接口
+
+设置页「提交本局记录」将完整对局提交到同一服务器。局中点击会登记，结束结算后才上传；结算后点击立即上传。单机由本机提交，局域网由房主提交，在线房间由权威房间进程提交。普通客户端不会收到隐藏牌墙，局域网房主需要能访问云端 HTTP 服务。未结束便退出的单机局、被关闭的未完成房间不作为完整样本提交。网络失败会提示重试，不显示虚假成功。
+
+服务器 `.env` 配置：
+
+```dotenv
+RECORDS_LIMIT=100
+RECORDS_API_KEY=<仅用于分析的长随机密钥>
+```
+
+默认全服务器共保留最近100局，可设置1～10000；重启目录服务后生效，降低上限时立即清理最旧记录。`build/room-server/round-records.sqlite3` 位于现有 `room_logs` 持久卷，重建容器和关闭房间不会删除它。请勿删除该持久卷。分析密钥只放服务器及分析工具，不写入客户端、源码或下载链接；不设置密钥时读取接口返回503。
+
+| 接口 | 用途 |
+|---|---|
+| `POST /round-records` | JSON `{ "mode": "single或lan或online", "record": 完整RoundReplay对象 }`，首次保存201、同内容重复提交200 |
+| `GET /round-records?limit=10` | `Authorization: Bearer <RECORDS_API_KEY>`；按首次提交时间倒序返回最多10局完整样本 |
+
+读取响应包含 `count`（本次数量）、`total`（现存数量）、`capacity`（保存上限）及 `records` 数组。每项包含 `id`、服务器UTC `submitted_at`、`mode` 和可直接交给 `RoundReplay.replay()` 的 `record`。`limit` 默认10，允许1～10000，超过现存数量或保存上限时返回现有记录。重复提交不占第二个名额、不改变原来的时间顺序；同一编号内容不同返回409，保留原记录。
+
+```sh
+curl --fail --show-error \
+  -H "Authorization: Bearer $RECORDS_API_KEY" \
+  'https://mj.dongxiu.fun/round-records?limit=20' \
+  -o latest-rounds.json
+```
+
+记录含版本、初始四家手牌、完整108张牌墙与位置、骰子和发牌事件、摸打碰杠/报听的操作、结算事件、最终四家状态及逐项收付。`actions` 供规则重放，`events` 供流程检查；没有屏幕录像、麦克风录音或系统日志。步前完整状态指纹仍默认关闭，避免恢复逐操作序列化造成卡顿；最终指纹保留。分析时应使用记录版本的规则代码。
+
+单条请求不超过2MiB，每个来源每分钟最多60次提交，JSON格式或未结算记录返回400，读取未鉴权返回401。HTTP层检查结构和分数守恒，不把客户端上报当成经过服务端规则认证的成绩；分析前仍应重放校验。Nginx反代此路径时需允许 `client_max_body_size 2m`（Caddy默认无需调整），并使用HTTPS。专用房间通过目录注入的 `MAHJONG_RECORDS_URL` 访问本机服务，不走玩家配置的地址。
+
+## 验证命令
 
 ```sh
 python tests/run_network.py --godot /path/to/godot
+python tests/run_record_submission.py --godot /path/to/godot
+python -m unittest discover -s tests -p 'test_round_records.py'
 ```
 
 测试会启动真实的独立游戏进程，验证局域网搜索、房间号校验、人机选座、真人交换同意/拒绝、取消准备、首局选庄、已开局拒绝加入、私有手牌同步及完整牌桌对局，再启动本机在线目录验证 HTTP 创建/搜索、重复号拒绝、云端选座准备发牌及房间清理。测试服务自动关闭，不覆盖用户保存的云服务器地址。

@@ -1415,6 +1415,7 @@ func _on_client_state_updated() -> void:
 func _on_net_lobby_updated() -> void:
 	_on_settlement_speed_changed()
 	if _sound_settings != null: _sound_settings.sync_timing_controls()
+	_sync_record_submission()
 	_refresh_next_round_controls()
 	var net = _net_node()
 	if net != null and bool(net.test_mode) != _test_mode_ui:
@@ -1567,7 +1568,30 @@ func _on_quit(forget_connection: bool = true) -> void:
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 
 func _export_current_replay() -> void:
-	_sound_settings.export_replay(round, human_seat)
+	if _net_mode() == "":
+		_sound_settings.submit_replay(round)
+		return
+	var net = _net_node()
+	if net == null or round == null or (not net.host_mode and (not net._client_joined or net._reconnecting)):
+		_sound_settings._on_export_status(false, "正在恢复连接，请连上房间后再提交。")
+		return
+	_sound_settings._on_export_status(true, "正在登记本局记录…")
+	var session: String = round.audio_session
+	net._submit_lobby("submit_record", {"session": session})
+	await get_tree().create_timer(8.0).timeout
+	if not is_inside_tree() or round == null or round.audio_session != session: return
+	var state: Dictionary = net.lobby.get("record_submission", {}) if is_instance_valid(net) else {}
+	if state.get("session", "") != session:
+		_sound_settings._on_export_status(false, "房间未确认提交，请检查连接或更新服务器后重试。")
+
+func _sync_record_submission() -> void:
+	var net = _net_node()
+	if net == null or round == null or _sound_settings == null: return
+	var state: Dictionary = net.lobby.get("record_submission", {})
+	if state.get("session", "") == round.audio_session:
+		_sound_settings._on_export_status(state.get("status", "") in ["waiting", "uploading"], str(state.get("message", "")))
+	else:
+		_sound_settings._on_export_status(false, "")
 
 func _confirm_quit() -> void:
 	_sound_settings.confirm_exit()

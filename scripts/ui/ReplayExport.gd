@@ -1,88 +1,97 @@
 extends Node
-## 用户主动导出使用系统另存为；内部 user://replays 自动留档仍由 RoundReplay 管理。
-## Android SAF 返回 content:// URI，必须原样交给 FileAccess，不能拼接后缀或转成本地路径。
+## 单机和联机权威端共用；完整记录不经过其他玩家的牌局快照。
 signal status_changed(busy: bool, message: String)
 
-const FILTERS: Array[String] = ["*.json;麻将对局记录;application/json"]
-const SNAPSHOT_FORMAT := "anshun-mahjong-table-snapshot"
 var busy := false
-var last_path := ""
+var state := {}
+var base_url := ""
+var _round: RoundState
+var _mode := "single"
+var _http: HTTPRequest
 var _pending := {}
-var _snapshot_only := false
-var _request_id := 0
 
-func export_round(round_state: RoundState, local_seat: int) -> void:
-	if busy: return
-	if round_state == null or round_state.players.size() != 4 or round_state.phase in [RoundState.Phase.IDLE, RoundState.Phase.DEALING]:
-		status_changed.emit(false, "本局尚未开始，请发牌后再保存。")
+func submit_round(round_state: RoundState, mode: String = "single") -> void:
+	if busy:
+		status_changed.emit(true, str(state.get("message", "正在提交…")))
 		return
-	# 在打开系统窗口前冻结内容，避免用户选择目录期间牌局推进或进入下一局。
-	_pending = round_state.replay_record()
-	_snapshot_only = _pending.is_empty()
-	if _snapshot_only:
-		_pending = {
-			"format": SNAPSHOT_FORMAT, "schema": 1,
-			"version": str(ProjectSettings.get_setting("application/config/version", "")),
-			"saved_at": Time.get_datetime_string_from_system(true), "local_seat": local_seat,
-			"note": "联机客户端牌面与结算快照，不含完整操作过程；完整对局记录由房主或服务器保存。",
-			"state": round_state.serialize_for_seat(local_seat),
-		}
-	_request_id += 1
-	busy = true
-	last_path = ""
-	status_changed.emit(true, "本机保存牌面与结算快照，完整过程由房主保存。" if _snapshot_only else "")
-	var stamp := Time.get_datetime_string_from_system().replace(":", "-").replace("T", "_")
-	var filename := "安顺麻将-%s-%s.json" % ["牌面快照" if _snapshot_only else "本局记录", stamp]
-	var error := _show_save_dialog(filename, _on_selected.bind(_request_id))
-	if error != OK:
-		_finish("无法打开系统保存窗口，记录未导出。请在支持文件选择器的设备上重试。")
-
-func _show_save_dialog(filename: String, callback: Callable) -> Error:
-	if not DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE): return ERR_UNAVAILABLE
-	# 安卓让系统提供可写目录；桌面默认打开下载目录。
-	var directory := "" if OS.has_feature("android") else OS.get_system_dir(OS.SYSTEM_DIR_DOWNLOADS)
-	return DisplayServer.file_dialog_show("保存本局记录", directory, filename,
-		false, DisplayServer.FILE_DIALOG_MODE_SAVE_FILE, PackedStringArray(FILTERS), callback, get_window().get_window_id())
-
-func _on_selected(selected: bool, paths: PackedStringArray, _filter: int, request_id: int) -> void:
-	if not busy or request_id != _request_id: return
-	if not selected or paths.is_empty() or paths[0].is_empty():
-		_finish("已取消保存，未导出文件。")
+	if round_state == null or round_state.players.size() != 4 or round_state.phase == RoundState.Phase.IDLE:
+		_set_status("error", "本局尚未开始，请发牌后再提交。")
 		return
-	var path := paths[0]
-	var error := _write_document(path, JSON.stringify(_pending, "\t", true, true))
-	if error != OK:
-		_finish("保存失败，请检查剩余空间并重新选择保存位置。")
+	if str(state.get("session", "")) == round_state.audio_session and state.get("status") == "done":
+		status_changed.emit(false, "本局已经提交，无需重复提交。")
 		return
-	last_path = path
-	var message := "已保存到：" + ProjectSettings.globalize_path(path)
-	if path.begins_with("content://"):
-		message = "已保存到你选择的位置。打开系统“文件” → 所选目录或“最近”即可找到。"
-	if _snapshot_only: message += "\n内容为牌面与结算快照，完整过程由房主或服务器保存。"
-	_finish(message)
+	_disconnect_round()
+	_round = round_state
+	_mode = mode
+	state = {"session": _round.audio_session}
+	if _round.phase == RoundState.Phase.SETTLED:
+		_upload()
+	else:
+		_round.round_finished.connect(_round_finished)
+		_round.state_update.connect(_check_round)
+		_set_status("waiting", "已登记，本局结束后自动提交。")
 
-func _write_document(path: String, contents: String) -> Error:
-	var file := FileAccess.open(path, FileAccess.WRITE)
-	if file == null: return FileAccess.get_open_error()
-	var data := contents.to_utf8_buffer()
-	var stored := file.store_buffer(data)
-	file.flush()
-	file.close()
-	if not stored: return ERR_FILE_CANT_WRITE
-	# 包括 Android 文档提供方在内，只有实际读回一致才显示保存成功。
-	var verified := FileAccess.open(path, FileAccess.READ)
-	if verified == null: return ERR_FILE_CANT_READ
-	var matches := verified.get_length() == data.size() and verified.get_buffer(data.size()) == data
-	verified.close()
-	return OK if matches else ERR_FILE_CANT_WRITE
+func _check_round() -> void:
+	if _round != null and (_round.audio_session != state.get("session", "") or _round.phase == RoundState.Phase.IDLE):
+		_disconnect_round()
+		_set_status("error", "本局未完成，未提交记录。")
 
-func _finish(message: String) -> void:
-	busy = false
-	_pending.clear()
-	status_changed.emit(false, message)
+func _round_finished(_result: Dictionary) -> void:
+	_upload()
+
+func _upload() -> void:
+	_pending = _round.replay_record()
+	_disconnect_round()
+	if _pending.is_empty() or _pending.get("final", {}).is_empty():
+		_set_status("error", "未取得完整记录，请在结算后重试。")
+		return
+	var url := base_url
+	if url.is_empty():
+		var network := get_node_or_null("/root/Network")
+		url = network.directory.base_url if network != null and network.directory != null else str(ProjectSettings.get_setting("online/default_url", ""))
+	if not (url.begins_with("https://") or url.begins_with("http://")):
+		_set_status("error", "请先在联机页面设置服务器地址，再提交本局。")
+		return
+	if _http == null:
+		_http = HTTPRequest.new()
+		_http.timeout = 20.0
+		_http.body_size_limit = 16 * 1024
+		add_child(_http)
+		_http.request_completed.connect(_completed)
+	_set_status("uploading", "正在提交完整记录…")
+	var error := _http.request(url.trim_suffix("/") + "/round-records", PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST,
+		JSON.stringify({"mode": _mode, "record": _pending}, "", true, true))
+	if error != OK: _set_status("error", "暂时连不上服务器，请稍后重新提交。")
+
+func _completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if not is_inside_tree() or state.get("status") != "uploading": return
+	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if result != HTTPRequest.RESULT_SUCCESS:
+		_set_status("error", "提交未成功，请检查网络后重试。")
+	elif code in [200, 201] and data is Dictionary and data.get("ok") == true and data.get("id") == state.get("session"):
+		_set_status("done", "本局完整记录已提交。")
+	elif code == 404:
+		_set_status("error", "服务器尚未开通记录提交，请更新服务器后重试。")
+	elif code == 429:
+		_set_status("error", "提交太频繁了，请稍后再试。")
+	else:
+		_set_status("error", "服务器未保存本局记录，请稍后重试。")
+
+func _set_status(value: String, message: String) -> void:
+	busy = value in ["waiting", "uploading"]
+	state["status"] = value
+	state["message"] = message
+	if not busy: _pending.clear()
+	status_changed.emit(busy, message)
+
+func _disconnect_round() -> void:
+	if _round != null:
+		if _round.round_finished.is_connected(_round_finished): _round.round_finished.disconnect(_round_finished)
+		if _round.state_update.is_connected(_check_round): _round.state_update.disconnect(_check_round)
+	_round = null
 
 func _exit_tree() -> void:
-	# 退出牌桌后的迟到回调不能写入文件或访问已释放的设置控件。
-	_request_id += 1
+	_disconnect_round()
+	if _http != null: _http.cancel_request()
 	busy = false
 	_pending.clear()

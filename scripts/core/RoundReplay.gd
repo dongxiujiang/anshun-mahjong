@@ -19,7 +19,7 @@ func begin(round) -> void:
 		# The next-dealer tie and any later random choice must continue from the
 		# exact RNG position of the original round.
 		"rng_state": str(round._rng.state),
-		"actions": [], "requests": [], "final": {}}
+		"actions": [], "events": round.visual_events.duplicate(true), "requests": [], "final": {}}
 	# 报听标志不在网络协议内，需要单独保存供离线重放。
 	record.announced_ready = round.players.map(func(player): return player.announced_ready)
 	last_path = ""
@@ -39,6 +39,12 @@ func request(seat: int, kind: String, decision: Dictionary, accepted: bool, reas
 	# 重复/过期网络请求不能无限扩大日志。
 	if record.requests.size() > 64: record.requests.pop_front()
 
+func event(round, value: Dictionary) -> void:
+	if playback or record.is_empty() or record.id != round.audio_session or not record.final.is_empty(): return
+	var entry := value.duplicate(true)
+	entry["elapsed_ms"] = Time.get_ticks_msec() - _started_ticks
+	record.events.append(entry)
+
 func update_players(round) -> void:
 	if playback or record.is_empty(): return
 	for seat in round.players.size():
@@ -47,7 +53,9 @@ func update_players(round) -> void:
 
 func finish(round) -> void:
 	if playback or record.is_empty(): return
-	record.final = {"fingerprint": fingerprint(round), "result": round.last_result.duplicate(true)}
+	record["finished_at"] = Time.get_datetime_string_from_system(true)
+	record.events.append({"type": "settlement", "elapsed_ms": Time.get_ticks_msec() - _started_ticks})
+	record.final = {"fingerprint": fingerprint(round), "result": round.last_result.duplicate(true), "state": round.serialize()}
 	if auto_save:
 		last_path = save()
 
