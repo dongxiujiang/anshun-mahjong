@@ -68,6 +68,7 @@ func _run() -> void:
 			while not table._settlement_animation_done() and Time.get_ticks_msec() < settlement_deadline:
 				await get_tree().process_frame
 			_expect(table._settlement_animation_done(), "Network settlement reaches its final tabletop state")
+			if graphical: _check_settlement_exposed()
 			_expect(audio_events > 0, "Host and client table must both receive audio events")
 			_expect(AudioManager._last_event_id == round.audio_event_id, "Table audio must reach the latest synced event")
 			if host_mode:
@@ -150,6 +151,19 @@ func _run() -> void:
 	print("[net_table] timeout host=%s turns=%d responses=%d phase=%d turn=%d awaiting=%s locked=%s dealt=%s pending=%s" % [host_mode, turns, responses, table.round.phase, table.round.current_turn, table.round.awaiting, table._table_actions.input_locked(), table._table_animation_controller._dealt, table._table_animation_controller.has_pending()])
 	push_error("Network UI test timed out")
 	await _finish_test(1)
+
+func _check_settlement_exposed() -> void:
+	var view = table._new_areas
+	_expect(not view._discard_layer.visible, "Network settlement hides only the ordinary river")
+	for seat in 4:
+		var player = table.round.players[seat]
+		var expected: int = player.discards.filter(func(tile): return Tiles.is_chicken(tile)).size()
+		for meld in player.melds: expected += 3 if meld.kind == "pung" else 4
+		var visible := 0
+		for tile in view._red_layer.get_children() + view._meld_layer.get_children():
+			if tile is TileView and int(tile.get_meta("v2_seat", -1)) == seat:
+				visible += int(tile.is_visible_in_tree() and tile.face_up)
+		_expect(visible == expected, "Network settlement retains every exposed tile at seat %d" % seat)
 
 func _check_foreground_restore(stage: String) -> void:
 	var net: NetGameNode = Network.net_node

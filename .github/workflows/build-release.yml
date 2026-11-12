@@ -453,12 +453,14 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/settlement-scenarios/**
+            build/settlement-exposed/**
             build/network-table-review/**
             build/meld-motion/**
             build/ui-feedback/**
             build/opening-clock/**
             build/ci/graphical-opening.log
             build/ci/table_v2_*.log
+            build/ci/settlement_exposed_visibility.log
 
       - name: Remove temporary signing files
         if: ${{ always() }}
