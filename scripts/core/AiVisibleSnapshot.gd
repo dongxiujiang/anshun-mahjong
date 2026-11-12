@@ -32,6 +32,7 @@ static func build(round, seat: int) -> Dictionary:
 			"first_turn_done": p.first_turn_done,
 			"charge_chicken": p.charge_chicken,
 			"passed_win_until_draw": p.passed_win_until_draw,
+			"passed_self_draw": p.passed_self_draw if own else false,
 			"passed_pong_tiles": p.passed_pong_tiles.duplicate(),
 			"add_kong_locked_tiles": p.add_kong_locked_tiles.duplicate(),
 			"forbidden_discard_tile": p.forbidden_discard_tile,

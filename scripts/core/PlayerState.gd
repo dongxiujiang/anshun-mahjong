@@ -20,6 +20,7 @@ var first_turn_done := false  # 是否已打过第一手（报听窗口=各自�
 var just_drew := ""           # 本轮摸到的牌（未打）
 var charge_chicken := false   # 当前是否持有任一种冲锋鸡（可由碰杠转入）。
 var passed_win_until_draw := false # 过胡锁：未报听者下一摸解除；报听者保留至本局结束。
+var passed_self_draw := false # 整理摸牌时放弃本次自摸，下一次摸牌解除。
 var passed_pong_tiles: Array[String] = [] # 过碰后，同一张牌在自己下次摸牌前不能再碰。
 var add_kong_locked_tiles: Array[String] = [] # 选择碰掉可明杠牌后，本局该牌不能再加杠。
 var forbidden_discard_tile := "" # 碰牌后不能立即打出刚碰的牌。

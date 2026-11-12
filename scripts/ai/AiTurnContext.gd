@@ -65,6 +65,7 @@ static func build(round, seat_value: int) -> RefCounted:
 			player.concealed = source.concealed.duplicate()
 			player.ready_wait_tiles = source.ready_wait_tiles.duplicate()
 			player.just_drew = source.just_drew
+			player.passed_self_draw = source.passed_self_draw
 		else:
 			player.concealed = []
 			player.just_drew = ""

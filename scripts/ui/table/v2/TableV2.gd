@@ -118,6 +118,8 @@ var _arrangement_key := ""
 var _arrangement_thread: Thread
 var _arrangement_job_key := ""
 var _arrangement_done_key := ""
+var _arrangement_generation := 0
+var _merged_draw_key := ""
 var _arrangement_caption: Label
 
 func _ready() -> void:
@@ -160,8 +162,8 @@ func _build_layers() -> void:
 	_hand_groups.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_action_layer.add_child(_hand_groups)
 	_arrangement_caption = _table_text(_action_layer, "", 22, UI.GOLD)
-	_arrangement_caption.position = Vector2(520, G.HAND_BOTTOM + 24)
-	_arrangement_caption.size = Vector2(1190, 50)
+	_arrangement_caption.position = Vector2(520, G.HAND_BOTTOM + 12)
+	_arrangement_caption.size = Vector2(1190, 64)
 	_arrangement_caption.clip_text = true
 	_arrangement_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_sort_button = _arrangement_button("排序", _sort_own_hand)
@@ -189,46 +191,82 @@ func _arrangement_button(caption: String, callback: Callable) -> Button:
 
 func _can_arrange_hand() -> bool:
 	return round != null and round.phase == ROUND_STATE.Phase.PLAYING and not test_frozen \
-		and human_seat in range(round.players.size()) and round.players[human_seat].concealed.size() == 13 \
-		and str(round.players[human_seat].just_drew).is_empty() and not _opening_mode() \
+		and human_seat in range(round.players.size()) \
+		and round.players[human_seat].concealed.size() in [13 - 3 * round.players[human_seat].melds.size(), 14 - 3 * round.players[human_seat].melds.size()] and not _opening_mode() \
+		and (table == null or table.get("_awaiting_rejoin_snapshot") != true) \
 		and not native_presentation_pending()
 
+func _draw_arrangement_key() -> String:
+	var player = round.players[human_seat]
+	if str(player.just_drew).is_empty(): return ""
+	return str([round.audio_session, human_seat, player.discard_count, player.melds.size(), player.concealed, player.just_drew])
+
+func _draw_merged() -> bool:
+	return not _merged_draw_key.is_empty() and _merged_draw_key == _draw_arrangement_key()
+
+func _arrangement_cards() -> Array:
+	var player = round.players[human_seat]
+	var cards: Array = player.concealed.duplicate()
+	if not _draw_merged() and not str(player.just_drew).is_empty(): cards.erase(player.just_drew)
+	return cards
+
 func _hand_choices(cards: Array) -> Array:
-	var key := str(TILES.sort_hand(cards)) + GameConfig.hand_sort_priority
+	var player = round.players[human_seat]
+	var key := str(TILES.sort_hand(cards)) + str(player.melds) + str(player.ready) + str(player.forbidden_discard_tile) \
+		+ str(_arrangement_generation) + GameConfig.hand_sort_priority
+	if cards.size() == 14 - 3 * player.melds.size(): key += str(player.just_drew)
 	if key != _arrangement_key:
 		_arrangement_key = key
-		_arrangement_choices = HAND_ARRANGEMENT.build(cards, GameConfig.hand_sort_priority == "pattern")
+		if cards.size() == 14 - 3 * player.melds.size():
+			var discards: Array = round.legal_turn_options(human_seat).discards
+			_arrangement_choices = HAND_ARRANGEMENT.build_turn(cards, GameConfig.hand_sort_priority == "pattern", player.melds, discards)
+		else:
+			_arrangement_choices = HAND_ARRANGEMENT.build(cards, GameConfig.hand_sort_priority == "pattern", {}, player.melds)
 	return _arrangement_choices
 
 func _sort_own_hand() -> void:
 	if not _can_arrange_hand(): return
+	var window: Dictionary = round.allowed_actions(human_seat)
+	if window.get("kind", "") == "turn" and window.options.self_win:
+		if table == null or table._table_actions.input_locked(): return
+		table._commit_turn({"pass_self_win": true})
+	_merged_draw_key = _draw_arrangement_key()
 	var previous_key := _arrangement_key
-	var choices := _hand_choices(round.players[human_seat].concealed)
+	var choices := _hand_choices(_arrangement_cards())
 	if choices.is_empty(): return
 	var current := -1
 	if _arrangement_key == previous_key:
 		for i in choices.size():
 			if choices[i].key == _local_arrangement.get("key", ""): current = i
 	_local_arrangement = choices[(current + 1) % choices.size()]
-	if _arrangement_thread == null and _arrangement_done_key != _arrangement_key:
+	if _arrangement_cards().size() == 13 - 3 * round.players[human_seat].melds.size() \
+		and not round.players[human_seat].ready and _arrangement_thread == null and _arrangement_done_key != _arrangement_key:
 		_arrangement_job_key = _arrangement_key
-		var input: Array = round.players[human_seat].concealed.duplicate()
+		var input := _arrangement_cards()
+		var melds: Array = round.players[human_seat].melds.duplicate(true)
 		var priority: bool = GameConfig.hand_sort_priority == "pattern"
 		_arrangement_thread = Thread.new()
-		_arrangement_thread.start(func(): return HAND_ARRANGEMENT.with_one_tile_changes(input, priority))
+		_arrangement_thread.start(func(): return HAND_ARRANGEMENT.with_one_tile_changes(input, priority, melds))
 	refresh()
 
 func _restore_own_hand() -> void:
 	if not _can_arrange_hand(): return
 	_local_arrangement = {}
+	_arrangement_generation += 1
+	_arrangement_key = ""
+	_arrangement_choices.clear()
 	refresh()
 
 func _order_local_cards(cards: Array) -> Array:
-	if _local_arrangement.is_empty() or cards.size() != 13: return cards
-	if cards == TILES.sort_hand(_local_arrangement.cards): return _local_arrangement.cards
+	if _local_arrangement.is_empty() or cards.size() not in [13 - 3 * round.players[human_seat].melds.size(), 14 - 3 * round.players[human_seat].melds.size()]: return cards
+	var choices := _hand_choices(cards)
+	for choice in choices:
+		if choice.key == _local_arrangement.key:
+			_local_arrangement = choice
+			return choice.cards
 	var best := -1
 	var chosen := {}
-	for choice in _hand_choices(cards):
+	for choice in choices:
 		var retained := HAND_ARRANGEMENT.retained_groups(_local_arrangement, choice)
 		if retained > best:
 			best = retained
@@ -237,31 +275,57 @@ func _order_local_cards(cards: Array) -> Array:
 	return _local_arrangement.get("cards", cards)
 
 func _refresh_hand_arrangement() -> void:
-	var show_buttons := _can_arrange_hand()
-	_arrangement_caption.visible = show_buttons and not _local_arrangement.is_empty()
+	var show_buttons: bool = round.phase == ROUND_STATE.Phase.PLAYING and not test_frozen
+	var can_arrange := _can_arrange_hand()
+	_arrangement_caption.visible = can_arrange and not _local_arrangement.is_empty()
 	if not _local_arrangement.is_empty():
 		var at := -1
 		for i in _arrangement_choices.size():
 			if _arrangement_choices[i].key == _local_arrangement.key: at = i
-		var waits: Array = _local_arrangement.waits.keys().map(func(i): return AiTeaching._display(Tiles.from_index(i)) + "(" + str(_local_arrangement.patterns.get(i, "平胡")) + ")")
+		var waits: Array = []
+		var by_pattern := {}
+		for i in _local_arrangement.waits:
+			var score := int(_local_arrangement.scores.get(i, 0))
+			var label := str(_local_arrangement.patterns.get(i, "平胡")) + ("%d分" % score if score > 0 else "")
+			if not by_pattern.has(label): by_pattern[label] = []
+			by_pattern[label].append(AiTeaching._display(Tiles.from_index(i)))
+		for label in by_pattern: waits.append("、".join(by_pattern[label]) + "(" + label + ")")
 		var change := ""
 		if _local_arrangement.has("change_from"):
 			change = "打%s、换入%s后 " % [AiTeaching._display(_local_arrangement.change_from), AiTeaching._display(_local_arrangement.change_to)]
-		_arrangement_caption.text = "%d/%d  %s%s%s" % [at+1, _arrangement_choices.size(), change,
-			"听 " + "、".join(waits) if not waits.is_empty() else "尚未叫牌", " · 计算换牌方案中" if _arrangement_thread != null else ""]
+		elif _local_arrangement.has("discard"):
+			change = "打%s后 " % AiTeaching._display(_local_arrangement.discard)
+		var player = round.players[human_seat]
+		var note := "单倍牌型；平胡需满足通行条件"
+		if player.ready: note = "已报听 · 手牌锁定"
+		if player.passed_win_until_draw:
+			note = "已报听 · 过胡后本局只能自摸" if player.ready else "过胡后，下次摸牌前只能自摸"
+		if player.passed_self_draw: note = "已放弃本次自摸" + (" · 报听仍锁牌" if player.ready else "")
+		_arrangement_caption.text = "%d/%d  %s%s%s\n%s" % [at+1, _arrangement_choices.size(), change, note,
+			" · 计算换牌方案中" if _arrangement_thread != null and _arrangement_job_key == _arrangement_key else "",
+			"听 " + "、".join(waits) if not waits.is_empty() else "尚未叫牌 · 最接近叫牌的拆法"]
 		_arrangement_caption.tooltip_text = _arrangement_caption.text
+		var font := TileView._font()
+		var font_size := 22
+		for line in _arrangement_caption.text.split("\n"):
+			while font_size > 14 and font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > _arrangement_caption.size.x:
+				font_size -= 1
+		_arrangement_caption.add_theme_font_size_override("font_size", font_size)
 	_sort_button.visible = show_buttons
+	_sort_button.disabled = not can_arrange
 	_restore_button.visible = show_buttons and not _local_arrangement.is_empty()
+	_restore_button.disabled = not can_arrange
 	var anchor := Vector2(G.draw_slot_center(human_seat, human_seat).x - _sort_button.size.x / 2.0, G.HAND_BOTTOM + 14.0)
 	_sort_button.position = anchor
 	_restore_button.position = anchor - Vector2(_restore_button.size.x + 12.0, 0.0)
 	_clear(_hand_groups)
 	if round.phase != ROUND_STATE.Phase.PLAYING or _local_arrangement.is_empty() \
-			or hand_boxes[human_seat].get_child_count() != 13: return
+			or hand_boxes[human_seat].get_child_count() != _local_arrangement.cards.size(): return
+	var count: int = _local_arrangement.cards.size()
 	var slot := 0
 	for length in _local_arrangement.lengths:
-		var first := _hand_center(human_seat, slot, 13)
-		var last := _hand_center(human_seat, slot + int(length) - 1, 13)
+		var first := _hand_center(human_seat, slot, count)
+		var last := _hand_center(human_seat, slot + int(length) - 1, count)
 		var half := G.hand_tile_size(human_seat, human_seat).x / 2.0
 		var line := ColorRect.new()
 		line.color = Color(UI.GOLD, 0.8)
@@ -1095,6 +1159,8 @@ func refresh() -> void:
 func _reset_round_visual_state() -> void:
 	_invalidate_exposed_layout()
 	_local_arrangement = {}
+	_arrangement_generation += 1
+	_merged_draw_key = ""
 	_arrangement_key = ""
 	_arrangement_choices.clear()
 	for badge in _ready_meld_badges + _dealer_meld_badges: badge.hide()
@@ -1146,6 +1212,8 @@ func _begin_visual_action() -> int:
 	_visual_action_id += 1
 	_visual_actions[_visual_action_id] = true
 	deal_animation_active = true
+	if is_instance_valid(_sort_button): _sort_button.disabled = true
+	if is_instance_valid(_restore_button): _restore_button.disabled = true
 	return _visual_action_id
 
 func _complete_visual_action(action_id: int, done: Callable) -> void:
@@ -1890,6 +1958,11 @@ func _take_discard_source(seat: int, discard_id: int, chicken: bool) -> Control:
 ## 打出刚摸的牌：摸牌飞到弃牌区，不插入手牌。
 func animate_draw_discard(seat: int, done: Callable, discard_card: String = "") -> void:
 	_finish_pending_draw(seat)
+	if draw_boxes[seat].get_child_count() == 0:
+		for tile in hand_boxes[seat].get_children():
+			if tile.get_meta("drawn", false):
+				animate_hand_discard(seat, str(tile.tile), int(tile.get_meta("concealed_index", -1)), done)
+				return
 	var action_id := _begin_visual_action()
 	var node: Control = null
 	for child in draw_boxes[seat].get_children():
@@ -1929,6 +2002,15 @@ func animate_hand_discard(seat: int, discard_card: String, discard_index: int,
 	var ordered: Array = remaining.duplicate()
 	ordered.sort_custom(func(a, b):
 		return TILES.value_index(str(a.tile)) < TILES.value_index(str(b.tile)))
+	if seat == human_seat and not _local_arrangement.is_empty():
+		var cards := _order_local_cards(ordered.map(func(tile): return str(tile.tile)))
+		var available := ordered.duplicate()
+		ordered.clear()
+		for card in cards:
+			for index in available.size():
+				if str(available[index].tile) == card:
+					ordered.append(available.pop_at(index))
+					break
 	var move := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD) \
 		.set_ease(Tween.EASE_IN_OUT)
 	var duration := GameConfig.tile_motion_seconds()
@@ -1950,6 +2032,9 @@ func animate_hand_discard(seat: int, discard_card: String, discard_index: int,
 func animate_draw_insert(seat: int, discard_card: String, draw_card: String, done: Callable,
 		discard_index: int = -1, hand_slot_map: Dictionary = {}) -> void:
 	_finish_pending_draw(seat)
+	if draw_boxes[seat].get_child_count() == 0 and hand_boxes[seat].get_children().any(func(tile): return tile.get_meta("drawn", false)):
+		animate_hand_discard(seat, discard_card, discard_index, done)
+		return
 	var action_id := _begin_visual_action()
 	_held_hand_centers.erase(seat)
 	var nodes: Array = hand_boxes[seat].get_children().duplicate()
@@ -1976,7 +2061,7 @@ func animate_draw_insert(seat: int, discard_card: String, draw_card: String, don
 	for node in remaining: cards.append(str(node.tile))
 	cards.append(draw_card)
 	var sorted := TILES.sort_hand(cards)
-	var custom_order := seat == human_seat and not _local_arrangement.is_empty() and sorted.size() == 13
+	var custom_order: bool = seat == human_seat and not _local_arrangement.is_empty() and sorted.size() == 13 - 3 * round.players[seat].melds.size()
 	if custom_order: sorted = _order_local_cards(sorted)
 	var used: Dictionary = {}
 	var moves: Array = []
@@ -2275,11 +2360,14 @@ func _build_hands() -> void:
 			# 摸牌是否显示在摸牌区，与“是否已从手牌移除”分开处理：
 			# 动画期间隐藏摸牌区，也必须从手牌里移除这张。
 			var remove_card := drew if drew != "" else pending_draw
+			if own and _draw_merged() and round.phase == ROUND_STATE.Phase.PLAYING:
+				remove_card = ""
+				drew = ""
 			if remove_card != "":
 				var idx := cards.rfind(remove_card)
 				if idx >= 0: cards.remove_at(idx)
 			if own and round.phase == ROUND_STATE.Phase.PLAYING:
-				if cards.size() == 13:
+				if cards.size() in [13 - 3 * round.players[seat].melds.size(), 14 - 3 * round.players[seat].melds.size()]:
 					cards = _order_local_cards(cards)
 				else:
 					_local_arrangement = {}
@@ -2306,6 +2394,7 @@ func _build_hands() -> void:
 			tile.set_meta("v2_seat", seat)
 			tile.set_meta("new_kind", "hand")
 			tile.set_meta("concealed_index", source_index)
+			tile.set_meta("drawn", own and _draw_merged() and source_index == hand.rfind(str(round.players[seat].just_drew)))
 			hand_boxes[seat].move_child(tile, slot)
 			if own:
 				tile.set_interactive(source_index >= 0)

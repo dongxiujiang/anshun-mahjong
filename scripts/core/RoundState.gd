@@ -549,7 +549,7 @@ func _valid_turn(seat: int, decision: Dictionary) -> bool:
 func legal_turn_options(seat: int) -> Dictionary:
 	if seat < 0 or seat >= players.size(): return ACTIONS.turn_options(self, seat)
 	var player: PlayerState = players[seat]
-	var key := var_to_bytes([seat, player.concealed, player.melds, player.just_drew, player.ready, player.first_turn_done, player.forbidden_discard_tile, _wall_count()])
+	var key := var_to_bytes([seat, player.concealed, player.melds, player.just_drew, player.ready, player.passed_self_draw, player.first_turn_done, player.forbidden_discard_tile, _wall_count()])
 	if key != _legal_turn_key:
 		_legal_turn_key = key
 		_legal_turn_cache = ACTIONS.turn_options(self, seat)
@@ -568,6 +568,10 @@ func _apply_turn_action(seat: int, decision: Dictionary) -> void:
 		decision = {"discard": options.discards[0]}
 	_recorder.action(self, "turn", seat, decision)
 	var player: PlayerState = players[seat]
+	if decision.get("pass_self_win", false):
+		player.passed_self_draw = true
+		_ask_turn_actor()
+		return
 	if decision.get("self_win", false):
 		_do_self_win(seat)
 		return
@@ -719,6 +723,7 @@ func _seat_order(source: int) -> Array:
 	return [posmod(source + CFG.TURN_DIRECTION, 4), posmod(source + CFG.TURN_DIRECTION * 2, 4), posmod(source + CFG.TURN_DIRECTION * 3, 4)]
 
 func _clear_draw_locks(player: PlayerState) -> void:
+	player.passed_self_draw = false
 	if not player.ready: player.passed_win_until_draw = false
 	player.passed_pong_tiles.clear()
 	player.forbidden_discard_tile = ""

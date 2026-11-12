@@ -265,7 +265,7 @@ func _update_interactivity() -> void:
 		var key := hash([table.round.get_instance_id(), table.human_seat, table.round.prompt_id,
 			table.round.phase, table.round.awaiting, table.round.current_turn,
 			table.round._awaiting_response, table.round._wall_count() > 0,
-			player.concealed, player.melds, player.just_drew, player.ready,
+			player.concealed, player.melds, player.just_drew, player.ready, player.passed_self_draw,
 			player.first_turn_done, player.forbidden_discard_tile, player.add_kong_locked_tiles])
 		if key != _input_window_key:
 			_input_window = table.round.allowed_actions(table.human_seat)

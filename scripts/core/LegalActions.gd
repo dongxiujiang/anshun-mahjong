@@ -5,7 +5,7 @@ static func turn_options(round, seat: int) -> Dictionary:
 	var options := {"self_win": false, "discards": [], "kong_declares": [], "add_kong": [], "ready_discards": []}
 	if seat < 0 or seat >= round.players.size(): return options
 	var player: PlayerState = round.players[seat]
-	options.self_win = player.just_drew != "" and RuleEngine.analyze(player.concealed, player.melds).win
+	options.self_win = not player.passed_self_draw and player.just_drew != "" and RuleEngine.analyze(player.concealed, player.melds).win
 	if player.ready:
 		if player.just_drew != "" and player.concealed.has(player.just_drew):
 			options.discards.append(player.just_drew)
@@ -79,10 +79,11 @@ static func valid_turn(options: Dictionary, player: PlayerState, decision: Dicti
 	var added: Variant = decision.get("add_kong", [])
 	if not dark is Array or not added is Array: return false
 	# 同一次提交只选择一种主动作；保留旧控制器附带的备用弃牌字段。
-	var categories := int(bool(decision.get("self_win", false))) + int(not dark.is_empty()) + int(not added.is_empty())
+	var categories := int(bool(decision.get("self_win", false))) + int(bool(decision.get("pass_self_win", false))) + int(not dark.is_empty()) + int(not added.is_empty())
 	if categories > 1: return false
 	if categories > 0 and bool(decision.get("ready", false)): return false
 	if decision.get("self_win", false): return options.self_win
+	if decision.get("pass_self_win", false): return options.self_win and not decision.has("discard")
 	if not dark.is_empty(): return dark.size() == 1 and options.kong_declares.has(dark[0])
 	if not added.is_empty(): return added.size() == 1 and options.add_kong.has(added[0])
 	var tile: Variant = decision.get("discard", player.just_drew if player.ready else "")

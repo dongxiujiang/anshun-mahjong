@@ -60,6 +60,8 @@ const SUITES: Array[String] = [
 	"res://tests/table_v2_feedback.gd",
 	"res://tests/table_v2_hand_discard.gd",
 	"res://tests/table_v2_hand_arrangement.gd",
+	"res://tests/hand_arrangement_rules.gd",
+	"res://tests/sort_pass_self_win.gd",
 	"res://tests/feedback_20261112.gd",
 	"res://tests/feedback_proxy_cancel.gd",
 	"res://tests/table_v2_round_animation.gd",

@@ -42,6 +42,7 @@ static func _serialize_player(player: PlayerState) -> Dictionary:
 		"is_human": player.is_human, "is_dealer": player.is_dealer, "just_drew": player.just_drew,
 		"first_turn_done": player.first_turn_done, "charge_chicken": player.charge_chicken,
 		"passed_win_until_draw": player.passed_win_until_draw,
+		"passed_self_draw": player.passed_self_draw,
 		"passed_pong_tiles": player.passed_pong_tiles.duplicate(),
 		"add_kong_locked_tiles": player.add_kong_locked_tiles.duplicate(),
 		"forbidden_discard_tile": player.forbidden_discard_tile,
@@ -70,6 +71,7 @@ static func apply_sync(round_state, state: Dictionary) -> void:
 		player.first_turn_done = data.get("first_turn_done", false)
 		player.charge_chicken = data.get("charge_chicken", false)
 		player.passed_win_until_draw = bool(data.get("passed_win_until_draw", false))
+		player.passed_self_draw = bool(data.get("passed_self_draw", false))
 		player.passed_pong_tiles.assign(data.get("passed_pong_tiles", []))
 		player.add_kong_locked_tiles.assign(data.get("add_kong_locked_tiles", []))
 		player.forbidden_discard_tile = str(data.get("forbidden_discard_tile", ""))
@@ -117,6 +119,7 @@ static func mask_for_seat(state: Dictionary, round_state, seat: int) -> Dictiona
 		hidden.concealed.fill("hidden0")
 		hidden.just_drew = "hidden0" if str(hidden.get("just_drew", "")) != "" else ""
 		hidden.ready_wait_tiles = []
+		hidden.passed_self_draw = false
 		hidden.melds = player.get("melds", []).duplicate(true)
 		for meld_index in hidden.melds.size():
 			if not round_state.is_meld_revealed(int(player.get("seat", -1)), meld_index):

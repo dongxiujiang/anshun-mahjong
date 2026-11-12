@@ -139,7 +139,16 @@ func _run() -> void:
 			_expect(visible_hand_count == player.concealed.size(), "Every local hand tile must appear once")
 			if player.just_drew != "":
 				_expect(draw_box.get_child_count() == 1, "Drawn tile must appear separately")
-			if graphical and turns == 0: await _capture("first-turn")
+			if graphical and turns == 0:
+				var view = table._new_areas
+				var original := player.concealed.duplicate()
+				if view._can_arrange_hand() and not round.legal_turn_options(seat).self_win:
+					view._sort_own_hand()
+					_expect(player.concealed == original, "Network sorting keeps authoritative hand indices unchanged")
+					_expect(view._sort_button.visible and view.hand_boxes[seat].get_child_count() == original.size(), "Network Sort merges the draw and remains visible")
+					for tile in view.hand_boxes[seat].get_children():
+						_expect(tile.tile == player.concealed[int(tile.get_meta("concealed_index"))], "Network sorted touch indices identify the real tiles")
+				await _capture("first-turn")
 			turns += 1
 			table._commit_turn(actor.decide_turn(round, seat))
 		elif table._response_disc != "":
