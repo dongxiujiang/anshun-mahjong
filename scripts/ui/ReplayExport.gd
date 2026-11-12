@@ -65,7 +65,8 @@ func _upload() -> void:
 
 func _completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if not is_inside_tree() or state.get("status") != "uploading": return
-	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+	var json := JSON.new()
+	var data: Variant = json.data if json.parse(body.get_string_from_utf8()) == OK else null
 	if result != HTTPRequest.RESULT_SUCCESS:
 		_set_status("error", "提交未成功，请检查网络后重试。")
 	elif code in [200, 201] and data is Dictionary and data.get("ok") == true and data.get("id") == state.get("session"):

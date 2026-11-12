@@ -51,6 +51,11 @@ func _run() -> void:
 	submitter.submit_round(abandoned)
 	abandoned.start_round(0, 4)
 	t.expect(not submitter.busy and submitter.state.status == "error", "replaced unfinished game cannot upload a different round")
+	for response in [[404, "<html>Not Found</html>"], [200, "not JSON"], [200, "[]"]]:
+		submitter.state = {"session": game.audio_session, "status": "uploading"}
+		submitter.busy = true
+		submitter._completed(HTTPRequest.RESULT_SUCCESS, response[0], PackedStringArray(), response[1].to_utf8_buffer())
+		t.expect(not submitter.busy and submitter.state.status == "error", "invalid response never reports success and allows retry")
 	submitter.free()
 	await _test_ui()
 	await H.quit_cleanly(self, t.finish("replay_export"))
