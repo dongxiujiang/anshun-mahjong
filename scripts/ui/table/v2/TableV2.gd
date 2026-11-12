@@ -560,8 +560,6 @@ func start_native_settlement(immediate: bool = false) -> void:
 		_set_seat_score(_labels[seat], _settlement_start_scores[seat])
 	_clear_native_settlement_visuals()
 	_discard_layer.hide()
-	for tile in _red_layer.get_children():
-		if int(tile.get_meta("meld_index", -1)) < 0: tile.hide()
 	_settlement_flip_index = MODEL.flip_wall_index(round)
 	_build_native_settlement_panel()
 	if table.has_method("_clear_actions"):
@@ -1395,7 +1393,8 @@ func _set_river_tile(tile: TileView, seat: int, discard_id: int, chicken: bool, 
 	tile.set_meta("meld_index", -1)
 	tile.set_meta("v2_charge", charge)
 	tile.modulate = Color.WHITE
-	tile.visible = not _settlement_started
+	# 出牌鸡归属碰杠区；结算只隐藏普通牌河。
+	tile.visible = chicken or not _settlement_started
 	tile.set_latest_highlight(seat == _latest_discard_seat and discard_id == _latest_discard_id)
 
 ## Use the same positions for live fly-in, reconnect and the revealed settlement hand.

@@ -9,7 +9,7 @@
 - 更新：主菜单和联机大厅都可「检查更新」。新完整 APK 默认使用自建 HTTPS 更新源，主清单和回退清单都在 `https://mj.dongxiu.fun/updates/`；1.1.9 及更早版本仍需先安装一次新完整包。
 - 联机语音：Android 在线房间使用腾讯云 GME arm64，局域网房间通过房主转发语音。在线语音需要服务器 `GME_APP_ID`/`GME_APP_KEY`，详见 [GME 语音接入手册](docs/gme_voice.md)。
 
-联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.6.22**，完整规则见 [游戏规则总纲](docs/游戏规则总纲.md)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
+联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.6.23**，完整规则见 [游戏规则总纲](docs/游戏规则总纲.md)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。GitHub Actions 的 Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 
 应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Android 游戏内下载补丁，重启生效；完整版本更新正式签名 APK。首次使用热更新须安装包含 PatchBoot 的完整版本。自 1.4.19 起，自建更新清单必须携带离线 RSA 签名，客户端只信任内置公钥验证通过的 `signed_payload`；发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
 
@@ -328,9 +328,9 @@ docker compose -f compose.prod.yaml up -d app --pull never
 
 ## 五、导出为可执行文件 / APK
 
-工程仅配置 Android 导出预设，正式包版本为 **1.6.22**，包名为 com.anshun.mahjong，支持 arm64-v8a 横屏。
+工程仅配置 Android 导出预设，正式包版本为 **1.6.23**，包名为 com.anshun.mahjong，支持 arm64-v8a 横屏。
 
-使用 Godot 4.7.2、JDK 17 和 Android SDK，在编辑器导出设置中选择 Android。正式包使用既有签名，覆盖安装保留应用数据。云端构建同时保存 1.6.22-native1 安装基线和签名更新清单。
+使用 Godot 4.7.2、JDK 17 和 Android SDK，在编辑器导出设置中选择 Android。正式包使用既有签名，覆盖安装保留应用数据。云端构建同时保存 1.6.23-native1 安装基线和签名更新清单。
 
 GitHub Actions 的完整包、热补丁、基线下载及服务器镜像流程见 [CI/CD 发布说明](docs/ci_release.md)。完整包发布产物为正式签名 APK、update-manifest.json 和 baseline.zip。
 

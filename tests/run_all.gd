@@ -52,6 +52,7 @@ const SUITES: Array[String] = [
 	"res://tests/table_v2_red_spacing.gd",
 	"res://tests/table_v2_wall_ring.gd",
 	"res://tests/table_v2_settlement.gd",
+	"res://tests/settlement_exposed_visibility.gd",
 	"res://tests/table_v2_settlement_scenarios.gd",
 	"res://tests/table_v2_layout_guards.gd",
 	"res://tests/table_v2_feedback.gd",
