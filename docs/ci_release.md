@@ -1,12 +1,12 @@
 # GitHub Actions 构建与发布
 
-本次构建目标为 1.6.23，Android version/code 为 83，安装基线为 1.6.23-native1。导出预设仅包含 Android；实际已发布版本以 GitHub Release 和线上签名更新清单为准。
+本次构建目标为 1.6.24，Android version/code 为 84，安装基线为 1.6.24-native1。导出预设仅包含 Android；实际已发布版本以 GitHub Release 和线上签名更新清单为准。
 
 ## 检查与构建
 
-- ci.yml 在 main/master 推送、PR 和手动触发时执行规则、计分、声音、牌桌、明细和同步检查，包含报听过胡整局锁定专项。
+- ci.yml 在 main/master 推送、PR 和手动触发时执行规则、计分、声音、牌桌、明细和同步检查，包含报听过胡整局锁定、碰杠布局缓存和操作窗口缓存专项。
 - build-release.yml 执行完整回归、至少 50 局 AI 自战、多进程联机和断线重连检查，通过后生成正式签名 APK 或累计 PCK 补丁。
-- 图形化检查覆盖 12 FPS 客户端的开局完成确认、碰杠飞行和结算布局，截图保存在 table-ui-review 构建产物中。任意客户端未理牌完成时不得提前开始摸牌。
+- 图形化检查覆盖 12 FPS 客户端的开局完成确认、碰杠飞行、结算布局和五种尺寸的牌背绘制对照，截图保存在 table-ui-review 构建产物中。任意客户端未理牌完成时不得提前开始摸牌。
 - Windows 任务验证热更新启动、回滚和恢复逻辑，只生成隔离测试程序。
 - docker-image.yml 支持手动构建及正式版本标签，生成与提交对应的联机服务器镜像。
 
@@ -22,7 +22,7 @@
 
 在 Build release 选择 release_kind=patch，填写高于完整安装包的版本号。
 
-- baseline_source=release 从所选完整版本的 Release 下载 baseline.zip。当前对应标签为 V1.6.23。
+- baseline_source=release 从所选完整版本的 Release 下载 baseline.zip。当前对应标签为 V1.6.24。
 - baseline_source=artifact 从完整构建的 run id 下载 baseline 构建产物。
 - 工具核对引擎、启动脚本、全局类、原生依赖、工程设置和导出配置，兼容后生成 Android PCK 与签名清单。
 - publish_release=true 通过检查后发布，false 保存构建产物供审阅。

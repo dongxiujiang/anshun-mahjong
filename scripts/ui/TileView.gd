@@ -7,7 +7,11 @@ var tile := ""       # 牌值 "tong3"/"tiao1"/"wan9"
 var face_up := true
 var unit := 1.0      # 玩家牌与牌墙/出牌区可分别指定尺寸倍率。
 var highlight := false   # 金框高亮（用于标记鸡牌、报听等）
-var back_depth_top := false  # 牌背白色牌体边朝上（南墙朝桌内）
+var back_depth_top := false:  # 牌背白色牌体边朝上（南墙朝桌内）
+	set(value):
+		if back_depth_top == value: return
+		back_depth_top = value
+		queue_redraw()
 var latest_highlight := false   # 最新打出的牌，使用高对比橙色
 var ai_teach_highlight := false   # AI 教学推荐，独立于鸡牌/报听金框
 var score_highlight := false   # 结算预览阶段的记分牌黄色底色
@@ -25,6 +29,7 @@ var _win_glow := 0.0:
 
 const BASE_W := 48.0
 const BASE_H := 64.0
+const BACK_ATLAS := preload("res://res/tiles/backs-atlas.png")
 
 static var _tex_cache := {}
 static var _style_cache := {}
@@ -43,6 +48,7 @@ func set_table_position(pos: Vector2) -> void:
 	_update_lift()
 
 func set_selected(on: bool) -> void:
+	if selected == on: return
 	selected = on
 	queue_redraw()
 
@@ -103,23 +109,28 @@ static func _get_texture(t: String) -> Texture2D:
 	return tex
 
 func set_card(t: String, up: bool) -> void:
+	if tile == t and face_up == up: return
 	tile = t
 	face_up = up
 	queue_redraw()
 
 func set_highlight(on: bool) -> void:
+	if highlight == on: return
 	highlight = on
 	queue_redraw()
 
 func set_latest_highlight(on: bool) -> void:
+	if latest_highlight == on: return
 	latest_highlight = on
 	queue_redraw()
 
 func set_ai_teach_highlight(on: bool) -> void:
+	if ai_teach_highlight == on: return
 	ai_teach_highlight = on
 	queue_redraw()
 
 func set_score_highlight(on: bool) -> void:
+	if score_highlight == on: return
 	score_highlight = on
 	queue_redraw()
 
@@ -132,16 +143,27 @@ func _apply_size() -> void:
 	custom_minimum_size = Vector2(BASE_W, BASE_H) * unit
 	size = custom_minimum_size
 
+## Source drawing for tools/render/bake_tile_backs.gd. The atlas preserves
+## both depth directions and the shadow-free river variant at 4x resolution.
+func _draw_procedural_back(river: bool) -> void:
+	var w := BASE_W * unit
+	var h := BASE_H * unit
+	var depth := 5.0 * unit
+	if not river:
+		draw_style_box(_tile_style(Color(0, 0, 0, 0.30), Color.TRANSPARENT), Rect2(2 * unit, 4 * unit, w, h))
+	draw_style_box(_tile_style(Color("#becbb9"), Color("#8a9c86")), Rect2(0, 0, w, h))
+	_draw_back(w, h - depth, depth if back_depth_top else 0.0)
+
 func _draw() -> void:
 	var w := BASE_W * unit
 	var h := BASE_H * unit
 	var depth := 5.0 * unit
 	var river := has_meta("discard_id") and int(get_meta("meld_index", -1)) < 0 \
 		and str(get_meta("new_kind", "")) in ["ordinary", "red"]
-	if not river:
-		draw_style_box(_tile_style(Color(0, 0, 0, 0.30), Color.TRANSPARENT), Rect2(2 * unit, 4 * unit, w, h))
-	draw_style_box(_tile_style(Color("#becbb9"), Color("#8a9c86")), Rect2(0, 0, w, h))
 	if face_up and tile != "":
+		if not river:
+			draw_style_box(_tile_style(Color(0, 0, 0, 0.30), Color.TRANSPARENT), Rect2(2 * unit, 4 * unit, w, h))
+		draw_style_box(_tile_style(Color("#becbb9"), Color("#8a9c86")), Rect2(0, 0, w, h))
 		var face_color := Color("#f6f7ed") if not score_highlight else Color("#f3d875")
 		var face_border := Color("#d9dfd2") if not score_highlight else Color("#c89d32")
 		draw_style_box(_tile_style(face_color, face_border), Rect2(0, 0, w, h - depth))
@@ -156,7 +178,15 @@ func _draw() -> void:
 			draw_circle(Vector2(w - 4 * unit, 4 * unit), 2 * unit, Color("#c5993e"))
 	else:
 		var back_y := depth if back_depth_top else 0.0
-		_draw_back(w, h - depth, back_y)
+		if is_equal_approx(unit, 1.0) or is_equal_approx(unit, 1.35):
+			# Bake each used unit separately: StyleBox borders stay one pixel wide
+			# rather than scaling with tile size. Other sizes retain vector drawing.
+			var variant := int(back_depth_top) + 2 * int(river)
+			var region := Rect2(variant * (292 if unit > 1 else 216),
+				288 if unit > 1 else 0, 216 * unit, 288 * unit)
+			draw_texture_rect_region(BACK_ATLAS, Rect2(-2 * unit, -2 * unit, 54 * unit, 72 * unit), region)
+		else:
+			_draw_procedural_back(river)
 		if score_highlight:
 			draw_rect(Rect2(0, back_y, w, h - depth), Color(0.95, 0.78, 0.22, 0.40))
 	if highlight or ai_teach_highlight or latest_highlight or selected or _win_glow > 0:

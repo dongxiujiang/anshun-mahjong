@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           python -X utf8 tests/run_suites.py --godot "$(command -v godot)" \
-            --suite rules_complete rules_update smoke_scoring settlement_card scoring_audit scoring_pairwise \
+            --suite table_render_cache table_input_cache rules_complete rules_update smoke_scoring settlement_card scoring_audit scoring_pairwise \
               legal_actions ready_pass_win round_sync smoke_audio reconnect_control background_lifecycle ui_regression voice_chat gme_voice_chat table_components animation_speed_settings table_v2_static table_v2_hand_discard table_v2_round_animation table_v2_feedback settlement_score_details table_v2_settlement_scenarios smoke_ai \
             --simulation-timeout 180
 

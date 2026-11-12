@@ -19,6 +19,8 @@ var _pressed_tile: TileView
 var _press_position := Vector2.ZERO
 var _dragged := false
 var _touch_index := -1
+var _input_window_key: Variant = null
+var _input_window: Dictionary = {}
 
 func input_locked() -> bool:
 	return table.round == null or table.round.phase != RoundState.Phase.PLAYING \
@@ -256,10 +258,20 @@ func _update_interactivity() -> void:
 	if not _selecting or blocked: _reset_press()
 	if table.round == null or table.human_seat >= table.round.players.size():
 		return
-	if _selecting and str(table.round.allowed_actions(table.human_seat).get("kind", "")) != "turn":
-		_selecting = false
 	var player: PlayerState = table.round.players[table.human_seat]
-	var legal_discards: Array = table.round.legal_turn_options(table.human_seat).discards if _selecting else []
+	if _selecting:
+		# Cache only presentation queries; submissions still validate against the
+		# current authoritative state, including after reconnect or a ready pass.
+		var key := hash([table.round.get_instance_id(), table.human_seat, table.round.prompt_id,
+			table.round.phase, table.round.awaiting, table.round.current_turn,
+			table.round._awaiting_response, table.round._wall_count() > 0,
+			player.concealed, player.melds, player.just_drew, player.ready,
+			player.first_turn_done, player.forbidden_discard_tile, player.add_kong_locked_tiles])
+		if key != _input_window_key:
+			_input_window = table.round.allowed_actions(table.human_seat)
+			_input_window_key = key
+		if str(_input_window.get("kind", "")) != "turn": _selecting = false
+	var legal_discards: Array = _input_window.options.discards if _selecting else []
 	var boxes: Array = [table.hand_box[table.human_seat], table.draw_box[table.human_seat]]
 	if table._new_areas != null and table._new_areas.get("hand_boxes") != null:
 		boxes = [table._new_areas.hand_boxes[table.human_seat],

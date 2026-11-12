@@ -12,7 +12,8 @@ const DICE := preload("res://scripts/ui/DiceView.gd")
 const PLAN := preload("res://scripts/ui/table/SettlementAnimationPlan.gd")
 const EXPOSED := preload("res://scripts/ui/table/v2/ExposedLayout.gd")
 var _exposed_specs: Array = []
-var _exposed_key := 0
+var _exposed_key: Variant = null
+var _exposed_checked := false
 
 const SCORE_INSPECTION := preload("res://scripts/ui/table/v2/TableV2ScoreInspection.gd")
 const VOICE_PACKS := preload("res://scripts/core/VoicePackRegistry.gd")
@@ -1074,7 +1075,6 @@ func refresh() -> void:
 	_clear(_debug_layer)
 	_build_wall()
 	_build_hands()
-	_exposed_specs.clear()
 	if not test_frozen:
 		_build_discards()
 		_build_melds()
@@ -1093,6 +1093,7 @@ func refresh() -> void:
 
 ## 同一牌桌实例会跨局复用；RoundState 变化时必须清掉上一局的瞬时视觉状态。
 func _reset_round_visual_state() -> void:
+	_invalidate_exposed_layout()
 	_local_arrangement = {}
 	_arrangement_key = ""
 	_arrangement_choices.clear()
@@ -1305,6 +1306,7 @@ func _render_layers() -> Array:
 	return [_wall_layer, _discard_layer, _red_layer, _meld_layer] + hand_boxes + draw_boxes
 
 func _begin_tile_reconcile() -> void:
+	_exposed_checked = false
 	_render_tiles.clear()
 	_render_seen.clear()
 	_reconciling = true
@@ -1365,15 +1367,27 @@ func _build_discards() -> void:
 
 func _exposed_layout() -> Array:
 	if round == null: return []
-	var state: Array = [human_seat, round.phase, round.dealer_seat, _held_hand_centers]
+	if _reconciling and _exposed_checked: return _exposed_specs
+	var state: Array = [human_seat, round.phase, round.dealer_seat, _held_hand_centers,
+		round.round_meta.get("charge_chickens", {})]
 	for player in round.players:
 		state.append([player.concealed, player.just_drew, player.melds, player.discards,
-			player.discard_ids, player.discard_count, player.ready])
+			player.discard_ids, player.discard_count, player.ready, _seat_hud_rect(player.seat)])
+	# Opening flights and reconnects can change visible wall obstacles before
+	# the authoritative hand changes. Cache the geometry actually used by solve.
+	for node in _wall_layer.get_children():
+		if node is TileView and (not _reconciling or _render_seen.has(node.get_instance_id())):
+			state.append([node.position, node.size, node.scale, node.rotation])
 	var key := hash(state)
-	if _exposed_specs.is_empty() or key != _exposed_key:
+	if key != _exposed_key:
 		_exposed_key = key
 		_exposed_specs = EXPOSED.solve(self)
+	_exposed_checked = true
 	return _exposed_specs
+
+func _invalidate_exposed_layout() -> void:
+	_exposed_key = null
+	_exposed_checked = false
 
 func _exposed_size(seat: int) -> Vector2:
 	return EXPOSED.size_for(G.relative_seat(human_seat,seat))
@@ -1738,7 +1752,7 @@ func _noop() -> void:
 
 func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -> void:
 	var rel := G.relative_seat(human_seat, seat)
-	_exposed_specs.clear()
+	_invalidate_exposed_layout()
 	var player = table.round.players[seat] if table != null and table.round != null else null
 	var discard_id := int(player.discard_ids.back()) if player != null and not player.discard_ids.is_empty() else -1
 	var missing_source := node == null
@@ -2052,7 +2066,7 @@ func _move_existing_exposed(tween: Tween, duration: float) -> void:
 ## 碰/杠：手牌和来源弃牌飞到碰杠区。
 func animate_meld(event: Dictionary, done: Callable) -> void:
 	var action_id := _begin_visual_action()
-	_exposed_specs.clear()
+	_invalidate_exposed_layout()
 	var seat := int(event.get("seat", 0))
 	var tile := str(event.get("tile", ""))
 	var kind := str(event.get("kind", "pung"))
@@ -2129,7 +2143,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 	var held: Array = remaining_sources.map(func(source): return source.node.position + source.node.size / 2.0)
 	_held_hand_centers[seat] = held
 	for node in nodes: node.reparent(_deal_layer)
-	_exposed_specs.clear()
+	_invalidate_exposed_layout()
 	for spec in _live_exposed_layout(seat):
 		if int(spec.meld_index) != meld_index: continue
 		targets.append(Vector2(spec.center))
