@@ -1,6 +1,6 @@
 # GitHub Actions 构建与发布
 
-本次构建目标为 1.6.24，Android version/code 为 84，安装基线为 1.6.24-native1。导出预设仅包含 Android；实际已发布版本以 GitHub Release 和线上签名更新清单为准。
+本次构建目标为 1.6.25，Android version/code 为 85，安装基线为 1.6.25-native1。导出预设仅包含 Android；实际已发布版本以 GitHub Release 和线上签名更新清单为准。
 
 ## 检查与构建
 
@@ -22,7 +22,7 @@
 
 在 Build release 选择 release_kind=patch，填写高于完整安装包的版本号。
 
-- baseline_source=release 从所选完整版本的 Release 下载 baseline.zip。当前对应标签为 V1.6.24。
+- baseline_source=release 从所选完整版本的 Release 下载 baseline.zip。当前对应标签为 V1.6.25。
 - baseline_source=artifact 从完整构建的 run id 下载 baseline 构建产物。
 - 工具核对引擎、启动脚本、全局类、原生依赖、工程设置和导出配置，兼容后生成 Android PCK 与签名清单。
 - publish_release=true 通过检查后发布，false 保存构建产物供审阅。

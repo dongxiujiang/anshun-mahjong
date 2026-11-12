@@ -19,7 +19,7 @@ on:
       tag:
         description: Release tag for the tested Android build
         required: true
-        default: "V1.6.24"
+        default: "V1.6.25"
       make_latest:
         description: Mark this release as GitHub latest
         required: false
