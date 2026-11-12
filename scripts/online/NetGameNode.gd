@@ -107,6 +107,7 @@ var test_mode := false
 var voice_chat = null
 var _ai_service = null
 var _voice_last_ms := {}
+var _voice_budget := {}
 var _peer_last_seen := {}
 var _sent_audio := {}
 var _heartbeat_seq := 0
@@ -504,6 +505,7 @@ func _on_peer_disconnected(peer: int) -> void:
 	_last_state_request.erase(peer)
 	_lobby_action_times.erase(peer)
 	_voice_last_ms.erase(peer)
+	_voice_budget.erase(peer)
 	_peer_last_seen.erase(peer)
 	_members.erase(peer)
 	_player_voice_prefs.erase(peer)
@@ -1599,12 +1601,13 @@ func voice_chat_allowed() -> bool:
 	# Clients do not set the host-only _started flag until their first snapshot.
 	# Voice follows the active round instead, so a guest can talk as soon as the
 	# first deal reaches the table.
-	return game != null and game.phase != RoundState.Phase.IDLE and my_seat >= 0 and not dedicated
+	return game != null and game.phase != RoundState.Phase.IDLE and my_seat >= 0 and not dedicated \
+		and not _reconnecting and not _resume_sync_pending
 
 func toggle_voice_chat() -> bool:
 	if voice_chat == null:
 		return false
-	return bool(voice_chat.set_enabled(not voice_chat.enabled))
+	return bool(voice_chat.set_enabled(not voice_chat.microphone_requested()))
 
 func voice_chat_enabled() -> bool:
 	return voice_chat != null and bool(voice_chat.enabled)
@@ -1672,10 +1675,8 @@ func voice_packet(packet: PackedByteArray) -> void:
 	if host_mode:
 		if not _peer_seat.has(sender):
 			return
-		var now := Time.get_ticks_msec()
-		if now - int(_voice_last_ms.get(sender, 0)) < 10:
+		if not _accept_voice_frame(sender, Time.get_ticks_msec()):
 			return
-		_voice_last_ms[sender] = now
 		var copy := packet.duplicate()
 		copy[1] = int(_peer_seat[sender])
 		if not dedicated and voice_chat != null:
@@ -1686,6 +1687,17 @@ func voice_packet(packet: PackedByteArray) -> void:
 			return
 		if voice_chat != null:
 			voice_chat.play_packet(packet)
+
+func _accept_voice_frame(peer: int, now: int) -> bool:
+	# 20 ms audio frames arrive in batches at low FPS. Allow a bounded burst
+	# while retaining a per-client limit of 50 frames/s.
+	var elapsed := maxi(0, now - int(_voice_last_ms.get(peer, now)))
+	var budget := minf(10.0, float(_voice_budget.get(peer, 10.0)) + elapsed / 20.0)
+	_voice_last_ms[peer] = now
+	_voice_budget[peer] = budget
+	if budget < 1.0: return false
+	_voice_budget[peer] = budget - 1.0
+	return true
 
 func _on_client_sync(state: Dictionary) -> void:
 	if not _client_joined:

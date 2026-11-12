@@ -77,27 +77,36 @@ Windows 客户端已移除，不再提供 PCM 回退或 Windows GME 桥接。
 → GME Init(AppID, openId)
 → Poll()
 → EnterRoom(roomNumber, ROOM_TYPE_FLUENCY, authBuffer)
-→ EnableMic(true)
-→ 每个真人座位通过 OpenID 控制喇叭静音
+→ 确认 IsRoomEntered，应用本机静音和音量，再开启接收
+→ 玩家点击自己的姓名后才 EnableMic(true)，默认关闭
+→ 每个真人座位通过 OpenID 控制本机收听
 ```
 
 座位映射：
 
 ```text
-seat0 → openid=seat0
-seat1 → openid=seat1
-seat2 → openid=seat2
-seat3 → openid=seat3
+房间 123456：
+seat0 → openid=1234560
+seat1 → openid=1234561
+seat2 → openid=1234562
+seat3 → openid=1234563
 ```
 
 ## 6. 音量与静音
 
 - 自己麦克风：`SetMicVolume(0..200)`
-- 全部他人音量：`SetSpeakerVolume(0..200)`
-- 单个座位静音：`AddAudioBlackList("seatN")`
-- 恢复单个座位：`RemoveAudioBlackList("seatN")`
+- 全局播放音量保持 `SetSpeakerVolume(100)`，通过各座位 `SetSpeakerVolumeByOpenID(openid, 0..200)` 应用本机他人音量。
+- 单个座位静音：`AddAudioBlackList(openid)`。
+- 恢复单个座位：`RemoveAudioBlackList(openid)`，再应用本机音量。
+- 连接前选择的静音在进房时生效；SDK 重新进房后重新应用，不能只改变名字颜色。
 
 现有设置面板的“麦克风音量/他人语音音量”继续复用。牌桌点击玩家名字和分数区域控制语音，不显示喇叭图标：自己的麦克风开启时名字为黄色；其他玩家只有麦克风开启且未被本地静音时名字为黄色，关闭时为白色。轮到出牌仅显示名字旁的黄色圆点，不改变名字颜色。
+
+等待权限或连接时可再次点击自己的姓名取消开麦。Android 后台通知暂停采集和播放；回到前台且牌局同步完成后恢复原选择。SDK 断线时立即上报麦克风关闭，恢复后重新应用开关；系统停止录音时允许玩家重新开启，不能每帧重复调用失败的采集操作。换座先退出旧 OpenID，再鉴权加入新座位。
+
+鉴权请求超时为 8 秒，进房或 SDK 恢复等待上限为 10 秒。失败后按 1、3、8 秒间隔最多自动重试三次；牌局状态帧不会触发反复鉴权。旧请求的返回不能覆盖新座位，手动重试不必等待其他玩家出牌。
+
+局域网采用 24 kHz、20 ms PCM 帧。转发允许短时成批到达，持续限制每个玩家每秒 50 帧；不能按相邻包必须间隔 10 ms 限流，否则低帧率会丢正常语音。接收缺包最多等待 80 ms，不因后续包持续到达而无限等待；接收队列过长时保留近期声音，静音和后台时清空，停止说话后释放播放流。
 
 ## 7. 服务器 AuthBuffer
 
@@ -142,6 +151,8 @@ permissions/record_audio=true
 4. 第二台设备用同一房间号进入；
 5. 验证双方语音、单座位静音、音量设置；
 6. 再验证弱网、切后台、重新进房。
+
+自动回归：`tests/voice_chat.gd`、`tests/gme_voice_chat.gd` 覆盖缓存、静音、权限取消、原生状态恢复和鉴权重试；`tests/run_network.py` 中的 `voice_network.gd` 使用真实双进程 ENet，在 15 FPS 下双向发送各 100 个测试音频帧。原生 SDK 的回归替身与测试音频不能代替两台 Android 设备上的真人通话、回声和蓝牙耳机验收。
 
 ## 10. 常见问题
 

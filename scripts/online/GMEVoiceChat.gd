@@ -12,6 +12,8 @@ const AUTH_URL_DEFAULT := "https://mj.dongxiu.fun/gme-auth"
 # Reverted to the original fluency room: the HD profile made live voices
 # noticeably worse on real devices. Keep the single enum for rollback safety.
 const ROOM_TYPES := [1]
+const RETRY_DELAYS_MS := [1000, 3000, 8000]
+const ENTER_TIMEOUT_MS := 10000
 
 var owner_node: Node
 var enabled := false
@@ -39,7 +41,10 @@ var _want_mic := false
 var _auth_http: HTTPRequest
 var _app_id := "1400802279"
 var _enter_started_ms := 0
-var _enter_timeout_reported := false
+var _retry_at_ms := 0
+var _retry_count := 0
+var _app_paused := false
+var _suspended := false
 
 func setup(owner: Node, allow_audio: bool) -> void:
 	owner_node = owner
@@ -65,6 +70,7 @@ func _setup_pcm_fallback() -> void:
 	_fallback.status_changed.connect(_on_fallback_status)
 	_fallback.speaker_changed.connect(func(seat: int, value: bool): speaker_changed.emit(seat, value))
 	enabled = bool(_fallback.enabled)
+	set_process(audio_available)
 
 func uses_network_pcm() -> bool:
 	return not _use_gme
@@ -83,14 +89,24 @@ func connect_room(room_number: String, seat: int, _player_name: String, member_t
 	if _use_gme and owner_node != null and not bool(owner_node.get("online_room")):
 		_use_gme = false
 		_setup_pcm_fallback()
+		for remote_seat in 4:
+			_fallback.set_speaker_enabled(remote_seat, speaker_enabled(remote_seat))
 	if not _use_gme or seat < 0 or room_number.length() < 4:
 		return
+	var token_changed := _member_token != member_token
 	_member_token = member_token
 	var key := "%s/%d" % [room_number, seat]
+	if token_changed and _auth_failed_key == key:
+		_auth_failed_key = ""
+		_retry_count = 0
+		_retry_at_ms = 0
 	if key == _room_key and (_context != null or _auth_http != null or _auth_failed_key == key):
 		return
 	if key != _room_key:
+		_release_native()
 		_auth_failed_key = ""
+		_retry_count = 0
+		_retry_at_ms = 0
 	_room_key = key
 	_room_number = room_number
 	# GME's Init/openId must be an INT64-shaped string, not "seat0".
@@ -105,12 +121,15 @@ func _request_auth(room_number: String) -> void:
 		_auth_http.queue_free()
 	_auth_http = HTTPRequest.new()
 	_auth_http.name = "GMEAuthRequest"
+	_auth_http.timeout = 8.0
 	add_child(_auth_http)
-	_auth_http.request_completed.connect(_on_auth_completed.bind(room_number))
+	_auth_http.request_completed.connect(_on_auth_completed.bind(room_number, _auth_http))
 	var base := str(ProjectSettings.get_setting("network/gme_auth_url", AUTH_URL_DEFAULT))
 	var nonce := Crypto.new().generate_random_bytes(16).hex_encode()
 	var query := "?room=%s&openid=%s&nonce=%s" % [room_number.uri_encode(), _open_id.uri_encode(), nonce]
 	var headers := PackedStringArray(["X-Room-Token: " + _member_token])
+	_status = "语音连接中…"
+	status_changed.emit(false, _status)
 	var error := _auth_http.request(base + query, headers, HTTPClient.METHOD_GET)
 	if error != OK:
 		_auth_http.queue_free()
@@ -118,13 +137,15 @@ func _request_auth(room_number: String) -> void:
 		_auth_failed_key = _room_key
 		_fail("GME 鉴权请求失败")
 
-func _on_auth_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray, room_number: String) -> void:
+func _on_auth_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray, room_number: String, request: HTTPRequest) -> void:
+	if request != _auth_http: return
 	if _auth_http != null:
 		_auth_http.queue_free()
 		_auth_http = null
+	if _suspended: return
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
-		# Do not retry on every authoritative state frame. Keep the failed room
-		# key latched until the user re-toggles voice or joins another room.
+		# The failed key prevents state-frame retry storms; timed retries are
+		# bounded, and a manual click can start a fresh attempt immediately.
 		_auth_failed_key = _room_key
 		_fail("GME 鉴权失败 HTTP=%d result=%d" % [code, result])
 		return
@@ -175,7 +196,7 @@ func _join_room(room_number: String, auth: PackedByteArray) -> void:
 		_fail("GME GetAudioCtrl 返回空")
 		return
 	_context.call("Poll")
-	# GME Android signature: EnterRoom(String, int, byte[]). Try HD first.
+	# GME Android signature: EnterRoom(String, int, byte[]).
 	var enter_ret := -1
 	var selected_type := 1
 	for room_type in ROOM_TYPES:
@@ -187,32 +208,82 @@ func _join_room(room_number: String, auth: PackedByteArray) -> void:
 		_fail("GME EnterRoom 失败 code=%d" % enter_ret)
 		return
 	_enter_started_ms = Time.get_ticks_msec()
-	_enter_timeout_reported = false
 	_status = "GME Init=0 EnterRoom=0 type=%d openid=%s，等待 IsRoomEntered…" % [selected_type, _open_id]
 	status_changed.emit(false, _status)
 
 func _process(_delta: float) -> void:
-	if not _use_gme or _context == null:
+	set_suspended(_app_paused or not can_toggle())
+	if not _use_gme or _suspended:
+		return
+	if _context == null:
+		if _retry_at_ms > 0 and Time.get_ticks_msec() >= _retry_at_ms and _auth_http == null:
+			_retry_at_ms = 0
+			_request_auth(_room_number)
 		return
 	_context.call("Poll")
-	if not _in_room:
-		var entered = _context.call("IsRoomEntered")
-		if bool(entered):
-			_in_room = true
-			_audio = _context.call("GetAudioCtrl")
-			if _audio != null:
-				_audio.call("EnableSpeaker", true)
-				set_remote_volume(_remote_volume)
-			_status = "GME 语音已连接 IsRoomEntered=true"
-			status_changed.emit(enabled, _status)
-			if _want_mic:
-				_start_mic()
-		elif _enter_started_ms > 0 and not _enter_timeout_reported and Time.get_ticks_msec() - _enter_started_ms > 5000:
-			_enter_timeout_reported = true
-			_status = "GME 进房超时 IsRoomEntered=false"
+	if not bool(_context.call("IsRoomEntered")):
+		if _in_room:
+			_in_room = false
+			enabled = false
+			_enter_started_ms = Time.get_ticks_msec()
+			_status = "语音连接中…"
 			status_changed.emit(false, _status)
-	elif _want_mic and not enabled and not permission_pending and _has_record_permission():
-		_start_mic()
+		elif _enter_started_ms > 0 and Time.get_ticks_msec() - _enter_started_ms > ENTER_TIMEOUT_MS:
+			_fail("语音连接超时，请点击名字重试")
+		return
+	if not _in_room:
+		_in_room = true
+		_audio = _context.call("GetAudioCtrl")
+		if _audio == null:
+			_fail("语音播放未就绪，请点击名字重试")
+			return
+		set_remote_volume(_remote_volume)
+		if int(_audio.call("EnableSpeaker", true)) != 0:
+			_fail("语音播放开启失败，请点击名字重试")
+			return
+		_retry_count = 0
+		_retry_at_ms = 0
+		_auth_failed_key = ""
+		_status = "语音已连接"
+		status_changed.emit(false, _status)
+		if _want_mic: _start_mic()
+	elif enabled and int(_audio.call("GetMicState")) == 0:
+		_stop_mic()
+		_status = "麦克风已停止，请点击名字重新开启"
+		status_changed.emit(false, _status)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		_app_paused = true
+		set_suspended(true)
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		_app_paused = false
+
+func set_suspended(value: bool) -> void:
+	if _suspended == value: return
+	_suspended = value
+	if _fallback != null:
+		_fallback.set_suspended(value)
+		return
+	if value:
+		if _audio != null:
+			_audio.call("EnableMic", false)
+			_audio.call("EnableSpeaker", false)
+		if _context != null: _context.call("Pause")
+		enabled = false
+		_in_room = false
+		_status = "语音已暂停，返回牌局后恢复"
+		status_changed.emit(false, _status)
+	else:
+		if _context != null:
+			_context.call("Resume")
+			_enter_started_ms = Time.get_ticks_msec()
+		elif _auth_http == null and _room_number != "":
+			_retry_count = 0
+			_retry_at_ms = Time.get_ticks_msec()
+
+func microphone_requested() -> bool:
+	return _fallback.microphone_requested() if _fallback != null else _want_mic or enabled or permission_pending
 
 func set_enabled(want: bool) -> bool:
 	if _fallback != null:
@@ -222,9 +293,10 @@ func set_enabled(want: bool) -> bool:
 	if not want:
 		_stop_mic()
 		return false
-	# A manual voice retry is the explicit escape hatch from a latched auth
-	# failure; the next state frame may reconnect once.
+	# A manual retry starts immediately instead of waiting for a game event.
 	_auth_failed_key = ""
+	_retry_count = 0
+	_retry_at_ms = 0
 	if not can_toggle():
 		_status = "当前模式不支持麦克风"
 		status_changed.emit(false, _status)
@@ -242,37 +314,46 @@ func set_enabled(want: bool) -> bool:
 			status_changed.emit(false, _status)
 			return false
 	if not _in_room:
-		_status = "正在连接 GME 语音…"
+		if _context == null and _auth_http == null and _room_number != "":
+			_request_auth(_room_number)
+		_status = "语音连接中…"
 		status_changed.emit(false, _status)
 		return false
 	_start_mic()
 	return enabled
 
 func _start_mic() -> void:
+	if _suspended or not can_toggle() or not _want_mic: return
 	if OS.has_feature("android") and not _has_record_permission():
 		permission_pending = true
+		_last_permission_request = Time.get_ticks_msec()
 		return
-	if not _in_room or _audio == null or (not _want_mic and not enabled):
+	if not _in_room or _audio == null:
 		return
 	var mic_ret = int(_audio.call("EnableMic", true))
 	var speaker_ret = int(_audio.call("EnableSpeaker", true))
+	if speaker_ret != 0:
+		_fail("语音播放开启失败，请点击名字重试")
+		return
 	_audio.call("SetMicVolume", roundi(_mic_gain * 100.0))
 	# GME's per-openID speaker volume supports 0..200; the global speaker
 	# volume is left at 100 so remote gain can boost quietly recorded voices.
 	_audio.call("SetSpeakerVolume", 100)
 	_apply_remote_volumes()
 	if mic_ret != 0:
+		_want_mic = false
+		enabled = false
 		_status = "GME EnableMic 失败 code=%d speaker=%d" % [mic_ret, speaker_ret]
 		status_changed.emit(false, _status)
 		return
 	enabled = true
-	_want_mic = false
 	_status = "麦克风已开启 EnableMic=0 speaker=%d" % speaker_ret
 	status_changed.emit(true, _status)
 
 func _stop_mic() -> void:
 	enabled = false
 	_want_mic = false
+	permission_pending = false
 	if _audio != null:
 		_audio.call("EnableMic", false)
 	if _status != "":
@@ -295,10 +376,12 @@ func poll_permission() -> void:
 			status_changed.emit(false, _status)
 	elif Time.get_ticks_msec() - _last_permission_request > 20000:
 		permission_pending = false
+		_want_mic = false
 		_status = "麦克风权限未授予"
 		status_changed.emit(false, _status)
 
 func _has_record_permission() -> bool:
+	if not OS.has_feature("android"): return true
 	var granted := OS.get_granted_permissions()
 	return granted.has("RECORD_AUDIO") or granted.has("android.permission.RECORD_AUDIO")
 
@@ -310,11 +393,13 @@ func _on_settings_changed() -> void:
 
 func set_mic_gain(value: float) -> void:
 	_mic_gain = clampf(value, 0.0, 2.0)
+	if _fallback != null: _fallback.set_mic_gain(_mic_gain)
 	if _audio != null:
 		_audio.call("SetMicVolume", roundi(_mic_gain * 100.0))
 
 func set_remote_volume(value: float) -> void:
 	_remote_volume = clampf(value, 0.0, 2.0)
+	if _fallback != null: _fallback.set_remote_volume(_remote_volume)
 	if _audio != null:
 		_audio.call("SetSpeakerVolume", 100)
 		_apply_remote_volumes()
@@ -323,9 +408,12 @@ func _apply_remote_volumes() -> void:
 	if _audio == null or _room_number == "":
 		return
 	for seat in 4:
-		if not speaker_enabled(seat):
-			continue
-		_audio.call("SetSpeakerVolumeByOpenID", _make_open_id(_room_number, seat), roundi(_remote_volume * 100.0))
+		var open_id := _make_open_id(_room_number, seat)
+		if speaker_enabled(seat):
+			_audio.call("RemoveAudioBlackList", open_id)
+			_audio.call("SetSpeakerVolumeByOpenID", open_id, roundi(_remote_volume * 100.0))
+		else:
+			_audio.call("AddAudioBlackList", open_id)
 
 func set_speaker_enabled(seat: int, value: bool) -> void:
 	if seat < 0 or seat > 3:
@@ -345,9 +433,8 @@ func set_speaker_enabled(seat: int, value: bool) -> void:
 	if _fallback == null:
 		speaker_changed.emit(seat, value)
 
-func reset_seat(_seat: int) -> void:
-	# GME owns its receive buffer; seat changes are handled by room re-entry.
-	pass
+func reset_seat(seat: int) -> void:
+	if _fallback != null: _fallback.reset_seat(seat)
 
 func speaker_enabled(seat: int) -> bool:
 	return bool(_speaker_enabled.get(seat, true))
@@ -357,6 +444,15 @@ func _on_fallback_status(value: bool, message: String) -> void:
 	status_changed.emit(value, message)
 
 func _fail(message: String) -> void:
+	_release_native()
+	_auth_failed_key = _room_key
+	_retry_at_ms = 0
+	if _retry_count < RETRY_DELAYS_MS.size():
+		_retry_at_ms = Time.get_ticks_msec() + RETRY_DELAYS_MS[_retry_count]
+		_retry_count += 1
+	else:
+		_want_mic = false
+		permission_pending = false
 	_status = message
 	status_changed.emit(false, _status)
 
@@ -372,6 +468,14 @@ func shutdown() -> void:
 		_fallback.shutdown()
 		_fallback.queue_free()
 		_fallback = null
+	_release_native()
+	_want_mic = false
+	permission_pending = false
+	_retry_at_ms = 0
+	_room_key = ""
+	_room_number = ""
+
+func _release_native() -> void:
 	if _context != null:
 		if _audio != null:
 			_audio.call("EnableMic", false)
@@ -384,6 +488,7 @@ func shutdown() -> void:
 	_delegate = null
 	_in_room = false
 	enabled = false
+	_enter_started_ms = 0
 	if _auth_http != null:
 		_auth_http.queue_free()
 		_auth_http = null

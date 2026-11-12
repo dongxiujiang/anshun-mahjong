@@ -71,6 +71,13 @@ def run(godot, lan_interface=False, section="all", graphical_table=False):
     children = []
     try:
         if section in ("all", "lan"):
+            host = launch(godot, "voice_host", "res://tests/voice_network.gd", ["--voice-host"])
+            children.append(host)
+            time.sleep(0.5)
+            client = launch(godot, "voice_client", "res://tests/voice_network.gd")
+            children.append(client)
+            finish(client, "voice_client")
+            finish(host, "voice_host")
             host = launch(godot, "lobby_host", "res://tests/lobby_network.tscn", ["--lobby-host"])
             children.append(host)
             time.sleep(0.5)

@@ -61,6 +61,38 @@ func _run() -> void:
 	audio_chat.set_remote_volume(0.8)
 	audio_chat.play_packet(packet)
 	t.expect(audio_chat._playbacks.keys() == [2] and audio_chat._rx.has(2), "the first audible packet starts playback and buffers its frame")
+	# Keep delivering later frames while one frame is missing. Recovery must
+	# not wait for the speaker to stop talking.
+	for seq in range(125, 135):
+		var later := packet.duplicate()
+		later.encode_u32(2, seq)
+		audio_chat.play_packet(later)
+		await create_timer(0.02).timeout
+	t.expect(int(audio_chat._rx[2].next) > 125, "a lost packet does not block continuously arriving speech")
+	audio_chat.set_remote_volume(0.0)
+	t.expect(audio_chat._rx.is_empty(), "muting all voices drops buffered speech")
+	audio_chat.set_remote_volume(0.8)
+	audio_chat.set_process(false)
+	for seq in range(200, 250):
+		packet.encode_u32(2, seq)
+		audio_chat.play_packet(packet)
+	t.expect(audio_chat._rx[2].packets.size() <= VOICE.MAX_QUEUED_PACKETS and int(audio_chat._rx[2].next) >= 238, "a receive burst retains recent speech instead of seconds of stale audio")
+	audio_chat.set_speaker_enabled(2, false)
+	t.expect(not audio_chat._playbacks.has(2) and not audio_chat._rx.has(2), "per-seat mute stops playback and clears both audio queues")
+	audio_chat.set_speaker_enabled(2, true)
+	packet.encode_u32(2, 0)
+	audio_chat.play_packet(packet)
+	t.expect(int(audio_chat._rx[2].next) == 0, "a reused seat accepts a fresh sequence immediately")
+	audio_chat.set_suspended(true)
+	t.expect(audio_chat._rx.is_empty() and audio_chat._playbacks.is_empty(), "backgrounding drops queued audio")
+	audio_chat.play_packet(packet)
+	t.expect(audio_chat._rx.is_empty(), "background packets cannot restart playback")
+	audio_chat.set_suspended(false)
+	audio_chat.play_packet(packet)
+	audio_chat._rx[2].packets.clear()
+	audio_chat._rx[2].last = Time.get_ticks_msec() - 600
+	audio_chat._drain_playback()
+	t.expect(audio_chat._playbacks.is_empty(), "silent seats stop their playback streams")
 	await create_timer(0.12).timeout
 	audio_chat.shutdown()
 	audio_chat.queue_free()
@@ -75,6 +107,19 @@ func _run() -> void:
 	net.my_seat = 1
 	net._started = false
 	t.expect(net.voice_chat_allowed(), "a guest can use voice before the host-only started flag is set")
+	var accepted := 0
+	for batch in 20:
+		for frame in 5:
+			if net._accept_voice_frame(10, 1000 + batch * 100): accepted += 1
+	t.expect(accepted == 100, "all 50 Hz frames survive batched delivery at 10 FPS")
+	accepted = 0
+	for frame in 100:
+		if net._accept_voice_frame(11, 1000): accepted += 1
+	t.expect(accepted == 10, "voice flooding is limited to a bounded burst per sender")
+	t.expect(net._accept_voice_frame(12, 1000), "one sender cannot consume another sender's voice allowance")
+	net.voice_chat._fallback.permission_pending = true
+	net.toggle_voice_chat()
+	t.expect(not net.voice_chat.microphone_requested(), "the name click cancels a pending microphone request")
 	var connecting := ENetMultiplayerPeer.new()
 	t.expect(connecting.create_client("127.0.0.1", 7599) == OK, "Voice disconnect fixture starts a pending peer")
 	root.multiplayer.multiplayer_peer = connecting

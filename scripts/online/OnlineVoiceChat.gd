@@ -18,6 +18,7 @@ const SILENCE_PEAK := 0.002
 const JITTER_PREBUFFER_MS := 60
 const JITTER_GAP_MS := 80
 const SILENCE_HOLD_PACKETS := 4
+const MAX_QUEUED_PACKETS := 12
 
 var owner_node: Node
 var _config: Node
@@ -42,6 +43,8 @@ var _remote_volume := 0.8
 var _speaker_enabled := {0: true, 1: true, 2: true, 3: true}
 var _playbacks := {}
 var _output_players := {}
+var _suspended := false
+var _resume_mic := false
 
 func setup(owner: Node, allow_audio: bool) -> void:
 	owner_node = owner
@@ -60,7 +63,7 @@ func setup(owner: Node, allow_audio: bool) -> void:
 
 func _setup_audio() -> void:
 	_input_rate = maxf(8000.0, float(AudioServer.get_mix_rate()))
-	# Drop the microphone's upper band before decimating to 16 kHz. Without this
+	# Drop the microphone's upper band before decimating to 24 kHz. Without this
 	# first-order low-pass, sibilants fold back as harsh aliasing.
 	_filter_alpha = 1.0 - exp(-TAU * 10000.0 / _input_rate)
 	_ensure_capture_bus()
@@ -104,6 +107,7 @@ func can_toggle() -> bool:
 
 func set_enabled(want: bool) -> bool:
 	if not want:
+		_resume_mic = false
 		_disable()
 		return false
 	if not can_toggle():
@@ -127,6 +131,20 @@ func set_enabled(want: bool) -> bool:
 	_start_capture()
 	return enabled
 
+func microphone_requested() -> bool:
+	return enabled or permission_pending or _resume_mic
+
+func set_suspended(value: bool) -> void:
+	if _suspended == value: return
+	_suspended = value
+	if value:
+		_resume_mic = enabled or permission_pending
+		_disable()
+		for seat in 4: reset_seat(seat)
+	elif _resume_mic:
+		_resume_mic = false
+		set_enabled(true)
+
 func poll_permission() -> void:
 	if not permission_pending:
 		return
@@ -143,7 +161,7 @@ func _has_record_permission() -> bool:
 	return granted.has("RECORD_AUDIO") or granted.has("android.permission.RECORD_AUDIO")
 
 func _start_capture() -> void:
-	if _capture == null or _mic_player != null:
+	if _suspended or not can_toggle() or _capture == null or _mic_player != null:
 		return
 	_mic_player = AudioStreamPlayer.new()
 	_mic_player.name = "VoiceMicrophone"
@@ -153,6 +171,8 @@ func _start_capture() -> void:
 	_capture.clear_buffer()
 	_mono.clear()
 	_resample_pos = 0.0
+	_filter_state = 0.0
+	_silence_hold = 0
 	_mic_player.play()
 	enabled = true
 	_status = "麦克风已开启"
@@ -179,6 +199,7 @@ func _exit_tree() -> void:
 
 func shutdown() -> void:
 	set_process(false)
+	_resume_mic = false
 	_disable()
 	if _config != null and _config.voice_chat_settings_changed.is_connected(_on_settings_changed):
 		_config.voice_chat_settings_changed.disconnect(_on_settings_changed)
@@ -188,6 +209,7 @@ func shutdown() -> void:
 		player.queue_free()
 	_output_players.clear()
 	_playbacks.clear()
+	_rx.clear()
 
 func set_mic_gain(value: float) -> void:
 	_mic_gain = clampf(value, 0.0, 2.0)
@@ -195,6 +217,7 @@ func set_mic_gain(value: float) -> void:
 func set_remote_volume(value: float) -> void:
 	_remote_volume = clampf(value, 0.0, 2.0)
 	for seat in 4:
+		if _remote_volume <= 0.0: reset_seat(seat)
 		_apply_speaker_volume(seat)
 
 func set_speaker_enabled(seat: int, value: bool) -> void:
@@ -202,7 +225,7 @@ func set_speaker_enabled(seat: int, value: bool) -> void:
 		return
 	_speaker_enabled[seat] = value
 	if not value:
-		_rx.erase(seat)
+		reset_seat(seat)
 	_apply_speaker_volume(seat)
 	speaker_changed.emit(seat, value)
 
@@ -210,6 +233,10 @@ func reset_seat(seat: int) -> void:
 	# A new client/owner on a reused seat starts its packet sequence at zero.
 	if seat >= 0 and seat <= 3:
 		_rx.erase(seat)
+		_last_rx.erase(seat)
+		_playbacks.erase(seat)
+		var player: AudioStreamPlayer = _output_players.get(seat)
+		if player != null: player.stop()
 
 func speaker_enabled(seat: int) -> bool:
 	return bool(_speaker_enabled.get(seat, true))
@@ -239,11 +266,19 @@ func _on_settings_changed() -> void:
 	set_remote_volume(float(_config.voice_chat_remote_volume))
 
 func _process(_delta: float) -> void:
+	if _suspended: return
 	_drain_playback()
 	poll_permission()
 	if not enabled or _capture == null:
 		return
 	var frames := _capture.get_frames_available()
+	# Do not replay seconds of old microphone audio after a slow frame.
+	var capture_limit := int(_input_rate * 0.12)
+	if frames > capture_limit:
+		_capture.get_buffer(frames - capture_limit)
+		frames = capture_limit
+		_mono.clear()
+		_resample_pos = 0.0
 	if frames > 0:
 		var buffer := _capture.get_buffer(frames)
 		for sample in buffer:
@@ -314,7 +349,7 @@ static func packet_sequence(packet: PackedByteArray) -> int:
 	return int(packet.decode_u32(2)) if packet.size() >= HEADER_BYTES else -1
 
 func play_packet(packet: PackedByteArray) -> void:
-	if not valid_packet(packet):
+	if _suspended or not valid_packet(packet):
 		return
 	var seat := packet_seat(packet)
 	if not speaker_enabled(seat) or _remote_volume <= 0.0:
@@ -343,9 +378,14 @@ func play_packet(packet: PackedByteArray) -> void:
 		_rx[seat] = state
 	if sequence < int(state.next):
 		return
-	if state.packets.size() >= 200:
-		return
 	state.packets[sequence] = packet
+	if state.packets.size() > MAX_QUEUED_PACKETS:
+		var keys: Array = state.packets.keys()
+		keys.sort()
+		while keys.size() > 3:
+			state.packets.erase(keys.pop_front())
+		state.next = keys[0]
+		state["gap_since"] = 0
 	state.last = now
 	_last_rx[seat] = maxi(sequence, int(_last_rx.get(seat, -1)))
 
@@ -355,6 +395,9 @@ func _drain_playback() -> void:
 	var now := Time.get_ticks_msec()
 	for seat in _rx.keys():
 		var state: Dictionary = _rx[seat]
+		if now - int(state.last) > 500 and state.packets.is_empty():
+			reset_seat(seat)
+			continue
 		if now - int(state.started) < JITTER_PREBUFFER_MS:
 			continue
 		var playback: AudioStreamGeneratorPlayback = _playbacks.get(seat)
@@ -365,16 +408,19 @@ func _drain_playback() -> void:
 		while playback.get_frames_available() >= FRAME_COUNT:
 			if not packets.has(next):
 				if packets.is_empty():
+					state["gap_since"] = 0
 					break
-				# A lost packet should not stall the whole voice stream forever.
-				# Skip the gap once the receive tail has been quiet for a moment.
-				if now - int(state.last) < JITTER_GAP_MS:
+				# Time the missing frame itself, not the newest arriving frame.
+				if int(state.get("gap_since", 0)) == 0:
+					state["gap_since"] = now
+				if now - int(state.gap_since) < JITTER_GAP_MS:
 					break
 				var keys := packets.keys()
 				keys.sort()
 				next = int(keys[0])
 				state.next = next
 			var packet: PackedByteArray = packets[next]
+			state["gap_since"] = 0
 			packets.erase(next)
 			_push_playback(playback, packet)
 			next += 1
