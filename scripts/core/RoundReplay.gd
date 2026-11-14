@@ -22,6 +22,7 @@ func begin(round) -> void:
 		"actions": [], "events": round.visual_events.duplicate(true), "requests": [], "final": {}}
 	# 报听标志不在网络协议内，需要单独保存供离线重放。
 	record.announced_ready = round.players.map(func(player): return player.announced_ready)
+	record.wall["draw_log"] = round.wall.draw_log.duplicate(true)
 	last_path = ""
 	_started_ticks = Time.get_ticks_msec()
 
@@ -84,7 +85,7 @@ static func _wall_state(wall: WallRing) -> Dictionary:
 static func fingerprint(round) -> String:
 	var state: Dictionary = round.serialize()
 	# 人机同步执行与人工逐步提交的提示编号/音频会话不同，不影响规则结果。
-	for key in ["awaiting", "prompt_id", "awaiting_response", "audio_session", "audio_event_id", "audio_events", "visual_session", "visual_event_id", "visual_events"]: state.erase(key)
+	for key in ["awaiting", "prompt_id", "awaiting_response", "audio_session", "audio_event_id", "audio_events", "visual_session", "visual_event_id", "visual_events", "wall_centering"]: state.erase(key)
 	for player in state.players:
 		player.erase("name")
 		player.erase("is_human")
@@ -117,6 +118,11 @@ static func replay(data: Dictionary) -> Dictionary:
 		if not wall_data.has(key): return {"ok": false, "error": "牌墙缺少字段：" + key, "event_index": -1}
 	if int(wall_data.head) not in range(108) or int(wall_data.tail) not in range(108) or int(wall_data.remaining) not in range(109):
 		return {"ok": false, "error": "牌墙位置越界", "event_index": -1}
+	if not wall_data.get("draw_log", []) is Array or wall_data.get("draw_log", []).size() > 108:
+		return {"ok": false, "error": "取牌记录格式错误", "event_index": -1}
+	for entry in wall_data.get("draw_log", []):
+		if not entry is Dictionary or typeof(entry.get("index")) not in [TYPE_INT, TYPE_FLOAT] or int(entry.index) not in range(108):
+			return {"ok": false, "error": "取牌记录位置越界", "event_index": -1}
 	if int(initial.current_turn) not in range(4) or int(initial.get("dealer_seat", 0)) not in range(4):
 		return {"ok": false, "error": "初始座位越界", "event_index": -1}
 	if not data.get("final", {}) is Dictionary or not data.get("announced_ready", [false, false, false, false]) is Array or data.get("announced_ready", [false, false, false, false]).size() != 4:
@@ -138,6 +144,7 @@ static func replay(data: Dictionary) -> Dictionary:
 	round.wall._head = int(wall_data.head)
 	round.wall._tail = int(wall_data.tail)
 	round.wall.remaining = int(wall_data.remaining)
+	round.wall.draw_log = wall_data.get("draw_log", []).map(func(entry): return {"index": int(entry.index), "tail": bool(entry.get("tail", false))})
 	if data.has("rng_state"):
 		round._rng.state = int(str(data.get("rng_state", "0")))
 	for seat in 4: round.players[seat].announced_ready = bool(data.get("announced_ready", [false, false, false, false])[seat])

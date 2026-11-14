@@ -25,8 +25,14 @@ func _run() -> void:
 			break
 		t.expect(JSON.stringify(JSON.parse_string(JSON.stringify(restored.round.last_result))) == JSON.stringify(JSON.parse_string(JSON.stringify(original.last_result))), "重放手牌、积分、翻鸡和庄家完全一致")
 		t.expect(restored.round.wall.debug_ring_head_tail() == original.wall.debug_ring_head_tail(), "头尾摸牌与剩余牌墙一致")
+		t.expect(restored.round.wall.draw_log == original.wall.draw_log, "重放保留开局和后续真实取牌顺序")
+		t.expect(restored.round.wall.wall_centering() == original.wall.wall_centering(), "重放保留各墙首次半墙居中基准")
 		t.expect(restored.round._recorder.record.is_empty(), "重放不递归生成新记录")
 		if seed_value == 0:
+			var legacy: Dictionary = data.duplicate(true)
+			legacy.wall.erase("draw_log")
+			legacy.initial.erase("wall_centering")
+			t.expect(REPLAY.replay(legacy).ok, "旧版记录不含显示基准仍通过规则指纹校验")
 			var file := "user://replay-test.json"
 			t.expect(original.export_replay(file) == file, "可导出诊断文件")
 			t.expect(REPLAY.replay(REPLAY.load_record(file)).ok, "真实文件读取后可重放")
@@ -34,6 +40,9 @@ func _run() -> void:
 			var corrupted: Dictionary = data.duplicate(true)
 			corrupted.wall.head = 108
 			t.expect(not REPLAY.replay(corrupted).ok, "损坏牌墙位置安全拒绝")
+			corrupted = data.duplicate(true)
+			corrupted.wall.draw_log = [{}]
+			t.expect(not REPLAY.replay(corrupted).ok, "损坏取牌记录安全拒绝")
 			corrupted = data.duplicate(true)
 			corrupted.initial.players[0].erase("concealed")
 			t.expect(not REPLAY.replay(corrupted).ok, "缺少玩家字段安全拒绝")
