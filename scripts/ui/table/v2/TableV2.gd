@@ -566,12 +566,14 @@ func _build_native_settlement_panel() -> void:
 	multiplier.position = Vector2(24, 42)
 	multiplier.size = Vector2(panel.size.x - 48, 28)
 	var header_y := 72.0 if multiplier.text != "" else 44.0
-	for column in [["玩家", 24.0, 200.0], ["得分", 224.0, 528.0], ["本局增减", 756.0, 120.0]]:
+	for column in [["玩家", 24.0, 200.0], ["得分项", 224.0, 528.0], ["总分", 756.0, 184.0], ["本局增减", 956.0, 120.0]]:
 		var caption := _table_text(panel, column[0], 22, UI.MUTED)
-		caption.name = "ScoreHeading" if column[0] == "得分" else str(column[0])
+		caption.name = "ScoreHeading" if column[0] == "得分项" else ("TotalHeading" if column[0] == "总分" else str(column[0]))
 		caption.position = Vector2(column[1], header_y)
 		caption.size = Vector2(column[2], 30)
-		if column[0] == "得分": caption.tooltip_text = "单倍、相对一家计算的分值；右侧为本局实际净增减"
+		if column[0] in ["得分项", "总分"]: caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		if column[0] == "得分项": caption.tooltip_text = "单倍得分项目，包含明杠；总分按各家适用项目分别合计"
+		if column[0] == "总分": caption.tooltip_text = "单倍、抵扣前的分数；括号方位始终相对你"
 		if column[0] == "本局增减": caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	var row_top := header_y + 34.0
 	var row_blocks: Array = []
@@ -634,11 +636,37 @@ func _build_native_settlement_panel() -> void:
 		status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		var score := _table_text(panel, "0", 32, UI.MUTED)
 		score.name = "PlayerNet%d" % seat
-		score.position = Vector2(756, top + 2)
+		score.position = Vector2(956, top + 2)
 		score.size = Vector2(120, row_height - 4)
 		score.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		_settlement_net_labels[seat] = score
 		_build_settlement_entries(panel, seat, row_blocks[index], Rect2(224, top + 5, 520, row_height - 10), factor)
+		_build_settlement_total(panel, seat, Rect2(756, top + 2, 184, row_height - 4))
+
+func _build_settlement_total(panel: Control, seat: int, bounds: Rect2) -> void:
+	var totals := SETTLEMENT_ROWS.totals(_settlement_plan, round.round_meta, seat, human_seat)
+	var terms: Array[String] = []
+	for total in totals: terms.append(_settlement_signed(float(total.amount)) + str(total.suffix))
+	var color: Color = UI.MUTED
+	if totals.any(func(total): return float(total.amount) > 0): color = _settlement_net_color(1)
+	if totals.any(func(total): return float(total.amount) < 0): color = _settlement_net_color(-1) if not totals.any(func(total): return float(total.amount) > 0) else UI.INK
+	var label := _table_text(panel, "", 24, color)
+	label.name = "PlayerTotal%d" % seat
+	label.position = bounds.position
+	label.size = bounds.size
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.tooltip_text = "　".join(terms)
+	for font_size in range(24, 17, -1):
+		var lines: Array[String] = [""]
+		for term in terms:
+			var combined: String = term if lines.back() == "" else lines.back() + "  " + term
+			if lines.back() != "" and _hud_text_width(combined, font_size) > bounds.size.x:
+				lines.append(term)
+			else:
+				lines[-1] = combined
+		label.text = "\n".join(lines)
+		label.add_theme_font_size_override("font_size", font_size)
+		if lines.size() <= 2 and label.get_theme_font("font").get_height(font_size) * lines.size() <= bounds.size.y: break
 
 func _settlement_row_status(seat: int, index: int, nickname: String) -> String:
 	var words: Array[String] = []

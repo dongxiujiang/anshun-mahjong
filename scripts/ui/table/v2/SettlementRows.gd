@@ -3,6 +3,24 @@ extends RefCounted
 
 const TILES := preload("res://scripts/core/Tiles.gd")
 
+static func totals(plan: Dictionary, meta: Dictionary, seat: int, viewer: int) -> Array:
+	var multiplier := maxi(1, int(meta.get("chicken_multiplier", 1)))
+	var amounts := {}
+	for other in 4:
+		if other == seat: continue
+		var amount := 0.0
+		for stage in plan.get("stages", []): amount += float(stage.scores[seat][other])
+		amounts[other] = amount / multiplier
+	var common: float = amounts.values()[0]
+	for amount in amounts.values():
+		if absf(float(amount)) < absf(common): common = float(amount)
+	var out := [{"amount": common, "opponent": -1, "suffix": ""}]
+	for offset in 4:
+		var other := posmod(viewer + offset, 4)
+		if other == seat or is_equal_approx(float(amounts[other]), common): continue
+		out.append({"amount": float(amounts[other]), "opponent": other, "suffix": "（" + ["我", "上", "对", "下"][offset] + "）"})
+	return out
+
 static func caption(label: String) -> String:
 	return str({"荒牌牌型分": "牌型", "荒牌基础补付": "基础", "未叫牌出牌鸡": "出牌鸡",
 		"未叫牌碰鸡": "碰鸡", "报听胡牌": "报听", "自摸基础分": "自摸", "抢杠胡基础分": "抢杠",

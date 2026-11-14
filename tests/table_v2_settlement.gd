@@ -4,6 +4,7 @@ extends SceneTree
 const H := preload("res://tests/test_harness.gd")
 const PLAN := preload("res://scripts/ui/table/SettlementAnimationPlan.gd")
 const SCORING := preload("res://scripts/core/ScoringEngine.gd")
+const ROWS := preload("res://scripts/ui/table/v2/SettlementRows.gd")
 const WAIT := ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
 const WIN := ["tiao1", "tiao2", "tiao3", "wan4", "wan5", "wan6", "tong7", "tong8", "tong9", "wan3", "wan4", "wan5", "wan9", "wan9"]
 
@@ -209,7 +210,9 @@ func _run_native_api() -> void:
 	t.expect(deck._settlement_pairs == r.last_result.pairwise, "panel net values match the final ledger")
 	for seat in 4:
 		t.expect(int(deck._settlement_net_labels[seat].text) == int(r.last_result.deltas[seat]), "each player row shows the actual ledger net")
-	t.expect(deck._native_settlement.get_node("ScoreHeading").text == "得分", "score heading uses the requested wording")
+	t.expect(deck._native_settlement.get_node("ScoreHeading").text == "得分项", "score heading uses the requested wording")
+	t.expect(deck._native_settlement.get_node("ScoreHeading").horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER, "score item heading is centered")
+	t.expect(deck._native_settlement.get_node("TotalHeading").text == "总分", "single-rate totals have their own column")
 	t.expect(deck._native_settlement.find_children("PlayerDivider*", "ColorRect", false, false).size() == 4, "header and all player rows have horizontal separators")
 	t.expect(deck._score_inspection == null, "settlement has no score detail overlay by default")
 	config.set_score_details_enabled(true, false)
@@ -271,7 +274,86 @@ func _check_called_headers() -> void:
 						t.expect(self_draw.text == "自摸" and not self_draw.get_rect().intersects(heading.get_rect()), "self-draw badge sits to the right of the player name")
 				deck.free()
 
+func _check_total_values() -> void:
+	var scores: Array = [[0.0, 42.0, 34.0, 42.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]
+	var plan := {"stages": [{"scores": scores}]}
+	var before := plan.duplicate(true)
+	var roles := [["（上）", "（下）"], ["（我）", "（对）"], ["（下）", "（上）"], ["（对）", "（我）"]]
+	for viewer in 4:
+		var totals := ROWS.totals(plan, {"chicken_multiplier": 2}, 0, viewer)
+		t.expect(totals.size() == 3 and totals[0].amount == 17 and totals[0].suffix == "", "common total stays single-rate and is shown once")
+		for index in 2:
+			var source: int = [1, 3][index]
+			var matching := totals.filter(func(row): return row.opponent == source)
+			t.expect(matching.size() == 1 and matching[0].amount == 21 and matching[0].suffix == roles[viewer][index], "exposed-kong total identifies the payer relative to the viewer")
+	t.expect(plan == before, "reading totals never changes the payment plan")
+	scores[0] = [0.0, 13.0, 17.0, 13.0]
+	var ron := ROWS.totals(plan, {}, 0, 0)
+	t.expect(ron.size() == 2 and ron[0].amount == 13 and ron[1].amount == 17 and ron[1].suffix == "（对）", "discard-win fee belongs only to the responsible payer before comparison")
+	scores[0] = [0.0, -12.0, -8.0, -8.0]
+	var debt := ROWS.totals(plan, {}, 0, 0)
+	t.expect(debt.size() == 2 and debt[0].amount == -8 and debt[1].amount == -12 and debt[1].suffix == "（上）", "uncalled kong debt retains its sign and responsible payer")
+	var zero := ROWS.totals({"stages": []}, {}, 0, 0)
+	t.expect(zero.size() == 1 and zero[0].amount == 0, "all-called draw has a single zero total")
+
+func _check_two_exposed_example() -> void:
+	var r := RoundState.new()
+	r.build_players(0)
+	r.controllers = [null, null, null, null]
+	r.phase = RoundState.Phase.PLAYING
+	r.round_meta = {"winner": 0, "winners": [0], "self_draw": true, "win_tile": "tong6", "chicken_multiplier": 1}
+	r.players[0].concealed = ["wan3", "wan4", "wan5", "tong6", "tong6"]
+	r.players[0].just_drew = "tong6"
+	r.players[0].melds = [{"kind": "kong", "tile": "wan9", "from_seat": 1}, {"kind": "kong", "tile": "tong8", "from_seat": 3}, {"kind": "add_kong", "tile": "tiao7", "from_seat": 2}]
+	var deck: Array = TileSetFactory.create_deck()
+	var used: Array = r.players[0].concealed.duplicate()
+	for meld in r.players[0].melds:
+		for i in 4: used.append(meld.tile)
+	for card in used: deck.erase(card)
+	deck.erase("wan2") # Reserve the actual face-up flip tile.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20261115
+	for seat in [1, 2, 3]:
+		for i in 13:
+			var index := rng.randi_range(0, deck.size() - 1)
+			r.players[seat].concealed.append(deck[index])
+			used.append(deck[index])
+			deck.remove_at(index)
+	r.wall = WallRing.new(used + ["wan2"] + deck)
+	r.wall.set_head(0)
+	for i in used.size(): r.wall.draw_head()
+	r._finish()
+	var plan: Dictionary = PLAN.build(r.last_result, r.round_meta, r.players, 0)
+	var totals := ROWS.totals(plan, r.round_meta, 0, 0)
+	t.expect(totals == [{"amount": 17.0, "opponent": -1, "suffix": ""}, {"amount": 21.0, "opponent": 1, "suffix": "（上）"}, {"amount": 21.0, "opponent": 3, "suffix": "（下）"}], "actual scorer produces the requested 17/21/21 double-exposed-kong example")
+	var entries := ROWS.entries(r.last_result, r.round_meta, r.players, plan, 0)
+	t.expect(entries.filter(func(entry): return entry.get("kong", {}).get("label", "") == "明杠").size() == 2, "both exposed kongs remain in the score items")
+	for viewer in 4:
+		var synced := RoundState.new()
+		synced.apply_sync(r.serialize_for_seat(viewer))
+		var client_plan: Dictionary = PLAN.build(synced.last_result, synced.round_meta, synced.players, viewer)
+		t.expect(ROWS.totals(client_plan, synced.round_meta, 0, viewer) == ROWS.totals(plan, r.round_meta, 0, viewer), "solo and network retain the same totals and viewer-relative sources")
+	if DisplayServer.get_name() != "headless":
+		var stub := SettlementTableStub.new()
+		stub.round = r
+		root.add_child(stub)
+		var view = load("res://scenes/table/TableV2.tscn").instantiate()
+		root.add_child(view)
+		view.set_round(r, 0)
+		view.table = stub
+		view.start_native_settlement(true)
+		t.expect(view._native_settlement != null and view._native_settlement.get_node("PlayerTotal0").tooltip_text == "+17　+21（上）　+21（下）", "real double-kong panel displays all requested total variants")
+		await process_frame
+		await RenderingServer.frame_post_draw
+		DirAccess.make_dir_recursive_absolute("res://build/total-column")
+		root.get_texture().get_image().save_png("res://build/total-column/two-exposed-17-21-21.png")
+		view.queue_free()
+		stub.queue_free()
+		await process_frame
+
 func _run() -> void:
+	_check_total_values()
+	await _check_two_exposed_example()
 	_check_called_headers()
 	_check_relative_scores()
 	for kind in ["self_draw", "ron", "draw", "all_called_draw"]:

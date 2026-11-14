@@ -569,7 +569,17 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 
 func _check_row_summary(view: Control, r: RoundState) -> void:
 	var panel: Control = view._native_settlement
-	_check(panel.get_node("ScoreHeading").text == "得分", "four-player summary uses the requested score heading")
+	var to_view: Transform2D = view.get_global_transform().affine_inverse()
+	var panel_bounds: Rect2 = to_view * panel.get_global_transform() * Rect2(Vector2.ZERO, panel.size)
+	var surrounding: Array = view._wall_layer.get_children()
+	for owner in 4: surrounding.append_array(view._native_tiles_for_seat(owner))
+	for tile in surrounding:
+		if not tile is TileView or not tile.is_visible_in_tree(): continue
+		var tile_bounds: Rect2 = to_view * tile.get_global_transform() * Rect2(Vector2.ZERO, tile.size)
+		_check(not panel_bounds.intersects(tile_bounds), "expanded summary never covers the wall, exposed cards or revealed hands")
+	_check(panel.get_node("ScoreHeading").text == "得分项", "four-player summary uses the requested score heading")
+	_check(panel.get_node("ScoreHeading").horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER, "score item heading is centered")
+	_check(panel.get_node("TotalHeading").text == "总分", "single-rate gross total has a separate column")
 	_check(panel.find_children("PlayerDivider*", "ColorRect", false, false).size() == 4, "every adjacent player has a horizontal separator")
 	var before := r.last_result.duplicate(true)
 	for seat in 4:
@@ -577,6 +587,11 @@ func _check_row_summary(view: Control, r: RoundState) -> void:
 		var status: Label = panel.get_node("PlayerStatus%d" % seat)
 		_check(not ["流局", "未叫牌", "胡牌", "放炮", "抢杠"].any(func(word): return status.text.contains(word)), "player subtitle avoids repeating the title and called badge")
 		var group: Control = panel.get_node("ScoreItems%d" % seat)
+		var total: Label = panel.get_node("PlayerTotal%d" % seat)
+		var net: Label = panel.get_node("PlayerNet%d" % seat)
+		_check(not group.get_rect().intersects(total.get_rect()) and not total.get_rect().intersects(net.get_rect()), "items, gross total and actual net occupy distinct columns")
+		_check(total.get_line_count() <= 2 and total.get_theme_font_size("font_size") >= 18, "gross totals remain readable in at most two lines")
+		_check(total.get_theme_font("font").get_multiline_string_size(total.text, HORIZONTAL_ALIGNMENT_LEFT, -1, total.get_theme_font_size("font_size")).x <= total.size.x + 0.1, "gross total text fits its column")
 		for block: Control in group.get_children():
 			_check(Rect2(Vector2.ZERO, group.size).grow(0.1).encloses(Rect2(block.position, block.size * block.scale)), "all score blocks fit the two-line row")
 			for child: Control in block.get_children():
