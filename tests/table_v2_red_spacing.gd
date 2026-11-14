@@ -9,6 +9,7 @@ var visual := false
 func _initialize() -> void: call_deferred("_run")
 
 func _run() -> void:
+	root.get_node("GameConfig").set_tile_animation_seconds(0.0, false)
 	visual = DisplayServer.get_name() != "headless"
 	if visual:
 		root.content_scale_size = Vector2i(G.DESIGN_SIZE)
@@ -22,12 +23,19 @@ func _run() -> void:
 	_check_shapes(view)
 	for viewer in 4:
 		await _check_upstream_chain(view, viewer)
+		await _check_meld_replay(view, viewer, "opposite_kong_held_hand")
+		await _check_meld_replay(view, viewer, "meld_held_hand_own_area")
 		await _check_full_table(view, viewer)
 	view.queue_free()
 	await process_frame
 	quit(t.finish("table_v2_red_spacing"))
 
 func _check_shapes(view) -> void:
+	for rel in 4:
+		var size: Vector2 = view.EXPOSED.size_for(rel)
+		var group := {"rel": rel, "count": 1, "charge": false, "source_slot": -1, "opposite": false, "width": size.x}
+		var bounds: Vector2 = view.EXPOSED.axis_bounds(rel)
+		t.expect(not view.EXPOSED.clear(view.EXPOSED.place(group, bounds.y + 8, false), []), "whole groups cannot borrow neighbouring corners")
 	# Geometry boundaries: short hands match each meld count; no impossible 13+4-meld hand.
 	for viewer in 4:
 		for owner in 4:
@@ -43,7 +51,7 @@ func _check_shapes(view) -> void:
 					p.discard_ids = [0,1]
 					view.set_round(r,viewer)
 					var specs: Array = view._exposed_layout()
-					t.expect(specs.size()==4*count+2,"every chicken and meld appears")
+					t.expect(specs.size()==4*count+2,"every chicken and meld appears: viewer=%d owner=%d count=%d source=%d" % [viewer,owner,count,source])
 					var obstacles := []
 					for seat in 4:
 						obstacles.append(view._seat_hud_rect(seat))
@@ -51,8 +59,18 @@ func _check_shapes(view) -> void:
 					t.expect(view.EXPOSED.clear(specs,obstacles),"groups clear retained hands and name panels")
 					for i in specs.size():
 						for j in i:
-							if specs[i].meld_index>=0 and specs[i].meld_index==specs[j].meld_index: continue
-							t.expect(not specs[i].rect.grow(-0.05).intersects(specs[j].rect),"separate groups never overlap")
+							if source != 2 and specs[i].meld_index>=0 and specs[i].meld_index==specs[j].meld_index: continue
+							t.expect(not specs[i].rect.grow(-0.05).intersects(specs[j].rect),"meld faces and shadows never overlap")
+					if source == 2:
+						for meld in count:
+							var group := specs.filter(func(spec): return spec.meld_index == meld)
+							if group.size() != 4: continue
+							var front: Dictionary = group.filter(func(spec): return spec.sideways)[0]
+							var upright := group.filter(func(spec): return not spec.sideways)
+							var axis: Vector2 = view.EXPOSED.AXES[G.relative_seat(viewer, owner)]
+							var inward: Vector2 = view.EXPOSED.INWARD[G.relative_seat(viewer, owner)]
+							t.expect(is_equal_approx(front.center.dot(axis), (upright[0].center.dot(axis) + upright[2].center.dot(axis)) / 2.0), "opposite source tile stays centered on the three upright tiles")
+							t.expect(front.center.dot(inward) > upright[0].center.dot(inward), "opposite source tile is in front toward the table center for every viewer")
 
 func _check_upstream_chain(view, viewer: int) -> void:
 	var r := RoundState.new()
@@ -121,6 +139,49 @@ func _drain_responses(r: RoundState, claim_seat: int) -> void:
 			return
 	t.expect(false, "response chain did not finish")
 
+func _check_meld_replay(view, viewer: int, fixture: String) -> void:
+	# Real shuffled games: retain the hand positions during opposite and repeated claims.
+	var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/%s.json" % fixture))
+	var r := RoundState.new()
+	r.controllers = [null, null, null, null]
+	r.set_rng_seed(int(record.seed))
+	r.next_dealer_seat = int(record.dealer)
+	r.pause_after_opening = true
+	r.start_round(1, int(record.red), int(record.white))
+	r.resume_after_opening()
+	var events := []
+	r.visual_event.connect(func(event): events.append(event))
+	view.auto_sort_hands = false
+	view.set_round(r, viewer)
+	view._sort_started = true
+	for index in record.actions.size():
+		var action: Dictionary = record.actions[index]
+		events.clear()
+		var accepted: bool = r.submit_turn(int(action.seat), action.decision) if action.kind == "turn" else r.submit_response(int(action.seat), str(action.tile), action.decision)
+		t.expect(accepted, "meld layout regression replays legal action %d" % index)
+		for event in events:
+			if event.type == "discard": view._held_hand_centers.erase(int(event.seat))
+			if event.type == "meld": view.animate_meld(event, func(): pass)
+		view.refresh()
+		var expected := 0
+		for player in r.players:
+			expected += player.discards.filter(func(tile): return Tiles.is_chicken(tile)).size()
+			for meld in player.melds: expected += 3 if meld.kind == "pung" else 4
+		var specs: Array = view._exposed_layout()
+		t.expect(specs.size() == expected, "held-hand replay keeps every exposed tile")
+		var obstacles := [view.action_bar_rect(Vector2(546, 112))]
+		for layer in view.hand_boxes + view.draw_boxes + [view._discard_layer, view._wall_layer]:
+			for node in layer.get_children():
+				obstacles.append(view.EXPOSED.rect_for(node.position + node.size / 2, node.size * node.scale, node.rotation))
+		for seat in 4: obstacles.append(view._seat_hud_rect(seat))
+		t.expect(view.EXPOSED.clear(specs, obstacles), "held-hand kong including shadows clears walls, rivers, hands and controls")
+		if index in [34, 54, 57] or index == record.actions.size() - 1: await _capture("viewer%d-%s-%d" % [viewer, fixture, index])
+	var client := RoundState.new()
+	client.apply_sync(r.serialize_for_seat(viewer))
+	view.set_round(client, viewer)
+	t.expect(view._exposed_layout().size() > 0, "network snapshot also places the retained-hand melds")
+	await _capture("viewer%d-%s-synced" % [viewer, fixture])
+
 func _check_full_table(view, viewer: int) -> void:
 	# Deliberately fill independent zones at once to stress visual boundaries.
 	# This board is not a possible tile allocation; the chain above uses a real 108-tile deck.
@@ -188,36 +249,39 @@ func _check_full_table(view, viewer: int) -> void:
 
 	t.expect(before.size() == after.size() and before.keys().all(func(key): return after.has(key) and Vector2(before[key]).is_equal_approx(after[key])), "viewer %d: network snapshot keeps the same public tile positions" % viewer)
 	await _capture("viewer%d-full-rivers-and-melds" % viewer)
-	# Maximum chicken capacity, including two sideways charge tiles. This is
-	# deliberately stronger than the deck permits across all four players at once.
-	for seat in 4:
-		var p: PlayerState = r.players[seat]
-		for i in 6:
-			p.discards.append("tiao1" if i % 2 == 0 else "tong8")
-			p.discard_ids.append(seat * 100 + 40 + i)
-	r.round_meta.charge_chickens = {
-		"tiao1": {"owner": viewer, "location": "discard", "discard_id": viewer * 100 + 40},
-		"tong8": {"owner": posmod(viewer + 1, 4), "location": "discard", "discard_id": posmod(viewer + 1, 4) * 100 + 41},
-	}
-	view.set_round(r, viewer)
-	occupied.clear()
-	identities.clear()
-	clear = true
-	for layer in view._render_layers():
-		if layer == view._wall_layer: continue
-		for tile in layer.get_children():
-			var rect: Rect2 = view._visual_rect(tile)
-			clear = clear and G.TABLE_BOUNDS.encloses(rect) and _clear_of(rect, obstacles)
-			var identity := [tile.get_meta("v2_seat",-1),tile.get_meta("meld_index",-1)]
-			for j in occupied.size():
-				if int(identity[1])>=0 and identity==identities[j]: continue
-				clear = clear and not rect.grow(-0.05).intersects(occupied[j])
-			occupied.append(rect)
-			identities.append(identity)
-	t.expect(clear and view.count_kind("red") == 48,
-		"viewer %d: eight full-size chickens per seat, including charges, leave every tile visible" % viewer)
-	t.expect(_clear_of(action, occupied), "eight chickens never enter the action buttons")
-	await _capture("viewer%d-eight-chickens-and-melds" % viewer)
+	# Test eight discarded chickens at each seat in turn. Giving all four seats
+	# eight would invent 32 chickens, then force them into neighbouring seats.
+	for chicken_owner in 4:
+		for seat in 4:
+			var p: PlayerState = r.players[seat]
+			p.discards = p.discards.filter(func(tile): return not Tiles.is_chicken(tile))
+			if seat == chicken_owner:
+				for i in 8: p.discards.append("tiao1" if i % 2 == 0 else "tong8")
+			p.discard_ids = range(p.discards.size())
+		r.round_meta.charge_chickens = {
+			"tiao1": {"owner": chicken_owner, "location": "discard", "discard_id": 22},
+			"tong8": {"owner": chicken_owner, "location": "discard", "discard_id": 23},
+		}
+		view.set_round(r, viewer)
+		occupied.clear()
+		identities.clear()
+		clear = true
+		for layer in view._render_layers():
+			if layer == view._wall_layer: continue
+			for tile in layer.get_children():
+				var rect: Rect2 = view._visual_rect(tile)
+				clear = clear and G.TABLE_BOUNDS.encloses(rect) and _clear_of(rect, obstacles)
+				var identity := [tile.get_meta("v2_seat",-1),tile.get_meta("meld_index",-1)]
+				for j in occupied.size():
+					if int(identity[1])>=0 and identity==identities[j]: continue
+					clear = clear and not rect.grow(-0.05).intersects(occupied[j])
+				occupied.append(rect)
+				identities.append(identity)
+		t.expect(clear and view.count_kind("red") == 24,
+			"viewer %d: seat %d keeps eight chickens and four melds within its own area" % [viewer, chicken_owner])
+		t.expect(view.EXPOSED.clear(view._exposed_layout(), obstacles), "exposed tiles and shadows stay in their owner's bounded area")
+		t.expect(_clear_of(action, occupied), "eight chickens never enter the action buttons")
+		await _capture("viewer%d-seat%d-eight-chickens-and-melds" % [viewer, chicken_owner])
 
 func _table_positions(view) -> Dictionary:
 	var positions := {}

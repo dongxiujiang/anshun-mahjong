@@ -75,6 +75,7 @@ static func build(round, human_seat: int) -> Dictionary:
 		"dealer": int(round.dealer_seat),
 		"turn": int(round.current_turn),
 		"wall_slots": wall_slots,
+		"wall_centering": round.wall.wall_centering() if round.wall != null else round.wall_centering,
 		"wall_remaining": int(round.wall.remaining) if round.wall != null else 0,
 		"die_red": int(round.round_meta.get("die", 1)),
 		"die_white": int(round.round_meta.get("die_white", 1)),

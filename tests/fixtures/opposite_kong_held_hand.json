@@ -1,0 +1,476 @@
+{
+  "seed": 2026111204,
+  "dealer": 0,
+  "red": 1,
+  "white": 5,
+  "actions": [
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong4"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao1"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao1"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong8"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan7"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao3"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan3"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan9"
+      }
+    },
+    {
+      "kind": "response",
+      "seat": 3.0,
+      "tile": "wan9",
+      "decision": {
+        "action": "pong"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao4"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao3"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan8"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong5"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan6"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan2"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan4"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan6"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan5"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao7"
+      }
+    },
+    {
+      "kind": "response",
+      "seat": 3.0,
+      "tile": "tiao7",
+      "decision": {
+        "action": "pong"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao4"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao5"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong8"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong8"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong3"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong3"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan1"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan9"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan8"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong5"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao1"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao1"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "add_kong": [
+          "tiao7"
+        ]
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao6"
+      }
+    },
+    {
+      "kind": "response",
+      "seat": 1.0,
+      "tile": "tiao6",
+      "decision": {
+        "action": "kong"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong6"
+      }
+    },
+    {
+      "kind": "response",
+      "seat": 3.0,
+      "tile": "tong6",
+      "decision": {
+        "action": "pong"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong9"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan7"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong4"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong8"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao5"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao2"
+      }
+    },
+    {
+      "kind": "response",
+      "seat": 0.0,
+      "tile": "tiao2",
+      "decision": {
+        "action": "pong"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan5"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao9"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan3"
+      }
+    },
+    {
+      "kind": "response",
+      "seat": 1.0,
+      "tile": "wan3",
+      "decision": {
+        "action": "pong"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao4"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao5"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 3.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan7"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "tong9"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan5"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "discard": "tiao8"
+      }
+    },
+    {
+      "kind": "response",
+      "seat": 2.0,
+      "tile": "tiao8",
+      "decision": {
+        "action": "kong"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 2.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan5"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 1.0,
+      "tile": "",
+      "decision": {
+        "discard": "wan4"
+      }
+    },
+    {
+      "kind": "turn",
+      "seat": 0.0,
+      "tile": "",
+      "decision": {
+        "add_kong": [
+          "tiao2"
+        ]
+      }
+    }
+  ]
+}

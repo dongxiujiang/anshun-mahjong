@@ -4,6 +4,7 @@ extends Control
 const DETAILS := preload("res://scripts/ui/table/SettlementScoreDetails.gd")
 const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
 const G := preload("res://scripts/ui/table/v2/TableV2Geometry.gd")
+const ROWS := preload("res://scripts/ui/table/v2/SettlementRows.gd")
 
 var _view_ref: WeakRef
 var _groups: Array
@@ -34,12 +35,11 @@ func _init(view: Control, result: Dictionary, meta: Dictionary, players: Array, 
 				continue
 			for row in stage.transfers:
 				var reason := str(row.reason)
-				var label := str({"报听胡牌": "报听", "自摸基础分": "自摸", "抢杠胡基础分": "抢杠",
-					"点炮基础分（叫牌）": "点炮", "点炮基础分（未叫牌）": "点炮"}.get(reason, reason))
+				var label := ROWS.caption(reason)
 				parts[label] = float(row.amount)
 		for row in result.get("transfers", []):
 			if int(row.to) == seat and str(row.reason) in ["荒牌牌型分", "荒牌基础补付"]:
-				parts[str(row.reason)] = float(row.amount)
+				parts[ROWS.caption(str(row.reason))] = float(row.amount)
 		_win_parts[seat] = parts
 
 func _ready() -> void:
@@ -162,10 +162,9 @@ func _show_seat(seat: int) -> void:
 	var view = _view_ref.get_ref()
 	var settlement: Control = view._native_settlement
 	var inner := G.SETTLEMENT_AREA
-	var height: float = _detail_panel.size.y + 12.0 + settlement.size.y
-	var top: float = inner.position.y + (inner.size.y - height) / 2.0
-	_detail_panel.position = Vector2(inner.get_center().x - _detail_panel.size.x / 2.0, top)
-	settlement.position.y = top + _detail_panel.size.y + 12.0
+	# 四人总表已经占满牌墙内区域；手动查看旧明细时临时替换总表。
+	_detail_panel.position = inner.get_center() - _detail_panel.size / 2.0
+	settlement.hide()
 	_detail_panel.show()
 
 func _fit_two_lines(terms: Array[String]) -> void:
@@ -200,3 +199,4 @@ func _restore_settlement_position() -> void:
 	var view = _view_ref.get_ref()
 	if is_instance_valid(view) and is_instance_valid(view._native_settlement):
 		view._native_settlement.position = _settlement_position
+		view._native_settlement.show()

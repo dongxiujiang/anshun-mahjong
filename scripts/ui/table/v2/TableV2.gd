@@ -16,6 +16,7 @@ var _exposed_key: Variant = null
 var _exposed_checked := false
 
 const SCORE_INSPECTION := preload("res://scripts/ui/table/v2/TableV2ScoreInspection.gd")
+const SETTLEMENT_ROWS := preload("res://scripts/ui/table/v2/SettlementRows.gd")
 const VOICE_PACKS := preload("res://scripts/core/VoicePackRegistry.gd")
 const HAND_ARRANGEMENT := preload("res://scripts/ui/table/v2/HandArrangement.gd")
 const STYLE := preload("res://scripts/ui/UiStyle.gd")
@@ -26,6 +27,7 @@ var table = null
 var snapshot: Dictionary = {}
 
 var _wall_layer: Control
+var _wall_offsets := {}
 var _hand_layer: Control
 var _discard_layer: Control
 var _red_layer: Control
@@ -52,8 +54,7 @@ var _settlement_flip_view: TileView = null
 var _settlement_flip_index := -1
 var _settlement_flip_revealed := false
 var _settlement_notice: Label = null
-var _settlement_score_rows: Array = []
-var _settlement_total_label: Label
+var _settlement_net_labels: Dictionary = {}
 var _settlement_count_duration := 0.0
 var _meld_layer: Control
 var _label_layer: Control
@@ -84,7 +85,7 @@ var _sort_tween: Tween
 var _draw_flights: Dictionary = {}
 var _draw_animating: bool:
 	get: return not _draw_flights.is_empty()
-# 碰杠后保持剩余牌的触点，直到该玩家出牌再重新居中。
+# 碰杠飞行期间保留触点，落位后快速居中再恢复操作。
 var _held_hand_centers: Dictionary = {}
 var _pending_draws := {0: "", 1: "", 2: "", 3: ""}
 var _deal_done_callback := Callable()
@@ -217,6 +218,7 @@ func _hand_choices(cards: Array) -> Array:
 	if cards.size() == 14 - 3 * player.melds.size(): key += str(player.just_drew)
 	if key != _arrangement_key:
 		_arrangement_key = key
+		_arrangement_done_key = ""
 		if cards.size() == 14 - 3 * player.melds.size():
 			var discards: Array = round.legal_turn_options(human_seat).discards
 			_arrangement_choices = HAND_ARRANGEMENT.build_turn(cards, GameConfig.hand_sort_priority == "pattern", player.melds, discards)
@@ -239,15 +241,22 @@ func _sort_own_hand() -> void:
 		for i in choices.size():
 			if choices[i].key == _local_arrangement.get("key", ""): current = i
 	_local_arrangement = choices[(current + 1) % choices.size()]
-	if _arrangement_cards().size() == 13 - 3 * round.players[human_seat].melds.size() \
-		and not round.players[human_seat].ready and _arrangement_thread == null and _arrangement_done_key != _arrangement_key:
-		_arrangement_job_key = _arrangement_key
-		var input := _arrangement_cards()
-		var melds: Array = round.players[human_seat].melds.duplicate(true)
-		var priority: bool = GameConfig.hand_sort_priority == "pattern"
-		_arrangement_thread = Thread.new()
-		_arrangement_thread.start(func(): return HAND_ARRANGEMENT.with_one_tile_changes(input, priority, melds))
 	refresh()
+	if table != null: table._update_interactivity()
+
+func _start_arrangement_search() -> void:
+	if _local_arrangement.is_empty() or _arrangement_thread != null or _arrangement_done_key == _arrangement_key: return
+	var player = round.players[human_seat]
+	var input := _arrangement_cards()
+	if input.size() != 13 - 3 * player.melds.size() or player.ready: return
+	_arrangement_job_key = _arrangement_key
+	var melds: Array = player.melds.duplicate(true)
+	var priority: bool = GameConfig.hand_sort_priority == "pattern"
+	_arrangement_thread = Thread.new()
+	_arrangement_thread.start(func():
+		var result := HAND_ARRANGEMENT.with_one_tile_changes(input, priority, melds)
+		Shanten.release_thread_cache()
+		return result)
 
 func _restore_own_hand() -> void:
 	if not _can_arrange_hand(): return
@@ -256,6 +265,7 @@ func _restore_own_hand() -> void:
 	_arrangement_key = ""
 	_arrangement_choices.clear()
 	refresh()
+	if table != null: table._update_interactivity()
 
 func _order_local_cards(cards: Array) -> Array:
 	if _local_arrangement.is_empty() or cards.size() not in [13 - 3 * round.players[human_seat].melds.size(), 14 - 3 * round.players[human_seat].melds.size()]: return cards
@@ -277,7 +287,9 @@ func _order_local_cards(cards: Array) -> Array:
 func _refresh_hand_arrangement() -> void:
 	var show_buttons: bool = round.phase == ROUND_STATE.Phase.PLAYING and not test_frozen
 	var can_arrange := _can_arrange_hand()
+	if can_arrange: _start_arrangement_search()
 	_arrangement_caption.visible = can_arrange and not _local_arrangement.is_empty()
+	_layout_arrangement_controls()
 	if not _local_arrangement.is_empty():
 		var at := -1
 		for i in _arrangement_choices.size():
@@ -326,9 +338,6 @@ func _refresh_hand_arrangement() -> void:
 	_sort_button.disabled = not can_arrange
 	_restore_button.visible = show_buttons and not _local_arrangement.is_empty()
 	_restore_button.disabled = not can_arrange
-	var anchor := Vector2(G.draw_slot_center(human_seat, human_seat).x - _sort_button.size.x / 2.0, G.HAND_BOTTOM + 14.0)
-	_sort_button.position = anchor
-	_restore_button.position = anchor - Vector2(_restore_button.size.x + 12.0, 0.0)
 	_clear(_hand_groups)
 	if round.phase != ROUND_STATE.Phase.PLAYING or _local_arrangement.is_empty() \
 			or hand_boxes[human_seat].get_child_count() != _local_arrangement.cards.size(): return
@@ -345,6 +354,23 @@ func _refresh_hand_arrangement() -> void:
 		line.size = Vector2(last.x - first.x + 2.0 * half - 16.0, 4.0)
 		_hand_groups.add_child(line)
 		slot += int(length)
+
+func _layout_arrangement_controls() -> void:
+	var anchor := Vector2(_draw_center(human_seat, _current_hand_count(human_seat)).x - _sort_button.size.x / 2.0, G.HAND_BOTTOM + 14.0)
+	_sort_button.position = anchor
+	_restore_button.position = anchor - Vector2(_restore_button.size.x + 12.0, 0.0)
+	var left := 60.0
+	var teaching: Label = table.get("status_label") if table != null else null
+	if is_instance_valid(teaching):
+		var right := _sort_button.position.x + _sort_button.size.x + 20.0
+		# Reserve both text areas even before asynchronous teaching arrives.
+		if G.DESIGN_SIZE.x - 60.0 - right >= teaching.size.x:
+			teaching.position.x = right
+		else:
+			teaching.position.x = 60.0
+			left = teaching.position.x + teaching.size.x + 30.0
+	_arrangement_caption.position = Vector2(left, G.HAND_BOTTOM + 12.0)
+	_arrangement_caption.size = Vector2(_restore_button.position.x - left - 20.0, 64.0)
 
 func _build_ready_decorations() -> void:
 	for seat in 4:
@@ -459,6 +485,7 @@ func _dice_bounce(progress: float, height: float) -> float:
 
 func adopt_action_bar(bar: Control) -> void:
 	if bar == null or _action_layer == null: return
+	bar.set_meta("v2_action_bar", true)
 	if bar.get_parent() != _action_layer:
 		bar.reparent(_action_layer)
 
@@ -512,9 +539,9 @@ func _settlement_multiplier_title() -> String:
 
 func _build_native_settlement_panel() -> void:
 	var panel := Panel.new()
-	panel.name = "V2PersonalSettlement"
-	panel.size = Vector2(G.SETTLEMENT_AREA.size.x, 280)
-	panel.position = G.SETTLEMENT_AREA.get_center() - panel.size / 2.0
+	panel.name = "V2SettlementRows"
+	panel.size = G.SETTLEMENT_AREA.size
+	panel.position = G.SETTLEMENT_AREA.position
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("#102c24")
@@ -528,71 +555,188 @@ func _build_native_settlement_panel() -> void:
 
 	var title := _table_text(panel, _settlement_result_title(), 30, UI.GOLD)
 	title.name = "ResultTitle"
-	title.position = Vector2(28, 4)
-	title.size = Vector2(panel.size.x - 56, 40)
+	title.position = Vector2(24, 4)
+	title.size = Vector2(panel.size.x - 48, 40)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", clampi(floori(30.0 * title.size.x / maxf(_hud_text_width(title.text, 30), title.size.x)), 18, 30))
 	title.clip_text = true
 	title.tooltip_text = title.text
-	var multiplier := _table_text(panel, _settlement_multiplier_title(), 24, UI.GOLD)
+	var multiplier := _table_text(panel, _settlement_multiplier_title(), 22, UI.GOLD)
 	multiplier.name = "MultiplierTitle"
-	multiplier.position = Vector2(28, 41)
-	multiplier.size = Vector2(panel.size.x - 56, 29)
-	var header_y := 72.0
-	var column_start := 188.0
-	var column_width := (panel.size.x - 468.0) / 3.0
-	var row_height := 50.0
+	multiplier.position = Vector2(24, 42)
+	multiplier.size = Vector2(panel.size.x - 48, 28)
+	var header_y := 72.0 if multiplier.text != "" else 44.0
+	for column in [["玩家", 24.0, 200.0], ["得分", 224.0, 528.0], ["本局增减", 756.0, 120.0]]:
+		var caption := _table_text(panel, column[0], 22, UI.MUTED)
+		caption.name = "ScoreHeading" if column[0] == "得分" else str(column[0])
+		caption.position = Vector2(column[1], header_y)
+		caption.size = Vector2(column[2], 30)
+		if column[0] == "得分": caption.tooltip_text = "单倍、相对一家计算的分值；右侧为本局实际净增减"
+		if column[0] == "本局增减": caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var row_top := header_y + 34.0
+	var row_blocks: Array = []
 	for index in 4:
 		var seat := posmod(human_seat + index, 4)
-		var center := 102.0 if index == 0 else column_start + (index - 1) * column_width + column_width / 2.0
-		var direction := _table_text(panel, ["我", "上", "对", "下"][index], 36, UI.GOLD)
-		direction.name = "SettlementSeat%d" % seat
-		direction.position = Vector2(center - 35.0, header_y)
-		direction.size = Vector2(36, 44)
-		direction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		var called := bool(_settlement_plan.called[seat])
-		if not called: continue
-		var background := Color("#30784e")
-		var border := Color("#a2d3ac")
-		var badge := _hud_badge("叫", Vector2(center + 9.0, header_y + 8.0), background, border)
-		badge.name = "CalledStatus%d" % seat
-		badge.tooltip_text = "叫牌"
-		badge.reparent(panel, false)
-
-	for row in 3:
-		var top := 119.0 + row * row_height
+		row_blocks.append(_settlement_blocks(SETTLEMENT_ROWS.entries(round.last_result, round.round_meta, round.players, _settlement_plan, seat)))
+	var factor := 1.0
+	var row_heights: Array = []
+	while factor > 0.4:
+		row_heights.clear()
+		for blocks in row_blocks:
+			row_heights.append(maxf(68.0, (_settlement_entry_lines(blocks, 520, factor) * (_settlement_line_height(blocks) + 2.0) - 2.0) * factor + 12.0))
+		var height := 0.0
+		for value in row_heights: height += value
+		if height <= panel.size.y - row_top - 10.0 and row_blocks.all(func(blocks): return _settlement_entry_lines(blocks, 520, factor) <= 2): break
+		factor -= 0.05
+	var used_height := 0.0
+	for height in row_heights: used_height += float(height)
+	var padding := maxf(0.0, (panel.size.y - row_top - 10.0 - used_height) / 4.0)
+	for index in 4: row_heights[index] += padding
+	var names := _seat_display_names(snapshot.get("seats", []))
+	for index in 4:
+		var seat := posmod(human_seat + index, 4)
+		var top := row_top
+		var row_height: float = row_heights[index]
+		row_top += row_height
 		var divider := ColorRect.new()
-		divider.color = Color(UI.GOLD, 0.28 if row == 2 else 0.13)
+		divider.name = "PlayerDivider%d" % index
+		divider.color = Color(UI.GOLD, 0.55)
 		divider.position = Vector2(24, top)
-		divider.size = Vector2(panel.size.x - 48, 1)
+		divider.size = Vector2(panel.size.x - 48, 2)
 		divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		panel.add_child(divider)
-		var caption := _table_text(panel, ["我的分数", "对方分数", "结算"][row], 28, UI.INK)
-		caption.position = Vector2(28, top + 1)
-		caption.size = Vector2(148, row_height - 1)
-		var labels: Array[Label] = []
-		for index in 3:
-			var value := _table_text(panel, "0", 42 if row == 2 else 38, UI.MUTED)
-			value.position = Vector2(column_start + index * column_width, top + 1)
-			value.size = Vector2(column_width, row_height - 1)
-			value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			labels.append(value)
-		_settlement_score_rows.append(labels)
+		var called := bool(_settlement_plan.called[seat])
+		var self_draw: bool = bool(round.round_meta.get("self_draw", false)) and seat in _settlement_plan.winners
+		var badge_width := (30.0 if called else 0.0) + (58.0 if self_draw else 0.0)
+		var nickname := str(names.get(seat, ["你", "上家", "对家", "下家"][index]))
+		var font_size := clampi(floori(24.0 * (192.0 - badge_width) / maxf(_hud_text_width(nickname, 24), 192.0 - badge_width)), 16, 24)
+		var identity := _table_text(panel, nickname, font_size, UI.GOLD)
+		identity.name = "SettlementSeat%d" % seat
+		identity.position = Vector2(24, top + 4)
+		identity.size = Vector2(minf(_hud_text_width(nickname, font_size) + 2.0, 192.0 - badge_width), 36)
+		identity.clip_text = true
+		var badge_x := identity.position.x + identity.size.x + 6.0
+		if called:
+			var badge := _hud_badge("叫", Vector2(badge_x, top + 11), Color("#30784e"), Color("#a2d3ac"))
+			badge.name = "CalledStatus%d" % seat
+			badge.tooltip_text = "叫牌"
+			badge.reparent(panel, false)
+			badge_x += 30.0
+		if self_draw:
+			var badge := _hud_badge("自摸", Vector2(badge_x, top + 11), Color("#89692b"), UI.GOLD)
+			badge.name = "SelfDrawStatus%d" % seat
+			badge.size.x = 54
+			badge.reparent(panel, false)
+		var status := _table_text(panel, _settlement_row_status(seat, index, nickname), 16, UI.MUTED)
+		status.name = "PlayerStatus%d" % seat
+		status.position = Vector2(24, top + 40)
+		status.size = Vector2(194, row_height - 42)
+		status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var score := _table_text(panel, "0", 32, UI.MUTED)
+		score.name = "PlayerNet%d" % seat
+		score.position = Vector2(756, top + 2)
+		score.size = Vector2(120, row_height - 4)
+		score.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_settlement_net_labels[seat] = score
+		_build_settlement_entries(panel, seat, row_blocks[index], Rect2(224, top + 5, 520, row_height - 10), factor)
 
-	var total_bg := ColorRect.new()
-	total_bg.color = Color(UI.GOLD, 0.10)
-	total_bg.position = Vector2(panel.size.x - 258, 220)
-	total_bg.size = Vector2(232, 49)
-	total_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(total_bg)
-	var total_title := _table_text(total_bg, "合计", 28, UI.GOLD)
-	total_title.position = Vector2(14, 0)
-	total_title.size = Vector2(70, total_bg.size.y)
-	total_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_settlement_total_label = _table_text(total_bg, "0", 42, UI.MUTED)
-	_settlement_total_label.name = "Total"
-	_settlement_total_label.position = Vector2(84, 0)
-	_settlement_total_label.size = Vector2(136, total_bg.size.y)
-	_settlement_total_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+func _settlement_row_status(seat: int, index: int, nickname: String) -> String:
+	var words: Array[String] = []
+	var direction: String = ["", "上家", "对家", "下家"][index]
+	if direction != "" and direction != nickname: words.append(direction)
+	if round.players[seat].ready: words.append("报听")
+	return " · ".join(words)
+
+func _settlement_blocks(entries: Array) -> Array:
+	var blocks: Array = []
+	for entry in entries:
+		var terms: Array[String] = []
+		for part in entry.parts: terms.append("%s %s%s" % [part.label, _settlement_signed(float(part.amount)), str(part.get("suffix", ""))])
+		var text := " · ".join(terms)
+		var faces := _settlement_faces(entry)
+		blocks.append({"faces": faces, "text": text, "width": faces.size.x + _hud_text_width(text, 22) + (6.0 if not entry.tiles.is_empty() else 0.0)})
+	return blocks
+
+func _settlement_faces(entry: Dictionary) -> Dictionary:
+	var faces: Array = []
+	if entry.has("kong"):
+		var kong: Dictionary = entry.kong
+		var slot := G.exposed_kong_source_slot(kong.seat, kong.from_seat) if kong.label == "明杠" else -1
+		var opposite: bool = slot >= 0 and posmod(int(kong.from_seat) - int(kong.seat), 4) == 2
+		var size: Vector2 = EXPOSED.size_for(0)
+		var count := 3 if opposite else 4
+		var group := {"rel": 0, "count": 4, "charge": false, "source_slot": slot, "opposite": opposite,
+			"width": count * size.x + (count - 1) * 4.0 + (size.y - size.x if slot >= 0 and not opposite else 0.0)}
+		var specs: Array = EXPOSED.place(group, 0, false)
+		var bounds: Rect2 = specs[0].rect
+		for spec in specs: bounds = bounds.merge(spec.rect)
+		var scale_factor := 38.4 / size.x
+		for spec in specs:
+			faces.append({"card": entry.tiles[spec.meld_slot], "center": (spec.center - bounds.position) * scale_factor,
+				"angle": PI / 2.0 if spec.sideways else 0.0})
+		return {"tiles": faces, "size": bounds.size * scale_factor}
+	for index in entry.tiles.size():
+		faces.append({"card": entry.tiles[index], "center": Vector2(index * 38.4 + 19.2, 25.6), "angle": 0.0})
+	return {"tiles": faces, "size": Vector2(entry.tiles.size() * 38.4, 51.2)}
+
+func _settlement_entry_lines(blocks: Array, width: float, factor: float) -> int:
+	var x := 0.0
+	var lines := 1
+	for block in blocks:
+		if block.width * factor > width: return 3
+		if x > 0 and x + block.width * factor > width:
+			x = 0.0
+			lines += 1
+		x += (block.width + 12.0) * factor
+	return lines
+
+func _settlement_line_height(blocks: Array) -> float:
+	var height := 56.0
+	for block in blocks: height = maxf(height, block.faces.size.y)
+	return height
+
+func _build_settlement_entries(panel: Control, seat: int, blocks: Array, bounds: Rect2, factor: float) -> void:
+	if blocks.is_empty():
+		var zero := _table_text(panel, "0分", 24, UI.MUTED)
+		zero.name = "ScoreItems%d" % seat
+		zero.position = bounds.position
+		zero.size = bounds.size
+		return
+	var lines := _settlement_entry_lines(blocks, bounds.size.x, factor)
+	var line_height := _settlement_line_height(blocks)
+	var x := 0.0
+	var y := maxf(0.0, (bounds.size.y - (lines * (line_height + 2.0) - 2.0) * factor) / 2.0)
+	var group := Control.new()
+	group.name = "ScoreItems%d" % seat
+	group.position = bounds.position
+	group.size = bounds.size
+	group.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(group)
+	for block in blocks:
+		if x > 0 and x + block.width * factor > bounds.size.x:
+			x = 0.0
+			y += (line_height + 2.0) * factor
+		var line := Control.new()
+		line.position = Vector2(x, y)
+		line.size = Vector2(block.width, line_height)
+		line.scale = Vector2.ONE * factor
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		group.add_child(line)
+		var faces: Dictionary = block.faces
+		for face in faces.tiles:
+			var tile := TileView.new()
+			tile.tile = str(face.card)
+			tile.unit = 0.8
+			tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			line.add_child(tile)
+			tile.pivot_offset = tile.size / 2.0
+			tile.position = face.center + Vector2(0, (line_height - faces.size.y) / 2.0) - tile.size / 2.0
+			tile.rotation = float(face.angle)
+		var label := _table_text(line, block.text, 22, UI.INK)
+		label.position = Vector2(faces.size.x + (6.0 if faces.size.x > 0 else 0.0), 0)
+		label.size = Vector2(block.width - label.position.x, line_height)
+		x += (block.width + 12.0) * factor
+
 
 func adopt_settlement_node(node: Control) -> void:
 	if node == null or _settlement_layer == null: return
@@ -669,8 +813,7 @@ func _clear_native_settlement_visuals() -> void:
 	_native_settlement = null
 	_settlement_flip_index = -1
 	_settlement_notice = null
-	_settlement_score_rows.clear()
-	_settlement_total_label = null
+	_settlement_net_labels.clear()
 	if _discard_layer != null:
 		_discard_layer.show()
 	if _red_layer != null:
@@ -812,8 +955,8 @@ func _show_native_settlement_notice(caption: String) -> void:
 
 func _begin_native_stage(stage: Dictionary) -> void:
 	_settlement_stage_key = str(stage.get("key", ""))
-	var caption := str({"flip": "翻鸡计分", "chicken": "鸡分结算", "kong": "杠分结算",
-		"win": "胡牌与牌型结算", "other": "补付与调整结算"}.get(_settlement_stage_key, "计分"))
+	var caption := str({"flip": "翻鸡", "chicken": "鸡分", "kong": "杠分",
+		"win": "胡牌", "other": "补付"}.get(_settlement_stage_key, "计分"))
 	var winner := int(stage.get("winner", -1))
 	if _settlement_stage_key == "win" and _settlement_plan.get("winners", []).size() > 1 and winner in range(round.players.size()):
 		var relative_name: String = ["你", "上家", "对家", "下家"][posmod(winner - human_seat, 4)]
@@ -901,16 +1044,10 @@ func _render_native_pairs(scores: Array) -> void:
 			var net: float = scores[first][second] - scores[second][first]
 			_settlement_pairs[first][second] = net
 			_settlement_pairs[second][first] = -net
-	var total := 0.0
-	for index in 3:
-		# Each player sees their own upper, opposite and lower seats.
-		var other := posmod(human_seat + index + 1, 4)
-		var net: float = _settlement_pairs[human_seat][other]
-		_set_native_score(_settlement_score_rows[0][index], scores[human_seat][other])
-		_set_native_score(_settlement_score_rows[1][index], scores[other][human_seat])
-		_set_native_score(_settlement_score_rows[2][index], net)
-		total += net
-	_set_native_score(_settlement_total_label, total)
+	for seat in _settlement_net_labels:
+		var total := 0.0
+		for other in 4: total += float(_settlement_pairs[seat][other])
+		_set_native_score(_settlement_net_labels[seat], total)
 
 func _set_native_score(label: Label, value: float) -> void:
 	label.text = _settlement_signed(value)
@@ -918,7 +1055,7 @@ func _set_native_score(label: Label, value: float) -> void:
 
 func _begin_native_final() -> void:
 	_end_native_stage()
-	_show_native_settlement_notice("本局得分汇总")
+	_show_native_settlement_notice("合计")
 	_render_native_pairs(_settlement_final_scores)
 
 func _roll_native_final(progress: float) -> void:
@@ -1062,6 +1199,12 @@ func action_bar_rect(row_size: Vector2) -> Rect2:
 		for center: Vector2 in held: right = maxf(right, center.x + size.x / 2.0)
 	return Rect2(Vector2(right - row_size.x, G.ACTION_TOP), row_size)
 
+func reserved_action_rect() -> Rect2:
+	var count := 4
+	for bar in _action_layer.get_children():
+		if bar.get_meta("v2_action_bar", false): count = maxi(count, bar.get_child_count())
+	return action_bar_rect(Vector2(count * UI.DISCARD_BUTTON_SIZE.x + (count - 1) * UI.ACTION_SEPARATION, UI.ACTION_BUTTON_SIZE.y))
+
 ## 新弃牌落点（屏幕坐标）。普通弃牌按非鸡牌顺序，鸡牌用红色区落点。
 func hand_source_global(seat: int, concealed_index: int) -> Vector2:
 	for box in [hand_boxes[seat], draw_boxes[seat]]:
@@ -1103,12 +1246,36 @@ func discard_target_global(seat: int, discard_id: int) -> Vector2:
 ## WallRing 单张下标 -> 牌墙牌背中心。
 func wall_center_for_index(index: int) -> Vector2:
 	var segment := _wall_segment_for_index(index)
+	return _original_wall_center(index) + Vector2(_wall_offsets.get(int(segment.get("seat", -1)), Vector2.ZERO))
+
+func _original_wall_center(index: int) -> Vector2:
+	var segment := _wall_segment_for_index(index)
 	if segment.is_empty(): return G.CENTER
 	var side := _wall_screen_seat(int(segment.seat))
 	var columns := int(segment.len) / 2
 	var slot := (index - int(segment.start)) / 2
 	if side in [1, 2]: slot = columns - 1 - slot
 	return G.wall_block_center(side, slot, index % 2, columns)
+
+func _update_wall_centering() -> void:
+	var shown := _shown_draws()
+	_wall_offsets.clear()
+	for seat in snapshot.get("wall_centering", {}):
+		var marker: Dictionary = snapshot.wall_centering[seat]
+		var taken := int(marker.taken)
+		var indices: Array = marker.indices
+		# 前48张成组拿四张；跨过半墙的一组离墙后，按这一组取完的余牌居中。
+		# 从真实缺口还原这几张槽位，迟加入/重连也能得到同一个固定基准。
+		var start := int(round.round_meta.get("break", -1))
+		if taken <= 48 and start >= 0:
+			taken = ((taken + 3) / 4) * 4
+			indices = indices.filter(func(index): return posmod(int(index) - start, WallRing.N) >= taken)
+		if shown >= 0 and taken > shown: continue
+		var side := _wall_screen_seat(int(seat))
+		var axis := Vector2.RIGHT if side in [1, 3] else Vector2.DOWN
+		var positions: Array = indices.map(func(index): return _original_wall_center(int(index)).dot(axis))
+		if positions.is_empty(): continue
+		_wall_offsets[int(seat)] = axis * (G.CENTER.dot(axis) - (float(positions.min()) + float(positions.max())) / 2.0)
 
 func _wall_screen_seat(seat: int) -> int:
 	# 牌墙逻辑座位固定，屏幕南侧始终对应本家。
@@ -1198,6 +1365,7 @@ func _reset_round_visual_state() -> void:
 	_draw_flights.clear()
 	_pending_draws = {0: "", 1: "", 2: "", 3: ""}
 	_held_hand_centers.clear()
+	_wall_offsets.clear()
 	_deal_moving.clear()
 	_deal_done_callback = Callable()
 	_frozen_hands.clear()
@@ -1448,7 +1616,7 @@ func _exposed_layout() -> Array:
 	if round == null: return []
 	if _reconciling and _exposed_checked: return _exposed_specs
 	var state: Array = [human_seat, round.phase, round.dealer_seat, _held_hand_centers,
-		round.round_meta.get("charge_chickens", {})]
+		round.round_meta.get("charge_chickens", {}), reserved_action_rect()]
 	for player in round.players:
 		state.append([player.concealed, player.just_drew, player.melds, player.discards,
 			player.discard_ids, player.discard_count, player.ready, _seat_hud_rect(player.seat)])
@@ -1590,6 +1758,7 @@ func _wall_slots(seat: int) -> Array:
 	return slots
 
 func _build_wall() -> void:
+	_update_wall_centering()
 	if keep_removed_wall_gray and round != null and round.wall != null:
 		_build_wall_with_gray()
 		return
@@ -1995,6 +2164,7 @@ func animate_draw_discard(seat: int, done: Callable, discard_card: String = "") 
 func animate_hand_discard(seat: int, discard_card: String, discard_index: int,
 		done: Callable) -> void:
 	var action_id := _begin_visual_action()
+	_pending_draws[seat] = ""
 	_held_hand_centers.erase(seat)
 	var discard_node: Control = null
 	var remaining: Array = []
@@ -2146,8 +2316,8 @@ func _place_exposed_tiles(seat: int, excluded_meld: int) -> void:
 			node.position = Vector2(spec.center) - node.size / 2.0
 			break
 
-func _move_existing_exposed(tween: Tween, duration: float) -> void:
-	var layout := _exposed_layout()
+func _move_existing_exposed(tween: Tween, duration: float, layout: Array = []) -> void:
+	if layout.is_empty(): layout = _exposed_layout()
 	for node in _red_layer.get_children() + _meld_layer.get_children():
 		if not node is TileView: continue
 		for spec in layout:
@@ -2156,8 +2326,35 @@ func _move_existing_exposed(tween: Tween, duration: float) -> void:
 			if spec.meld_index >= 0:
 				if int(spec.meld_slot) != int(node.get_meta("meld_slot", -2)): continue
 			elif int(spec.discard_id) != int(node.get_meta("discard_id", -2)): continue
-			tween.tween_property(node, "position", Vector2(spec.center) - node.size / 2.0, duration)
+			var target: Vector2 = Vector2(spec.center) - node.size / 2.0
+			if tween == null: node.position = target
+			else: tween.tween_property(node, "position", target, duration)
 			break
+
+func _center_hand_after_meld(seat: int, action_id: int, done: Callable) -> void:
+	_held_hand_centers.erase(seat)
+	var moves: Array = []
+	var hand: Array = hand_boxes[seat].get_children()
+	for slot in hand.size():
+		var node: Control = hand[slot]
+		var target := G.hand_slot_center(seat, slot, human_seat, hand.size()) - node.size / 2.0
+		if not node.position.is_equal_approx(target): moves.append({"node": node, "from": node.position, "target": target})
+		node.position = target
+	# Compute meld destinations against the final hand and name positions so
+	# releasing input cannot trigger a second, snapping layout adjustment.
+	_invalidate_exposed_layout()
+	var layout := _exposed_layout()
+	var seconds := minf(0.12, GameConfig.tile_motion_seconds() * 0.4)
+	if seconds <= 0.0 or moves.is_empty():
+		_move_existing_exposed(null, 0.0, layout)
+		_complete_visual_action(action_id, done)
+		return
+	var center := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	for move in moves:
+		move.node.position = move.from
+		center.tween_property(move.node, "position", move.target, seconds)
+	_move_existing_exposed(center, seconds, layout)
+	center.chain().tween_callback(func(): _complete_visual_action(action_id, done))
 
 ## 碰/杠：手牌和来源弃牌飞到碰杠区。
 func animate_meld(event: Dictionary, done: Callable) -> void:
@@ -2281,7 +2478,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 	var duration := GameConfig.tile_motion_seconds()
 	if duration <= 0.0:
 		land.call()
-		_complete_visual_action(action_id, done)
+		_center_hand_after_meld(seat, action_id, done)
 		return
 	var flight := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_move_existing_exposed(flight, duration)
@@ -2299,7 +2496,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 		flight.tween_property(node, "rotation", target_angles[i], duration)
 	flight.chain().tween_callback(func():
 		land.call()
-		_complete_visual_action(action_id, done))
+		_center_hand_after_meld(seat, action_id, done))
 
 func _build_melds() -> void:
 	for data in snapshot.get("seats", []):
@@ -2809,7 +3006,7 @@ func _process(_delta: float) -> void:
 		if _arrangement_job_key == _arrangement_key:
 			_arrangement_choices = choices
 			_arrangement_done_key = _arrangement_key
-			_refresh_hand_arrangement()
+		_refresh_hand_arrangement()
 
 func _follow_hand_hud() -> void:
 	if _label_layer == null or _labels.size() != 4: return

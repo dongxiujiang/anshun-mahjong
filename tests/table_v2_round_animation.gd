@@ -175,8 +175,8 @@ func _kong_sources():
 						middle = node
 				var center := claimed.position + claimed.size / 2.0
 				t.expect(middle != null and is_equal_approx(center.x, (middle.position + middle.size / 2.0).x)
-					and is_equal_approx(center.y + claimed.size.x * claimed.scale.x / 2.0, (middle.position + middle.size / 2.0).y + middle.size.y * middle.scale.y / 2.0),
-					"%s opposite discard lands centered with the upright bottom edge" % value)
+					and center.y + claimed.size.x * claimed.scale.x / 2.0 < (middle.position + middle.size / 2.0).y - middle.size.y * middle.scale.y / 2.0,
+					"%s opposite discard lands centered in front of the three upright tiles" % value)
 			await _cleanup(host)
 
 func _discard_sources():
@@ -725,9 +725,9 @@ func _held_draw_envelope():
 			t.expect(absf((target-center).dot(direction)) >= G.hand_tile_size(seat,1).x + 19.9, "replacement draw cannot cover any retained hand tile")
 		await _cleanup(host)
 
-func _held_after_meld():
+func _center_after_meld():
 	var config = root.get_node("GameConfig")
-	for seconds in [0.0, 0.2]:
+	for seconds in [0.0, 0.2, 1.0]:
 		config.set_tile_animation_seconds(seconds, false)
 		for seat in 4:
 			for kind in ["pung", "kong", "concealed", "add_kong"]:
@@ -755,17 +755,21 @@ func _held_after_meld():
 					event.source_discard_id = 4
 				var done = {"meld":false,"discard":false,"draw":false}
 				deck.animate_meld(event, func(): done.meld = true)
-				await create_timer(seconds + 0.06).timeout
+				if seconds > 0:
+					t.expect(deck.native_actions_pending() and not done.meld, "meld and quick centering keep hand input locked")
+				await create_timer(seconds + minf(0.12, seconds * 0.4) + 0.06).timeout
 				deck.refresh()
-				t.expect(done.meld and deck._held_hand_centers.has(seat), kind + ": hand position is held for seat %d" % seat)
+				t.expect(done.meld and not deck._held_hand_centers.has(seat) and not deck.native_actions_pending(), kind + ": quick centering finishes before releasing input for seat %d" % seat)
 				for tile in positions:
-					t.expect(is_instance_valid(tile) and tile.position.is_equal_approx(positions[tile]), kind + ": surviving hand hit targets never move after claim and refresh")
+					var slot := int(tile.get_meta("v2_hand_slot", -1))
+					t.expect(is_instance_valid(tile) and (tile.position + tile.size / 2.0).is_equal_approx(G.hand_slot_center(seat, slot, 1, p.concealed.size())), kind + ": same surviving entities recenter immediately after claim")
+					positions[tile] = tile.position
 				if kind != "pung":
 					p.concealed.append("tiao9")
 					p.just_drew = "tiao9"
 					deck.animate_draw(seat, "tiao9", -1, func(): done.draw = true)
 					deck.refresh()
-					for tile in positions: t.expect(tile.position.is_equal_approx(positions[tile]), "replacement draw also preserves the old hit targets")
+					for tile in positions: t.expect(tile.position.is_equal_approx(positions[tile]), "replacement draw preserves the newly centered hand")
 					p.concealed.pop_back()
 					p.just_drew = ""
 					p.discards.append("tiao9")
@@ -786,7 +790,7 @@ func _held_after_meld():
 				if DisplayServer.get_name() != "headless" and seconds > 0:
 					await RenderingServer.frame_post_draw
 					DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://build/meld-motion"))
-					root.get_texture().get_image().save_png("res://build/meld-motion/held-%d-%s.png" % [seat, kind])
+					root.get_texture().get_image().save_png("res://build/meld-motion/centered-%d-%s.png" % [seat, kind])
 				await _cleanup(host)
 	config.set_tile_animation_seconds(0.3, false)
 
@@ -803,7 +807,7 @@ func _run():
 	if selected_case in ["all","lifecycle"]: await _lifecycle()
 	if selected_case in ["all","kong_draw"]: await _kong_draw()
 	if selected_case in ["all","held_draw_envelope"]: await _held_draw_envelope()
-	if selected_case in ["all","held_after_meld"]: await _held_after_meld()
+	if selected_case in ["all","center_after_meld"]: await _center_after_meld()
 	if selected_case in ["all","kong_sources"]: await _kong_sources()
 	if selected_case in ["all","discard_sources"]: await _discard_sources()
 	if selected_case in ["all","river_centering"]: await _river_centering()

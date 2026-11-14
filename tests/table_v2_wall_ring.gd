@@ -101,7 +101,7 @@ func _opening_matrix(deck) -> void:
 					label + ": the actual dealer receives the correct opening indices")
 				var screen := posmod(logical_side - viewer + 1, 4)
 				var wall_bounds: Rect2 = G.WALL_BOUNDS[screen]
-				t.expect(wall_bounds.has_point(deck.wall_center_for_index(first)), label + ": break is on the expected rotated wall")
+				t.expect(wall_bounds.has_point(deck._original_wall_center(first)), label + ": break is on the expected original physical wall")
 				deck.animate_deal_group(dealer, opening.cards, opening.indices, 0, func(): pass)
 				var display_order := [first + 1, first + 3, first, first + 2]
 				var matching: bool = deck._deal_moving.size() == 4

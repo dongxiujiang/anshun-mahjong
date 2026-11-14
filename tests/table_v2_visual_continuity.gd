@@ -86,8 +86,8 @@ func _check_opposite_kongs(view) -> void:
 				var source: Vector2 = group[3].center
 				var middle: Vector2 = group[1].center
 				correct = correct and group[3].sideways and absf((source - middle).dot(along)) < 0.05 \
-					and is_equal_approx((source-middle).dot(inward),(view._exposed_size(owner).x-view._exposed_size(owner).y)/2)
-			t.expect(correct, "seat %d: opposite tile is centered and bottom-aligned with each kong" % owner)
+					and is_equal_approx((source-middle).dot(inward),(view._exposed_size(owner).x+view._exposed_size(owner).y)/2+8)
+			t.expect(correct, "seat %d: opposite tile is centered separately in front of each kong" % owner)
 
 func _meld_clear_in_frame(view, owner: int, layer: Control) -> bool:
 	var count := 0
@@ -253,10 +253,13 @@ func _run():
 		host.round.players[1].concealed = saved_hand
 
 		var unobscured=true
+		# The rendered capacity board still has four held tiles. Check its own
+		# action placement, rather than a 13-tile row over a different hand layout.
+		var rendered_actions: Rect2 = view.reserved_action_rect()
 		for layer in view._render_layers():
 			if layer == view._wall_layer: continue
 			for tile in layer.get_children():
-				if action_rect.intersects(rect(tile).grow(-0.1)):unobscured=false
+				if rendered_actions.intersects(rect(tile).grow(-0.1)):unobscured=false
 		t.expect(unobscured,"hand%d: action buttons avoid hands and public tiles; walls may sit underneath" % count)
 		t.expect(action_rect.position.y >= G.CENTER.y, "hand%d: action buttons stay on the local side of the table" % count)
 	host.round.players[1].melds[0]["from_seat"]=0

@@ -71,7 +71,7 @@ func _run() -> void:
 	else:
 		t.expect(not settlement.has_started() and settlement.boards.is_empty(), "图形模式没有旧版结算卡")
 		t.expect(v2._native_settlement is Panel and v2._native_settlement.visible, "V2显示个人结算面板")
-		t.expect(v2._settlement_score_rows.size() == 3, "面板有我的分数、对方分数及差值")
+		t.expect(v2._settlement_net_labels.size() == 4, "面板显示四位玩家的本局增减")
 		t.expect(not v2._discard_layer.visible, "结算面板替换弃牌区")
 		t.expect(not root.get_node("FpsOverlay")._label.visible, "结算时帧率文字避让下一局按钮")
 	await create_timer(0.55).timeout

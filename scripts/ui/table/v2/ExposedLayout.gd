@@ -25,7 +25,12 @@ static func interval(rect: Rect2, rel: int) -> Vector2:
 	var half := absf(axis.x)*rect.size.x/2+absf(axis.y)*rect.size.y/2
 	return Vector2(middle-half,middle+half)
 
-static func place(group: Dictionary, start: float, lower: bool) -> Array:
+static func axis_bounds(rel: int) -> Vector2:
+	var half:=G.hand_span(13,G.OPPONENT_UNIT)/2
+	if rel in [0,2]:half=(G.WALL_BOUNDS[0].position.x-G.WALL_BOUNDS[2].end.x)/2-16
+	return Vector2(-half,half)
+
+static func place(group: Dictionary, start: float, lower: bool, outward: float = 0.0) -> Array:
 	var rel: int=group.rel
 	var size:=size_for(rel)
 	var out:=[]
@@ -37,6 +42,8 @@ static func place(group: Dictionary, start: float, lower: bool) -> Array:
 		var x:=start+cursor+width/2
 		if group.opposite and sideways: x=start+float(group.width)/2
 		var center: Vector2=origin(rel,lower)+AXES[rel]*x+INWARD[rel]*depth/2
+		if group.opposite and sideways: center+=INWARD[rel]*(size.y+8)
+		center-=INWARD[rel]*outward
 		var angle: float=ANGLES[rel]+(PI/2 if sideways else 0)
 		var spec:=group.duplicate()
 		spec.merge({"center":center,"sideways":sideways,"meld_slot":i,"rect":rect_for(center,size,angle),"lower":lower},true)
@@ -47,6 +54,9 @@ static func place(group: Dictionary, start: float, lower: bool) -> Array:
 static func clear(specs: Array, obstacles: Array) -> bool:
 	for spec in specs:
 		if not G.TABLE_BOUNDS.grow(0.1).encloses(spec.rect): return false
+		var span:=interval(spec.rect,int(spec.rel))
+		var bounds:=axis_bounds(int(spec.rel))
+		if span.x<bounds.x or span.y>bounds.y:return false
 		for obstacle: Rect2 in obstacles:
 			if spec.rect.grow(-0.05).intersects(obstacle): return false
 	return true
@@ -100,10 +110,12 @@ static func solve(view) -> Array:
 		for i in ordinary:obstacles.append(rect_for(G.ordinary_slot_center(seat,i,view.human_seat,ordinary),Vector2(64.8,86.4),ANGLES[rel]))
 	for node in view._wall_layer.get_children():
 		if node is TileView and (not view._reconciling or view._render_seen.has(node.get_instance_id())):obstacles.append(rect_for(node.position+node.size/2,node.size*node.scale,node.rotation))
+	obstacles.append(view.reserved_action_rect())
 	for attempt in 10:
 		var order:=groups.duplicate()
 		order.sort_custom(func(a,b):
 			if (a.count==1)!=(b.count==1):return (a.count==1) if attempt==0 else (a.count!=1)
+			if attempt>=5 and a.opposite!=b.opposite:return a.opposite
 			if attempt>=2 and a.seat!=b.seat:return posmod(int(a.seat)-attempt,4)<posmod(int(b.seat)-attempt,4)
 			return a.width>b.width)
 		var occupied:=obstacles.duplicate()
@@ -121,18 +133,50 @@ static func solve(view) -> Array:
 
 static func find_space(group: Dictionary, obstacles: Array) -> Array:
 	var rel: int=group.rel
-	var bounds:=interval(G.TABLE_BOUNDS,rel)
+	var bounds:=axis_bounds(rel)
 	var width: float=group.width
 	var starts:={bounds.x+8:true,bounds.y-width-8:true,-36-width:true,36.0:true}
+	var hand_half:=G.hand_span(13,G.OWN_UNIT if rel==0 else G.OPPONENT_UNIT)/2
+	starts[-hand_half+8]=true;starts[hand_half-width-8]=true
 	for obstacle: Rect2 in obstacles:
 		var span:=interval(obstacle,rel)
 		starts[span.y+8]=true;starts[span.x-width-8]=true
-	for lower in [false,true]:
-		for side in [-1,1]:
-			var candidates: Array=starts.keys().filter(func(x):return x>=bounds.x+8 and x+width<=bounds.y-8 and (x+width<=-8 if side<0 else x>=8))
-			candidates.sort()
-			if (side<0 and not lower) or (side>0 and lower):candidates.reverse()
-			for start in candidates:
-				var specs:=place(group,float(start),lower)
-				if clear(specs,obstacles):return specs
+	for hand_space in [true,false]:
+		var limits:=Vector2(maxf(bounds.x,-hand_half),minf(bounds.y,hand_half)) if hand_space else bounds
+		for lower in [false,true]:
+			for side in [-1,1]:
+				var candidates: Array=starts.keys().filter(func(x):return x>=limits.x+8 and x+width<=limits.y-8 and ((x<0 if side<0 else x>=0) if lower else (x+width<=-8 if side<0 else x>=8)))
+				candidates.sort()
+				if (side<0 and not lower) or (side>0 and lower):candidates.reverse()
+				for start in candidates:
+					var specs:=place(group,float(start),lower)
+					if clear(specs,obstacles):return specs
+	# A held hand or a two-row kong may leave neither fixed belt usable.
+	# Search the free belt, including just inside that wall, as a whole group.
+	var inward: Vector2=INWARD[rel]
+	var max_outward: float=(origin(rel,false)-origin(rel,true)).dot(inward)
+	var wall: Rect2=G.WALL_BOUNDS[[1,0,3,2][rel]]
+	var wall_depth: float=(wall.get_center()-origin(rel,false)).dot(inward)+(absf(inward.x)*wall.size.x+absf(inward.y)*wall.size.y)/2
+	var min_outward: float=-wall_depth-24
+	var shape:=place(group,0,false)
+	var depth:=Vector2(INF,-INF)
+	for spec in shape:
+		var center: float=(spec.rect.get_center()-origin(rel,false)).dot(inward)
+		var half: float=(absf(inward.x)*spec.rect.size.x+absf(inward.y)*spec.rect.size.y)/2
+		depth.x=minf(depth.x,center-half);depth.y=maxf(depth.y,center+half)
+	var offsets:={}
+	for obstacle: Rect2 in obstacles:
+		var center: float=(obstacle.get_center()-origin(rel,false)).dot(inward)
+		var half: float=(absf(inward.x)*obstacle.size.x+absf(inward.y)*obstacle.size.y)/2
+		for offset in [depth.y-center+half+8,depth.x-center-half-8]:
+			if offset>min_outward and offset<max_outward: offsets[offset]=true
+	var values: Array=offsets.keys()
+	values.sort_custom(func(a,b):
+		if (a>=0)!=(b>=0):return a>=0
+		return absf(a)<absf(b))
+	for offset in values:
+		for start in starts:
+			if start<bounds.x+8 or start+width>bounds.y-8:continue
+			var specs:=place(group,float(start),false,float(offset))
+			if clear(specs,obstacles):return specs
 	return []

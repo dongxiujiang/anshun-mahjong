@@ -207,13 +207,10 @@ func _run_native_api() -> void:
 	t.expect(r.wall.remaining == wall_count and r.wall.peek_head_index() == flip_index, "flip neither consumes nor advances the wall")
 	t.expect(deck._native_settlement is Panel and not deck._discard_layer.visible, "personal panel replaces ordinary discards")
 	t.expect(deck._settlement_pairs == r.last_result.pairwise, "panel net values match the final ledger")
-	for index in 3:
-		var own: Label = deck._settlement_score_rows[0][index]
-		var opponent: Label = deck._settlement_score_rows[1][index]
-		var difference: Label = deck._settlement_score_rows[2][index]
-		t.expect(int(own.text) - int(opponent.text) == int(difference.text), "visible rows subtract in column %d" % index)
-		t.expect(int(difference.text) == int(r.last_result.pairwise[0][index + 1]), "visible column follows viewer-relative seat")
-	t.expect(int(deck._settlement_total_label.text) == int(r.last_result.deltas[0]), "visible total matches own net")
+	for seat in 4:
+		t.expect(int(deck._settlement_net_labels[seat].text) == int(r.last_result.deltas[seat]), "each player row shows the actual ledger net")
+	t.expect(deck._native_settlement.get_node("ScoreHeading").text == "得分", "score heading uses the requested wording")
+	t.expect(deck._native_settlement.find_children("PlayerDivider*", "ColorRect", false, false).size() == 4, "header and all player rows have horizontal separators")
 	t.expect(deck._score_inspection == null, "settlement has no score detail overlay by default")
 	config.set_score_details_enabled(true, false)
 	t.expect(is_instance_valid(deck._score_inspection), "enabling score details applies to the current settlement")
@@ -229,7 +226,7 @@ func _run_native_api() -> void:
 	t.expect(inspection.find_children("*", "ScrollContainer", true, false).is_empty(), "score details do not contain a scroll container")
 	config.set_score_details_enabled(false, false)
 	t.expect(deck._score_inspection == null, "disabling score details removes the current overlay and tile inputs")
-	t.expect(int(deck._settlement_total_label.text) == int(r.last_result.deltas[0]), "toggling details preserves the settlement total")
+	t.expect(int(deck._settlement_net_labels[0].text) == int(r.last_result.deltas[0]), "toggling details preserves the settlement total")
 	config.set_score_details_enabled(true, false)
 	deck.reset_native_settlement()
 	t.expect(not deck.native_settlement_started(), "reset clears native settlement started flag")
@@ -262,12 +259,16 @@ func _check_called_headers() -> void:
 					var heading: Label = panel.get_node("SettlementSeat%d" % seat)
 					var badge: Label = panel.get_node_or_null("CalledStatus%d" % seat)
 					var called := bool(deck._settlement_plan.called[seat])
-					t.expect(heading.text == ["我", "上", "对", "下"][index], "header follows the viewer on local and synced tables")
+					t.expect(heading.text == str(deck._seat_display_names([]).get(seat, ["你", "上家", "对家", "下家"][index])), "row uses the player's display name on local and synced tables")
 					t.expect((badge != null) == called, "uncalled seats have no badge on local or synced tables")
 					if badge != null:
 						t.expect(badge.text == "叫" and badge.size == dealer.size, "called badge matches the dealer badge size and single-character style")
 						t.expect(badge.get_theme_stylebox("normal").bg_color == Color("#30784e"), "called seats and winners use green badges")
 						t.expect(not badge.get_rect().intersects(heading.get_rect()) and panel.get_rect().size.y > badge.get_rect().end.y, "status badge does not overlap its seat label or leave the panel")
+					var self_draw: Label = panel.get_node_or_null("SelfDrawStatus%d" % seat)
+					t.expect((self_draw != null) == (bool(state.round_meta.get("self_draw", false)) and seat in deck._settlement_plan.winners), "self-draw badge belongs only to the self-drawing winner")
+					if self_draw != null:
+						t.expect(self_draw.text == "自摸" and not self_draw.get_rect().intersects(heading.get_rect()), "self-draw badge sits to the right of the player name")
 				deck.free()
 
 func _run() -> void:

@@ -14,6 +14,12 @@ static func _thread_cache() -> Dictionary:
 	_thread_cache_mutex.unlock()
 	return local
 
+## 短期排序线程退出前释放自己的缓存，不影响主线程或AI线程。
+static func release_thread_cache() -> void:
+	_thread_cache_mutex.lock()
+	_thread_caches.erase(OS.get_thread_caller_id())
+	_thread_cache_mutex.unlock()
+
 static func shanten(concealed: Array, melds: Array) -> int:
 	var local := _thread_cache()
 	var cache: Dictionary = local.cache

@@ -11,12 +11,14 @@ func run():
 	view.formal_mode = false
 	view.test_reveal_all_hands = true
 	var count := 1008
+	var first := 0
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--rounds="): count = int(arg.substr(9))
+		if arg.begins_with("--start="): first = int(arg.substr(8))
 	var states := 0
 	var max_river := 0
 	var max_meld := 0
-	for id in count:
+	for id in range(first, first + count):
 		var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://build/layout-proposals/github-b2d0dde/live-layout-validation/replays/round-%d.json" % id))
 		var meta: Dictionary = record.initial.round_meta
 		var r := RoundState.new()
@@ -47,7 +49,7 @@ func run():
 			if not t.expect(view._exposed_layout().size()==expected,"round %d all exposed tiles placed" % id): break
 			states += 1
 		if t.failures>0: break
-		if id%24==23: print("LAYOUT rounds=",id+1," states=",states," max_river=",max_river," max_meld=",max_meld)
+		if (id-first)%24==23: print("LAYOUT first=",first," rounds=",id-first+1," states=",states," max_river=",max_river," max_meld=",max_meld)
 		await process_frame
 	view.queue_free()
 	await H.quit_cleanly(self,t.finish("feedback_layout_soak"))

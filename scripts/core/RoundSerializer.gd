@@ -11,6 +11,7 @@ static func serialize(round_state) -> Dictionary:
 		"awaiting_response": round_state._awaiting_response.duplicate(true),
 		"last_result": _convert_kong_kinds(round_state.last_result, true),
 		"players": [], "wall": {}, "wall_stacks": {},
+		"wall_centering": round_state.wall.wall_centering() if round_state.wall != null else round_state.wall_centering.duplicate(true),
 		"next_chicken_multiplier": round_state.next_chicken_multiplier,
 		"opening_speed": round_state.opening_speed,
 		"audio_session": round_state.audio_session, "audio_event_id": round_state.audio_event_id,
@@ -96,6 +97,7 @@ static func apply_sync(round_state, state: Dictionary) -> void:
 	round_state.wall = null
 	round_state.wall_remain = state.wall.duplicate()
 	round_state.wall_stacks = state.get("wall_stacks", {}).duplicate(true)
+	round_state.wall_centering = state.get("wall_centering", {}).duplicate(true)
 	round_state._audio.apply_sync(state)
 	round_state._presentation.apply_sync(state)
 

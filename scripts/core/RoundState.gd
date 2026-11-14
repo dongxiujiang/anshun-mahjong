@@ -81,6 +81,7 @@ var last_discard := {}
 var round_meta := {}
 var wall_remain := {}
 var wall_stacks := {}
+var wall_centering := {} # 接收方保留首次半墙的视觉基准，不参与游戏判断。
 var prompt_id := 0
 var _rng := RandomNumberGenerator.new()
 var _turn_count := 0

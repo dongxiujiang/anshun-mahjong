@@ -8,7 +8,7 @@ const SEVEN := ["wan1","wan1","wan2","wan2","wan4","wan4","tiao2","tiao2","tiao5
 const DRAGON := ["wan1","wan1","wan1","wan2","wan2","tiao2","tiao2","tiao5","tiao5","tong3","tong3","tong7","tong7","wan1"]
 const TRIPLETS_KONG := ["tiao2","tiao2","tiao2","tiao3","tiao3","tiao3","tong7","tong7","tong7","tong9","tong9"]
 const OTHER_WAIT := ["tiao1","tiao2","tiao3","tiao4","tiao5","tiao6","tong4","tong5","tong6","tong7","tong8","tong9","wan9"]
-const CASES := ["plain-self-draw", "ready-seven-pairs", "triplets-exposed-kong", "flush-ron", "dragon-seven-pairs-ron", "rob-added-kong", "kong-draw-last-four", "double-ron", "mixed-draw", "all-called-draw", "dry-pattern-ready"]
+const CASES := ["plain-self-draw", "ready-seven-pairs", "triplets-exposed-kong", "flush-ron", "dragon-seven-pairs-ron", "rob-added-kong", "kong-draw-last-four", "double-ron", "mixed-draw", "all-called-draw", "dry-pattern-ready", "uncalled-flip-kong", "uncalled-gold-kong", "gold-kong", "triplets-kong-from-upper", "triplets-kong-from-lower"]
 var _visual := false
 var _case := ""
 var _checks := 0
@@ -100,6 +100,21 @@ func _fixture(r: RoundState) -> Dictionary:
 	var tail := ""
 	var fees: Array = [] # payer, recipient, reason, amount per pair
 	match _case:
+		"uncalled-flip-kong", "uncalled-gold-kong":
+			hand.assign(["wan1","wan2","wan3","wan6","wan7","wan8","tiao1","tiao2","tiao3","tiao1","tiao2","tiao3","wan9","wan9"])
+			var tile := "wan5" if _case == "uncalled-flip-kong" else "tong8"
+			flip = "wan6" if _case == "uncalled-flip-kong" else "tong9"
+			melds[1] = [{"kind":"kong", "tile":tile, "from_seat":1, "concealed":true}]
+			for payer in [1, 2, 3]: fees.append([payer, 0, "自摸基础分", 4])
+			fees.append([1, 0, "未叫牌杠分", 4])
+			if _case == "uncalled-gold-kong": fees.append([1, 0, "未叫牌杠中鸡", 16])
+		"gold-kong":
+			hand = TRIPLETS_KONG.duplicate()
+			flip = "tong9"
+			melds[0] = [{"kind":"kong", "tile":"tong8", "from_seat":0, "concealed":true}]
+			for payer in [1, 2, 3]:
+				fees.append([payer, 0, "大对子", 14])
+				fees.append([payer, 0, "暗杠", 4])
 		"plain-self-draw":
 			hand[6] = "tiao1"
 			hand[7] = "tiao2"
@@ -115,12 +130,13 @@ func _fixture(r: RoundState) -> Dictionary:
 			for payer in [1, 2, 3]:
 				fees.append([payer, 0, "小七对", 24])
 				fees.append([payer, 0, "报听胡牌", 20])
-		"triplets-exposed-kong":
+		"triplets-exposed-kong", "triplets-kong-from-upper", "triplets-kong-from-lower":
 			hand = TRIPLETS_KONG.duplicate()
 			mode = "ron"
 			flip = "wan6"
-			melds[0] = [{"kind":"kong", "tile":"wan5", "from_seat":2, "concealed":false}]
-			fees = [[1, 0, "大对子", 14], [2, 0, "明杠", 4]]
+			var from_seat := int({"triplets-kong-from-upper": 1, "triplets-kong-from-lower": 3}.get(_case, 2))
+			melds[0] = [{"kind":"kong", "tile":"wan5", "from_seat":from_seat, "concealed":false}]
+			fees = [[1, 0, "大对子", 14], [from_seat, 0, "明杠", 4]]
 		"flush-ron":
 			hand = FLUSH.duplicate()
 			mode = "ron"
@@ -358,7 +374,7 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 			var caption: String = view._settlement_notice.text
 			if caption.begins_with("翻鸡  "): stage = "wall-reveal"
 			elif caption.begins_with("黄牌"): stage = "all-called"
-			elif caption.begins_with("本局得分"): stage = "count-total"
+			elif caption == "合计": stage = "count-total"
 		elif stage == "win" and spec.mode == "double":
 			var caption: String = view._settlement_notice.text
 			if caption not in win_captions: win_captions.append(caption)
@@ -419,6 +435,8 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 		"rob-added-kong": "你被抢杠 · 下家抢杠胡", "kong-draw-last-four": "你杠开海底自摸-大对子",
 		"double-ron": "对家放炮 · 下家报听胡牌、上家报听胡牌", "mixed-draw": "本局流局",
 		"all-called-draw": "四家叫牌流局", "dry-pattern-ready": "你报听自摸-清一色",
+		"uncalled-flip-kong": "你自摸", "uncalled-gold-kong": "你自摸", "gold-kong": "你自摸-大对子",
+		"triplets-kong-from-upper": "上家放炮 · 你胡牌-大对子", "triplets-kong-from-lower": "上家放炮 · 你胡牌-大对子",
 	}
 	var multiplier_titles := {
 		"ready-seven-pairs": "双骰同点 · 本局双倍",
@@ -427,6 +445,7 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 	}
 	_check(panel.get_node("ResultTitle").text == titles[_case], "settlement title shows the outcome in the viewer's seat order")
 	_check(panel.get_node("MultiplierTitle").text == multiplier_titles.get(_case, ""), "multiplier identifies the exact source")
+	_check_row_summary(view, r)
 	var next: Control = table._settlement_card._post_controls
 	var sizes := [Vector2i(1280, 720)]
 	if _case in ["triplets-exposed-kong", "double-ron", "all-called-draw"]: sizes.append_array([Vector2i(960, 540), Vector2i(2400, 1080)])
@@ -516,7 +535,7 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 			await process_frame
 			await process_frame
 			_check(root.get_visible_rect().encloses(details._detail_panel.get_global_rect()), "player details fit the screen")
-			_check(not details._detail_panel.get_global_rect().intersects(panel.get_global_rect()), "player details do not overlap settlement")
+			_check(not panel.visible, "manual detail view temporarily replaces the full four-player summary")
 			for badge: Label in view._dealer_meld_badges + view._ready_meld_badges:
 				if badge.is_visible_in_tree():
 					_check(not panel.get_global_rect().intersects(badge.get_global_rect())
@@ -537,10 +556,75 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 			view, client.last_result, client.round_meta, client.players, plan)
 		view._settlement_layer.add_child(remote)
 		_check(remote._seat_details == details._seat_details, "network snapshot produces identical details for every player")
+		for seat in 4:
+			var rows = preload("res://scripts/ui/table/v2/SettlementRows.gd")
+			_check(rows.entries(client.last_result, client.round_meta, client.players, plan, seat)
+				== rows.entries(r.last_result, r.round_meta, r.players, view._settlement_plan, seat),
+				"network and solo rows retain identical score tiles and single-rate components")
 		remote.free()
 	_check(before == r.last_result, "switching players never changes scores or transfers")
 	details._hide_detail()
 	_check(not details._detail_panel.visible, "player score details can be closed")
+	_check(panel.visible, "closing manual detail restores the four-player summary")
+
+func _check_row_summary(view: Control, r: RoundState) -> void:
+	var panel: Control = view._native_settlement
+	_check(panel.get_node("ScoreHeading").text == "得分", "four-player summary uses the requested score heading")
+	_check(panel.find_children("PlayerDivider*", "ColorRect", false, false).size() == 4, "every adjacent player has a horizontal separator")
+	var before := r.last_result.duplicate(true)
+	for seat in 4:
+		_check(int(panel.get_node("PlayerNet%d" % seat).text) == int(r.last_result.deltas[seat]), "row net equals the actual ledger delta")
+		var status: Label = panel.get_node("PlayerStatus%d" % seat)
+		_check(not ["流局", "未叫牌", "胡牌", "放炮", "抢杠"].any(func(word): return status.text.contains(word)), "player subtitle avoids repeating the title and called badge")
+		var group: Control = panel.get_node("ScoreItems%d" % seat)
+		for block: Control in group.get_children():
+			_check(Rect2(Vector2.ZERO, group.size).grow(0.1).encloses(Rect2(block.position, block.size * block.scale)), "all score blocks fit the two-line row")
+			for child: Control in block.get_children():
+				var child_bounds: Rect2 = child.get_transform() * Rect2(Vector2.ZERO, child.size)
+				_check(Rect2(Vector2.ZERO, block.size).grow(0.1).encloses(child_bounds), "score tiles and text stay inside their block: %s %s / %s" % [child.name, child_bounds, block.size])
+				if child is TileView:
+					_check(child.size.x * block.scale.x > 24.0, "scoring tile faces are larger than the previous 24-design-pixel icons")
+	var text := ""
+	for label: Label in panel.get_node("ScoreItems0").find_children("*", "Label", true, false): text += label.text + " "
+	if _case == "ready-seven-pairs":
+		_check(text.contains("小七对 +24") and text.contains("报听 +20") and text.contains("翻鸡 +2"), "doubled seven-pairs uses one-opponent, single-rate 24/20/2")
+		_check(panel.get_node("ScoreItems0").find_children("*", "TileView", true, false).size() == 2, "two scoring sevens are both visible")
+	if _case.begins_with("triplets-"):
+		_check(text.contains("明杠 +4") and text.contains("翻鸡 +4") and text.contains("大对子 +14"), "exposed kong splits the base and flip instead of summing them")
+		for block: Control in panel.get_node("ScoreItems0").get_children():
+			var faces := block.get_children().filter(func(node): return node is TileView)
+			if faces.size() != 4: continue
+			var sideways := faces.filter(func(tile): return not is_zero_approx(tile.rotation))
+			_check(sideways.size() == 1, "exposed kong retains exactly one horizontal source tile")
+			if sideways.size() != 1: continue
+			var source := int(r.players[0].melds[0].from_seat)
+			var center: Vector2 = sideways[0].position + sideways[0].size / 2.0
+			var upright := faces.filter(func(tile): return is_zero_approx(tile.rotation))
+			var left := INF
+			var right := -INF
+			var bottom := -INF
+			var top := INF
+			for tile: TileView in upright:
+				left = minf(left, tile.position.x + tile.size.x / 2.0)
+				right = maxf(right, tile.position.x + tile.size.x / 2.0)
+				bottom = maxf(bottom, tile.position.y + tile.size.y)
+				top = minf(top, tile.position.y)
+			var horizontal: Rect2 = sideways[0].get_transform() * Rect2(Vector2.ZERO, sideways[0].size)
+			_check(horizontal.end.y < top if source == 2 else is_equal_approx(horizontal.end.y, bottom), "opposite source tile is separated in front; side sources retain the baseline")
+			_check((center.x < left if source == 1 else center.x > right) if source != 2 else is_equal_approx(center.x, (left + right) / 2.0), "upper/opposite/lower source orientation matches the actual table")
+	if _case == "mixed-draw":
+		_check(text.contains("牌型 +24（上/下）") and not text.contains("荒牌"), "draw fees use concise pattern labels and retain payer directions")
+		var captions := ""
+		for label: Label in panel.find_children("*", "Label", true, false): captions += label.text
+		_check(not captions.contains("未叫牌出牌鸡") and not captions.contains("荒牌基础补付"), "uncalled debts and basic draw fees have no repeated explanations")
+	if _case in ["uncalled-flip-kong", "uncalled-gold-kong"]:
+		var debt := ""
+		for label: Label in panel.get_node("ScoreItems1").find_children("*", "Label", true, false): debt += label.text
+		_check(debt.contains("暗杠 -4") and not debt.contains("翻鸡"), "uncalled kong pays the actual base debt without inventing ordinary flip debt")
+		if _case == "uncalled-gold-kong": _check(debt.contains("杠中鸡 -16"), "uncalled gold kong displays its independent negative chicken amount")
+	if _case == "gold-kong":
+		_check(text.contains("暗杠 +4") and text.contains("杠中鸡 +16") and text.contains("翻鸡 +2"), "gold-kong base, gold chicken and separate hand flip retain distinct amounts")
+	_check(before == r.last_result, "four-player summary never mutates the authoritative ledger")
 
 func _click(tile: Control) -> void:
 	var center := tile.get_global_transform_with_canvas() * (tile.size / 2.0)

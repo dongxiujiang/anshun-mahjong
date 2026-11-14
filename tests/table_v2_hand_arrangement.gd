@@ -46,6 +46,7 @@ func _run() -> void:
 	t.expect(view._sort_button.position.y >= TableV2Geometry.HAND_BOTTOM, "Sort does not cover the hand")
 	view._sort_own_hand()
 	var first: Array = view._local_arrangement.cards
+	t.expect(view.hand_boxes[table.human_seat].get_children().all(func(tile): return not tile.interactive), "off-turn sorting never enables hand input")
 	view._sort_own_hand()
 	t.expect(first != view._local_arrangement.cards and view._restore_button.visible, "second tap cycles layouts and shows Restore")
 	var deadline := Time.get_ticks_msec()+5000
@@ -88,6 +89,9 @@ func _run() -> void:
 	t.expect(merged_finished.value, "merged draw discard animation finishes")
 	table._refresh()
 	t.expect(Tiles.sort_hand(view._local_arrangement.cards) == hand, "discard after merging retains exactly the remaining thirteen tiles")
+	deadline = Time.get_ticks_msec() + 5000
+	while view._arrangement_thread != null and Time.get_ticks_msec() < deadline: await process_frame
+	t.expect(view._arrangement_choices.any(func(choice): return choice.has("change_from")), "unchanged thirteen tiles regain all exchange plans after merging and discarding a draw")
 	var before_insert: Dictionary = view._local_arrangement
 	player.concealed.append("wan6")
 	player.just_drew = "wan6"
@@ -126,6 +130,7 @@ func _run() -> void:
 	player.concealed.assign(hand)
 	table._refresh()
 	t.expect(not view._restore_button.visible and view._local_arrangement.is_empty(), "Restore returns to default sorting")
+	t.expect(view.hand_boxes[table.human_seat].get_children().all(func(tile): return not tile.interactive), "off-turn Restore never enables hand input")
 	# Reported-ready players may inspect splits, never hypothetical exchanges.
 	player.ready = true
 	player.passed_win_until_draw = true
@@ -159,6 +164,8 @@ func _run() -> void:
 			view.refresh()
 			view._sort_own_hand()
 			t.expect(view._sort_button.visible and not view._sort_button.disabled and not view._local_arrangement.is_empty(), "every seat can sort 10/7/4/1 concealed tiles")
+			t.expect(is_equal_approx(view._sort_button.position.x + view._sort_button.size.x / 2,
+				TableV2Geometry.draw_slot_center(viewer, viewer, current.concealed.size()).x), "short hand Sort follows the real draw position")
 			for tile in view.hand_boxes[viewer].get_children():
 				t.expect(tile.tile == current.concealed[int(tile.get_meta("concealed_index"))], "melded sorting retains authoritative touch indices")
 			current.concealed.append("tong9")
@@ -168,7 +175,16 @@ func _run() -> void:
 			t.expect(view._sort_button.visible and view.draw_boxes[viewer].get_child_count() == 0
 				and view.hand_boxes[viewer].get_child_count() == current.concealed.size(), "draw after a meld can merge into the arranged hand")
 			t.expect(view.hand_boxes[viewer].get_children().filter(func(tile): return tile.get_meta("drawn", false)).size() == 1, "merged ready hand still identifies only the new tile as discardable")
-			if viewer == original_seat: await _capture("sorting-%d-melds-with-draw" % count)
+			if viewer == original_seat:
+				table._ai_assist_enabled = true
+				table._apply_proxy_teach({"discard": current.just_drew, "recommendations": [{"tile": current.just_drew, "distance": 0, "outs": 3}]})
+				view._refresh_hand_arrangement()
+				t.expect(not table.status_label.get_global_rect().intersects(view._arrangement_caption.get_global_rect()), "short hand teaching and arrangement text have separate areas")
+				t.expect(not view._arrangement_caption.get_global_rect().intersects(view._restore_button.get_global_rect())
+					and not view._arrangement_caption.get_global_rect().intersects(view._sort_button.get_global_rect()), "short hand captions never cover Sort or Restore")
+				await _capture("sorting-%d-melds-with-draw" % count)
+				table._ai_assist_enabled = false
+				table._clear_ai_teach()
 			view._restore_own_hand()
 			current.concealed.pop_back()
 			current.just_drew = ""

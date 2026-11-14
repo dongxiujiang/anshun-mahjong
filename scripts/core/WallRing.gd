@@ -21,7 +21,7 @@ var _head := 0
 var _tail := 0
 var remaining := 108
 var _segments: Dictionary
-## 调试牌墙按真实取牌顺序回放；正式逻辑不读取。
+## 记录真实取牌顺序，供牌墙显示与回放；不参与摸牌决策。
 var draw_log: Array = []
 
 const PAIR := 2
@@ -128,6 +128,27 @@ func wall_stack_counts(seat: int) -> Array:
 	for slot in wall_stack_slots(seat):
 		counts.append(int(slot[0]) + int(slot[1]))
 	return counts
+
+## 仅供显示：各段首次剩余半墙时的余牌槽位；后续取牌不改变该基准。
+## 从完整取牌记录推导，供单机、迟加入和重连使用，绝不改写环或取牌游标。
+func wall_centering() -> Dictionary:
+	var result := {}
+	var removed := {}
+	var taken := [0, 0, 0, 0]
+	for i in draw_log.size():
+		var index := int(draw_log[i].index)
+		removed[index] = true
+		for segment in SEG.values():
+			if index < int(segment.start) or index >= int(segment.start) + int(segment.len): continue
+			var seat := int(segment.seat)
+			taken[seat] += 1
+			if taken[seat] == int(segment.len) / 2:
+				var indices: Array = []
+				for remaining_index in range(int(segment.start), int(segment.start) + int(segment.len)):
+					if not removed.has(remaining_index): indices.append(remaining_index)
+				result[seat] = {"taken": i + 1, "indices": indices}
+			break
+	return result
 
 ## 调试牌墙：只回放到前 count 次取牌，让每次摸牌都能单独刷新。
 func debug_stack_slots_at(seat: int, count: int) -> Array:
