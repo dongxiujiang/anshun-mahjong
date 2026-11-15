@@ -127,7 +127,10 @@ func _process(delta: float) -> void:
 
 func _sync_before_draw() -> void:
 	# Tweens can recycle tile sources after _process; mirror their final state.
-	if is_visible_in_tree(): sync_tiles()
+	if is_visible_in_tree():
+		sync_tiles()
+		view._follow_hand_hud()
+		view._layout_arrangement_controls()
 
 func _at_height(screen: Vector2, height: float) -> Vector3:
 	var pixel := screen / size * Vector2(viewport.size)
@@ -315,6 +318,9 @@ func sync_tiles() -> void:
 			_changed = true
 	_update_discard_marker(latest)
 	if _changed:
+		# frame_pre_draw runs after the normal transform flush.
+		for node in tile_nodes.values() + dice_nodes.values() + [discard_marker]:
+			node.force_update_transform()
 		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 		queue_redraw()
 		_changed = false

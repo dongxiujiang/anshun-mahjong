@@ -280,6 +280,22 @@ func run() -> void:
 	t.expect(absf(tip.x - discard_bounds.get_center().x) < 6 and tip.y < discard_bounds.position.y,
 		"the pointer aims at the latest discard without covering its printed face")
 	await _capture("discard-pointer.png")
+	# Reproduce a late tween update after the engine's normal 3D transform flush.
+	var original_position: Vector2 = latest.position
+	RenderingServer.frame_pre_draw.connect(func():
+		latest.position.x += 120.0
+		renderer.sync_tiles(), CONNECT_ONE_SHOT)
+	await RenderingServer.frame_post_draw
+	var pointer_pixel: Vector2 = renderer.camera.unproject_position(renderer.discard_marker.global_position)
+	var rendered: Image = renderer.viewport.get_texture().get_image()
+	var orange_pixels := 0
+	for y in range(maxi(0, int(pointer_pixel.y) - 14), mini(rendered.get_height(), int(pointer_pixel.y) + 15)):
+		for x in range(maxi(0, int(pointer_pixel.x) - 10), mini(rendered.get_width(), int(pointer_pixel.x) + 11)):
+			var color := rendered.get_pixel(x, y)
+			if color.r > 0.45 and color.r > color.g * 1.3 and color.g > 0.1 and color.b < 0.4: orange_pixels += 1
+	t.expect(orange_pixels > 12, "the rendered pointer follows a late transform in the same frame")
+	latest.position = original_position
+	renderer.sync_tiles()
 	latest.modulate.a = 0.0
 	renderer.sync_tiles()
 	t.expect(not renderer.discard_marker.visible, "a discard hidden for its flight never leaves a pointer over empty felt")
@@ -328,7 +344,10 @@ func run() -> void:
 	round.phase = RoundState.Phase.SETTLED
 	view.refresh()
 	renderer.sync_tiles()
-	await create_timer(0.35).timeout
+	var flat_deadline := Time.get_ticks_msec() + 10000
+	while renderer._own_hand_pitch > 0.0001 and Time.get_ticks_msec() < flat_deadline:
+		await process_frame
+	await RenderingServer.frame_post_draw
 	for source in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
 		var mesh: MeshInstance3D = renderer.tile_nodes[source.get_instance_id()]
 		t.expect(mesh.basis.y.normalized().dot(Vector3.UP) > 0.999, "the local hand lies face-up and flat after settlement")

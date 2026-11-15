@@ -543,7 +543,7 @@ func _opening_speed_settings():
 		root.add_child(table)
 		table.round.controllers = [null, null, null, null]
 		var controller = table._table_animation_controller
-		var allowed_ms := int(config.opening_wait_seconds(config.opening_speed_key()) * 1000.0) + 3000
+		var allowed_ms := int(config.opening_wait_seconds(config.opening_speed_key()) * 1000.0) + 30000
 		var deadline := started + allowed_ms
 		while Time.get_ticks_msec() < deadline:
 			if controller._dealt == [13, 13, 13, 13] and not table._new_areas._sort_animating:

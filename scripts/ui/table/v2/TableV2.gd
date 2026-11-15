@@ -3142,7 +3142,7 @@ func _own_hand_top() -> float:
 func _seat_hud_rect(seat: int) -> Rect2:
 	var rel := G.relative_seat(human_seat, seat)
 	if _table_3d != null:
-		return [Rect2(300, _own_hand_top() - 60.0, 330, 44), Rect2(2112, 300, 144, 96),
+		return [Rect2(24, _own_hand_top() - 80.0, 330, 44), Rect2(2112, 300, 144, 96),
 			Rect2(1010, 8, 260, 78), Rect2(24, 300, 144, 96)][rel]
 	var along: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][rel]
 	var first := Rect2()
