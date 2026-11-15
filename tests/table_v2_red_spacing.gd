@@ -237,7 +237,8 @@ func _check_full_table(view, viewer: int) -> void:
 		if tile.tile != "wan6": continue
 		for chicken in view._red_layer.get_children():
 			if chicken.get_meta("v2_seat") != tile.get_meta("v2_seat"): continue
-			painted_clear = painted_clear and not _face_rect(view, tile).intersects(_face_rect(view, chicken).grow(-0.05))
+			# Projected faces are quadrilaterals; their bounding boxes include empty corners.
+			painted_clear = painted_clear and not _faces_overlap(view, tile, chicken)
 	t.expect(painted_clear, "viewer %d: six-character meld faces never cover the eight-circle or chicken tiles" % viewer)
 	var action: Rect2 = view.action_bar_rect(Vector2(546, 112))
 	var action_conflicts := []
