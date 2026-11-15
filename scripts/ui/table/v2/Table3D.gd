@@ -129,7 +129,6 @@ func _sync_before_draw() -> void:
 	# Tweens can recycle tile sources after _process; mirror their final state.
 	if is_visible_in_tree():
 		sync_tiles()
-		view._follow_hand_hud()
 		view._layout_arrangement_controls()
 		view._layout_meld_badges()
 
