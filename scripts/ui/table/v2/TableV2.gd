@@ -472,7 +472,7 @@ func _layout_meld_badges() -> void:
 			if rel == 0:
 				step = 44.0
 				# Keep the local badges in the free left margin beside the hand strip.
-				at = Vector2(24.0, info.position.y + 18.0)
+				at = Vector2(24.0, _own_hand_top() - 42.0)
 			if rel == 2: at.y = info.position.y
 			if rel in [1, 3]:
 				at = Vector2(info.get_center().x - (badges.size() * 64.0 - 8.0) / 2.0,
@@ -3142,7 +3142,7 @@ func _own_hand_top() -> float:
 func _seat_hud_rect(seat: int) -> Rect2:
 	var rel := G.relative_seat(human_seat, seat)
 	if _table_3d != null:
-		return [Rect2(88, _own_hand_top() - 80.0, 330, 44), Rect2(2112, 300, 144, 96),
+		return [Rect2(112, _own_hand_top() - 76.0, 330, 44), Rect2(2112, 300, 144, 96),
 			Rect2(1010, 8, 260, 78), Rect2(24, 300, 144, 96)][rel]
 	var along: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][rel]
 	var first := Rect2()
