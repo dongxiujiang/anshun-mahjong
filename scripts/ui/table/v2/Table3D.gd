@@ -169,6 +169,7 @@ func sync_tiles() -> void:
 	if view == null or viewport == null: return
 	_fit_viewport()
 	var settled: bool = view.round != null and view.round.phase == RoundState.Phase.SETTLED
+	var merged_draw: bool = not settled and view._draw_merged()
 	var settlement_started: bool = view.native_settlement_started()
 	var seen := {}
 	var latest: TileView = null
@@ -198,7 +199,8 @@ func sync_tiles() -> void:
 				source.z_index, source.highlight, source.latest_highlight, source.ai_teach_highlight,
 				source.score_highlight, source.get_parent().get_instance_id(),
 				source.get_meta("charge_chicken", false), source.get_meta("gold_chicken", false),
-				source.get_meta("v2_charge", false), settled, settlement_started, _own_hand_pitch if own_hand else 0.0])
+				source.get_meta("v2_charge", false), settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
+				merged_draw if own_hand else false])
 			if _signatures.get(id) == signature: continue
 			_signatures[id] = signature
 			_changed = true
@@ -257,7 +259,9 @@ func sync_tiles() -> void:
 			var converge := lerpf(0.79, 1.09, center.y / size.y)
 			if own_hand:
 				var draw_gap := 24.0 if kind == "draw" else 0.0
-				center.x = G.CENTER.x + (center.x - G.CENTER.x - 64.0 + draw_gap) * 1.13 * near_fit * 1.02 - 46.0
+				# A merged fourteen-tile row no longer reserves space for a separate draw.
+				var reserve_draw := 0.0 if merged_draw else 1.0
+				center.x = G.CENTER.x + (center.x - G.CENTER.x - 64.0 * reserve_draw + draw_gap) * 1.13 * near_fit * 1.02 - 46.0 * reserve_draw
 				center.y += 32.0
 			else:
 				center.x = G.CENTER.x + (center.x - G.CENTER.x) * converge * lerpf(0.58, 1.0, width_fit)
