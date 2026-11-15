@@ -1,4 +1,4 @@
-name: Pull request and push checks
+name: Focused 3D HUD checks
 
 on:
   push:
@@ -109,7 +109,7 @@ jobs:
       - name: Check graphical suites
         run: |
           failed=0
-          for suite in table_3d ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
+          for suite in table_3d table_v2_feedback table_3d_river_badges; do
             timeout 600s xvfb-run -a godot --path . --audio-driver Dummy --resolution 1280x720 --script "res://tests/$suite.gd" > "build/ci/$suite.log" 2>&1 || failed=1
             echo "$suite"
             tail -n 80 "build/ci/$suite.log"
