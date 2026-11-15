@@ -274,6 +274,12 @@ func run() -> void:
 	t.expect(absf(tip.x - discard_bounds.get_center().x) < 6 and tip.y < discard_bounds.position.y,
 		"the pointer aims at the latest discard without covering its printed face")
 	await _capture("discard-pointer.png")
+	latest.modulate.a = 0.0
+	renderer.sync_tiles()
+	t.expect(not renderer.discard_marker.visible, "a discard hidden for its flight never leaves a pointer over empty felt")
+	latest.modulate.a = 1.0
+	renderer.sync_tiles()
+	t.expect(renderer.discard_marker.visible, "the pointer returns when the latest discard lands visibly")
 	latest.set_latest_highlight(false)
 	renderer.sync_tiles()
 	t.expect(not renderer.discard_marker.visible, "claiming or clearing the latest discard removes its pointer")
