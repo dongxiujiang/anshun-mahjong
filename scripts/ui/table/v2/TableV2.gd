@@ -2343,6 +2343,10 @@ func animate_hand_discard(seat: int, discard_card: String, discard_index: int,
 		move.tween_property(node, "position",
 			G.hand_slot_center(seat, slot, human_seat, ordered.size()) - node.size / 2.0,
 			duration * 0.4).set_delay(duration * (0.5 + slot * 0.006))
+		if seat == human_seat:
+			move.tween_method(func(value): node.set_meta("v2_draw_reserve", value),
+				float(node.get_meta("v2_draw_reserve", 1.0)), 1.0,
+				duration * 0.4).set_delay(duration * (0.5 + slot * 0.006))
 	move.chain().tween_callback(func():
 		for i in ordered.size():
 			var tile: Control = ordered[i]
@@ -2757,6 +2761,7 @@ func _build_hands() -> void:
 			tile.set_meta("new_kind", "hand")
 			tile.set_meta("concealed_index", source_index)
 			tile.set_meta("drawn", own and _draw_merged() and source_index == hand.rfind(str(round.players[seat].just_drew)))
+			tile.set_meta("v2_draw_reserve", 0.0 if own and _draw_merged() else 1.0)
 			hand_boxes[seat].move_child(tile, slot)
 			if own:
 				tile.set_interactive(source_index >= 0)

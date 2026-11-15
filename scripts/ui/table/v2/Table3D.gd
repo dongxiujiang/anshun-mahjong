@@ -169,7 +169,6 @@ func sync_tiles() -> void:
 	if view == null or viewport == null: return
 	_fit_viewport()
 	var settled: bool = view.round != null and view.round.phase == RoundState.Phase.SETTLED
-	var merged_draw: bool = not settled and view._draw_merged()
 	var settlement_started: bool = view.native_settlement_started()
 	var seen := {}
 	var latest: TileView = null
@@ -200,7 +199,7 @@ func sync_tiles() -> void:
 				source.score_highlight, source.get_parent().get_instance_id(),
 				source.get_meta("charge_chicken", false), source.get_meta("gold_chicken", false),
 				source.get_meta("v2_charge", false), settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
-				merged_draw if own_hand else false])
+				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0])
 			if _signatures.get(id) == signature: continue
 			_signatures[id] = signature
 			_changed = true
@@ -260,7 +259,7 @@ func sync_tiles() -> void:
 			if own_hand:
 				var draw_gap := 24.0 if kind == "draw" else 0.0
 				# A merged fourteen-tile row no longer reserves space for a separate draw.
-				var reserve_draw := 0.0 if merged_draw else 1.0
+				var reserve_draw := float(source.get_meta("v2_draw_reserve", 1.0)) if not settled else 1.0
 				center.x = G.CENTER.x + (center.x - G.CENTER.x - 64.0 * reserve_draw + draw_gap) * 1.13 * near_fit * 1.02 - 46.0 * reserve_draw
 				center.y += 32.0
 			else:
