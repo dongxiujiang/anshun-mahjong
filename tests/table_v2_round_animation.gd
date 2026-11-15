@@ -19,6 +19,12 @@ class Host extends Control:
 
 func _initialize(): call_deferred("_run")
 
+func _await_completion(completed: Callable) -> void:
+	# Software rendering can advance Tween time more slowly than wall-clock timers.
+	var deadline := Time.get_ticks_msec() + 10000
+	while not completed.call() and Time.get_ticks_msec() < deadline:
+		await process_frame
+
 func _fixture():
 	var host = Host.new()
 	root.add_child(host)
@@ -76,6 +82,7 @@ func _lifecycle():
 	deck.animate_draw_discard(1,func():state.discard+=1)
 	t.expect(state.discard==0 and host._table_animation_controller.input_locked(),"draw discard stays locked until its flight lands")
 	await create_timer(0.35).timeout
+	await _await_completion(func(): return state.discard == 1)
 	t.expect(state.discard==1 and not deck.native_actions_pending(),"draw discard completion runs exactly once after landing")
 	t.expect(not host._table_animation_controller.input_locked() and not host._table_animation_controller.has_pending(),"completed Tween references do not keep native input or settlement locked")
 	deck.animate_draw(0,"wan8",1,func():state.draw+=1)
@@ -237,6 +244,7 @@ func _river_centering():
 			t.expect(previous.position.is_equal_approx(old_position) and done.count==0,"existing row stays still during discard flight")
 			if seat==1 and count==1 and DisplayServer.get_name()!="headless":await _capture_motion("river-right-flight")
 			await create_timer(0.36).timeout
+			await _await_completion(func(): return done.count == 1)
 			t.expect(done.count==1 and deck._take_river_node(seat,count-1)==previous,"centering keeps tile identity and completes once")
 			for i in count+1:
 				var tile = deck._take_river_node(seat,i)
@@ -386,6 +394,7 @@ func _deal_privacy():
 			if node.face_up: exposed+=1
 		t.expect(exposed==(4 if seat==1 else 0),"deal flight only exposes viewer's own cards, seat%d" % seat)
 		await create_timer(0.4).timeout
+		await _await_completion(func(): return completed.count == 1)
 		t.expect(completed.count==1,"private deal still completes once")
 		await _cleanup(host)
 
@@ -763,6 +772,7 @@ func _center_after_meld():
 				if seconds > 0:
 					t.expect(deck.native_actions_pending() and not done.meld, "meld and quick centering keep hand input locked")
 				await create_timer(seconds + minf(0.12, seconds * 0.4) + 0.06).timeout
+				await _await_completion(func(): return done.meld)
 				deck.refresh()
 				t.expect(done.meld and not deck._held_hand_centers.has(seat) and not deck.native_actions_pending(), kind + ": quick centering finishes before releasing input for seat %d" % seat)
 				for tile in positions:
@@ -787,6 +797,7 @@ func _center_after_meld():
 					p.discard_ids.append(8)
 					deck.animate_hand_discard(seat, value, 0, func(): done.discard = true)
 				await create_timer(seconds + 0.08).timeout
+				await _await_completion(func(): return done.discard)
 				deck.refresh()
 				t.expect(done.discard and not deck._held_hand_centers.has(seat), "discard releases held hand exactly once")
 				for tile in deck.hand_boxes[seat].get_children():

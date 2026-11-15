@@ -321,6 +321,8 @@ func sync_tiles() -> void:
 
 func _update_discard_marker(source: TileView) -> void:
 	var show_marker: bool = is_instance_valid(source) and tile_nodes.has(source.get_instance_id()) and tile_nodes[source.get_instance_id()].visible
+	if show_marker:
+		show_marker = source.get_parent() != view._deal_layer and not view.native_actions_pending() and pick_tile(project_tile(source).get_center(), false) == source
 	if discard_marker.visible != show_marker:
 		discard_marker.visible = show_marker
 		_changed = true

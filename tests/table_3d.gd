@@ -55,12 +55,16 @@ func _check_entities(view, renderer) -> void:
 			var gap := absf(a.position.z - b.position.z) / scale_3d - 1.0
 			t.expect(gap >= -0.01 and gap <= 0.025, "adjacent side discards and meld tiles touch without overlapping")
 		side_tiles.append(source)
-	for seat in 4:
-		var badge: Rect2 = view._seat_hud_rect(seat)
+	for label in view._name_labels + view._labels:
+		var text_size: Vector2 = label.get_theme_font("font").get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size"))
+		text_size.x = minf(text_size.x, label.size.x)
+		var offset := Vector2(0, (label.size.y - text_size.y) / 2.0)
+		if label.horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER: offset.x = (label.size.x - text_size.x) / 2.0
+		var badge := Rect2(label.position + offset, text_size)
 		t.expect(Rect2(Vector2.ZERO, view.size).encloses(badge), "player information stays on screen")
 		for source in _sources(view):
 			t.expect(not badge.intersects(renderer.project_tile(source)),
-				"seat %d information %s avoids %s at %s" % [seat, badge, source.get_meta("new_kind", ""), renderer.project_tile(source)])
+				"player text %s at %s avoids %s at %s" % [label.text, badge, source.get_meta("new_kind", ""), renderer.project_tile(source)])
 	var sources := _sources(view)
 	var expected := {}
 	for source in sources:
@@ -122,12 +126,14 @@ func _mouse(renderer, point: Vector2, pressed: bool) -> void:
 
 func _check_own_input(view, renderer) -> void:
 	var indices := {}
-	t.expect(view._sort_button.position == G.DESIGN_SIZE - view._sort_button.size - Vector2(16, 4),
-		"sorting stays fixed at the bottom-right edge for every viewer and hand size")
+	t.expect(Rect2(Vector2.ZERO, renderer.size).encloses(view._sort_button.get_rect())
+		and view._sort_button.position.x > renderer.size.x * 0.75
+		and view._sort_button.get_rect().end.y <= view._own_hand_top() - 10.0,
+		"sorting stays on screen to the right and above the local hand")
 	for source in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
 		var bounds: Rect2 = renderer.project_tile(source)
 		t.expect(not bounds.intersects(view._sort_button.get_rect()), "sorting never covers the hand or separate draw: %s" % bounds)
-		t.expect(absf(bounds.end.y - 1228.0) < 2.0, "the local hand rests close to the bottom table edge: %s" % bounds)
+		t.expect(absf(bounds.end.y - (renderer.size.y - 44.0)) < 2.0, "the local hand rests close to the bottom table edge: %s" % bounds)
 		t.expect(bounds.has_area() and Rect2(Vector2.ZERO, renderer.size).encloses(bounds),
 			"the complete local tile remains in the viewport")
 		var hit = renderer.pick_tile(bounds.get_center())
@@ -280,6 +286,13 @@ func run() -> void:
 	latest.modulate.a = 1.0
 	renderer.sync_tiles()
 	t.expect(renderer.discard_marker.visible, "the pointer returns when the latest discard lands visibly")
+	var landed_parent = latest.get_parent()
+	latest.reparent(view._deal_layer)
+	renderer.sync_tiles()
+	t.expect(not renderer.discard_marker.visible, "a claimed or flying actor has no resting discard pointer")
+	latest.reparent(landed_parent)
+	renderer.sync_tiles()
+	t.expect(renderer.discard_marker.visible, "the landed discard regains its pointer after the flight")
 	latest.set_latest_highlight(false)
 	renderer.sync_tiles()
 	t.expect(not renderer.discard_marker.visible, "claiming or clearing the latest discard removes its pointer")

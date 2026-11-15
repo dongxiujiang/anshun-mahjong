@@ -72,6 +72,9 @@ func _ready_markers(view):
 		var client = RoundState.new()
 		client.apply_sync(authority.serialize_for_seat(viewer))
 		view.set_round(client,viewer)
+		# Font minimum sizes and the per-frame badge layout settle after changing viewers.
+		await process_frame
+		await process_frame
 		var retained = view.hand_boxes[3].get_child(0)
 		var position = retained.position
 		for seat in 4:
