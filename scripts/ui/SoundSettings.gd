@@ -127,17 +127,18 @@ func _ready() -> void:
 		score_details_button.name = "ScoreDetailsButton"
 		hand_sort_button = _button("", Vector2(844, 552), Vector2(240, 64), _toggle_hand_sort_priority)
 		hand_sort_button.name = "HandSortPriorityButton"
-		tile_speed_slider = _timing_slider("牌面动画 · 摸牌 / 出牌 / 发牌", 126, _set_tile_speed)
+		# 牌面动画速度统一控制摸牌、出牌及开局发牌。
+		tile_speed_slider = _timing_slider("牌面动画", 126, _set_tile_speed)
 		ai_speed_slider = _timing_slider("人机出牌等待", 226, _set_ai_speed)
-		settlement_speed_slider = _timing_slider("结算速度 · 每项计分", 326, _set_settlement_speed)
+		# 结算速度控制每项计分展示。
+		settlement_speed_slider = _timing_slider("结算速度", 326, _set_settlement_speed)
 		_label("人机强度", Vector2(584, 426), Vector2(500, 30), 24)
 		for item in [["弱", "weak"], ["中", "medium"], ["强", "strong"]]:
 			var strength_key: String = item[1]
 			var strength_button := _button(item[0], Vector2(584 + ai_strength_buttons.size() * 170, 462),
 				Vector2(160, 58), func(): _set_ai_strength(strength_key))
 			strength_button.disabled = strength_key == "strong"
-			strength_button.tooltip_text = "中档已启用：加强防守，兼顾报听速度和得分" if strength_key == "medium" \
-				else ("强档策略后续接入" if strength_key == "strong" else "基础 AI")
+			# 弱档为基础AI；中档加强防守并兼顾报听和得分；强档策略暂未接入。
 			ai_strength_buttons[strength_key] = strength_button
 		exit_room_button = _button("退出房间", Vector2(716, 682), Vector2(368, 80), func(): exit_requested.emit())
 		exit_room_button.name = "ExitRoomButton"
@@ -165,7 +166,8 @@ func _ready() -> void:
 		dialog.position = (TABLE_PANEL_SIZE - dialog.size) * 0.5
 		dialog.add_theme_stylebox_override("panel", style)
 		exit_confirmation.add_child(dialog)
-		var question := _label("确定退出当前房间？\n退出后返回主菜单", Vector2(40, 42), Vector2(640, 100), 30)
+		# 退出房间后返回主菜单。
+		var question := _label("确定退出当前房间？", Vector2(40, 42), Vector2(640, 100), 30)
 		question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		question.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		question.reparent(dialog, false)
@@ -390,7 +392,7 @@ func sync_timing_controls() -> void:
 	for slider in [tile_speed_slider, ai_speed_slider, settlement_speed_slider]:
 		slider.editable = editable
 		slider.modulate = Color.WHITE if editable else Color(1.0, 1.0, 1.0, 0.55)
-		slider.tooltip_text = "联机房间速度由房主设置" if not editable else ""
+		# 联机房间速度由房主设置；非房主的滑条只读。
 	_sync_timing_value(tile_speed_slider, GameConfig.tile_motion_seconds())
 	_sync_timing_value(ai_speed_slider, GameConfig.ai_speed_seconds(ai_key))
 	_sync_timing_value(settlement_speed_slider, GameConfig.settlement_step_seconds())
@@ -420,7 +422,7 @@ func _on_export_status(busy: bool, message: String) -> void:
 	replay_export_button.disabled = busy
 	replay_export_button.text = ("已登记提交" if message.contains("结束后") else "正在提交…") if busy else "提交本局记录"
 	replay_status.text = message
-	replay_status.tooltip_text = message
+	# 提交结果已显示在状态行，不再悬停重复。
 
 func close(persist: bool = true) -> void:
 	if persist and persist_changes:

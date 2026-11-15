@@ -112,6 +112,7 @@ var _ready_meld_badges: Array[Label] = []
 var _dealer_meld_badges: Array[Label] = []
 var _sort_button: Button
 var _restore_button: Button
+var _previous_sort_button: Button
 var _hand_groups: Control
 var _local_arrangement := {}
 var _arrangement_choices: Array = []
@@ -169,6 +170,9 @@ func _build_layers() -> void:
 	_arrangement_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_sort_button = _arrangement_button("排序", _sort_own_hand)
 	_restore_button = _arrangement_button("恢复", _restore_own_hand)
+	_previous_sort_button = _arrangement_button("上一种", _sort_own_hand.bind(-1))
+	_previous_sort_button.size.x = 112
+	_previous_sort_button.add_theme_font_size_override("font_size", 26)
 	_deal_layer = _layer("DealLayer")
 	_deal_layer.z_index = 10
 	_debug_layer = _layer("WallDebugLayer")
@@ -226,7 +230,7 @@ func _hand_choices(cards: Array) -> Array:
 			_arrangement_choices = HAND_ARRANGEMENT.build(cards, GameConfig.hand_sort_priority == "pattern", {}, player.melds)
 	return _arrangement_choices
 
-func _sort_own_hand() -> void:
+func _sort_own_hand(direction: int = 1) -> void:
 	if not _can_arrange_hand(): return
 	var window: Dictionary = round.allowed_actions(human_seat)
 	if window.get("kind", "") == "turn" and window.options.self_win:
@@ -240,7 +244,8 @@ func _sort_own_hand() -> void:
 	if _arrangement_key == previous_key:
 		for i in choices.size():
 			if choices[i].key == _local_arrangement.get("key", ""): current = i
-	_local_arrangement = choices[(current + 1) % choices.size()]
+	var next := posmod(current + direction, choices.size()) if current >= 0 else (0 if direction > 0 else choices.size() - 1)
+	_local_arrangement = choices[next]
 	refresh()
 	if table != null: table._update_interactivity()
 
@@ -300,7 +305,7 @@ func _refresh_hand_arrangement() -> void:
 			var score := int(_local_arrangement.scores.get(i, 0))
 			var label := str(_local_arrangement.patterns.get(i, "平胡")) + ("%d分" % score if score > 0 else "")
 			if not by_pattern.has(label): by_pattern[label] = []
-			by_pattern[label].append(AiTeaching._display(Tiles.from_index(i)))
+			by_pattern[label].append(_tile_short(Tiles.from_index(i)))
 		for label in by_pattern:
 			var suits := {}
 			for tile in by_pattern[label]:
@@ -312,32 +317,47 @@ func _refresh_hand_arrangement() -> void:
 			waits.append(" / ".join(names) + "（" + label + "）")
 		var change := ""
 		if _local_arrangement.has("change_from"):
-			change = "若摸到%s，再打%s，" % [AiTeaching._display(_local_arrangement.change_to), AiTeaching._display(_local_arrangement.change_from)]
+			change = "若摸到%s，再打%s" % [_tile_short(_local_arrangement.change_to), _tile_short(_local_arrangement.change_from)]
 		elif _local_arrangement.has("discard"):
-			change = "打%s后，" % AiTeaching._display(_local_arrangement.discard)
+			change = "打%s后" % _tile_short(_local_arrangement.discard)
 		var player = round.players[human_seat]
-		var note := "再点排序，换个摆法看看"
-		if not waits.is_empty():
-			note = "牌型分按单倍算"
-			if by_pattern.has("平胡"): note += "；平胡不一定能接炮"
+		var note := ""
 		if player.ready: note = "你已报听，手牌锁定"
 		if player.passed_win_until_draw:
 			note = "报听后过了胡，本局只能自摸" if player.ready else "刚才过了胡，下次摸牌前不能接炮"
 		if player.passed_self_draw: note = "这次自摸已经放弃" + ("；报听仍锁牌" if player.ready else "")
-		_arrangement_caption.text = "排法 %d/%d · %s%s\n%s%s" % [at+1, _arrangement_choices.size(), note,
-			" · 还在找其他排法…" if _arrangement_thread != null and _arrangement_job_key == _arrangement_key else "",
-			change, "听 " + "；".join(waits) if not waits.is_empty() else "还没叫牌，成组的放左边，散牌留右边。"]
+		var title := "%s %d/%d" % ["换牌设想" if _local_arrangement.has("change_from") else "排法", at+1, _arrangement_choices.size()]
+		if not change.is_empty(): title += " · " + change
+		if not note.is_empty(): title += " · " + note
+		elif not waits.is_empty(): title += " · 此排法听%d种" % _local_arrangement.waits.size()
+		var structure := {"顺子": 0, "刻子": 0, "对子": 0}
+		for group in _local_arrangement.groups:
+			var kind := "对子" if group.size() == 2 else ("刻子" if group[0] == group[1] else "顺子")
+			structure[kind] += 1
+		var grouped: Array = []
+		for kind in structure:
+			if structure[kind] > 0: grouped.append("%d%s" % [structure[kind], kind])
+		var detail := ("再听 " if _local_arrangement.has("change_from") else "听 ") + "；".join(waits)
+		if waits.is_empty():
+			var loose: int = _local_arrangement.cards.size() - int(_local_arrangement.grouped) - int(_local_arrangement.has("discard"))
+			detail = ("已成：" + "、".join(grouped) + " · " if not grouped.is_empty() else "") + "未成组%d张" % loose
+		if _arrangement_thread != null and _arrangement_job_key == _arrangement_key: detail += " · 正在找换牌方案…"
+		_arrangement_caption.text = title + "\n" + detail
+		# 听种数按不同牌值统计，牌型分为单倍，平胡接炮仍按通行规则。
 		_arrangement_caption.tooltip_text = _arrangement_caption.text
 		var font := TileView._font()
-		var font_size := 22
+		var font_size := 24
 		for line in _arrangement_caption.text.split("\n"):
-			while font_size > 14 and font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > _arrangement_caption.size.x:
+			while font_size > 20 and font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > _arrangement_caption.size.x:
 				font_size -= 1
 		_arrangement_caption.add_theme_font_size_override("font_size", font_size)
 	_sort_button.visible = show_buttons
 	_sort_button.disabled = not can_arrange
+	_sort_button.text = "排序" if _local_arrangement.is_empty() else ("下一种" if _arrangement_choices.size() > 1 else "仅此一种")
 	_restore_button.visible = show_buttons and not _local_arrangement.is_empty()
 	_restore_button.disabled = not can_arrange
+	_previous_sort_button.visible = _restore_button.visible
+	_previous_sort_button.disabled = not can_arrange or _arrangement_choices.size() <= 1
 	_clear(_hand_groups)
 	if round.phase != ROUND_STATE.Phase.PLAYING or _local_arrangement.is_empty() \
 			or hand_boxes[human_seat].get_child_count() != _local_arrangement.cards.size(): return
@@ -351,14 +371,24 @@ func _refresh_hand_arrangement() -> void:
 		line.color = Color(UI.GOLD, 0.8)
 		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		line.position = Vector2(first.x - half + 8.0, G.HAND_BOTTOM + 4.0)
-		line.size = Vector2(last.x - first.x + 2.0 * half - 16.0, 4.0)
+		line.size = Vector2(last.x - first.x + 2.0 * half - 16.0, 6.0)
 		_hand_groups.add_child(line)
 		slot += int(length)
+	if _local_arrangement.has("discard"):
+		var target := _hand_center(human_seat, count - 1, count)
+		var mark := ColorRect.new()
+		mark.name = "ArrangementDiscardMark"
+		mark.color = UI.SCORE_LOSS
+		mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mark.position = Vector2(target.x - 38, G.HAND_BOTTOM + 4)
+		mark.size = Vector2(76, 6)
+		_hand_groups.add_child(mark)
 
 func _layout_arrangement_controls() -> void:
 	var anchor := Vector2(_draw_center(human_seat, _current_hand_count(human_seat)).x - _sort_button.size.x / 2.0, G.HAND_BOTTOM + 14.0)
 	_sort_button.position = anchor
 	_restore_button.position = anchor - Vector2(_restore_button.size.x + 12.0, 0.0)
+	_previous_sort_button.position = _restore_button.position - Vector2(_previous_sort_button.size.x + 12.0, 0.0)
 	var left := 60.0
 	var teaching: Label = table.get("status_label") if table != null else null
 	if is_instance_valid(teaching):
@@ -370,7 +400,7 @@ func _layout_arrangement_controls() -> void:
 			teaching.position.x = 60.0
 			left = teaching.position.x + teaching.size.x + 30.0
 	_arrangement_caption.position = Vector2(left, G.HAND_BOTTOM + 12.0)
-	_arrangement_caption.size = Vector2(_restore_button.position.x - left - 20.0, 64.0)
+	_arrangement_caption.size = Vector2(_previous_sort_button.position.x - left - 20.0, 72.0)
 
 func _build_ready_decorations() -> void:
 	for seat in 4:
@@ -424,23 +454,18 @@ func animate_dice(value: int, white: int) -> void:
 	var red := DICE.new()
 	red.size = die_size
 	red.pivot_offset = die_size / 2.0
-	red.face_color = Color("#f3d8cf")
-	red.border_color = Color("#a55043")
 	red.pip_color = Color("#a62b21")
 	_dice_layer.add_child(red)
 	var white_die := DICE.new()
 	white_die.size = die_size
 	white_die.pivot_offset = die_size / 2.0
-	white_die.face_color = Color("#eef2e8")
-	white_die.border_color = Color("#8c9d8b")
 	white_die.pip_color = Color("#243a30")
 	_dice_layer.add_child(white_die)
-	var shadow := Panel.new()
+	var shadow := TextureRect.new()
+	shadow.texture = TileView.SOFT_SHADOW
+	shadow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	shadow.size = Vector2(UI.DICE_SIZE * 2.0 + 8.0, 16.0)
-	var shadow_style := StyleBoxFlat.new()
-	shadow_style.bg_color = Color(0, 0, 0, 0.34)
-	shadow_style.set_corner_radius_all(8)
-	shadow.add_theme_stylebox_override("panel", shadow_style)
 	_dice_layer.add_child(shadow)
 	_dice_red = red
 	_dice_white = white_die
@@ -572,8 +597,8 @@ func _build_native_settlement_panel() -> void:
 		caption.position = Vector2(column[1], header_y)
 		caption.size = Vector2(column[2], 30)
 		if column[0] in ["得分项", "总分"]: caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		if column[0] == "得分项": caption.tooltip_text = "单倍得分项目，包含明杠；总分按各家适用项目分别合计"
-		if column[0] == "总分": caption.tooltip_text = "单倍、抵扣前的分数；括号方位始终相对你"
+		# 得分项包含明杠；总分按各家适用项目合计，为单倍、抵扣前的分数。
+		# 总分括号方位始终相对本地玩家，悬停仅展示实际分数。
 		if column[0] == "本局增减": caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	var row_top := header_y + 34.0
 	var row_blocks: Array = []
@@ -1421,6 +1446,7 @@ func _begin_visual_action() -> int:
 	deal_animation_active = true
 	if is_instance_valid(_sort_button): _sort_button.disabled = true
 	if is_instance_valid(_restore_button): _restore_button.disabled = true
+	if is_instance_valid(_previous_sort_button): _previous_sort_button.disabled = true
 	return _visual_action_id
 
 func _complete_visual_action(action_id: int, done: Callable) -> void:
@@ -1548,6 +1574,7 @@ func _tile(layer: Control, card: String, face_up: bool, center: Vector2, unit: f
 	tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tile.z_index = 0
 	tile.back_depth_top = false
+	tile.face_depth_top = layer in hand_boxes or layer in draw_boxes or layer == _deal_layer
 	tile.modulate = Color.WHITE
 	tile.self_modulate = Color.WHITE
 	tile.scale = Vector2.ONE
@@ -1677,6 +1704,7 @@ func _chicken_slot_center(seat: int, index: int) -> Vector2:
 
 func _set_river_tile(tile: TileView, seat: int, discard_id: int, chicken: bool, charge: bool) -> void:
 	tile.set_meta("new_kind", "red" if chicken else "ordinary")
+	tile.face_depth_top = false
 	tile.set_meta("v2_seat", seat)
 	tile.set_meta("discard_id", discard_id)
 	tile.set_meta("meld_index", -1)
@@ -2488,6 +2516,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			node.position = Vector2(targets[i]) - node.size / 2.0
 			node.rotation = float(target_angles[i])
 			node.set_meta("new_kind", "red" if chicken else "meld")
+			node.face_depth_top = false
 			if chicken: node.set_meta("v2_red_kind", kind if kind != "concealed" else "kong")
 			node.set_meta("v2_seat", seat)
 			node.set_meta("meld_index", meld_index)
@@ -2544,6 +2573,7 @@ func _build_melds() -> void:
 			var tile := _sync_tile(layer, "%s:%d:%d:%d" % [key, seat, meld_index, slot],
 				card if face else "", face, spec.center, G.OPPONENT_UNIT, angle, _exposed_size(seat) / G.MELD_SIZE)
 			tile.set_meta("new_kind", "red" if chicken else "meld")
+			tile.face_depth_top = false
 			tile.set_meta("v2_seat", seat)
 			tile.set_meta("meld_index", meld_index)
 			tile.set_meta("meld_slot", slot)
@@ -2918,12 +2948,11 @@ func refresh_voice_control(seat: int, message: String = "") -> void:
 	var nickname: Label = _label_layer.get_node("SeatName%d" % seat)
 	nickname.add_theme_color_override("font_color", UI.GOLD if enabled and microphone_on else UI.INK)
 	button.disabled = local and not table._can_toggle_voice_chat()
-	var hint := ("关闭麦克风" if enabled else "开启麦克风") if local else ("静音该玩家" if enabled else "播放该玩家语音")
-	if not local and not microphone_on: hint = "对方麦克风已关闭\n" + hint
+	# 点自己的名牌切换麦克风，点其他名牌切换收听；只提示实际语音状态。
 	if not message.is_empty():
 		button.set_meta("voice_status", message)
 	var status := str(button.get_meta("voice_status", ""))
-	button.tooltip_text = hint if status.is_empty() else "%s\n%s" % [hint, status]
+	button.tooltip_text = status
 
 func _hud_badge(caption: String, at: Vector2, background: Color, border: Color) -> Label:
 	var badge := _table_text(_label_layer, caption, 18, UI.INK)

@@ -13,6 +13,7 @@ func _run() -> void:
 	root.add_child(dialog)
 	await process_frame
 	dialog.open("123456")
+	t.expect(dialog._body.text == "返回房间 123456？", "saved-room prompt keeps the room and decision without repeated explanations")
 	t.expect(dialog.visible, "saved-room prompt is visible")
 	t.expect(dialog.find_child("LeaveRoomButton", true, false) != null, "prompt has an explicit leave button")
 	t.expect(dialog.find_child("LeaveRoomButton", true, false).text == "离开", "leave button is labelled 离开")

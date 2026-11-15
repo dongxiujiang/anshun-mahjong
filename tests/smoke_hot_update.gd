@@ -15,7 +15,7 @@ func _run() -> void:
 	var data := {"schema": 2, "version": next, "patches": {"windows": patch, "android": patch}, "packages": {"windows": full, "android": full}, "release_url": "https://example.com/release"}
 	manager.apply_release(data, "windows")
 	t.expect(manager.state == "available" and manager.latest.kind == "patch" and manager.can_download(), "兼容小版本优先选择补丁")
-	t.expect(manager.latest.size == 1234 and manager.message.contains("无需"), "小版本显示补丁大小")
+	t.expect(manager.latest.size == 1234 and manager.message == "发现小版本 " + next, "小版本保留实际版本与补丁大小，不显示安装说明")
 	manager.apply_release(data, "android")
 	t.expect(manager.latest.kind == "patch" and manager.can_download(), "Android 小版本也在游戏内下载")
 	manager.state = "ready"

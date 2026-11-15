@@ -154,6 +154,7 @@ static func build_turn(hand: Array, pattern_first: bool, melds: Array, discards:
 		if pattern_first and a.score != b.score: return a.score > b.score
 		if a.width != b.width: return a.width > b.width
 		if a.score != b.score: return a.score > b.score
+		if a.grouped != b.grouped: return a.grouped > b.grouped
 		return a.key < b.key)
 	return result
 
@@ -207,5 +208,6 @@ static func with_one_tile_changes(hand: Array, pattern_first: bool, melds: Array
 		if pattern_first and a.score != b.score: return a.score > b.score
 		if a.width != b.width: return a.width > b.width
 		if a.score != b.score: return a.score > b.score
+		if a.grouped != b.grouped: return a.grouped > b.grouped
 		return a.key < b.key)
 	return result

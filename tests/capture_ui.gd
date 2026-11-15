@@ -40,17 +40,11 @@ func _run() -> void:
 	menu.sound_settings.open()
 	await _capture("02_sound")
 	menu.sound_settings.close(false)
-	menu.rule_guide.open()
-	for index in 5:
-		menu.rule_guide.page = index
-		menu.rule_guide._refresh()
-		await _capture("03_rules_%d" % index)
-	menu.rule_guide.close()
 	menu.update_panel.open()
 	await _capture("04_update")
 	var manager = root.get_node("UpdateManager")
 	manager.state = "available"
-	manager.latest = {"version": "1.0.5", "kind": "patch", "platform": "windows", "notes": "界面与动效优化\n优化横屏布局、触控反馈和摸打牌动画。"}
+	manager.latest = {"version": "1.0.5", "kind": "patch", "platform": "windows", "size": 1048576, "notes": "界面与动效优化\n优化横屏布局、触控反馈和摸打牌动画。"}
 	manager.message = "发现小版本补丁 · 1.0.5"
 	menu.update_panel._sync()
 	await _capture("04_update_available")
@@ -88,6 +82,9 @@ func _run() -> void:
 	lobby.waiting.show()
 	lobby._render_waiting()
 	await _capture("09_waiting")
+	net.lobby.seats[0].wants_dealer = true
+	lobby._render_waiting()
+	await _capture("09_waiting_dealer_selected")
 	net.lobby.seats[1].peer = 2
 	net.lobby.seats[1].name = "小江"
 	net.lobby.seats[1].ai = false
@@ -157,8 +154,7 @@ func _run() -> void:
 	table.queue_free()
 	await process_frame
 	var small_menu = await _load_scene("res://scenes/MainMenu.tscn")
-	small_menu.rule_guide.open()
-	await _capture("16_small_rules")
+	await _capture("16_small_menu")
 	small_menu.queue_free()
 	await create_timer(0.2).timeout
 	quit()

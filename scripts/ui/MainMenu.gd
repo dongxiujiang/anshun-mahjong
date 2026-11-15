@@ -10,7 +10,6 @@ var sound_settings: SoundSettings
 var update_panel: UpdatePanel
 var update_button: Button
 var update_status_label: Label
-var rule_guide: Control
 var resume_dialog: Control
 var _multiplayer_button: Button
 
@@ -20,7 +19,7 @@ func _ready() -> void:
 	theme_resource.default_font_size = 22
 	theme = theme_resource
 	var gradient := Gradient.new()
-	gradient.colors = PackedColorArray([Color("#102e29"), Color("#205b45")])
+	gradient.colors = PackedColorArray([Color("#081e1a"), Color("#205b45")])
 	var texture := GradientTexture2D.new()
 	texture.gradient = gradient
 	texture.fill_from = Vector2.ZERO
@@ -36,25 +35,32 @@ func _ready() -> void:
 	var hero := Panel.new()
 	hero.position = Vector2(28, 84)
 	hero.size = Vector2(858, 830)
-	hero.add_theme_stylebox_override("panel", _style(Color("#173c32"), Color("#37614c")))
+	hero.add_theme_stylebox_override("panel", _style(Color("#10392e"), Color("#8e8051")))
 	content.add_child(hero)
-	_label(hero, "安顺 · 捉鸡麻将", Vector2(68, 72), Vector2(722, 116), 64, Color("#f2deb0"))
-	_label(hero, "捉鸡 · 熟悉的牌，熟悉的玩法", Vector2(72, 202), Vector2(716, 54), 32, Color("#b6cbb9"))
-	var tiles := HBoxContainer.new()
-	tiles.position = Vector2(70, 326)
-	tiles.size = Vector2(716, 226)
-	tiles.alignment = BoxContainer.ALIGNMENT_CENTER
-	tiles.add_theme_constant_override("separation", 24)
-	for card in ["wan1", "tiao1", "tong8"]:
+	_label(hero, "安顺 · 捉鸡麻将", Vector2(68, 66), Vector2(722, 116), 72, Color("#f2deb0"))
+	# 首页说明文案：捉鸡 · 熟悉的牌，熟悉的玩法。
+	var accent := ColorRect.new()
+	accent.position = Vector2(68, 210)
+	accent.size = Vector2(722, 2)
+	accent.color = Color("#8e8051")
+	accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hero.add_child(accent)
+	var felt := Panel.new()
+	felt.position = Vector2(138, 246)
+	felt.size = Vector2(582, 510)
+	felt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	felt.add_theme_stylebox_override("panel", STYLE.panel(Color("#184d3b"), Color("#3b6b50"), 250))
+	hero.add_child(felt)
+	for spec in [["wan1", Vector2(110, 408), 4.2], ["tong8", Vector2(546, 408), 4.2], ["tiao1", Vector2(312, 308), 4.9]]:
 		var tile := TileView.new()
-		tile.set_card(card, true)
-		tile.set_unit(2.3)
-		tiles.add_child(tile)
-	hero.add_child(tiles)
-	_label(hero, "幺鸡 · 八筒 · 碰杠成局", Vector2(68, 626), Vector2(722, 54), 32, Color("#e1ce9b"))
-	_label(hero, "与朋友同桌，也能独自练牌", Vector2(68, 700), Vector2(722, 50), 28, Color("#a9c5b4"))
+		tile.set_card(spec[0], true)
+		tile.set_unit(spec[2])
+		tile.position = spec[1]
+		tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hero.add_child(tile)
+	# 首页说明文案：幺鸡 · 八筒 · 碰杠成局；与朋友同桌，也能独自练牌。
 	_label(content, "开始一局", Vector2(984, 98), Vector2(760, 70), 46, Color("#f2deb0"))
-	_label(content, "选择你的游戏方式", Vector2(984, 178), Vector2(760, 48), 28, Color("#b6cbb9"))
+	# 入口说明：选择你的游戏方式。界面仅保留模式按钮。
 	var solo := _button("单机对局    ›", func(): get_tree().change_scene_to_file("res://scenes/GameTable.tscn"), true)
 	solo.name = "SoloButton"
 	solo.position = Vector2(984, 272)
@@ -65,19 +71,21 @@ func _ready() -> void:
 		get_tree().change_scene_to_file("res://scenes/Lobby.tscn"), true)
 	_multiplayer_button.name = "MultiplayerButton"
 	_multiplayer_button.position = Vector2(984, 484)
+	STYLE.button(_multiplayer_button, false)
 	content.add_child(_multiplayer_button)
+	for spec in [[solo, "wan1"], [_multiplayer_button, "tong8"]]:
+		var tile := TileView.new()
+		tile.set_card(spec[1], true)
+		tile.set_unit(1.6)
+		tile.position = Vector2(44, 40)
+		tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		spec[0].add_child(tile)
 	sound_settings = SoundSettings.new()
 	add_child(sound_settings)
 	var sound := _button("声音设置", sound_settings.open)
 	sound.position = Vector2(984, 846)
 	content.add_child(sound)
-	rule_guide = load("res://scripts/ui/RuleGuide.gd").new()
-	add_child(rule_guide)
-	var rules := _button("新手规则", rule_guide.open)
-	rules.position = Vector2(984, 724)
-	rules.custom_minimum_size = Vector2(760, 88)
-	rules.size = rules.custom_minimum_size
-	content.add_child(rules)
+	# 新手规则说明不在游戏中展示；如需恢复，可在这里创建 RuleGuide 并绑定 open。
 	update_panel = UpdatePanel.new()
 	add_child(update_panel)
 	update_button = _button("检查更新", func():
@@ -89,7 +97,8 @@ func _ready() -> void:
 	exit.position = Vector2(1520, 846)
 	content.add_child(exit)
 	_label(content, "版本 " + UpdateManager.current_version(), Vector2(60, 940), Vector2(600, 42), 26, Color("#adc6b5"))
-	update_status_label = _label(content, "启动时自动检查更新", Vector2(690, 954), Vector2(1080, 34), 22, Color("#adc6b5"))
+	# 启动时自动检查更新，不作为常驻说明显示。
+	update_status_label = _label(content, "", Vector2(690, 954), Vector2(1080, 34), 22, Color("#adc6b5"))
 	UpdateManager.state_changed.connect(_update_badge)
 	_update_badge()
 	resized.connect(_layout)
@@ -128,7 +137,7 @@ func _update_badge() -> void:
 			update_status_label.text = UpdateManager.message
 		_:
 			update_button.text = "检查更新"
-			update_status_label.text = "启动时自动检查更新"
+			update_status_label.text = ""
 	if UpdateManager.claim_startup_prompt(): update_panel.open()
 
 func _layout() -> void:
@@ -167,7 +176,7 @@ func _button(text: String, callback: Callable, entry: bool = false) -> Button:
 	button.text = text
 	button.custom_minimum_size = ENTRY_BUTTON_SIZE if entry else Vector2(224, 108)
 	button.size = button.custom_minimum_size
-	button.add_theme_font_size_override("font_size", 44 if entry else 28)
+	button.add_theme_font_size_override("font_size", 54 if entry else 28)
 	button.add_theme_color_override("font_color", Color("#f7eccb") if entry else Color("#dceadd"))
 	button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	STYLE.button(button, entry)

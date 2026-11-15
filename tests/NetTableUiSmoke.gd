@@ -145,6 +145,11 @@ func _run() -> void:
 				if view._can_arrange_hand() and not round.legal_turn_options(seat).self_win:
 					view._sort_own_hand()
 					_expect(player.concealed == original, "Network sorting keeps authoritative hand indices unchanged")
+					var selected: String = view._local_arrangement.key
+					view._sort_own_hand()
+					view._sort_own_hand(-1)
+					_expect(view._local_arrangement.key == selected and player.concealed == original, "Network Previous reverses Next without submitting or changing a card")
+					_expect(view._previous_sort_button.visible and view._arrangement_caption.get_theme_font_size("font_size") >= 20, "Network sorting uses the same readable navigation and caption")
 					_expect(view._sort_button.visible and view.hand_boxes[seat].get_child_count() == original.size(), "Network Sort merges the draw and remains visible")
 					for tile in view.hand_boxes[seat].get_children():
 						_expect(tile.tile == player.concealed[int(tile.get_meta("concealed_index"))], "Network sorted touch indices identify the real tiles")

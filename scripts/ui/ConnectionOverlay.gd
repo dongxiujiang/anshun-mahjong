@@ -106,7 +106,8 @@ func show_reconnecting(attempt: int = 0, maximum: int = 5) -> void:
 	show()
 	_loading_bar.show()
 	_title.text = "重连中"
-	_body.text = "联机连接中断，正在恢复原座位和最新牌局。\n请不要退出游戏，恢复后会继续当前对局。"
+	# 重连会恢复原座位和最新牌局；恢复前不接受牌桌操作。
+	_body.text = ""
 	_progress.text = "正在连接…" if attempt <= 0 else "第 %d / %d 次尝试" % [attempt, maximum]
 	_retry_button.hide()
 	_leave_button.text = "取消并返回大厅"
@@ -117,8 +118,9 @@ func show_error(message: String) -> void:
 	show()
 	_loading_bar.hide()
 	_title.text = "连接未恢复"
-	_body.text = message.strip_edges() if message.strip_edges() != "" else "无法恢复原房间，请重试或返回大厅。"
-	_progress.text = "原座位会为你保留一段时间。"
+	_body.text = message.strip_edges() if message.strip_edges() != "" else "无法恢复原房间"
+	# 暂时断线时保留原座位，界面只显示连接结果和操作按钮。
+	_progress.text = ""
 	_retry_button.show()
 	_leave_button.text = "返回大厅"
 	_layout()
@@ -134,7 +136,8 @@ func show_syncing(message: String = "座位已恢复，正在同步最新牌局�
 	show()
 	_loading_bar.show()
 	_title.text = "重连中"
-	_body.text = message + "\n同步完成前牌桌暂不响应操作，避免点击丢失。"
+	# 同步完成前牌桌暂不响应操作，避免点击丢失。
+	_body.text = message
 	_progress.text = "等待最新牌局…"
 	_retry_button.hide()
 	_leave_button.text = "取消并返回大厅"

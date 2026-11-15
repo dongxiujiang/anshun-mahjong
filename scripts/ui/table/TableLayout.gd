@@ -58,7 +58,7 @@ func _build_static_ui() -> void:
 	var ai_proxy_button: Button = table._button("AI代打", table.toggle_ai_proxy, Vector2(148, UI.SETTINGS_BUTTON_SIZE.y))
 	ai_proxy_button.name = "AiProxyButton"
 	ai_proxy_button.add_theme_font_size_override("font_size", UI.SETTINGS_FONT_SIZE - 6)
-	ai_proxy_button.tooltip_text = "AI 代替你操作当前座位"
+	# AI 代打替当前座位操作，按钮本身显示开关状态。
 	ai_proxy_button.visible = false
 	surface.add_child(ai_proxy_button)
 	table._ai_proxy_button = ai_proxy_button
@@ -66,7 +66,7 @@ func _build_static_ui() -> void:
 		Vector2(136, UI.SETTINGS_BUTTON_SIZE.y))
 	test_button.name = "TestPatternButton"
 	test_button.add_theme_font_size_override("font_size", UI.SETTINGS_FONT_SIZE - 8)
-	test_button.tooltip_text = "联机测试牌型，需要全部真人同意"
+	# 联机测试牌型须经全部真人同意。
 	test_button.visible = false
 	surface.add_child(test_button)
 	table._test_pattern_button = test_button
@@ -74,7 +74,7 @@ func _build_static_ui() -> void:
 	ai_teach.name = "AITeachButton"
 	ai_teach.toggle_mode = true
 	ai_teach.add_theme_font_size_override("font_size", 20)
-	ai_teach.tooltip_text = "开启后每到自己出牌、可碰杠时自动提示，关闭后不提示"
+	# AI 教学开启后在出牌及碰杠响应时展示实际推荐。
 	surface.add_child(ai_teach)
 	table._ai_teach_button = ai_teach
 	# 返回、声音和 AI 速度统一收进大号设置面板，避免右上角小按钮难以点击。

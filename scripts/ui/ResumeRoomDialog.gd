@@ -78,7 +78,8 @@ func _layout() -> void:
 	_panel.position = (viewport - PANEL_SIZE * _panel.scale) * 0.5
 
 func open(room_number: String) -> void:
-	_body.text = "发现上次联机房间 %s。\n是否恢复原来的座位和对局？\n离开后会清除这个房间记录。" % room_number
+	# 恢复原座位和对局；选择离开会清除旧房间记录。
+	_body.text = "返回房间 %s？" % room_number
 	show()
 	_layout()
 	MOTION.appear(self)

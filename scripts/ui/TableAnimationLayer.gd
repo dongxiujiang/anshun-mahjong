@@ -87,14 +87,10 @@ func _dice(event: Dictionary) -> void:
 	var red := DICE.new()
 	red.size = die_size
 	red.pivot_offset = die_size / 2.0
-	red.face_color = Color("#f3d8cf")
-	red.border_color = Color("#a55043")
 	red.pip_color = Color("#a62b21")
 	var white := DICE.new()
 	white.size = die_size
 	white.pivot_offset = die_size / 2.0
-	white.face_color = Color("#eef2e8")
-	white.border_color = Color("#8c9d8b")
 	white.pip_color = Color("#243a30")
 	var center := UI.LANDSCAPE_CENTER
 	if event.has("center_global"):
@@ -102,13 +98,12 @@ func _dice(event: Dictionary) -> void:
 
 	var red_rest := center + Vector2(-UI.DICE_SIZE - 4.0, -UI.DICE_SIZE * 0.5)
 	var white_rest := center + Vector2(4.0, -UI.DICE_SIZE * 0.5)
-	var shadow := Panel.new()
+	var shadow := TextureRect.new()
+	shadow.texture = TileView.SOFT_SHADOW
+	shadow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	shadow.size = Vector2(UI.DICE_SIZE * 2.0 + 8.0, 16.0)
 	shadow.position = center + Vector2(-UI.DICE_SIZE - 4.0, UI.DICE_SIZE * 0.5 + 4.0)
-	var shadow_style := StyleBoxFlat.new()
-	shadow_style.bg_color = Color(0, 0, 0, 0.34)
-	shadow_style.set_corner_radius_all(8)
-	shadow.add_theme_stylebox_override("panel", shadow_style)
 	_add(shadow)
 	red.position = red_rest + Vector2(-8, -30)
 	white.position = white_rest + Vector2(8, -30)

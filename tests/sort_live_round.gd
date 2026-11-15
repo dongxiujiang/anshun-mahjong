@@ -11,6 +11,7 @@ var capturing := false
 var sort_on_turn := 0
 var sort_off_turn := 0
 var restores := 0
+var previous := 0
 var next_capture := 0
 
 func _initialize() -> void: call_deferred("_run")
@@ -36,6 +37,7 @@ func _run() -> void:
 		if table.round.allowed_actions(table.human_seat).get("kind", "") == "turn": sort_on_turn += 1
 		else: sort_off_turn += 1)
 	table._new_areas._restore_button.pressed.connect(func(): restores += 1)
+	table._new_areas._previous_sort_button.pressed.connect(func(): previous += 1)
 	var actor = load("res://scripts/ai/AiPlayer.gd")
 	for seat in 4:
 		table.round.controllers[seat] = null if seat == table.human_seat else actor.new("live%d" % seat, "low")
@@ -72,11 +74,15 @@ func _run() -> void:
 		var button: Button = view._sort_button
 		var restoring: bool = tick % 5 == 3 and view._restore_button.visible
 		if restoring: button = view._restore_button
+		var reversing: bool = not restoring and tick % 7 == 2 and view._previous_sort_button.visible and not view._previous_sort_button.disabled
+		if reversing: button = view._previous_sort_button
 		if button.visible and not button.disabled:
 			var on_turn: bool = window.get("kind", "") == "turn"
 			var old := str(view._local_arrangement.get("key", ""))
+			var click_started := Time.get_ticks_msec()
 			await _click(button)
-			actions.append({"ms": Time.get_ticks_msec()-started, "click": "restore" if restoring else "sort", "on_turn": on_turn,
+			actions.append({"ms": Time.get_ticks_msec()-started, "click_ms": Time.get_ticks_msec()-click_started,
+				"click": "restore" if restoring else ("previous" if reversing else "sort"), "on_turn": on_turn,
 				"before": old, "after": view._local_arrangement.get("key", ""), "hand": table.round.players[table.human_seat].concealed.duplicate()})
 			tick += 1
 		window = table.round.allowed_actions(table.human_seat)
@@ -109,9 +115,9 @@ func _run() -> void:
 		t.expect(is_zero_approx(float(table.round.last_result.total_delta)), "real settlement remains zero sum")
 	timer.stop()
 	while capturing: await process_frame
-	t.expect(sort_on_turn > 0 and sort_off_turn > 0 and restores > 0, "actual GUI sorting and Restore tested both on and off turn")
+	t.expect(sort_on_turn > 0 and sort_off_turn > 0 and restores > 0 and previous > 0, "actual GUI sorting in both directions and Restore tested both on and off turn")
 	_save_trace()
-	print("LIVE seed=", seed_value, " frames=", frames.size(), " on_turn=", sort_on_turn, " off_turn=", sort_off_turn, " restore=", restores)
+	print("LIVE seed=", seed_value, " frames=", frames.size(), " on_turn=", sort_on_turn, " off_turn=", sort_off_turn, " restore=", restores, " previous=", previous)
 	if table._ai_service != null: table._ai_service.stop()
 	table.queue_free()
 	timer.queue_free()
@@ -149,6 +155,12 @@ func _capture() -> void:
 		for node in visible:
 			if node.interactive:
 				t.expect(window.get("kind", "") == "turn" and window.options.discards.has(node.tile) and (not player.ready or node.drawn), "sorting never enables off-turn or locked hand input")
+		if view._arrangement_caption.visible:
+			var font: Font = view._arrangement_caption.get_theme_font("font")
+			var font_size: int = view._arrangement_caption.get_theme_font_size("font_size")
+			for line in view._arrangement_caption.text.split("\n"):
+				t.expect(font.get_string_size(line,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x <= view._arrangement_caption.size.x,
+					"real game sorting text fits without clipping")
 	var name := "%04d.png" % frames.size()
 	root.get_texture().get_image().save_png(folder + "/" + name)
 	Shanten._thread_cache_mutex.lock()
@@ -157,7 +169,8 @@ func _capture() -> void:
 	frames.append({"file": name, "ms": Time.get_ticks_msec()-started, "turn": table.round.current_turn, "phase": table.round.phase,
 		"stable": stable, "hand": player.concealed.duplicate(), "melds": player.melds.duplicate(true), "draw": player.just_drew,
 		"visible": visible, "caption": view._arrangement_caption.text, "sort_disabled": view._sort_button.disabled,
-		"choices": view._arrangement_choices.size(), "thread_caches": caches})
+		"choices": view._arrangement_choices.size(), "thread_caches": caches,
+		"caption_font": view._arrangement_caption.get_theme_font_size("font_size"), "previous_visible": view._previous_sort_button.visible})
 	_save_trace()
 	if frames.size() % 10 == 0: print("LIVE frames=", frames.size(), " wall=", table.round.wall.remaining, " on=", sort_on_turn, " off=", sort_off_turn, " restores=", restores)
 	capturing = false
@@ -165,5 +178,5 @@ func _capture() -> void:
 func _save_trace() -> void:
 	var output := FileAccess.open(folder + "/trace.json", FileAccess.WRITE)
 	output.store_string(JSON.stringify({"frames": frames, "actions": actions,
-		"on_turn": sort_on_turn, "off_turn": sort_off_turn, "restores": restores}, "\t"))
+		"on_turn": sort_on_turn, "off_turn": sort_off_turn, "restores": restores, "previous": previous}, "\t"))
 	output.close()

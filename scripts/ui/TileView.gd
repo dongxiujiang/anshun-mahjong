@@ -5,6 +5,11 @@ extends Control
 
 var tile := ""       # 牌值 "tong3"/"tiao1"/"wan9"
 var face_up := true
+var face_depth_top := true:
+	set(value):
+		if face_depth_top == value: return
+		face_depth_top = value
+		queue_redraw()
 var unit := 1.0      # 玩家牌与牌墙/出牌区可分别指定尺寸倍率。
 var highlight := false   # 金框高亮（用于标记鸡牌、报听等）
 var back_depth_top := false:  # 牌背白色牌体边朝上（南墙朝桌内）
@@ -30,6 +35,11 @@ var _win_glow := 0.0:
 const BASE_W := 48.0
 const BASE_H := 64.0
 const BACK_ATLAS := preload("res://res/tiles/backs-atlas.png")
+const IVORY_TOP := preload("res://res/tiles/materials3d/ivory-top.png")
+const IVORY_BOTTOM := preload("res://res/tiles/materials3d/ivory-bottom.png")
+const BACK_TOP := preload("res://res/tiles/materials3d/back-top.png")
+const BACK_BOTTOM := preload("res://res/tiles/materials3d/back-bottom.png")
+const SOFT_SHADOW := preload("res://res/tiles/tile-shadow.svg")
 
 static var _tex_cache := {}
 static var _style_cache := {}
@@ -148,11 +158,9 @@ func _apply_size() -> void:
 func _draw_procedural_back(river: bool) -> void:
 	var w := BASE_W * unit
 	var h := BASE_H * unit
-	var depth := 5.0 * unit
 	if not river:
-		draw_style_box(_tile_style(Color(0, 0, 0, 0.30), Color.TRANSPARENT), Rect2(2 * unit, 4 * unit, w, h))
-	draw_style_box(_tile_style(Color("#becbb9"), Color("#8a9c86")), Rect2(0, 0, w, h))
-	_draw_back(w, h - depth, depth if back_depth_top else 0.0)
+		draw_texture_rect(SOFT_SHADOW, Rect2(2 * unit, 4 * unit, w, h), false)
+	draw_texture_rect(BACK_TOP if back_depth_top else BACK_BOTTOM, Rect2(0, 0, w, h), false)
 
 func _draw() -> void:
 	var w := BASE_W * unit
@@ -162,18 +170,19 @@ func _draw() -> void:
 		and str(get_meta("new_kind", "")) in ["ordinary", "red"]
 	if face_up and tile != "":
 		if not river:
-			draw_style_box(_tile_style(Color(0, 0, 0, 0.30), Color.TRANSPARENT), Rect2(2 * unit, 4 * unit, w, h))
-		draw_style_box(_tile_style(Color("#becbb9"), Color("#8a9c86")), Rect2(0, 0, w, h))
-		var face_color := Color("#f6f7ed") if not score_highlight else Color("#f3d875")
-		var face_border := Color("#d9dfd2") if not score_highlight else Color("#c89d32")
-		draw_style_box(_tile_style(face_color, face_border), Rect2(0, 0, w, h - depth))
+			draw_texture_rect(SOFT_SHADOW, Rect2(2 * unit, 4 * unit, w, h), false)
+		# 站立手牌上沿留出实体顶面，图案下移；桌面公开牌沿用朝下的厚边。
+		var face_y := depth if face_depth_top else 0.0
+		draw_texture_rect(IVORY_TOP if face_depth_top else IVORY_BOTTOM, Rect2(0, 0, w, h), false)
 		var tex := _get_texture(tile)
 		if tex != null:
-			draw_texture_rect(tex, Rect2(3 * unit, 2 * unit, w - 6 * unit, h - depth - 4 * unit), false)
+			draw_texture_rect(tex, Rect2(3 * unit, face_y + 2 * unit, w - 6 * unit, h - depth - 4 * unit), false)
 		else:
+			draw_set_transform(Vector2(0, face_y))
 			_draw_face_proc(w, h - depth)
+			draw_set_transform(Vector2.ZERO)
 		if score_highlight:
-			draw_rect(Rect2(0, 0, w, h - depth), Color(0.95, 0.78, 0.22, 0.30))
+			draw_rect(Rect2(0, face_y, w, h - depth), Color(0.95, 0.78, 0.22, 0.30))
 		if Tiles.is_chicken(tile):
 			draw_circle(Vector2(w - 4 * unit, 4 * unit), 2 * unit, Color("#c5993e"))
 	else:
@@ -237,17 +246,6 @@ func _tile_style(color: Color, border: Color) -> StyleBoxFlat:
 	_style_cache[key] = style
 	return style
 
-## ---- 程序化牌背（无素材） ----
-func _draw_back(w: float, h: float, offset_y: float = 0.0) -> void:
-	draw_style_box(_tile_style(Color("#286c53"), Color("#75a18b")),
-		Rect2(0, offset_y, w, h))
-	draw_rect(Rect2(4 * unit, offset_y + 4 * unit, w - 8 * unit, h - 8 * unit),
-		Color("#5b9177"), false, maxf(0.6, unit))
-	for i in 3:
-		var x := w * (0.35 + i * 0.15)
-		draw_line(Vector2(x, offset_y + h * 0.3), Vector2(x, offset_y + h * 0.7),
-			Color("#3a7d60"), maxf(0.6, unit))
-
 ## ---- 程序化牌面（素材缺失时的兜底） ----
 func _draw_face_proc(w: float, h: float) -> void:
 	var suit := Tiles.suit(tile)
@@ -292,6 +290,7 @@ func reset() -> void:
 	set_score_highlight(false)
 	tile = ""
 	face_up = false
+	face_depth_top = true
 	set_unit(1.0)
 	_table_position = Vector2.ZERO
 	modulate = Color.WHITE

@@ -85,7 +85,7 @@ func _test_ui() -> void:
 	t.expect(panel.action_button.text == "下载 APK", "安卓显示下载 APK 入口")
 	var boot := root.get_node("PatchBoot")
 	updater.apply_release({"schema": 2, "version": next, "notes": "优化横屏手牌布局\n调整出牌语音\n修复结算显示", "release_url": "https://example.com/release", "patches": {"android": {"base_id": boot.base_id, "base_version": boot.base_version, "engine": boot.engine_version(), "url": "https://example.com/patch.pck", "sha256": digest, "size": 3456789}}}, "android")
-	t.expect(panel.action_button.text == "下载小版本补丁" and panel.detail.text.contains("不需要重新安装"), "安卓小版本面板说明无需安装")
+	t.expect(panel.action_button.text == "下载小版本补丁" and panel.detail.text.is_empty(), "安卓小版本保留下载操作，不显示安装教程")
 	updater.state = "ready"
 	updater.state_changed.emit()
 	t.expect(panel.action_button.text == "重启应用生效", "小版本下载后显示重启生效")

@@ -64,6 +64,8 @@ func _run() -> void:
 		await process_frame
 		var rect: Rect2 = lobby.content.get_global_rect()
 		t.expect(rect.position.x >= 0 and rect.position.y >= 0 and rect.end.x <= root.size.x + 1 and rect.end.y <= root.size.y + 1, "Landscape lobby stays in viewport")
+		var dealer_rect: Rect2 = lobby.dealer_button.get_global_rect()
+		t.expect(dealer_rect.size.y >= 48.0 and not dealer_rect.intersects(lobby.seat_buttons[1].get_global_rect()), "Dealer choice has a large touch area without covering the South seat")
 		t.expect(lobby.room_input.visible and not lobby.waiting.visible, "Search shown before joining")
 	if DisplayServer.get_name() != "headless":
 		root.size = Vector2i(1280, 720)
@@ -80,7 +82,10 @@ func _run() -> void:
 	lobby.seat_buttons[2].pressed.emit()
 	t.expect(network.net_node.my_seat == 2, "Seat button changes local seat")
 	lobby.dealer_button.button_pressed = true
-	t.expect(network.net_node.lobby.seats[2].wants_dealer, "Dealer checkbox sends applicant")
+	t.expect(network.net_node.lobby.seats[2].wants_dealer and lobby.dealer_button.text.begins_with("✓"), "Large dealer button sends applicant and shows selected state")
+	lobby.dealer_button.button_pressed = false
+	t.expect(not network.net_node.lobby.seats[2].wants_dealer and lobby.dealer_button.text == "我想当庄", "Large dealer button can cancel the request")
+	lobby.dealer_button.button_pressed = true
 	lobby.ready_button.pressed.emit()
 	t.expect(network.net_node.all_ready() and network.net_node._started,
 		"Ready UI immediately starts the game")

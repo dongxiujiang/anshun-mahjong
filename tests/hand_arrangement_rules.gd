@@ -8,6 +8,15 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
+	# Real opening hand: seed2026111283, viewer1, before the first discard.
+	var actual: Array = ["wan6", "tiao2", "tong3", "tong7", "wan7", "tong8", "tiao2", "wan8", "wan3", "wan4", "tiao1", "tong1", "wan4", "wan3"]
+	var turns := A.build_turn(actual, false, [], Tiles.to_counts(actual).keys())
+	var equally_ranked: Array = turns.filter(func(choice): return choice.width == turns[0].width and choice.score == turns[0].score)
+	t.expect(equally_ranked.all(func(choice): return choice.grouped <= turns[0].grouped), "equal-width equal-score fourteen-tile plans show the most formed cards first")
+	actual.erase("wan3")
+	var exchanges := A.with_one_tile_changes(actual, false)
+	var equally_current: Array = exchanges.filter(func(choice): return not choice.has("change_from") and choice.width == exchanges[0].width and choice.score == exchanges[0].score)
+	t.expect(equally_current.all(func(choice): return choice.grouped <= exchanges[0].grouped), "background exchange results retain complete-group priority for current layouts")
 	# The same completion may have both a normal split and seven pairs.
 	# Its real scoring pattern must not depend on the visual split selected.
 	var hand := _wan("1122334455667")

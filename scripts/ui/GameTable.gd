@@ -633,7 +633,7 @@ func _on_test_pattern_pressed() -> void:
 			var pattern := str(entry.id)
 			var button := _button(str(entry.name),
 				func(): _choose_test_pattern(pattern), Vector2(572, 68))
-			button.tooltip_text = str(entry.description)
+			# 音色风格说明保留在 VoicePackRegistry；界面只显示音色名称。
 			button.add_theme_font_size_override("font_size", 26)
 			_test_choice_box.add_child(button)
 		var cancel := _button("取消", func(): _test_choice_panel.hide(), Vector2(572, 48))
@@ -1052,7 +1052,7 @@ func _refresh_ai_proxy_button() -> void:
 	if _ai_proxy_button == null:
 		return
 	_ai_proxy_button.text = "AI代打 开" if _ai_proxy_active else "AI代打"
-	_ai_proxy_button.tooltip_text = "点击关闭 AI 代打" if _ai_proxy_active else "AI 代替你操作当前座位"
+	# 点击切换 AI 代打，当前状态已显示在按钮文字上。
 
 func _submitted_proxy_level() -> String:
 	return {"weak": "low", "medium": "medium", "strong": "high"}.get(GameConfig.effective_ai_strength(), "medium")

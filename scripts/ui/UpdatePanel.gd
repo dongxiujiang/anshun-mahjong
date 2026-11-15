@@ -46,7 +46,7 @@ func _ready() -> void:
 	notes.size = Vector2(796, 222)
 	notes.editable = false
 	notes.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
-	notes.placeholder_text = "有新版本时，这里会显示更新内容"
+	# 有新版本时显示实际更新内容，不显示占位说明。
 	notes.add_theme_font_size_override("font_size", 23)
 	STYLE.field(notes)
 	panel.add_child(notes)
@@ -114,37 +114,47 @@ func _sync() -> void:
 	match _manager.state:
 		"opening":
 			action_button.text = "取消"
-			detail.text = "正在检测下载线路，随后交给浏览器下载"
+			# 检测线路后交给浏览器下载。
+			detail.text = "检测下载线路…"
 		"downloading":
 			action_button.text = "取消下载"
-			detail.text = "已下载 %.1f MB%s；可关闭此面板继续游玩" % [_manager.downloaded_bytes / 1048576.0, " / %.1f MB" % (_manager.total_bytes / 1048576.0) if _manager.total_bytes > 0 else ""]
+			# 下载期间可关闭面板继续游玩；状态行只显示实际进度。
+			detail.text = "已下载 %.1f MB%s" % [_manager.downloaded_bytes / 1048576.0, " / %.1f MB" % (_manager.total_bytes / 1048576.0) if _manager.total_bytes > 0 else ""]
 		"ready":
 			if _manager.latest.get("kind", "full") == "patch":
 				action_button.text = "重启应用生效"
-				detail.text = "小版本补丁已保存，退出房间和对局后重启即可生效，不需要重新安装"
+				# 补丁退出对局后重启生效，无需重新安装。
+				detail.text = "补丁已就绪"
 				if not _manager.can_install():
 					action_button.disabled = true
-					detail.text = "工程预览已验证补丁下载，请在安装版游戏中重启应用"
+					# 工程预览不安装补丁，安装版才可重启应用生效。
+					detail.text = "预览模式无法安装"
 			else:
 				action_button.text = "重启更新" if _manager.can_install() else "打开下载文件夹"
-				detail.text = "大版本需要更新完整应用；请先退出房间和对局"
+				# 大版本替换完整应用，安装前检查是否已退出对局。
+				detail.text = "安装包已就绪"
 		"available":
 			if _manager.latest.get("kind", "full") == "patch":
 				action_button.text = "下载小版本补丁"
-				detail.text = "游戏内下载补丁，重启后生效，不需要重新安装"
+				# 游戏内下载补丁，重启后生效，无需重新安装。
+				detail.text = ""
 			elif _manager.latest.platform == "android":
 				action_button.text = "下载 APK"
-				detail.text = "打开下载页面后，由安卓系统确认安装；请使用同一签名的新版"
+				# 浏览器下载 APK，由安卓确认安装，更新包必须保持同一签名。
+				detail.text = ""
 			elif _manager.can_download():
 				action_button.text = "下载新版"
-				detail.text = "下载完成后校验文件，再重启更新；旧程序会保留备份"
+				# 下载完成后校验文件，再重启更新，保留旧程序备份。
+				detail.text = ""
 			else:
 				action_button.text = "打开下载页面"
-				detail.text = "前往发布页面下载适合你设备的新版"
+				# 不支持游戏内下载的平台转到发布页面。
+				detail.text = ""
 		_:
 			action_button.text = "下载新版"
 			action_button.disabled = true
-			detail.text = "更新通过 GitHub Releases 发布，无需连接联机房间"
+			# 更新来自 GitHub Releases，不依赖联机房间。
+			detail.text = ""
 
 func _action() -> void:
 	match _manager.state:

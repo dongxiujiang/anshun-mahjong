@@ -37,6 +37,8 @@ func _run() -> void:
 		expected_hand += player.concealed.size()
 	t.expect(wall_count == expected_wall, "静态新牌桌：牌墙数量与规则状态一致")
 	t.expect(hand_count == expected_hand, "静态新牌桌：手牌数量与规则状态一致")
+	for seat in 4:
+		t.expect((deck.hand_boxes[seat].get_children() + deck.draw_boxes[seat].get_children()).all(func(tile): return tile.face_depth_top), "四家站立手牌的厚度在上沿：%d" % seat)
 
 	var own_interactive := 0
 	for child in deck.hand_boxes[1].get_children() + deck.draw_boxes[1].get_children():
@@ -70,6 +72,7 @@ func _run() -> void:
 	await process_frame
 	t.expect(deck.count_kind("ordinary") == 96, "all 96 ordinary river slots are visible")
 	t.expect(deck.count_kind("red") == 0, "静态新牌桌：普通弃牌不进入红色区")
+	t.expect(deck._discard_layer.get_children().all(func(tile): return not tile.face_depth_top), "桌面普通弃牌保留落地朝向，不随站立手牌翻转厚边")
 
 	# 红色区几何容量夹具：8 张单张鸡 + 4 个鸡杠 = 24 张（允许重复牌值）。
 	for seat in 4:
@@ -93,6 +96,7 @@ func _run() -> void:
 	deck.refresh()
 	await process_frame
 	t.expect(deck.count_kind("red") == 96, "静态新牌桌：红色区24张显示")
+	t.expect(deck._red_layer.get_children().all(func(tile): return not tile.face_depth_top), "鸡牌和碰杠落地后使用桌面朝向，包括复用的手牌节点")
 	t.expect(deck.count_kind("ordinary") == 0, "静态新牌桌：红色区不含普通弃牌")
 	var sizes_ok := true
 	var rects: Array[Rect2] = []

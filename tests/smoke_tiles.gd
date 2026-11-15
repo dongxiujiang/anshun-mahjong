@@ -35,13 +35,23 @@ func _run() -> void:
 	print("[ok] %d 张牌面素材全部加载，尺寸统一 = %s" % [n, str(size_ref)])
 	t.expect(n == 27, "应有 27 张牌面素材, 实际 %d" % n)
 
-	# 牌背：无素材，用程序化绘制（不崩即可）
+	# 牌背材质仍通过原 TileView 接口绘制。
 	var tv := TileView.new()
 	tv.set_card("", false)
 	tv.set_unit(1.0)
 	t.expect(tv != null, "牌背程序化绘制不应崩溃")
 	print("[ok] 牌背走程序化绘制（无素材）")
 	tv.free()
+	for path in ["ivory-top.png", "ivory-bottom.png", "back-top.png", "back-bottom.png"]:
+		var material: Texture2D = load("res://res/tiles/materials3d/" + path)
+		t.expect(material != null and material.get_size() == Vector2(384, 512), "立体材质可加载：" + path)
+	for scale_value in [0.85, 1.0, 1.35, 2.0]:
+		var tile := TileView.new()
+		tile.set_unit(scale_value)
+		t.expect(tile.size.is_equal_approx(Vector2(48, 64) * scale_value), "材质不改变原有牌位和点击尺寸")
+		tile.free()
+	var dice_atlas: Texture2D = load("res://res/tiles/materials3d/dice-atlas.png")
+	t.expect(dice_atlas.get_size() == Vector2(1536, 512), "骰子贴图包含红黑两种颜色各六个实际顶面")
 
 	# 手牌排序：万→条→筒，各花色1→9
 	var messy: Array = ["tong8", "wan1", "tiao9", "wan9", "tiao1", "tong1", "wan2"]

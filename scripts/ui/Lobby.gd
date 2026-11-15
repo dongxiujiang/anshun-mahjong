@@ -16,7 +16,7 @@ var room_rows: VBoxContainer
 var room_heading: Label
 var seat_buttons: Array[Button] = []
 var ready_button: Button
-var dealer_button: CheckButton
+var dealer_button: Button
 var swap_row: HBoxContainer
 var swap_label: Label
 var waiting_hint: Label
@@ -120,10 +120,18 @@ func _ready() -> void:
 		seat_buttons.append(button)
 	waiting_hint = _label(waiting, "", Vector2(484, 266), Vector2(440, 54), 23)
 	waiting_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	dealer_button = CheckButton.new()
+	dealer_button = Button.new()
+	dealer_button.name = "DealerButton"
+	dealer_button.toggle_mode = true
 	dealer_button.text = "我想当庄"
 	dealer_button.position = Vector2(32, 380)
-	dealer_button.size = Vector2(300, 64)
+	dealer_button.size = Vector2(366, 96)
+	dealer_button.add_theme_font_size_override("font_size", 30)
+	STYLE.button(dealer_button)
+	dealer_button.add_theme_stylebox_override("pressed", STYLE.panel(STYLE.GOLD, Color("#b99b61"), 18))
+	dealer_button.add_theme_stylebox_override("hover_pressed", STYLE.panel(STYLE.GOLD.lightened(0.06), Color("#b99b61"), 18))
+	dealer_button.add_theme_color_override("font_pressed_color", Color("#283a2e"))
+	dealer_button.add_theme_color_override("font_hover_pressed_color", Color("#283a2e"))
 	dealer_button.toggled.connect(func(value): Network.net_node.set_wants_dealer(value))
 	waiting.add_child(dealer_button)
 	ready_button = _button(waiting, "准备", Vector2(1010, 388), Vector2(366, 78), _toggle_ready)
@@ -143,7 +151,7 @@ func _ready() -> void:
 	status = _label(content, "", Vector2(36, 738), Vector2(1408, 44), 24)
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_button(content, "返回 / 离开房间", Vector2(36, 780), Vector2(304, 78), _back)
-	_label(content, "选座后点击准备 · 人机默认准备 · 全部准备后开局", Vector2(376, 800), Vector2(1068, 48), 24)
+	# 准备流程：选座后点击准备；人机默认准备，全部准备后开局。
 	_build_server_dialog()
 	Network.discovery.rooms_updated.connect(_render_rooms)
 	Network.discovery.discovery_error.connect(_message)
@@ -292,7 +300,8 @@ func _set_mode(value: bool) -> void:
 	online_button.disabled = online
 	server_button.visible = online
 	if online: Network.discovery.stop_search()
-	_message("搜索在线房间…" if online else "自动搜索同一 Wi-Fi 或手机热点内的房间，电脑建房后保持等待")
+	# 局域网自动搜索同一 Wi-Fi 或热点内的房间；房主建房后保持等待。
+	_message("搜索在线房间…" if online else "搜索局域网房间…")
 	_search()
 	_render_rooms()
 
@@ -341,7 +350,8 @@ func _render_rooms() -> void:
 		row.add_child(join)
 	if shown == 0:
 		var empty := Label.new()
-		empty.text = "没有匹配的房间" if query != "" else ("暂无在线房间，可创建新房间" if online and Network.directory.base_url != "" else ("先配置房间服务器，再搜索在线房间" if online else "正在搜索 Wi-Fi 和手机热点内的房间…\n请先在另一台设备创建房间并保持等待，发现后会自动显示。"))
+		# 无房间时可创建新房间；局域网另一台设备建房后会自动发现。
+		empty.text = "没有匹配的房间" if query != "" else ("暂无在线房间" if online and Network.directory.base_url != "" else ("未配置房间服务器" if online else "搜索局域网房间…"))
 		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		empty.custom_minimum_size = Vector2(870, 294)
 		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -455,7 +465,8 @@ func _show_waiting() -> void:
 	server_button.hide()
 	resume_button.hide()
 	Network.discovery.stop_search()
-	_message("点击人机位置直接选座，点击真人位置申请交换；准备好后开局")
+	# 点击人机可选座，点击真人可申请换座；准备流程由按钮和状态展示。
+	_message("")
 	_render_waiting()
 
 func _render_waiting() -> void:
@@ -469,7 +480,8 @@ func _render_waiting() -> void:
 		var mine := seat == net.my_seat
 		var tags := " · 我" if mine else ""
 		if int(member.peer) == int(data.owner): tags += " · 房主"
-		seat_buttons[seat].text = "%s位  %s%s\n%s%s\n%s" % [WINDS[seat], member.name, tags, "已准备" if member.ready else "未准备", " · 想当庄" if member.wants_dealer else "", "你的位置" if mine else ("点击选座" if member.ai else "点击申请换座")]
+		# 点击人机座位可选座，点击真人座位可申请换座；本家由“我”及颜色区分。
+		seat_buttons[seat].text = "%s位  %s%s\n%s%s" % [WINDS[seat], member.name, tags, "已准备" if member.ready else "未准备", " · 想当庄" if member.wants_dealer else ""]
 		seat_buttons[seat].disabled = mine or bool(data.started) or bool(member.get("disconnected", false))
 		if bool(member.get("disconnected", false)): seat_buttons[seat].text += "\n断线 · 等待重连"
 		seat_buttons[seat].add_theme_color_override("font_disabled_color", Color("#edcc80") if mine else Color("#aac5b9"))
@@ -477,6 +489,7 @@ func _render_waiting() -> void:
 		var me: Dictionary = data.seats[net.my_seat]
 		ready_button.text = "取消准备" if me.ready else "准备"
 		dealer_button.set_pressed_no_signal(bool(me.wants_dealer))
+		dealer_button.text = "✓ 我想当庄" if me.wants_dealer else "我想当庄"
 	var seconds := int(data.countdown)
 	waiting_hint.text = "%d 秒后开局" % seconds if seconds >= 0 else "等待大家准备"
 	var pending: Dictionary = data.swap
@@ -581,10 +594,7 @@ func _build_server_dialog() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 20)
 	server_dialog.add_child(box)
-	var label := Label.new()
-	label.text = "填写房间服务地址，保存后所有在线房间由服务器运行。"
-	label.add_theme_font_size_override("font_size", 24)
-	box.add_child(label)
+	# 配置房间服务地址后，在线房间由该服务器运行。
 	server_input = LineEdit.new()
 	server_input.placeholder_text = "https://你的房间服务器"
 	server_input.custom_minimum_size = Vector2(760, 60)

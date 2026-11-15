@@ -133,4 +133,5 @@ func _refresh_next_round_controls() -> void:
 	else:
 		_next_round_button.text = "准备下一局 %d/%d" % [ready_count, maxi(1, human_count)]
 	_next_round_status.text = "下一局准备  %d / %d" % [ready_count, maxi(1, human_count)]
-	_next_round_hint.text = "全部准备，%d 秒后自动开局" % seconds if seconds >= 0 and all_ready else "等待其他玩家准备" if ready else "准备后开始下一局"
+	# 准备齐全自动开局；按钮已显示计数或倒计时，不重复解释。
+	_next_round_hint.text = "等待其他玩家准备" if ready and not all_ready else ""

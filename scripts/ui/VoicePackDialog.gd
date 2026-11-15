@@ -139,7 +139,8 @@ func open(packs: Array, my_seat: int, is_host: bool) -> void:
 		var select: Button = _selects[seat]
 		select.disabled = not is_host and seat != _my_seat
 	_refresh_usage()
-	_hint.text = "音色仅保存在本机，四个座位不能重复。"
+	# 音色仅保存在本机，四个座位不能重复；冲突时再显示具体错误。
+	_hint.text = ""
 	_picker.hide()
 	show()
 	_layout()
@@ -223,7 +224,7 @@ func _choose_picker(pack_id: String) -> void:
 		return
 	_packs[_picker_seat] = pack_id
 	_refresh_usage()
-	_hint.text = "音色仅保存在本机，四个座位不能重复。"
+	_hint.text = ""
 	pack_selected.emit(_picker_seat, pack_id)
 	_close_picker()
 

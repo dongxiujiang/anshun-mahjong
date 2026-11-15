@@ -8,6 +8,20 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
+	root.get_node("UpdateManager").auto_check = false
+	var menu = load("res://scenes/MainMenu.tscn").instantiate()
+	root.add_child(menu)
+	await process_frame
+	t.expect(menu.find_children("*", "Button", true, false).all(func(button): return button.text != "新手规则"), "main menu does not expose the tutorial")
+	t.expect(menu.find_children("*", "Control", true, false).all(func(control): return not control.tooltip_text.contains("说明")), "menu has no explanatory hover text")
+	menu.queue_free()
+	await process_frame
+	# 实际推荐和听张数据不属于教程，不可随说明文字一起隐藏。
+	t.expect(AiTeaching.turn_message({"kong_declares": ["wan5"]}) == "5万可以暗杠。", "teaching keeps the recommended tile and action without the tutorial")
+	t.expect(AiTeaching.turn_message({"ready": true, "discard": "tong8"}) == "打8筒报听。", "ready recommendation remains visible")
+	t.expect(AiTeaching.response_message("pong", "tiao1") == "1条可以碰。", "response recommendation remains visible")
+	t.expect(AiTeaching.turn_message({}).is_empty(), "no generic explanation when there is no recommendation")
+
 	var guide: Control = load("res://scripts/ui/RuleGuide.gd").new()
 	root.add_child(guide)
 	await process_frame
@@ -30,6 +44,13 @@ func _run() -> void:
 	t.expect(settings.ai_strength_buttons["strong"].disabled, "unimplemented strong AI remains disabled")
 	settings.queue_free()
 	await process_frame
+	var packs = load("res://scripts/ui/VoicePackDialog.gd").new()
+	root.add_child(packs)
+	await process_frame
+	packs.open([], 0, true)
+	t.expect(packs._hint.text.is_empty(), "voice picker shows no standing explanation")
+	packs.queue_free()
+	await process_frame
 
 	var overlay: Control = load("res://scripts/ui/ConnectionOverlay.gd").new()
 	root.add_child(overlay)
@@ -38,6 +59,7 @@ func _run() -> void:
 	t.expect(overlay._title.get_theme_font_size("font_size") == 32, "connection title uses the shared title size")
 	t.expect(overlay._retry_button.get_theme_font_size("font_size") == 28, "connection actions use the shared button size")
 	overlay.show_reconnecting(2, 5)
+	t.expect(overlay._body.text.is_empty() and overlay._progress.text.contains("2"), "reconnect keeps actual progress without the tutorial")
 	t.expect(overlay.visible and not overlay._retry_button.visible and overlay._leave_button.text == "取消并返回大厅", "reconnect progress has one clear exit action")
 	overlay.modulate.a = 0.0
 	overlay.show_reconnecting(2, 5)
@@ -58,8 +80,10 @@ func _run() -> void:
 	if loading != null:
 		t.expect(loading.position.y + loading.size.y <= overlay._leave_button.position.y, "Waiting animation does not overlap the return button")
 	overlay.show_syncing()
+	t.expect(not overlay._body.text.contains("不响应操作"), "sync does not repeat the input-lock explanation")
 	t.expect(overlay.modulate.a == 1.0 and loading != null and loading.is_visible_in_tree(), "Fresh-seat synchronization keeps the waiting indicator visible")
 	overlay.show_error("测试断线")
+	t.expect(overlay._body.text == "测试断线", "actual connection error remains visible")
 	if loading != null: t.expect(not loading.visible, "Failed connection stops the waiting indicator")
 	t.expect(overlay.visible and overlay._retry_button.visible and overlay._leave_button.text == "返回大厅", "connection error offers retry and return")
 	overlay.queue_free()

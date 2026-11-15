@@ -67,7 +67,7 @@ func _ready() -> void:
 	_breakdown.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	var close := Button.new()
 	close.text = "×"
-	close.tooltip_text = "关闭得分明细"
+	# 关闭按钮直接收起得分明细。
 	close.focus_mode = Control.FOCUS_NONE
 	close.position = Vector2(_detail_panel.size.x - 66, 8)
 	close.size = Vector2(48, 38)

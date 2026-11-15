@@ -8,15 +8,19 @@ const CONFIG := preload("res://scripts/autoload/GameConfig.gd")
 
 static func turn_message(decision: Dictionary) -> String:
 	if bool(decision.get("self_win", false)):
-		return "这张正好可以自摸，胡吧。"
+		return "可以自摸。"
 	if not decision.get("kong_declares", []).is_empty():
-		return "%s有四张，可以暗杠，再补一张。" % _display(str(decision.kong_declares[0]))
+		# 暗杠后补摸一张；界面只保留实际动作推荐。
+		return "%s可以暗杠。" % _display(str(decision.kong_declares[0]))
 	if not decision.get("add_kong", []).is_empty():
-		return "%s可以加杠，留意别人抢杠。" % _display(str(decision.add_kong[0]))
+		# 加杠可能被抢杠，合法响应仍由规则层处理。
+		return "%s可以加杠。" % _display(str(decision.add_kong[0]))
 	var tile := str(decision.get("discard", decision.get("tile", "")))
-	if tile.is_empty(): return "先看看手里的搭配。"
+	# 没有实际推荐时不显示泛泛的搭配说明。
+	if tile.is_empty(): return ""
 	if bool(decision.get("ready", false)):
-		return "打%s报听，之后就只能摸打了。" % _display(tile)
+		# 报听后只能按规则摸打，界面不重复解释锁牌规则。
+		return "打%s报听。" % _display(tile)
 	var message := "先打%s" % _display(tile)
 	var alternatives: Array = []
 	for item in decision.get("recommendations", []):
@@ -37,15 +41,16 @@ static func response_message(action: String, tile: String) -> String:
 	var name := _display(tile)
 	match action:
 		"win": return "这张%s可以胡。" % name
-		"kong": return "%s可以明杠，杠完再补一张。" % name
-		"pong": return "%s可以碰，碰完记得打一张。" % name
-	return "先过这张%s，保留手里的搭配。" % name
+		# 明杠后补摸，碰后出牌；这些流程由规则层推进。
+		"kong": return "%s可以明杠。" % name
+		"pong": return "%s可以碰。" % name
+	return "先过这张%s。" % name
 
 static func recommend(round, seat: int, level_override: String = "") -> Dictionary:
 	if round == null or seat < 0 or seat >= round.players.size():
 		return {}
 	if round.phase != RoundState.Phase.PLAYING or not round.awaiting or round.current_turn != seat:
-		return {"message": "还没轮到你，先看看大家打什么。"}
+		return {"message": "还没轮到你。"}
 	var player: PlayerState = round.players[seat]
 	var options: Dictionary = round.legal_turn_options(seat)
 	if options.get("self_win", false):
@@ -58,7 +63,7 @@ static func recommend(round, seat: int, level_override: String = "") -> Dictiona
 			"message": turn_message({"add_kong": options.add_kong})}
 	var discards: Array = options.get("discards", [])
 	if discards.is_empty():
-		return {"message": "现在还不能出牌，稍等一下。"}
+		return {"message": "当前不能出牌。"}
 	# 教打与正式 AI 共用同一套公开信息推理；刚摸到的牌已经在
 	# player.concealed 中，这里显式复制，避免后续误改权威手牌。
 	var level: String = level_override
@@ -85,7 +90,7 @@ static func recommend_fast(round, seat: int) -> Dictionary:
 	if round == null or seat < 0 or seat >= round.players.size():
 		return {}
 	if round.phase != RoundState.Phase.PLAYING or not round.awaiting or round.current_turn != seat:
-		return {"message": "还没轮到你，先看看大家打什么。"}
+		return {"message": "还没轮到你。"}
 	var player: PlayerState = round.players[seat]
 	var options: Dictionary = round.legal_turn_options(seat)
 	if options.get("self_win", false):
@@ -98,7 +103,7 @@ static func recommend_fast(round, seat: int) -> Dictionary:
 			"message": turn_message({"add_kong": options.add_kong})}
 	var discards: Array = options.get("discards", [])
 	if discards.is_empty():
-		return {"message": "现在还不能出牌，稍等一下。"}
+		return {"message": "当前不能出牌。"}
 	var best_tile := str(discards[0])
 	var best_distance := 99
 	for tile in discards:

@@ -90,7 +90,8 @@ func _ready() -> void:
 		latest["kind"] = "patch"
 		latest["notes"] = str(pending.get("notes", ""))
 		downloaded_path = ProjectSettings.globalize_path(boot._pack_path(pending))
-		_set_state("ready", "小版本 %s 已下载，重启后生效" % pending.version)
+		# 已保存补丁在重启后生效，操作由更新面板按钮提供。
+		_set_state("ready", "补丁 %s 已就绪" % pending.version)
 	# 每次启动只检查一次，切换大厅/牌桌不会重复请求。
 	call_deferred("maybe_check")
 
@@ -424,7 +425,8 @@ func apply_release(data: Dictionary, platform: String, allow_local: bool = false
 	latest = {"kind": kind, "version": version, "notes": str(data.get("body", "") if github else data.get("notes", "")).left(16000), "page": page, "url": url, "sha256": sha, "size": bytes, "platform": platform}
 	if kind == "patch":
 		for key in ["base_id", "base_version", "engine"]: latest[key] = str(package[key])
-	_set_state("available", "发现小版本 %s，无需重新安装" % version if kind == "patch" else "发现大版本 %s，需要更新完整应用" % version)
+	# 小版本无需重新安装，大版本更新完整应用；界面只显示版本和下载操作。
+	_set_state("available", "发现小版本 %s" % version if kind == "patch" else "发现大版本 %s" % version)
 
 func can_download() -> bool:
 	return not latest.is_empty() and (latest.get("kind", "full") == "patch" or latest.platform == "windows") and latest.url != "" and valid_sha256(str(latest.sha256))
@@ -480,7 +482,8 @@ func _link_done(result: int, code: int, headers: PackedStringArray, body: Packed
 		valid = valid and length > 0 and (expected <= 0 or length == expected)
 	if valid and _open_browser_url(_link_routes[_link_route]) == OK:
 		_last_browser_route = _link_routes[_link_route]
-		_set_state("available", "已打开下载；未成功可再次点击下载按钮切换线路")
+		# 再次下载可切换线路，不在界面重复显示操作教程。
+		_set_state("available", "已打开下载")
 	else:
 		_next_link()
 
@@ -500,7 +503,8 @@ func download_update() -> void:
 	_download_route = -1
 	total_bytes = int(latest.size)
 	downloaded_bytes = 0
-	_set_state("downloading", "正在下载小版本，完成后重启生效" if extension == "pck" else "正在下载新版应用，完成后可重启更新")
+	# 下载校验成功后由重启按钮应用更新。
+	_set_state("downloading", "正在下载小版本…" if extension == "pck" else "正在下载新版应用…")
 	_next_download("无法开始下载，请重试")
 
 static func _file_length(path: String) -> int:
@@ -568,7 +572,7 @@ func cancel_download() -> void:
 	_download_generation += 1
 	_download.cancel_request()
 	_cleanup_partial()
-	_set_state("available", "下载已取消，可以稍后继续")
+	_set_state("available", "下载已取消")
 
 func _cleanup_partial() -> void:
 	if _partial_path != "" and FileAccess.file_exists(_partial_path):
@@ -656,7 +660,8 @@ func _download_done(result: int, code: int, headers: PackedStringArray, _body: P
 			return
 	downloaded_bytes = length
 	total_bytes = length
-	_set_state("ready", "小版本已下载并通过校验，重启生效，无需安装" if patch else "新版已下载并通过校验，重启后更新")
+	# 补丁无需安装，完整应用重启后更新；只保留实际下载校验结果。
+	_set_state("ready", "小版本已下载并通过校验" if patch else "新版已下载并通过校验")
 
 static func _ps_literal(value: String) -> String:
 	return "'" + value.replace("'", "''") + "'"
