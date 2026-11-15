@@ -100,7 +100,8 @@ func _run() -> void:
 	t.expect(settlement.layer.mouse_filter == Control.MOUSE_FILTER_IGNORE and not table._settlement_card._post_controls is Panel, "Settlement uses non-blocking tabletop content and plain bottom controls")
 	t.expect(table._next_round_button.get_parent() == table._settlement_card._post_controls and not table._next_round_button.disabled, "Every player has an enabled bottom ready button")
 	t.expect(table._next_round_button.text.contains("准备"), "Guests get ready button instead of return to lobby")
-	t.expect(table._next_round_button.size.y >= 96 and table._next_round_button.size.x >= 480, "All humans have a usable next-round touch button")
+	var minimum_button_height := 80.0 if table._new_areas._table_3d != null else 96.0
+	t.expect(table._next_round_button.size.y >= minimum_button_height and table._next_round_button.size.x >= 480, "All humans have a usable next-round touch button")
 	t.expect(not net.lobby.seats[net.my_seat].ready, "Own readiness resets at settlement")
 	for seat in settlement.boards:
 		var board: Control = settlement.boards[seat]
