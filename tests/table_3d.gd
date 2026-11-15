@@ -129,6 +129,27 @@ func _check_merged_hand(view, renderer) -> void:
 	t.expect(view.hand_boxes[view.human_seat].get_children().map(func(node): return node.tile)
 		== Tiles.sort_hand(view.round.players[view.human_seat].concealed),
 		"restoring sorting keeps all fourteen tiles in normal order")
+	# The authoritative draw clears before the old merged row finishes moving.
+	var player = view.round.players[view.human_seat]
+	var saved_hand: Array = player.concealed.duplicate()
+	var saved_draw: String = player.just_drew
+	var discarded: String = player.concealed[7]
+	player.concealed.remove_at(7)
+	player.just_drew = ""
+	view.animate_hand_discard(view.human_seat, discarded, 7, Callable())
+	var deadline := Time.get_ticks_msec() + 10000
+	while Time.get_ticks_msec() < deadline:
+		renderer.sync_tiles()
+		for source in view.hand_boxes[view.human_seat].get_children():
+			var bounds: Rect2 = renderer.project_tile(source)
+			t.expect(Rect2(Vector2.ZERO, renderer.size).encloses(bounds),
+				"discarding from a merged hand stays on screen throughout its animation: %s" % bounds)
+		if not view.native_actions_pending() and view._discard_flights.is_empty(): break
+		await process_frame
+	t.expect(not view.native_actions_pending() and view._discard_flights.is_empty(),
+		"the merged-hand discard animation completes")
+	player.concealed = saved_hand
+	player.just_drew = saved_draw
 	# Return the fixture to the separate-draw case for the remaining checks.
 	view._merged_draw_key = ""
 	view.refresh()
