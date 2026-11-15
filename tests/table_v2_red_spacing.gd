@@ -52,11 +52,7 @@ func _check_shapes(view) -> void:
 					view.set_round(r,viewer)
 					var specs: Array = view._exposed_layout()
 					t.expect(specs.size()==4*count+2,"every chicken and meld appears: viewer=%d owner=%d count=%d source=%d" % [viewer,owner,count,source])
-					var obstacles := []
-					for seat in 4:
-						obstacles.append(view._seat_hud_rect(seat))
-						for node in view.hand_boxes[seat].get_children(): obstacles.append(_paint_rect(node))
-					t.expect(view.EXPOSED.clear(specs,obstacles),"groups clear retained hands and name panels")
+					t.expect(_public_faces_visible(view),"rendered public faces clear the retained hands")
 					for i in specs.size():
 						for j in i:
 							if source != 2 and specs[i].meld_index>=0 and specs[i].meld_index==specs[j].meld_index: continue
@@ -169,12 +165,7 @@ func _check_meld_replay(view, viewer: int, fixture: String) -> void:
 			for meld in player.melds: expected += 3 if meld.kind == "pung" else 4
 		var specs: Array = view._exposed_layout()
 		t.expect(specs.size() == expected, "held-hand replay keeps every exposed tile")
-		var obstacles := [view.action_bar_rect(Vector2(546, 112))]
-		for layer in view.hand_boxes + view.draw_boxes + [view._discard_layer, view._wall_layer]:
-			for node in layer.get_children():
-				obstacles.append(view.EXPOSED.rect_for(node.position + node.size / 2, node.size * node.scale, node.rotation))
-		for seat in 4: obstacles.append(view._seat_hud_rect(seat))
-		t.expect(view.EXPOSED.clear(specs, obstacles), "held-hand kong including shadows clears walls, rivers, hands and controls")
+		t.expect(_public_faces_visible(view), "held-hand kong keeps its printed area visible through the real 3D projection")
 		if index in [34, 54, 57] or index == record.actions.size() - 1: await _capture("viewer%d-%s-%d" % [viewer, fixture, index])
 	var client := RoundState.new()
 	client.apply_sync(r.serialize_for_seat(viewer))
@@ -191,6 +182,8 @@ func _check_full_table(view, viewer: int) -> void:
 	r.phase = RoundState.Phase.PLAYING
 	r.wall = WallRing.new(TileSetFactory.create_deck())
 	r.wall.set_head(0)
+	# A maximum river is a late-game board; a full undealt wall cannot coexist with it.
+	for i in 108: r.wall.draw_head()
 	for seat in 4:
 		var p: PlayerState = r.players[seat]
 		p.ready = true
@@ -212,42 +205,55 @@ func _check_full_table(view, viewer: int) -> void:
 			"discarded and melded chickens use the same full tile dimensions")
 		if int(node.get_meta("meld_index", -1)) < 0:
 			t.expect(node.modulate == Color.WHITE, "discarded chickens retain their normal tile face colors")
-	t.expect(view.count_kind("ordinary") == 88 and view.count_kind("red") == 24 and view._meld_layer.get_child_count() == 44,
-		"viewer %d: all 96 river tiles and 60 meld tiles stay visible" % viewer)
+	t.expect(view.count_kind("ordinary") == 116 and view.count_kind("red") == 24 and view._meld_layer.get_child_count() == 44,
+		"viewer %d: all 124 river tiles and 60 meld tiles stay visible" % viewer)
 	var obstacles: Array[Rect2] = []
 	for tile in view._wall_layer.get_children():
-		obstacles.append(view._visual_rect(tile))
+		obstacles.append(_face_rect(view, tile))
 	var occupied: Array[Rect2] = []
+	var occupied_tiles: Array = []
 	var identities: Array = []
 	var clear := true
+	var conflicts := []
 	for layer in view._render_layers():
 		if layer == view._wall_layer: continue
 		for tile in layer.get_children():
-			var rect: Rect2 = view._visual_rect(tile)
-			clear = clear and G.TABLE_BOUNDS.encloses(rect) and _clear_of(rect, obstacles)
-			var identity := [tile.get_meta("v2_seat",-1),tile.get_meta("meld_index",-1)]
+			var rect: Rect2 = _face_rect(view, tile)
+			if not Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(rect) or not _clear_of(rect, obstacles): conflicts.append([tile.get_meta("new_kind"), tile.get_meta("v2_seat"), rect])
+			clear = clear and Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(rect) and _clear_of(rect, obstacles)
+			var identity := [tile.get_meta("v2_seat",-1),tile.get_meta("meld_index",-1),tile.get_meta("new_kind", "")]
 			for j in occupied.size():
 				if int(identity[1])>=0 and identity==identities[j]: continue
-				clear = clear and not rect.grow(-0.05).intersects(occupied[j])
+				if str(identity[2]) in ["hand", "draw"] or str(identities[j][2]) in ["hand", "draw"]: continue
+				if _faces_overlap(view, tile, occupied_tiles[j]): conflicts.append([identity, identities[j], rect.intersection(occupied[j])])
+				clear = clear and not _faces_overlap(view, tile, occupied_tiles[j])
 			occupied.append(rect)
+			occupied_tiles.append(tile)
 			identities.append(identity)
-	t.expect(clear, "viewer %d: full rivers, hands, four melds per seat and walls are separate" % viewer)
+	t.expect(clear, "viewer %d: projected river and exposed faces stay on screen and separate: %s" % [viewer, conflicts])
+	t.expect(_public_faces_visible(view), "every full-table printed face stays identifiable")
 	var painted_clear := true
 	for tile in view._meld_layer.get_children():
 		if tile.tile != "wan6": continue
 		for chicken in view._red_layer.get_children():
 			if chicken.get_meta("v2_seat") != tile.get_meta("v2_seat"): continue
-			painted_clear = painted_clear and not _paint_rect(tile).intersects(_paint_rect(chicken).grow(-0.05))
-	t.expect(painted_clear, "viewer %d: six-character meld faces AND shadows never cover the eight-circle or chicken tiles" % viewer)
+			painted_clear = painted_clear and not _face_rect(view, tile).intersects(_face_rect(view, chicken).grow(-0.05))
+	t.expect(painted_clear, "viewer %d: six-character meld faces never cover the eight-circle or chicken tiles" % viewer)
 	var action: Rect2 = view.action_bar_rect(Vector2(546, 112))
-	t.expect(_clear_of(action, occupied), "viewer %d: action buttons clear all public tiles except the wall" % viewer)
+	var action_conflicts := []
+	for i in occupied.size():
+		if action.intersects(occupied[i]): action_conflicts.append([identities[i], occupied[i]])
+	t.expect(_clear_of(action, occupied), "viewer %d: action buttons %s clear all public tiles except the wall: %s; two-button-clear=%s" % [viewer, action, action_conflicts, _clear_of(view.action_bar_rect(Vector2(366, 112)), occupied)])
 	var client := RoundState.new()
 	client.apply_sync(r.serialize_for_seat(viewer))
 	var before := _table_positions(view)
 	view.set_round(client, viewer)
 	var after := _table_positions(view)
 
-	t.expect(before.size() == after.size() and before.keys().all(func(key): return after.has(key) and Vector2(before[key]).is_equal_approx(after[key])), "viewer %d: network snapshot keeps the same public tile positions" % viewer)
+	var differences := []
+	for key in before:
+		if not after.has(key) or not Vector2(before[key]).is_equal_approx(after[key]): differences.append([key, before[key], after.get(key)])
+	t.expect(before.size() == after.size() and differences.is_empty(), "viewer %d: network snapshot keeps the same public tile positions: %d -> %d %s" % [viewer, before.size(), after.size(), differences])
 	await _capture("viewer%d-full-rivers-and-melds" % viewer)
 	# Test eight discarded chickens at each seat in turn. Giving all four seats
 	# eight would invent 32 chickens, then force them into neighbouring seats.
@@ -259,26 +265,33 @@ func _check_full_table(view, viewer: int) -> void:
 				for i in 8: p.discards.append("tiao1" if i % 2 == 0 else "tong8")
 			p.discard_ids = range(p.discards.size())
 		r.round_meta.charge_chickens = {
-			"tiao1": {"owner": chicken_owner, "location": "discard", "discard_id": 22},
-			"tong8": {"owner": chicken_owner, "location": "discard", "discard_id": 23},
+			"tiao1": {"owner": chicken_owner, "location": "discard", "discard_id": r.players[chicken_owner].discards.size() - 8},
+			"tong8": {"owner": chicken_owner, "location": "discard", "discard_id": r.players[chicken_owner].discards.size() - 7},
 		}
 		view.set_round(r, viewer)
 		occupied.clear()
+		occupied_tiles.clear()
 		identities.clear()
 		clear = true
+		conflicts.clear()
 		for layer in view._render_layers():
 			if layer == view._wall_layer: continue
 			for tile in layer.get_children():
-				var rect: Rect2 = view._visual_rect(tile)
-				clear = clear and G.TABLE_BOUNDS.encloses(rect) and _clear_of(rect, obstacles)
-				var identity := [tile.get_meta("v2_seat",-1),tile.get_meta("meld_index",-1)]
+				var rect: Rect2 = _face_rect(view, tile)
+				if not Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(rect) or not _clear_of(rect, obstacles): conflicts.append([tile.get_meta("new_kind"), tile.get_meta("v2_seat"), rect])
+				clear = clear and Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(rect) and _clear_of(rect, obstacles)
+				var identity := [tile.get_meta("v2_seat",-1),tile.get_meta("meld_index",-1),tile.get_meta("new_kind", "")]
 				for j in occupied.size():
 					if int(identity[1])>=0 and identity==identities[j]: continue
-					clear = clear and not rect.grow(-0.05).intersects(occupied[j])
+					if str(identity[2]) in ["hand", "draw"] or str(identities[j][2]) in ["hand", "draw"]: continue
+					if _faces_overlap(view, tile, occupied_tiles[j]): conflicts.append([identity, identities[j], rect.intersection(occupied[j])])
+					clear = clear and not _faces_overlap(view, tile, occupied_tiles[j])
 				occupied.append(rect)
+				occupied_tiles.append(tile)
 				identities.append(identity)
 		t.expect(clear and view.count_kind("red") == 24,
-			"viewer %d: seat %d keeps eight chickens and four melds within its own area" % [viewer, chicken_owner])
+			"viewer %d: seat %d keeps eight chickens and four melds within its own area: %s" % [viewer, chicken_owner, conflicts])
+		t.expect(_public_faces_visible(view), "eight chickens and four melds keep their printed faces visible")
 		t.expect(view.EXPOSED.clear(view._exposed_layout(), obstacles), "exposed tiles and shadows stay in their owner's bounded area")
 		t.expect(_clear_of(action, occupied), "eight chickens never enter the action buttons")
 		await _capture("viewer%d-seat%d-eight-chickens-and-melds" % [viewer, chicken_owner])
@@ -290,12 +303,6 @@ func _table_positions(view) -> Dictionary:
 			positions[view._render_key(tile)] = tile.position
 	return positions
 
-func _paint_rect(tile: Control) -> Rect2:
-	var local := Rect2(Vector2.ZERO, tile.size)
-	if int(tile.get_meta("meld_index", -1)) >= 0:
-		local = local.merge(Rect2(Vector2(2, 4) * tile.unit, tile.size))
-	return tile.get_transform() * local
-
 func _clear_of(rect: Rect2, obstacles: Array) -> bool:
 	for other: Rect2 in obstacles:
 		if rect.intersects(other.grow(-0.05)): return false
@@ -306,3 +313,22 @@ func _capture(name: String) -> void:
 	await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png(CAPTURES + name + ".png")
+
+func _face_rect(view, tile: TileView) -> Rect2:
+	var points := _face_polygon(view, tile)
+	return Rect2(points[0], Vector2.ZERO).expand(points[1]).expand(points[2]).expand(points[3])
+
+func _face_polygon(view, tile: TileView) -> PackedVector2Array:
+	var renderer = view._table_3d
+	if not renderer.tile_nodes.has(tile.get_instance_id()): renderer.sync_tiles()
+	var mesh: MeshInstance3D = renderer.tile_nodes[tile.get_instance_id()]
+	var points := PackedVector2Array()
+	for corner in [Vector2(-0.45, -0.60), Vector2(-0.45, 0.60), Vector2(0.45, 0.60), Vector2(0.45, -0.60)]:
+		points.append(renderer.camera.unproject_position(mesh.transform * Vector3(corner.x, 0.31 if tile.face_up else -0.31, corner.y)) / Vector2(renderer.viewport.size) * renderer.size)
+	return points
+
+func _faces_overlap(view, a: TileView, b: TileView) -> bool:
+	return not Geometry2D.intersect_polygons(_face_polygon(view, a), _face_polygon(view, b)).is_empty()
+
+func _public_faces_visible(view) -> bool:
+	return preload("res://tests/table_3d_visibility.gd").public_faces_visible(view)

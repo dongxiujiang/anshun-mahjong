@@ -99,8 +99,13 @@ static func solve(view) -> Array:
 		groups.append_array(singles+melds)
 		var hand_size:=G.hand_tile_size(seat,view.human_seat)
 		if rel in [1,3] and not view._face_visible(seat): hand_size.x = 2.0 * hand_size.y
-		for i in view._current_hand_count(seat):obstacles.append(rect_for(view._hand_center(seat,i,view._current_hand_count(seat)),hand_size,ANGLES[rel]))
-		if not str(player.just_drew).is_empty():obstacles.append(rect_for(view._draw_center(seat,view._current_hand_count(seat)),hand_size,ANGLES[rel]))
+		var hand_shift := Vector2.ZERO
+		if view._table_3d != null and rel in [1, 3] and not view._face_visible(seat):
+			# Reserve the same wider, raised standing backs that the 3D view displays.
+			hand_size.y *= 1.30
+			hand_shift.y = -112.0
+		for i in view._current_hand_count(seat):obstacles.append(rect_for(view._hand_center(seat,i,view._current_hand_count(seat)) + hand_shift,hand_size,ANGLES[rel]))
+		if not str(player.just_drew).is_empty():obstacles.append(rect_for(view._draw_center(seat,view._current_hand_count(seat)) + hand_shift,hand_size,ANGLES[rel]))
 		obstacles.append(view._seat_hud_rect(seat))
 		var badge: Vector2=G.meld_anchor(seat,view.human_seat)
 		var label_count:=int(seat==view.round.dealer_seat)+int(player.ready)

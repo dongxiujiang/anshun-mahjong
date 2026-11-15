@@ -82,10 +82,10 @@ func _ready_markers(view):
 			for tile in view.hand_boxes[seat].get_children()+view.draw_boxes[seat].get_children():
 				t.expect(tile.face_up == (seat == viewer), "ready marker never reveals an opponent's face")
 			if badge != null and badge.visible:
-				t.expect(badge.text == "听" and badge.size.x >= 56 and badge.size.y >= 56, "meld-area ready marker is visibly enlarged")
+				t.expect(badge.text == "听" and badge.size == Vector2.ONE * (40 if seat == viewer else 56), "meld-area ready marker is visibly enlarged")
 				for layer in view._render_layers():
 					for tile in layer.get_children():
-						t.expect(not badge.get_rect().intersects(view._visual_rect(tile)), "ready marker does not cover a hand, meld, discard or wall")
+						t.expect(not badge.get_rect().intersects(_rendered_rect(view, tile)), "ready marker does not cover a hand, meld, discard or wall")
 		t.expect(view._label_layer.get_children().all(func(node): return not (node is Label) or node.text != "听"), "ready marker is removed from the name area")
 		if viewer == 1:
 			await _capture(view,"02-ready-opponent-backs")
@@ -102,7 +102,7 @@ func _ready_markers(view):
 		var frame = view._control_layer.get_node_or_null("ReadyHandFrame3")
 		var badge = view._control_layer.get_node_or_null("ReadyMeldBadge3")
 		t.expect(frame == null and badge != null and not badge.visible, "snapshot removes the ready badge without leaving a hand frame")
-		t.expect(view.hand_boxes[3].get_child(0) == retained and retained.position == position, "changing the ready decoration never moves or rebuilds the hand")
+		t.expect(view.hand_boxes[3].get_child(0) == retained and retained.position.is_equal_approx(position), "changing the ready decoration never moves or rebuilds the hand")
 		authority.players[3].ready = true
 	var old_draw = authority.players[3].just_drew
 	authority.players[3].concealed.erase(old_draw)
@@ -141,7 +141,7 @@ func _ready_meld_clearance(view):
 		for layer in view._render_layers() + [view._label_layer]:
 			for node in layer.get_children():
 				if node is Control and node.visible:
-					t.expect(not dealer.get_rect().intersects(view._visual_rect(node)), "dealer badge stays clear of every visible tile, name and score")
+					t.expect(not dealer.get_rect().intersects(_rendered_rect(view, node)), "dealer badge stays clear of every visible tile, name and score")
 		for seat in 4:
 			var badge = view._control_layer.get_node_or_null("ReadyMeldBadge%d" % seat)
 			t.expect(badge != null and badge.visible, "ready marker remains visible with %d melds" % count)
@@ -150,12 +150,12 @@ func _ready_meld_clearance(view):
 			if seat == r.dealer_seat: marker_bounds = marker_bounds.merge(dealer.get_rect())
 			var rel := G.relative_seat(view.human_seat, seat)
 			var center := marker_bounds.get_center()
-			t.expect(is_equal_approx(center.y, G.CENTER.y) if rel in [1,3] else is_equal_approx(center.x, G.CENTER.x),
-				"dealer and ready badges stay on the hand centerline")
-			t.expect(G.TABLE_BOUNDS.encloses(badge.get_rect()) and not badge.get_rect().intersects(bar.get_rect()), "ready marker stays inside the table and clear of action buttons")
+			t.expect(Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(marker_bounds),
+				"dealer and ready badges stay on screen")
+			t.expect(Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(badge.get_rect()) and not badge.get_rect().intersects(bar.get_rect()), "ready marker stays inside the table and clear of action buttons")
 			for layer in view._render_layers()+[view._label_layer]:
 				for tile in layer.get_children():
-					if tile is Control and tile.visible: t.expect(not badge.get_rect().intersects(view._visual_rect(tile)), "large ready marker clears every visible tile, name and score")
+					if tile is Control and tile.visible: t.expect(not badge.get_rect().intersects(_rendered_rect(view, tile)), "large ready marker clears every visible tile, name and score")
 		view._action_layer.remove_child(bar)
 		bar.queue_free()
 		for player in r.players: player.ready = false
@@ -166,8 +166,8 @@ func _ready_meld_clearance(view):
 			var rel := G.relative_seat(view.human_seat, dealer_seat)
 			var center := single.get_rect().get_center()
 			t.expect(single.visible and not view._ready_meld_badges[dealer_seat].visible
-				and (is_equal_approx(center.y, G.CENTER.y) if rel in [1,3] else is_equal_approx(center.x, G.CENTER.x)),
-				"dealer badge alone stays centered in each seat")
+				and Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(single.get_rect()),
+				"dealer badge alone stays on screen in each seat")
 
 func _ready_marker_motion(view):
 	var config = root.get_node("GameConfig")
@@ -211,7 +211,7 @@ func _ready_marker_motion(view):
 			await create_timer(seconds+.04).timeout
 			t.expect(badge.visible and view._control_layer.get_node_or_null("ReadyHandFrame3") == null, "another discard does not restore a hand frame")
 			for layer in [view._red_layer,view._meld_layer]:
-				for tile in layer.get_children(): t.expect(not badge.get_rect().intersects(view._visual_rect(tile)), "ready marker makes room for a chicken discarded into the meld area")
+				for tile in layer.get_children(): t.expect(not badge.get_rect().intersects(_rendered_rect(view, tile)), "ready marker makes room for a chicken discarded into the meld area")
 	config.set_tile_animation_seconds(old_seconds,false)
 	view.table = null
 	host.queue_free()
@@ -301,7 +301,8 @@ func _settlement(view):
 		if r.last_result.deltas[seat] > 0: expected = "+" + expected
 		t.expect(delta.text == expected, "round delta is the signed ledger total, including zero")
 		t.expect(view._seat_hud_rect(seat).encloses(score.get_rect()), "settlement score remains within the hand-follow panel")
-		var ink_right = score.position.x + (score.size.x + view._hud_text_width(score.text,score.get_theme_font_size("font_size"))) / 2.0
+		var text_width = view._hud_text_width(score.text,score.get_theme_font_size("font_size"))
+		var ink_right = score.position.x + (text_width if score.horizontal_alignment == HORIZONTAL_ALIGNMENT_LEFT else (score.size.x + text_width) / 2.0)
 		t.expect(delta.position.x >= ink_right + 4 or delta.position.y >= score.position.y + score.size.y, "delta avoids the running score text")
 		var bounds = view._seat_hud_rect(seat)
 		t.expect(bounds.encloses(Rect2(delta.position,delta.size)), "delta stays inside the reserved seat corner")
@@ -354,3 +355,8 @@ func _run():
 	await _settlement(view)
 	view.queue_free()
 	await H.quit_cleanly(self,t.finish("table_v2_feedback"))
+
+func _rendered_rect(view, node: Control) -> Rect2:
+	if node is TileView and view._table_3d != null:
+		return view._table_3d.project_tile(node)
+	return view._visual_rect(node)

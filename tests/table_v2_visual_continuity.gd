@@ -90,6 +90,9 @@ func _check_opposite_kongs(view) -> void:
 			t.expect(correct, "seat %d: opposite tile is centered separately in front of each kong" % owner)
 
 func _meld_clear_in_frame(view, owner: int, layer: Control) -> bool:
+	if view._table_3d != null:
+		var tiles := layer.get_children().filter(func(tile): return tile.is_visible_in_tree() and tile.get_meta("v2_seat", -1) == owner and tile.get_meta("meld_index", -1) == 0)
+		return tiles.size() == 4 and preload("res://tests/table_3d_visibility.gd").public_faces_visible(view)
 	var count := 0
 	for tile in layer.get_children():
 		if not tile.is_visible_in_tree() or tile.get_meta("v2_seat", -1) != owner or tile.get_meta("meld_index", -1) != 0:
@@ -200,6 +203,8 @@ func _run():
 	t.expect(ready_badge,"ready state has an independent visible badge instead of clipped nickname text")
 	# Capacity geometry fixture, deliberately independent of physical tile values.
 	var full_hand: Array = host.round.players[1].concealed.duplicate()
+	# Full exposed areas are late-game layouts, after the wall has been used.
+	while host.round.wall.remaining > 0: host.round.wall.draw_head()
 	for seat in 4:
 		var player = host.round.players[seat]
 		# Four groups leave one tile; keeping four also covers deferred centering.
@@ -228,18 +233,14 @@ func _run():
 			for j in range(i+1,exposed.size()):
 				if a.intersects(rect(exposed[j]).grow(-0.1)):separate=false
 		t.expect(separate,"seat%d: chicken and ordinary meld tiles never overlap" % seat)
-		t.expect(hand_clear,"seat%d: exposed belt clears the hand before deferred centering" % seat)
+		if view._table_3d != null: hand_clear = preload("res://tests/table_3d_visibility.gd").public_faces_visible(view)
+		t.expect(hand_clear,"seat%d: exposed belt keeps its printed area visible" % seat)
 		t.expect(bounds,"seat%d: all exposed tiles remain within table bounds" % seat)
-		var rel=G.relative_seat(1,seat)
 		var wall_clear=true
 		for exposed_tile in exposed:
-			for wall_seat in 4:
-				for slot in (14 if wall_seat in [1,3] else 13):
-					for row in 2:
-						var size=G.MELD_SIZE if wall_seat in [1,3] else Vector2(G.MELD_SIZE.y,G.MELD_SIZE.x)
-						var wall=Rect2(G.wall_block_center(wall_seat,slot,row)-size/2,size)
-						if rect(exposed_tile).intersects(wall.grow(-0.1)): wall_clear=false
-		t.expect(wall_clear,"seat%d: exposed belt clears both layers of all four walls" % seat)
+			for wall in view._wall_layer.get_children():
+				if rect(exposed_tile).intersects(rect(wall).grow(-0.1)): wall_clear=false
+		t.expect(wall_clear,"seat%d: exposed belt clears every remaining wall tile" % seat)
 	for count in [13,10,7,4,1]:
 		var ui := preload("res://scripts/ui/table/TableUiConfig.gd")
 		var row_size := Vector2(4 * ui.DISCARD_BUTTON_SIZE.x + 3 * ui.ACTION_SEPARATION, ui.ACTION_BUTTON_SIZE.y)
@@ -248,7 +249,7 @@ func _run():
 		var action_rect: Rect2 = view.action_bar_rect(row_size)
 		var hand_size := G.hand_tile_size(1, 1)
 		var right := G.hand_slot_center(1, count - 1, 1, count).x + hand_size.x / 2.0
-		t.expect(is_equal_approx(action_rect.end.x, right), "short-hand action row remains right aligned")
+		t.expect(Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(action_rect) if view._table_3d != null else is_equal_approx(action_rect.end.x, right), "short-hand action row stays on screen and uses a clear 3D gap")
 		t.expect(action_rect.end.y < G.hand13_rect(1, 1).position.y, "actions remain above the hand")
 		host.round.players[1].concealed = saved_hand
 

@@ -41,6 +41,7 @@ func run() -> void:
 						view._table_3d.sync_tiles()
 						check_rivers(view)
 						check_badges(view)
+						if not settled: check_actions(view)
 			print("completed pixels=%s viewer=%d layouts=%d combinations=%d" % [pixels, viewer, layouts, badge_combinations])
 			for count in range(33):
 				for head in ([0, 28, 54, 82] if count <= 14 else [0]):
@@ -190,3 +191,18 @@ func check_badges(view) -> void:
 					badges.append(rect)
 				t.expect(clear, "dealer%d ready-mask%d: badges avoid every tile, player information, screen edge and each other: %s" % [dealer, mask, why])
 			badge_combinations += 1
+
+func check_actions(view) -> void:
+	var renderer = view._table_3d
+	for width in [177.0, 366.0, 750.0]:
+		var action: Rect2 = view.action_bar_rect(Vector2(width, 112))
+		var failures := []
+		for tile in sources(view):
+			if str(tile.get_meta("new_kind", "")) not in ["ordinary", "red", "meld"] or not tile.face_up: continue
+			var mesh: MeshInstance3D = renderer.tile_nodes[tile.get_instance_id()]
+			var face := PackedVector2Array()
+			for corner in [Vector2(-0.45, -0.60), Vector2(-0.45, 0.60), Vector2(0.45, 0.60), Vector2(0.45, -0.60)]:
+				face.append(renderer.camera.unproject_position(mesh.transform * Vector3(corner.x, 0.31, corner.y)) / Vector2(renderer.viewport.size) * renderer.size)
+			var control := PackedVector2Array([action.position, Vector2(action.position.x, action.end.y), action.end, Vector2(action.end.x, action.position.y)])
+			if not Geometry2D.intersect_polygons(face, control).is_empty(): failures.append([tile.get_meta("new_kind"), tile.get_meta("v2_seat"), tile.tile])
+		t.expect(failures.is_empty(), "action row avoids every printed public face: pixels%s viewer%d width%d melds%d chickens%d %s" % [renderer.viewport.size, view.human_seat, width, view.round.players[view.human_seat].melds.size(), view.round.players[view.human_seat].discards.filter(func(card): return Tiles.is_chicken(card)).size(), failures])

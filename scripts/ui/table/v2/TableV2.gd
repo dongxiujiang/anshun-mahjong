@@ -1291,7 +1291,9 @@ func _current_hand_count(seat: int) -> int:
 	var player = round.players[seat]
 	return maxi(1, player.concealed.size() - (1 if player.just_drew != "" else 0))
 
-func action_bar_rect(row_size: Vector2) -> Rect2:
+func action_bar_rect(row_size: Vector2, reserve_layout: bool = false) -> Rect2:
+	# Fit between the nearest discard row and exposed faces on the 3D table.
+	if _table_3d != null: row_size.y = minf(row_size.y, 96.0)
 	var count := _current_hand_count(human_seat)
 	var size := G.hand_tile_size(human_seat, human_seat)
 	var right := G.hand_slot_center(human_seat, count - 1, human_seat, count).x + size.x / 2.0
@@ -1299,13 +1301,40 @@ func action_bar_rect(row_size: Vector2) -> Rect2:
 	if not held.is_empty():
 		right = -INF
 		for center: Vector2 in held: right = maxf(right, center.x + size.x / 2.0)
-	return Rect2(Vector2(right - row_size.x, G.ACTION_TOP), row_size)
+	var preferred := Rect2(Vector2(right - row_size.x, G.ACTION_TOP), row_size)
+	if _table_3d == null or reserve_layout or row_size.x <= 0: return preferred
+	var obstacles: Array[Rect2] = []
+	for layer in [_discard_layer, _red_layer, _meld_layer] + hand_boxes + draw_boxes:
+		for tile in layer.get_children():
+			if not tile is TileView or not tile.is_visible_in_tree(): continue
+			var bounds: Rect2 = _table_3d.project_tile(tile)
+			if tile.face_up and str(tile.get_meta("new_kind", "")) in ["ordinary", "red", "meld"] and _table_3d.tile_nodes.has(tile.get_instance_id()):
+				var mesh: MeshInstance3D = _table_3d.tile_nodes[tile.get_instance_id()]
+				var points: Array[Vector2] = []
+				for x in [-0.45, 0.45]:
+					for z in [-0.60, 0.60]:
+						points.append(_table_3d.camera.unproject_position(mesh.transform * Vector3(x, 0.31, z)) / Vector2(_table_3d.viewport.size) * _table_3d.size)
+				bounds = Rect2(points[0], Vector2.ZERO).expand(points[1]).expand(points[2]).expand(points[3])
+			if bounds.end.y > preferred.position.y and bounds.position.y < preferred.end.y: obstacles.append(bounds)
+	for button in [_sort_button, _restore_button, _previous_sort_button]:
+		if button.visible: obstacles.append(button.get_rect())
+	var candidates := [preferred.position.x]
+	for obstacle in obstacles:
+		candidates.append(obstacle.position.x - row_size.x - 8.0)
+		candidates.append(obstacle.end.x + 8.0)
+	candidates.sort_custom(func(a, b): return absf(a - preferred.position.x) < absf(b - preferred.position.x))
+	for x: float in candidates:
+		if x < 16.0 or x + row_size.x > G.DESIGN_SIZE.x - 16.0: continue
+		var candidate := Rect2(Vector2(x, preferred.position.y), row_size)
+		if obstacles.all(func(obstacle): return not candidate.intersects(obstacle)): return candidate
+	return preferred
 
 func reserved_action_rect() -> Rect2:
 	var count := 4
 	for bar in _action_layer.get_children():
 		if bar.get_meta("v2_action_bar", false): count = maxi(count, bar.get_child_count())
-	return action_bar_rect(Vector2(count * UI.DISCARD_BUTTON_SIZE.x + (count - 1) * UI.ACTION_SEPARATION, UI.ACTION_BUTTON_SIZE.y))
+	# The exposed solver reserves its source-space row; live controls avoid projected faces.
+	return action_bar_rect(Vector2(count * UI.DISCARD_BUTTON_SIZE.x + (count - 1) * UI.ACTION_SEPARATION, UI.ACTION_BUTTON_SIZE.y), true)
 
 ## 新弃牌落点（屏幕坐标）。普通弃牌按非鸡牌顺序，鸡牌用红色区落点。
 func hand_source_global(seat: int, concealed_index: int) -> Vector2:
@@ -1419,11 +1448,14 @@ func refresh() -> void:
 	_clear(_debug_layer)
 	_build_wall()
 	_build_hands()
+	# Exposed layout uses hand-following HUD bounds, so project the new hands first.
+	if _table_3d != null: _table_3d.sync_tiles()
 	if not test_frozen:
 		_build_discards()
 		_build_melds()
 	_refresh_hand_arrangement()
 	_end_tile_reconcile()
+	if _table_3d != null: _table_3d.sync_tiles()
 	_refresh_hud()
 	_layout_meld_badges()
 	if is_instance_valid(_score_inspection):
@@ -3102,6 +3134,7 @@ func _own_hand_top() -> float:
 		for box in [hand_boxes[human_seat], draw_boxes[human_seat]]:
 			for tile in box.get_children():
 				if not tile is TileView or not tile.is_visible_in_tree(): continue
+				if _reconciling and not _render_seen.has(tile.get_instance_id()): continue
 				var bounds: Rect2 = _table_3d.project_tile(tile)
 				if bounds.has_area(): top = minf(top, bounds.position.y)
 	return top

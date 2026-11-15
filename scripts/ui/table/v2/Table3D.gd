@@ -206,7 +206,7 @@ func sync_tiles() -> void:
 			var scale_2d := xf.get_scale().abs()
 			var angle := -xf.get_rotation()
 			var pitch := 0.0 if face_up else PI
-			if own_hand: pitch = _own_hand_pitch
+			if own_hand: pitch = _own_hand_pitch if settled else deg_to_rad(63)
 			elif hand and not face_up: pitch = PI / 2.0
 			if source.flight_pitch >= 0: pitch = source.flight_pitch
 			# Masked network events may outlive the snapshot that reveals the hands.
