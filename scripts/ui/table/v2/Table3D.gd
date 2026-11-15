@@ -131,6 +131,7 @@ func _sync_before_draw() -> void:
 		sync_tiles()
 		view._follow_hand_hud()
 		view._layout_arrangement_controls()
+		view._layout_meld_badges()
 
 func _at_height(screen: Vector2, height: float) -> Vector3:
 	var pixel := screen / size * Vector2(viewport.size)
