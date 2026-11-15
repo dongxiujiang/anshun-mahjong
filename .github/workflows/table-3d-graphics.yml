@@ -1,0 +1,46 @@
+name: Check 3D graphics
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  graphics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install rendering tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libpipewire-0.3-0t64
+          gh release download 4.7.2-stable --repo godotengine/godot --pattern Godot_v4.7.2-stable_linux.x86_64.zip --output /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          sudo install -m 0755 /tmp/godot/Godot_v4.7.2-stable_linux.x86_64 /usr/local/bin/godot
+      - name: Import project
+        run: |
+          mkdir -p build/ci
+          rm -rf addons/godot-livekit
+          sed -i 's/^driver\/enable_input=true/driver\/enable_input=false/' project.godot
+          godot --headless --path . --editor --import > build/ci/import.log 2>&1
+      - name: Check graphical suites
+        run: |
+          failed=0
+          for suite in table_3d ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
+            timeout 180s xvfb-run -a godot --path . --audio-driver Dummy --resolution 1280x720 --script "res://tests/$suite.gd" > "build/ci/$suite.log" 2>&1 || failed=1
+            echo "$suite"
+            tail -n 80 "build/ci/$suite.log"
+          done
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: table-graphics-${{ github.run_id }}
+          path: |
+            build/ci/*.log
+            build/table-3d-review/**
+            build/settlement-scenarios/**
+            build/settlement-exposed/**
+            build/back-render/**
+            build/ui-feedback/**

@@ -246,7 +246,7 @@ jobs:
           set -euo pipefail
           xvfb-run -a python -X utf8 tests/run_network.py --godot "$(command -v godot)" --section online --graphical-table 2>&1 | tee build/ci/graphical-opening.log
           for suite in table_3d ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
-            timeout 180s xvfb-run -a godot --path . --audio-driver Dummy --resolution 1280x720 --script "res://tests/$suite.gd" > "build/ci/$suite.log" 2>&1
+            timeout 180s xvfb-run -a godot --path . --audio-driver Dummy --resolution 1280x720 --script "res://tests/$suite.gd" > "build/ci/$suite.log" 2>&1 || { tail -n 100 "build/ci/$suite.log"; exit 1; }
             tail -n 4 "build/ci/$suite.log"
           done
 
@@ -468,6 +468,8 @@ jobs:
             build/ui-feedback/**
             build/opening-clock/**
             build/ci/graphical-opening.log
+            build/ci/table_3d.log
+            build/table-3d-review/**
             build/ci/table_v2_*.log
             build/ci/settlement_exposed_visibility.log
             build/ci/tile_back_render.log
