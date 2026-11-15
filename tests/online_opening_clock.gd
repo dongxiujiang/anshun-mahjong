@@ -19,7 +19,12 @@ func _arg(key: String) -> String:
 
 func _wait(predicate: Callable, seconds := 30.0) -> bool:
 	var deadline := Time.get_ticks_msec() + int(seconds * 1000)
-	while not predicate.call() and Time.get_ticks_msec() < deadline: await process_frame
+	var next_progress := Time.get_ticks_msec() + 10000
+	while not predicate.call() and Time.get_ticks_msec() < deadline:
+		if table != null and Time.get_ticks_msec() >= next_progress:
+			next_progress = Time.get_ticks_msec() + 10000
+			print("[opening-clock] phase=%d dealt=%s sorting=%s" % [table.round.phase, table._table_animation_controller._dealt, table._new_areas._sort_animating])
+		await process_frame
 	return bool(predicate.call())
 
 func _event(event: Dictionary):
@@ -67,7 +72,9 @@ func _run():
 	net.set_ready(true)
 	if await _wait(func():return net.game.phase == RoundState.Phase.DEALING):
 		started = Time.get_ticks_msec()
-	t.expect(await _wait(func(): return first_action, 55.0), "first draw arrives after the opening")
+	# Software rendering on CI can advance animation slower than wall time.
+	# Keep the ordering/ack assertions below; allow the full opening to render.
+	t.expect(await _wait(func(): return first_action, 180.0), "first draw arrives after the opening")
 	t.expect(not premature, "server action never overtakes client dealing or sorting")
 	t.expect(net._opening_ack_session == net.game.audio_session, "first authoritative action follows the client's rendered-opening confirmation")
 	await create_timer(0.5).timeout

@@ -142,7 +142,7 @@ def run(godot, lan_interface=False, section="all", graphical_table=False):
             clock = launch(godot, "online_opening_clock", "res://tests/online_opening_clock.gd",
                            [f"--directory={base}"], graphical=True)
             cloud_clients.append(clock)
-            finish(clock, "online_opening_clock", 75)
+            finish(clock, "online_opening_clock", 210)
             deadline = time.monotonic() + 5
             while True:
                 code, data = request(base)

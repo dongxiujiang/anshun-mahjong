@@ -467,6 +467,8 @@ jobs:
             build/meld-motion/**
             build/ui-feedback/**
             build/opening-clock/**
+            build/online_opening_clock.log
+            build/online_opening_clock.err
             build/ci/graphical-opening.log
             build/ci/table_3d.log
             build/table-3d-review/**
