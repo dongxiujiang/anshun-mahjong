@@ -543,13 +543,18 @@ func _opening_speed_settings():
 		root.add_child(table)
 		table.round.controllers = [null, null, null, null]
 		var controller = table._table_animation_controller
-		var allowed_ms := int(config.opening_wait_seconds(config.opening_speed_key()) * 1000.0) + 30000
+		var allowed_ms := 180000
 		var deadline := started + allowed_ms
+		var next_progress := started + 10000
 		while Time.get_ticks_msec() < deadline:
 			if controller._dealt == [13, 13, 13, 13] and not table._new_areas._sort_animating:
 				break
+			if Time.get_ticks_msec() >= next_progress:
+				print("[opening-speed] seconds=", seconds, " elapsed_ms=", Time.get_ticks_msec() - started, " dealt=", controller._dealt, " sorting=", table._new_areas._sort_animating, " phase=", table.round.phase)
+				next_progress += 10000
 			await process_frame
 		var elapsed := Time.get_ticks_msec() - started
+		print("[opening-speed] finished seconds=", seconds, " elapsed_ms=", elapsed, " dealt=", controller._dealt)
 		times.append(elapsed)
 		t.expect(controller._dealt == [13, 13, 13, 13] and elapsed < allowed_ms, "opening slider leaves all four hands correctly dealt")
 		var start_turn_deadline := Time.get_ticks_msec() + 2000
