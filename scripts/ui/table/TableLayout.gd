@@ -201,6 +201,8 @@ func _usable_rect() -> Rect2:
 			bounds = bounds.intersection(transform.affine_inverse() * safe)
 	if OS.has_feature("android") and bounds.has_area():
 		bounds = bounds.grow(-UI.SAFE_MARGIN)
+		if table._new_areas != null and table._new_areas._table_3d != null:
+			bounds.size.y += UI.SAFE_MARGIN
 	return bounds
 
 func _design_size() -> Vector2:

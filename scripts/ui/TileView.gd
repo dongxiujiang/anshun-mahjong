@@ -1,14 +1,19 @@
 class_name TileView
 extends Control
-## 一张麻将牌视图：优先使用 res/tiles 素材，缺图时回退程序化绘制。
-## 素材编号：1-9=筒, 11-19=条, 21-29=万。无牌背素材 → 程序化牌背。
+## Shared offline-rendered tile artwork; logical sizes and hit areas stay unchanged.
 
 var tile := ""       # 牌值 "tong3"/"tiao1"/"wan9"
 var face_up := true
+var flight_pitch := -1.0
 var face_depth_top := true:
 	set(value):
 		if face_depth_top == value: return
 		face_depth_top = value
+		queue_redraw()
+var standing_back_view := -1:
+	set(value):
+		if standing_back_view == value: return
+		standing_back_view = value
 		queue_redraw()
 var unit := 1.0      # 玩家牌与牌墙/出牌区可分别指定尺寸倍率。
 var highlight := false   # 金框高亮（用于标记鸡牌、报听等）
@@ -22,6 +27,12 @@ var ai_teach_highlight := false   # AI 教学推荐，独立于鸡牌/报听金�
 var score_highlight := false   # 结算预览阶段的记分牌黄色底色
 var selected := false
 var interactive := false
+var presentation_3d := false:
+	set(value):
+		if presentation_3d == value: return
+		presentation_3d = value
+		set_interactive(interactive)
+		queue_redraw()
 var _table_position := Vector2.ZERO
 var _hovered := false
 var touch_padding := 14.0
@@ -34,17 +45,22 @@ var _win_glow := 0.0:
 
 const BASE_W := 48.0
 const BASE_H := 64.0
+const FACE_ROWS := {"wan": 0, "tiao": 1, "tong": 2}
 const BACK_ATLAS := preload("res://res/tiles/backs-atlas.png")
-const IVORY_TOP := preload("res://res/tiles/materials3d/ivory-top.png")
-const IVORY_BOTTOM := preload("res://res/tiles/materials3d/ivory-bottom.png")
+const HAND_FACES := preload("res://res/tiles/materials3d/hand-faces.png")
+const FLAT_FACES := preload("res://res/tiles/materials3d/flat-faces.png")
+const STANDING_BACKS := [null,
+	preload("res://res/tiles/materials3d/standing-right.png"),
+	preload("res://res/tiles/materials3d/standing-north.png"),
+	preload("res://res/tiles/materials3d/standing-left.png")]
 const BACK_TOP := preload("res://res/tiles/materials3d/back-top.png")
 const BACK_BOTTOM := preload("res://res/tiles/materials3d/back-bottom.png")
 const SOFT_SHADOW := preload("res://res/tiles/tile-shadow.svg")
 
-static var _tex_cache := {}
 static var _style_cache := {}
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_apply_size()
 	set_interactive(interactive)
 	# Tile identity is already visible on the face; do not show a second text
@@ -64,7 +80,7 @@ func set_selected(on: bool) -> void:
 
 func set_interactive(on: bool) -> void:
 	interactive = on
-	mouse_filter = Control.MOUSE_FILTER_STOP if on else Control.MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_STOP if on and not presentation_3d else Control.MOUSE_FILTER_IGNORE
 	focus_mode = Control.FOCUS_ALL if on else Control.FOCUS_NONE
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if on else Control.CURSOR_ARROW
 
@@ -107,16 +123,6 @@ static func texture_path(t: String) -> String:
 	elif s == "wan":
 		n = 20 + r
 	return "res://res/tiles/%d.png" % n
-
-static func _get_texture(t: String) -> Texture2D:
-	var path := texture_path(t)
-	if _tex_cache.has(path):
-		return _tex_cache[path]
-	var tex: Texture2D = null
-	if ResourceLoader.exists(path):
-		tex = load(path)
-	_tex_cache[path] = tex
-	return tex
 
 func set_card(t: String, up: bool) -> void:
 	if tile == t and face_up == up: return
@@ -162,7 +168,14 @@ func _draw_procedural_back(river: bool) -> void:
 		draw_texture_rect(SOFT_SHADOW, Rect2(2 * unit, 4 * unit, w, h), false)
 	draw_texture_rect(BACK_TOP if back_depth_top else BACK_BOTTOM, Rect2(0, 0, w, h), false)
 
+func artwork_rect(reserve_standing: bool = false) -> Rect2:
+	if (reserve_standing or not face_up) and standing_back_view in [1, 3]:
+		# The 1:2 side render extends past its slot so nearer tiles cover the ends.
+		return Rect2((size.x - 2.0 * size.y) / 2.0, 0, 2.0 * size.y, size.y)
+	return Rect2(Vector2.ZERO, size)
+
 func _draw() -> void:
+	if presentation_3d: return
 	var w := BASE_W * unit
 	var h := BASE_H * unit
 	var depth := 5.0 * unit
@@ -171,23 +184,20 @@ func _draw() -> void:
 	if face_up and tile != "":
 		if not river:
 			draw_texture_rect(SOFT_SHADOW, Rect2(2 * unit, 4 * unit, w, h), false)
-		# 站立手牌上沿留出实体顶面，图案下移；桌面公开牌沿用朝下的厚边。
+		# The recessed print and body share one offline-rendered atlas quad.
 		var face_y := depth if face_depth_top else 0.0
-		draw_texture_rect(IVORY_TOP if face_depth_top else IVORY_BOTTOM, Rect2(0, 0, w, h), false)
-		var tex := _get_texture(tile)
-		if tex != null:
-			draw_texture_rect(tex, Rect2(3 * unit, face_y + 2 * unit, w - 6 * unit, h - depth - 4 * unit), false)
-		else:
-			draw_set_transform(Vector2(0, face_y))
-			_draw_face_proc(w, h - depth)
-			draw_set_transform(Vector2.ZERO)
+		var row: int = FACE_ROWS.get(Tiles.suit(tile), 0)
+		var region := Rect2((Tiles.rank(tile) - 1) * 256, row * 344, 256, 344)
+		draw_texture_rect_region(HAND_FACES if face_depth_top else FLAT_FACES, Rect2(0, 0, w, h), region)
 		if score_highlight:
 			draw_rect(Rect2(0, face_y, w, h - depth), Color(0.95, 0.78, 0.22, 0.30))
 		if Tiles.is_chicken(tile):
 			draw_circle(Vector2(w - 4 * unit, 4 * unit), 2 * unit, Color("#c5993e"))
 	else:
 		var back_y := depth if back_depth_top else 0.0
-		if is_equal_approx(unit, 1.0) or is_equal_approx(unit, 1.35):
+		if standing_back_view >= 1 and standing_back_view <= 3:
+			draw_texture_rect(STANDING_BACKS[standing_back_view], artwork_rect(), false)
+		elif is_equal_approx(unit, 1.0) or is_equal_approx(unit, 1.35):
 			# Bake each used unit separately: StyleBox borders stay one pixel wide
 			# rather than scaling with tile size. Other sizes retain vector drawing.
 			var variant := int(back_depth_top) + 2 * int(river)
@@ -246,26 +256,6 @@ func _tile_style(color: Color, border: Color) -> StyleBoxFlat:
 	_style_cache[key] = style
 	return style
 
-## ---- 程序化牌面（素材缺失时的兜底） ----
-func _draw_face_proc(w: float, h: float) -> void:
-	var suit := Tiles.suit(tile)
-	var rank := Tiles.rank(tile)
-	var accent: Color = {"wan": Color("#1a4fd0"), "tiao": Color("#0c8a3f"), "tong": Color("#c0392b")}.get(suit, Color("#555555"))
-	draw_rect(Rect2(0, 0, w, h), accent)
-	draw_rect(Rect2(2, 2, w - 4, h - 4), Color("#fbf8ea"))
-	var f := _font()
-	if suit == "wan":
-		draw_string(f, Vector2(w / 2, h / 2 + 8), "萬", HORIZONTAL_ALIGNMENT_CENTER, -1, int(h * 0.38), Color("#1a4fd0"))
-	elif suit == "tong":
-		var pips := [[0,0],[2,0],[1,0],[0,2],[2,2],[1,2],[0,1],[2,1],[1,1]]
-		for i in rank:
-			var p = pips[i]
-			draw_circle(Vector2(w * 0.28 + p[0] * w * 0.22, h * 0.34 + p[1] * h * 0.2), w * 0.09, Color("#c0392b"))
-	elif suit == "tiao":
-		for i in rank:
-			draw_rect(Rect2(w / 2 - 3, h * 0.2 + i * (h * 0.07), 6, h * 0.05), Color("#0c8a3f"))
-	draw_string(f, Vector2(w - 4, h * 0.16), str(rank), HORIZONTAL_ALIGNMENT_RIGHT, -1, int(h * 0.16), Color("#7a1f2b"))
-
 static var _sysfont: SystemFont
 static var _font_resource: Font
 static func _font() -> Font:
@@ -281,6 +271,8 @@ static func _font() -> Font:
 
 func reset() -> void:
 	"""重置 TileView 为默认状态，用于对象池回收。"""
+	presentation_3d = false
+	flight_pitch = -1.0
 	set_selected(false)
 	set_interactive(false)
 	set_winning(false)
@@ -291,6 +283,7 @@ func reset() -> void:
 	tile = ""
 	face_up = false
 	face_depth_top = true
+	standing_back_view = -1
 	set_unit(1.0)
 	_table_position = Vector2.ZERO
 	modulate = Color.WHITE

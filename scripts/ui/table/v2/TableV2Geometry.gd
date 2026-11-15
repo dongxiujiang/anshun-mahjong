@@ -20,7 +20,8 @@ const RED_HAND_GAP := 8.0
 const WALL_BLOCK_GAP := 0.0
 const WALL_EDGE_GAP := 8.0
 const CENTRAL_SIZE := Vector2(1320, 520)
-const OWN_UNIT := 2.4          # 115.2 × 153.6
+const OWN_UNIT := 2.65
+const SIDE_HAND_UNIT := 1.05
 const OPPONENT_UNIT := 1.35    # 64.8 × 86.4
 const WALL_UNIT := OPPONENT_UNIT
 const WALL_LAYER_SHIFT := 8.0
@@ -33,7 +34,7 @@ const WALL_BOUNDS := [
 ]
 
 const HAND_TOP := 100.0
-const HAND_BOTTOM := 1180.0
+const HAND_BOTTOM := 1196.0
 const HAND_LEFT := 44.0
 const HAND_RIGHT := 2236.0
 const DRAW_GAP_TILES := 0.5
@@ -50,6 +51,7 @@ static func exposed_kong_source_slot(seat: int, source: int) -> int:
 	return 0 if posmod(source - seat, 4) == 1 else 3
 
 static func hand_unit(seat: int, human_seat: int) -> float:
+	if relative_seat(human_seat, seat) in [1, 3]: return SIDE_HAND_UNIT
 	return OWN_UNIT if seat == human_seat else OPPONENT_UNIT
 
 static func hand_tile_size(seat: int, human_seat: int) -> Vector2:
@@ -70,9 +72,15 @@ static func hand13_rect(seat: int, human_seat: int) -> Rect2:
 		return Rect2(left, HAND_BOTTOM - size.y, span, size.y)
 	if rel == 2:
 		return Rect2(left, HAND_TOP, span, size.y)
-	if rel == 1:
-		return Rect2(HAND_RIGHT - size.y, top, size.y, span)
-	return Rect2(HAND_LEFT, top, size.y, span)
+	var upper := side_hand_center(rel, top + size.x / 2.0)
+	var lower := side_hand_center(rel, top + span - size.x / 2.0)
+	return Rect2(Vector2(minf(upper.x, lower.x) - size.y / 2.0, top),
+		Vector2(absf(upper.x - lower.x) + size.y, span))
+
+static func side_hand_center(rel: int, y: float) -> Vector2:
+	# Both rows converge towards the far seat at the angle of the baked mesh.
+	var inset := 96.0 + (CENTER.y - y) * 0.105
+	return Vector2(DESIGN_SIZE.x - inset if rel == 1 else inset, y)
 
 ## 当前手牌槽中心。count 由调用方决定：开局固定用 13，普通手牌用实际张数。
 ## 手牌+摸牌整体中心固定在牌桌中心线。
@@ -90,9 +98,9 @@ static func hand_slot_center(seat: int, slot: int, human_seat: int, count: int =
 	if rel == 2:
 		return Vector2(left + hs - size.x / 2.0 - slot * step, HAND_TOP + size.y / 2.0)
 	if rel == 1:
-		return Vector2(HAND_RIGHT - size.y / 2.0, top + hs - size.x / 2.0 - slot * step)
+		return side_hand_center(rel, top + hs - size.x / 2.0 - slot * step)
 	# 西家：上方手牌 + 下端摸牌
-	return Vector2(HAND_LEFT + size.y / 2.0, top + size.x / 2.0 + slot * step)
+	return side_hand_center(rel, top + size.x / 2.0 + slot * step)
 
 static func draw_slot_center(seat: int, human_seat: int, count: int = 13) -> Vector2:
 	var rel := relative_seat(human_seat, seat)
@@ -108,11 +116,9 @@ static func draw_slot_center(seat: int, human_seat: int, count: int = 13) -> Vec
 			HAND_TOP + size.y / 2.0)
 	if rel == 1:
 		# 东家：摸牌在手牌上端。
-		return Vector2(HAND_RIGHT - size.y / 2.0,
-			CENTER.y - hs / 2.0 - DRAW_GAP - size.x / 2.0)
+		return side_hand_center(rel, CENTER.y - hs / 2.0 - DRAW_GAP - size.x / 2.0)
 	# 西家：摸牌在手牌下端。
-	return Vector2(HAND_LEFT + size.y / 2.0,
-		CENTER.y + hs / 2.0 + DRAW_GAP + size.x / 2.0)
+	return side_hand_center(rel, CENTER.y + hs / 2.0 + DRAW_GAP + size.x / 2.0)
 
 static func wall_upper_offset(seat: int) -> Vector2:
 	# 上层相对下层：玩家本地左12 + 朝手牌12。
@@ -152,25 +158,25 @@ static func wall_block_center(seat: int, slot: int, row: int, columns: int = 0) 
 		center += wall_upper_offset(seat)
 	return center
 
-## 普通弃牌先按中央四块互不重叠的槽位区分配：
-## 北/南横条 768×164，东/西竖条 244×500，四区之间留 20 边距。
-## 牌墙围出的内框。
-static func river_capacity(_relative: int) -> int:
-	return 24
+static func river_columns(relative: int) -> int:
+	return 8 if relative in [1, 3] else 10
+
+static func river_capacity(relative: int) -> int:
+	return river_columns(relative) * (4 if relative in [1, 3] else 3)
 
 ## 普通弃牌独立使用牌河，出牌鸡留在各自碰杠区。
-static func ordinary_slot_center(seat: int, index: int, human_seat: int, count: int = 24) -> Vector2:
+static func ordinary_slot_center(seat: int, index: int, human_seat: int, count: int = 32) -> Vector2:
 	var rel := relative_seat(human_seat, seat)
-	var columns := 6 if rel in [1, 3] else 12
+	var columns := river_columns(rel)
 	var row := index / columns
 	var used := clampi(count - row * columns, 1, columns)
 	var offset := (index % columns - (used - 1) / 2.0) * 68.8
 	# First row is nearest the centre; later rows grow toward the owner.
 	match rel:
-		0: return Vector2(CENTER.x + offset, 670 + row * 94)
-		2: return Vector2(CENTER.x - offset, 550 - row * 94)
-		1: return Vector2(1602 + row * 93, 606 - offset)
-	return Vector2(678 - row * 93, 606 + offset)
+		0: return Vector2(CENTER.x + offset, 670 + row * 70)
+		2: return Vector2(CENTER.x - offset, 550 - row * 70)
+		1: return Vector2(1602 + row * 93, 540 - offset)
+	return Vector2(678 - row * 93, 540 + offset)
 
 static func side_wall_shift() -> float:
 	var hand_edge := HAND_RIGHT - TILE_BASE.y * OPPONENT_UNIT

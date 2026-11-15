@@ -17,7 +17,7 @@ static func rect_for(center: Vector2, size: Vector2, angle: float) -> Rect2:
 static func origin(rel: int, lower: bool) -> Vector2:
 	if lower:
 		return [Vector2(1140,G.HAND_BOTTOM),Vector2(G.HAND_RIGHT,640),Vector2(1140,G.HAND_TOP),Vector2(G.HAND_LEFT,640)][rel]
-	return [Vector2(1140,G.HAND_BOTTOM-153.6-8),Vector2(G.HAND_RIGHT-86.4-8,640),Vector2(1140,G.HAND_TOP+86.4+8),Vector2(G.HAND_LEFT+86.4+8,640)][rel]
+	return [Vector2(1140,G.HAND_BOTTOM-G.TILE_BASE.y*G.OWN_UNIT-8),Vector2(G.HAND_RIGHT-86.4-8,640),Vector2(1140,G.HAND_TOP+86.4+8),Vector2(G.HAND_LEFT+86.4+8,640)][rel]
 
 static func interval(rect: Rect2, rel: int) -> Vector2:
 	var axis: Vector2=AXES[rel]
@@ -98,6 +98,7 @@ static func solve(view) -> Array:
 		for g in melds.slice(2):g.start=0.0;g.lower=true
 		groups.append_array(singles+melds)
 		var hand_size:=G.hand_tile_size(seat,view.human_seat)
+		if rel in [1,3] and not view._face_visible(seat): hand_size.x = 2.0 * hand_size.y
 		for i in view._current_hand_count(seat):obstacles.append(rect_for(view._hand_center(seat,i,view._current_hand_count(seat)),hand_size,ANGLES[rel]))
 		if not str(player.just_drew).is_empty():obstacles.append(rect_for(view._draw_center(seat,view._current_hand_count(seat)),hand_size,ANGLES[rel]))
 		obstacles.append(view._seat_hud_rect(seat))

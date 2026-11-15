@@ -46,8 +46,13 @@ func refresh_layout() -> void:
 	if not is_instance_valid(_post_controls): return
 	var online: bool = table._net_mode() != ""
 	_post_controls.size = Vector2(ONLINE_BUTTON_SIZE.x * 2.0 + 12.0 if online else SOLO_BUTTON_SIZE.x, SOLO_BUTTON_SIZE.y)
-	var control_top: float = table._design_size().y - _post_controls.size.y
-	_post_controls.position = Vector2((table._design_size().x - _post_controls.size.x) / 2.0, control_top)
+	var centered: float = (table._design_size().x - _post_controls.size.x) / 2.0
+	var next_button_x := ONLINE_BUTTON_SIZE.x + 12.0 if online else 0.0
+	_post_controls.position = Vector2(centered, table._design_size().y - _post_controls.size.y)
+	var view = table._new_areas
+	if view != null and view._table_3d != null:
+		_post_controls.size.y = 80.0
+		_post_controls.position.y = table._design_size().y - _post_controls.size.y
 	# The readiness/countdown text lives inside the button now; keep the old
 	# labels as hidden compatibility fields for regression probes.
 	_next_round_status.visible = false
@@ -55,10 +60,12 @@ func refresh_layout() -> void:
 	if is_instance_valid(_return_seat_button):
 		_return_seat_button.visible = online
 		_return_seat_button.position = Vector2.ZERO
-		_return_seat_button.size = ONLINE_BUTTON_SIZE if online else UI.DISCARD_BUTTON_SIZE
+		_return_seat_button.custom_minimum_size = Vector2(ONLINE_BUTTON_SIZE.x, _post_controls.size.y)
+		_return_seat_button.size = _return_seat_button.custom_minimum_size
 		_return_seat_button.add_theme_font_size_override("font_size", 36 if online else 32)
-	_next_round_button.position = Vector2(ONLINE_BUTTON_SIZE.x + 12.0, 0) if online else Vector2.ZERO
+	_next_round_button.position = Vector2(next_button_x, 0)
 	_next_round_button.custom_minimum_size = ONLINE_BUTTON_SIZE if online else SOLO_BUTTON_SIZE
+	_next_round_button.custom_minimum_size.y = _post_controls.size.y
 	_next_round_button.size = _next_round_button.custom_minimum_size
 	_next_round_button.add_theme_font_size_override("font_size", 36 if online else UI.NEXT_ROUND_FONT_SIZE)
 

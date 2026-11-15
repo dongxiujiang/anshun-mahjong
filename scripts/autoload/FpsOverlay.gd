@@ -42,6 +42,7 @@ func _process(delta: float) -> void:
 	if _accum < 0.25:
 		return
 	_accum = 0.0
+	_label.modulate.a = 1.0 if get_tree().get_first_node_in_group("table_3d") == null else 0.0
 	var fps := Performance.get_monitor(Performance.TIME_FPS)
 	_label.text = "FPS %d" % roundi(fps)
 	if fps >= 58.0:

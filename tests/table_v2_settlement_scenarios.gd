@@ -457,11 +457,28 @@ func _check_animation(table: Control, r: RoundState, spec: Dictionary) -> void:
 		_check(panel.is_visible_in_tree() and bounds.encloses(panel.get_global_rect()), "settlement panel clipped at %s" % dimensions)
 		_check(next.is_visible_in_tree() and bounds.encloses(next.get_global_rect()), "next round control clipped at %s" % dimensions)
 		_check(not panel.get_global_rect().intersects(next.get_global_rect()), "next round control overlaps settlement")
+		for seat in 4:
+			for button in [table._settlement_card._next_round_button, table._settlement_card._return_seat_button]:
+				if button.is_visible_in_tree():
+					_check(not button.get_global_rect().intersects(view._name_labels[seat].get_global_rect()), "next round actions leave player names visible")
+					_check(not button.get_global_rect().intersects(view._labels[seat].get_global_rect()), "next round actions leave player scores visible")
 		for badge: Label in view._dealer_meld_badges + view._ready_meld_badges:
 			if badge.is_visible_in_tree():
 				_check(not panel.get_global_rect().intersects(badge.get_global_rect()), "settlement leaves dealer and ready badges visible")
 		for tile: TileView in view._native_tiles_for_seat(table.human_seat):
-			_check(not next.get_global_rect().intersects(tile.get_global_rect()), "next round control overlaps own tile")
+			var tile_bounds := tile.get_global_rect()
+			if view._table_3d != null:
+				tile_bounds = view._table_3d.get_global_transform() * view._table_3d.project_tile(tile)
+			if view._table_3d != null and str(tile.get_meta("new_kind", "")) in ["hand", "draw"]:
+				var renderer = view._table_3d
+				var mesh: MeshInstance3D = renderer.tile_nodes[tile.get_instance_id()]
+				for x in [-0.5, 0.5]:
+					for z in [-0.67, 0.67]:
+						var face_point: Vector2 = renderer.camera.unproject_position(mesh.transform * Vector3(x, 0.31, z)) / Vector2(renderer.viewport.size) * renderer.size
+						face_point = renderer.get_global_transform() * face_point
+						_check(face_point.y + 1.0 <= next.get_global_rect().position.y, "next round controls leave the complete hand face visible")
+			else:
+				_check(not next.get_global_rect().intersects(tile_bounds), "next round controls leave exposed tiles visible")
 		await _capture("%02d-final-%dx%d" % [index, dimensions.x, dimensions.y])
 	root.size = Vector2i(1280, 720)
 	await process_frame
@@ -643,6 +660,12 @@ func _check_row_summary(view: Control, r: RoundState) -> void:
 
 func _click(tile: Control) -> void:
 	var center := tile.get_global_transform_with_canvas() * (tile.size / 2.0)
+	if tile is TileView and tile.presentation_3d:
+		var view = tile.get_parent().get_parent().get_parent()
+		# Hands live below HandLayer/HandBox; resolve the owning table explicitly.
+		while view != null and not view.has_method("native_settlement_complete"): view = view.get_parent()
+		if view != null:
+			center = view._table_3d.get_global_transform_with_canvas() * view._table_3d.project_tile(tile).get_center()
 	for pressed in [true, false]:
 		var event := InputEventMouseButton.new()
 		event.button_index = MOUSE_BUTTON_LEFT

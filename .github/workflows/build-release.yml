@@ -26,7 +26,7 @@ on:
       baseline_release_tag:
         description: "发布完整包时保存的基线标签"
         required: false
-        default: V1.6.27
+        default: V1.6.28
         type: string
       patch_version:
         description: "patch 模式版本号，须高于所选完整包版本"
@@ -103,7 +103,7 @@ jobs:
       RELEASE_KIND: ${{ inputs.release_kind || 'full' }}
       BASELINE_RUN_ID: ${{ inputs.baseline_run_id || '' }}
       BASELINE_SOURCE: ${{ inputs.baseline_source || 'release' }}
-      BASELINE_RELEASE_TAG: ${{ inputs.baseline_release_tag || 'V1.6.27' }}
+      BASELINE_RELEASE_TAG: ${{ inputs.baseline_release_tag || 'V1.6.28' }}
       PATCH_VERSION: ${{ inputs.patch_version || '' }}
       PUBLISH_RELEASE: ${{ inputs.publish_release || github.event_name == 'push' }}
       RELEASE_NOTES: ${{ inputs.release_notes || 'GitHub Actions 自动生成的构建' }}
@@ -225,6 +225,13 @@ jobs:
           python -X utf8 tests/run_suites.py --godot "$(command -v godot)" \
             --simulation-timeout 600
 
+      - name: Check 3D discard rows and seat badges
+        shell: bash
+        run: |
+          mkdir -p build/ci
+          timeout 300s godot --headless --path . --script res://tests/table_3d_river_badges.gd > build/ci/table_3d_river_badges.log 2>&1
+          tail -n 4 build/ci/table_3d_river_badges.log
+
       - name: Run real network and reconnect regression
         shell: bash
         run: |
@@ -238,7 +245,7 @@ jobs:
         run: |
           set -euo pipefail
           xvfb-run -a python -X utf8 tests/run_network.py --godot "$(command -v godot)" --section online --graphical-table 2>&1 | tee build/ci/graphical-opening.log
-          for suite in ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
+          for suite in table_3d ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
             timeout 180s xvfb-run -a godot --path . --audio-driver Dummy --resolution 1280x720 --script "res://tests/$suite.gd" > "build/ci/$suite.log" 2>&1
             tail -n 4 "build/ci/$suite.log"
           done

@@ -25,6 +25,7 @@ var round = null
 var human_seat := 1
 var table = null
 var snapshot: Dictionary = {}
+var _table_3d: Control
 
 var _wall_layer: Control
 var _wall_offsets := {}
@@ -129,6 +130,11 @@ func _ready() -> void:
 	if size == Vector2.ZERO:
 		size = G.DESIGN_SIZE
 	_build_layers()
+	_table_3d = preload("res://scripts/ui/table/v2/Table3D.gd").new()
+	_table_3d.view = self
+	add_child(_table_3d)
+	move_child(_table_3d, 0)
+	_hand_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	AudioManager.seat_voice_pack_changed.connect(_refresh_hud, CONNECT_DEFERRED)
 	GameConfig.score_details_changed.connect(_sync_score_inspection)
 	GameConfig.settlement_speed_changed.connect(_native_apply_speed)
@@ -140,16 +146,19 @@ func _build_layers() -> void:
 	_red_layer = _layer("RedLayer")
 	_meld_layer = _layer("MeldLayer")
 	_hand_layer = _layer("HandLayer")
+	_hand_layer.y_sort_enabled = true
 	_hand_layer.mouse_filter = Control.MOUSE_FILTER_PASS
 	for seat in 4:
 		var hb := Control.new()
 		hb.name = "HandBox%d" % seat
+		hb.y_sort_enabled = true
 		hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_hand_layer.add_child(hb)
 		hand_boxes.append(hb)
 		var db := Control.new()
 		db.name = "DrawBox%d" % seat
+		db.y_sort_enabled = true
 		db.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		db.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_hand_layer.add_child(db)
@@ -346,7 +355,7 @@ func _refresh_hand_arrangement() -> void:
 		# 听种数按不同牌值统计，牌型分为单倍，平胡接炮仍按通行规则。
 		_arrangement_caption.tooltip_text = _arrangement_caption.text
 		var font := TileView._font()
-		var font_size := 24
+		var font_size := 20 if _table_3d != null else 24
 		for line in _arrangement_caption.text.split("\n"):
 			while font_size > 20 and font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > _arrangement_caption.size.x:
 				font_size -= 1
@@ -385,10 +394,23 @@ func _refresh_hand_arrangement() -> void:
 		_hand_groups.add_child(mark)
 
 func _layout_arrangement_controls() -> void:
-	var anchor := Vector2(_draw_center(human_seat, _current_hand_count(human_seat)).x - _sort_button.size.x / 2.0, G.HAND_BOTTOM + 14.0)
+	var anchor := Vector2(_draw_center(human_seat, _current_hand_count(human_seat)).x - _sort_button.size.x / 2.0,
+		minf(G.HAND_BOTTOM + 14.0, G.DESIGN_SIZE.y - _sort_button.size.y - 2.0))
+	if _table_3d != null:
+		_sort_button.size.x = 128
+		_sort_button.add_theme_font_size_override("font_size", 24)
+		anchor = G.DESIGN_SIZE - _sort_button.size - Vector2(16, 4)
+		anchor.x -= 216.0
+		anchor.y = minf(anchor.y, _own_hand_top() - _sort_button.size.y - 12.0)
 	_sort_button.position = anchor
 	_restore_button.position = anchor - Vector2(_restore_button.size.x + 12.0, 0.0)
 	_previous_sort_button.position = _restore_button.position - Vector2(_previous_sort_button.size.x + 12.0, 0.0)
+	if _table_3d != null:
+		for button in [_restore_button, _previous_sort_button]:
+			button.size.x = _sort_button.size.x
+			button.add_theme_font_size_override("font_size", 24)
+		_restore_button.position = anchor - Vector2(0, _restore_button.size.y + 12)
+		_previous_sort_button.position = _restore_button.position - Vector2(0, _previous_sort_button.size.y + 12)
 	var left := 60.0
 	var teaching: Label = table.get("status_label") if table != null else null
 	if is_instance_valid(teaching):
@@ -401,6 +423,10 @@ func _layout_arrangement_controls() -> void:
 			left = teaching.position.x + teaching.size.x + 30.0
 	_arrangement_caption.position = Vector2(left, G.HAND_BOTTOM + 12.0)
 	_arrangement_caption.size = Vector2(_previous_sort_button.position.x - left - 20.0, 72.0)
+	if _table_3d != null:
+		_arrangement_caption.position.y = 1232
+		_arrangement_caption.size.y = 48
+		_arrangement_caption.add_theme_constant_override("line_spacing", -10)
 
 func _build_ready_decorations() -> void:
 	for seat in 4:
@@ -432,6 +458,27 @@ func _layout_meld_badges() -> void:
 		var badges: Array[Label] = []
 		if dealer.visible: badges.append(dealer)
 		if ready_badge.visible: badges.append(ready_badge)
+		if _table_3d != null:
+			var info := _seat_hud_rect(seat)
+			var badge_size := 40.0 if rel == 0 else SEAT_BADGE_SIZE
+			var text_size := 24 if rel == 0 else 34
+			for badge in [dealer, ready_badge]:
+				if badge.get_theme_font_size("font_size") != text_size:
+					badge.add_theme_font_size_override("font_size", text_size)
+				if badge.size != Vector2.ONE * badge_size:
+					badge.size = Vector2.ONE * badge_size
+			var at := Vector2(info.end.x + 12.0, info.get_center().y - SEAT_BADGE_SIZE / 2.0)
+			var step := 64.0
+			if rel == 0:
+				step = 44.0
+				# Keep the local badges in the free left margin beside the hand strip.
+				at = Vector2(24.0, info.position.y + 18.0)
+			if rel == 2: at.y = info.position.y
+			if rel in [1, 3]:
+				at = Vector2(info.get_center().x - (badges.size() * 64.0 - 8.0) / 2.0,
+					info.position.y - SEAT_BADGE_SIZE - 12.0)
+			for index in badges.size(): badges[index].position = at + Vector2(index * step, 0)
+			continue
 		for index in badges.size():
 			badges[index].position = center - Vector2(28, 28) + axis * 64.0 * (index - (badges.size() - 1) / 2.0)
 
@@ -462,7 +509,7 @@ func animate_dice(value: int, white: int) -> void:
 	white_die.pip_color = Color("#243a30")
 	_dice_layer.add_child(white_die)
 	var shadow := TextureRect.new()
-	shadow.texture = TileView.SOFT_SHADOW
+	shadow.texture = preload("res://res/tiles/dice-shadow.svg")
 	shadow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	shadow.size = Vector2(UI.DICE_SIZE * 2.0 + 8.0, 16.0)
@@ -478,7 +525,7 @@ func animate_dice(value: int, white: int) -> void:
 	white_die.rotation = 0.62
 	red.scale = Vector2.ONE * 0.8
 	white_die.scale = Vector2.ONE * 0.8
-	shadow.position = center + Vector2(-UI.DICE_SIZE - 4.0, UI.DICE_SIZE * 0.5 + 4.0)
+	shadow.position = center + Vector2(-UI.DICE_SIZE - 4.0, UI.DICE_SIZE * 0.5 - 14.0)
 	_dice_tween = create_tween()
 	_dice_tween.tween_method(Callable(self, "_tick_dice").bind(value, white, red_rest, white_rest),
 		0.0, 1.0, UI.DICE_DURATION)
@@ -1003,7 +1050,7 @@ func _show_native_settlement_notice(caption: String) -> void:
 		_settlement_notice.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		_settlement_notice.size = Vector2(700, 48)
 		_settlement_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_settlement_notice.position = Vector2(790, 16)
+		_settlement_notice.position = Vector2(790, G.SETTLEMENT_AREA.position.y - 54.0) if _table_3d != null else Vector2(790, 16)
 	_settlement_notice.text = caption
 
 func _begin_native_stage(stage: Dictionary) -> void:
@@ -1229,6 +1276,8 @@ func _draw_center(seat: int, count: int) -> Vector2:
 		if center.dot(direction) > edge.dot(direction): edge = center
 	var separation := G.hand_tile_size(seat, human_seat).x + 20.0
 	var target := edge + direction * separation
+	var rel := G.relative_seat(human_seat, seat)
+	if rel in [1, 3]: target = G.side_hand_center(rel, target.y)
 	if target.dot(direction) <= G.draw_slot_center(seat, human_seat, 13).dot(direction): return target
 	# 原摸牌未参与暗杠时，补牌利用杠牌腾出的空位，避免伸入邻家区域。
 	for slot in range(12, -1, -1):
@@ -1480,6 +1529,7 @@ func recover_after_resume() -> void:
 	_sort_started = true
 
 func _draw() -> void:
+	if _table_3d != null: return
 	draw_rect(Rect2(Vector2.ZERO, G.DESIGN_SIZE), UI.BACKGROUND)
 	# 外层阴影
 	var shadow := StyleBoxFlat.new()
@@ -1569,6 +1619,7 @@ func _face_visible(seat: int) -> bool:
 
 func _tile(layer: Control, card: String, face_up: bool, center: Vector2, unit: float, angle: float) -> TileView:
 	var tile := _tile_pool.acquire()
+	tile.presentation_3d = _table_3d != null
 	tile.set_card(card, face_up)
 	tile.set_unit(unit)
 	tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1718,20 +1769,11 @@ func _set_river_tile(tile: TileView, seat: int, discard_id: int, chicken: bool, 
 func meld_layout(_melds: Array, seat: int, _rel: int) -> Array:
 	return _exposed_layout().filter(func(spec): return int(spec.seat)==seat and int(spec.meld_index)>=0)
 
-func _visual_rect(node: Control) -> Rect2:
+func _visual_rect(node: Control, reserve_standing: bool = false) -> Rect2:
 	# Red tiles are direct children. Stay in the parent coordinate space;
 	# inverse global transforms introduce scale-dependent rounding drift.
 	var xf: Transform2D = node.get_transform()
-	var points := [
-		xf * Vector2.ZERO,
-		xf * Vector2(node.size.x, 0.0),
-		xf * node.size,
-		xf * Vector2(0.0, node.size.y),
-	]
-	var rect := Rect2(points[0], Vector2.ZERO)
-	for i in range(1, points.size()):
-		rect = rect.expand(points[i])
-	return rect
+	return xf * (node.artwork_rect(reserve_standing) if node is TileView else Rect2(Vector2.ZERO, node.size))
 
 ## A flight can cross a board area even when both endpoints are clear.
 ## Use the largest projected footprint along the path. Blocked movements
@@ -1929,6 +1971,7 @@ func animate_deal_group(seat: int, cards: Array, indices: Array, existing: int, 
 		var tile := _tile(_deal_layer, entry.card, _face_visible(seat),
 			wall_center_for_index(index), hand_unit, _wall_angle_for_index(index))
 		tile.scale = Vector2.ONE * (G.WALL_UNIT / hand_unit)
+		tile.flight_pitch = 0.0 if tile.face_up else PI
 		moving.append(tile)
 	# 起飞前移除对应墙牌。
 	var remove := {}
@@ -1945,6 +1988,7 @@ func animate_deal_group(seat: int, cards: Array, indices: Array, existing: int, 
 		flight.tween_property(tile, "position", right_targets[k] - tile.size / 2.0, flight_seconds)
 		flight.tween_property(tile, "scale", Vector2.ONE, flight_seconds)
 		flight.tween_property(tile, "rotation", UI.ROTATIONS[rel], flight_seconds)
+		flight.tween_property(tile, "flight_pitch", deg_to_rad(63) if seat == human_seat else PI / 2.0, flight_seconds)
 	flight.chain().tween_callback(func():
 		if existing == 0:
 			_finish_deal_group(moving, done)
@@ -2012,6 +2056,7 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 	var start := wall_center_for_index(wall_index) if has_wall_source else target
 	var tile := _tile(_deal_layer, card, _face_visible(seat),
 		start, hand_unit, _wall_angle_for_index(wall_index))
+	tile.flight_pitch = 0.0 if tile.face_up else PI
 	tile.scale = Vector2.ONE * (G.WALL_UNIT / hand_unit)
 	for node in _wall_layer.get_children():
 		if int(node.get_meta("wall_ring_index", -2)) == wall_index:
@@ -2021,6 +2066,7 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 		_release_visual_node(tile)
 		var drawn := _tile(draw_boxes[seat], card, _face_visible(seat),
 			target, hand_unit, UI.ROTATIONS[rel])
+		drawn.standing_back_view = rel if seat != human_seat else -1
 		drawn.set_meta("new_kind", "draw")
 		drawn.set_meta("v2_seat", seat)
 		drawn.set_meta("drawn", true)
@@ -2040,6 +2086,7 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 	tween.tween_property(tile, "position", target - tile.size / 2.0, duration)
 	tween.tween_property(tile, "scale", Vector2.ONE, duration)
 	tween.tween_property(tile, "rotation", UI.ROTATIONS[rel], duration)
+	tween.tween_property(tile, "flight_pitch", deg_to_rad(63) if seat == human_seat else PI / 2.0, duration)
 	tween.chain().tween_callback(complete)
 
 func _finish_pending_draw(seat: int) -> void:
@@ -2060,6 +2107,8 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 	var player = table.round.players[seat] if table != null and table.round != null else null
 	var discard_id := int(player.discard_ids.back()) if player != null and not player.discard_ids.is_empty() else -1
 	var missing_source := node == null
+	if node is TileView and node.flight_pitch < 0:
+		node.flight_pitch = deg_to_rad(63) if seat == human_seat else PI / 2.0
 	if missing_source:
 		# The public tile can land even when a prior snapshot had no visual source.
 		if discard_id < 0 or player.discards.is_empty() or str(player.discards.back()) != card:
@@ -2078,10 +2127,14 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 	if player != null:
 		for i in maxi(0, player.discards.size() - 1):
 			if TILES.is_chicken(str(player.discards[i])) == chicken: index += 1
+	if not chicken and index >= G.river_capacity(rel):
+		if is_instance_valid(node): _release_visual_node(node)
+		if on_finish.is_valid(): on_finish.call()
+		return
 	var target := _chicken_slot_center(seat, index) if chicken \
 		else G.ordinary_slot_center(seat, index, human_seat, _ordinary_count(seat))
 	var centered_target := target
-	var columns := 6 if rel in [1,3] else 12
+	var columns := G.river_columns(rel)
 	if not chicken and index % columns > 0:
 		# Land on the old row's right edge before shifting the entire row by half a tile.
 		target += [Vector2.RIGHT,Vector2.UP,Vector2.LEFT,Vector2.DOWN][rel] * 34.4
@@ -2113,6 +2166,7 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 	tw.tween_property(node, "position", target - node.size / 2.0, duration)
 	tw.tween_property(node, "scale", target_scale, duration)
 	tw.tween_property(node, "rotation", target_angle, duration)
+	tw.tween_property(node, "flight_pitch", 0.0, duration)
 	tw.chain().tween_callback(Callable(self, "_finish_discard_flight").bind(flight_id))
 
 func _finish_discard_flight(flight_id: int) -> void:
@@ -2122,7 +2176,7 @@ func _finish_discard_flight(flight_id: int) -> void:
 		data.centered = true
 		var seat: int=data.seat
 		var rel: int=G.relative_seat(human_seat,seat)
-		var columns:=6 if rel in [1,3] else 12
+		var columns:=G.river_columns(rel)
 		var target: Vector2=data.centered_target
 		data.target=target
 		var duration:=0.0 if data.instant else GameConfig.tile_motion_seconds()*0.3
@@ -2153,6 +2207,7 @@ func _finish_discard_flight(flight_id: int) -> void:
 	var angle := float(data.get("angle", 0.0))
 	if node is TileView:
 		var destination: Control = _red_layer if chicken else _discard_layer
+		node.flight_pitch = -1.0
 		if node.get_parent() != destination: node.reparent(destination, false)
 		node.set_interactive(false)
 		node.set_card(card, true)
@@ -2491,7 +2546,10 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 		return int(a.index) < int(b.index) if av == bv else av < bv)
 	var held: Array = remaining_sources.map(func(source): return source.node.position + source.node.size / 2.0)
 	_held_hand_centers[seat] = held
-	for node in nodes: node.reparent(_deal_layer)
+	for node in nodes:
+		if node.flight_pitch < 0:
+			node.flight_pitch = (deg_to_rad(63) if seat == human_seat else PI / 2.0) if node.get_parent() in [hand_boxes[seat], draw_boxes[seat]] else (0.0 if node.face_up else PI)
+		node.reparent(_deal_layer)
 	_invalidate_exposed_layout()
 	for spec in _live_exposed_layout(seat):
 		if int(spec.meld_index) != meld_index: continue
@@ -2516,7 +2574,9 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			node.position = Vector2(targets[i]) - node.size / 2.0
 			node.rotation = float(target_angles[i])
 			node.set_meta("new_kind", "red" if chicken else "meld")
+			node.flight_pitch = -1.0
 			node.face_depth_top = false
+			node.standing_back_view = -1
 			if chicken: node.set_meta("v2_red_kind", kind if kind != "concealed" else "kong")
 			node.set_meta("v2_seat", seat)
 			node.set_meta("meld_index", meld_index)
@@ -2551,6 +2611,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 		flight.tween_property(node, "position", target - node.size / 2.0, duration)
 		flight.tween_property(node, "scale", tile_size / node.size, duration)
 		flight.tween_property(node, "rotation", target_angles[i], duration)
+		flight.tween_property(node, "flight_pitch", 0.0 if visible_face else PI, duration)
 	flight.chain().tween_callback(func():
 		land.call()
 		_center_hand_after_meld(seat, action_id, done))
@@ -2574,6 +2635,7 @@ func _build_melds() -> void:
 				card if face else "", face, spec.center, G.OPPONENT_UNIT, angle, _exposed_size(seat) / G.MELD_SIZE)
 			tile.set_meta("new_kind", "red" if chicken else "meld")
 			tile.face_depth_top = false
+			tile.standing_back_view = -1
 			tile.set_meta("v2_seat", seat)
 			tile.set_meta("meld_index", meld_index)
 			tile.set_meta("meld_slot", slot)
@@ -2656,6 +2718,8 @@ func _build_hands() -> void:
 			var key := "hand:%d:%d" % [seat, source_index] if source_index >= 0 else "hand:%d:transient:%d" % [seat, slot]
 			var tile: TileView = _sync_tile(hand_boxes[seat], key, str(cards[slot]) if face_visible else "",
 				face_visible, _hand_center(seat, slot, count), unit, angle)
+			tile.face_depth_top = true
+			tile.standing_back_view = rel if not own else -1
 			tile.set_meta("v2_hand_slot", slot)
 			tile.set_meta("v2_seat", seat)
 			tile.set_meta("new_kind", "hand")
@@ -2674,7 +2738,9 @@ func _build_hands() -> void:
 			var draw_visible := _face_visible(seat)
 			var drawn_tile := _sync_tile(draw_boxes[seat], "draw:%d" % seat, drew if draw_visible else "", draw_visible,
 				_draw_center(seat, count), unit, angle)
-			var winning: bool = round.phase == ROUND_STATE.Phase.SETTLED and round.round_meta.get("winners", []).has(seat)
+			drawn_tile.face_depth_top = true
+			drawn_tile.standing_back_view = rel if not own else -1
+			var winning: bool = _table_3d == null and round.phase == ROUND_STATE.Phase.SETTLED and round.round_meta.get("winners", []).has(seat)
 			if winning != (drawn_tile._win_glow > 0.0): drawn_tile.set_winning(winning)
 			drawn_tile.set_meta("new_kind", "draw")
 			drawn_tile.set_meta("v2_seat", seat)
@@ -2867,6 +2933,7 @@ func _build_labels(seats: Array) -> void:
 		var seat := int(data.seat)
 		var bounds := _seat_hud_rect(seat)
 		_hud_bounds[seat] = bounds
+		var own_strip := _table_3d != null and seat == human_seat
 		var is_dealer := bool(data.is_dealer)
 		var has_voice: bool = table != null and table._net_mode() != "" and (seat == human_seat or bool(data.is_human))
 		var is_turn: bool = int(snapshot.get("turn", -1)) == seat and round.phase == ROUND_STATE.Phase.PLAYING
@@ -2875,9 +2942,12 @@ func _build_labels(seats: Array) -> void:
 		var name_edge := bounds.end.x - 24.0
 		var name_width := minf(name_edge - bounds.position.x - 24.0, ceilf(_hud_text_width(caption, 24)) + 2.0)
 		var left := minf(bounds.get_center().x - name_width / 2.0, name_edge - name_width)
+		if own_strip:
+			name_width = minf(name_width, 120.0)
+			left = bounds.position.x + 36.0
 		var name_label := _table_text(_label_layer, caption, 24, UI.INK)
 		name_label.name = "SeatName%d" % seat
-		name_label.position = Vector2(left, bounds.position.y)
+		name_label.position = Vector2(left, bounds.position.y + (6.0 if own_strip else (4.0 if _table_3d != null else 8.0)))
 		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name_label.clip_text = true
 		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -2887,13 +2957,14 @@ func _build_labels(seats: Array) -> void:
 		if is_turn:
 			var turn_marker := _table_text(_label_layer, "●", 18, UI.GOLD)
 			turn_marker.name = "SeatTurn%d" % seat
-			turn_marker.position = Vector2(left - 24.0, bounds.position.y)
+			turn_marker.position = name_label.position - Vector2(24, 0)
 			turn_marker.size = Vector2(20, 32)
 
 		var score := _table_text(_label_layer, "", 28, UI.GOLD if is_dealer else UI.INK)
 		score.name = "SeatScore%d" % seat
 		var score_width := minf(142, bounds.size.x - 8)
-		score.position = Vector2(bounds.get_center().x - score_width / 2, bounds.position.y + 38.0)
+		score.position = Vector2(bounds.get_center().x - score_width / 2, bounds.position.y + (32.0 if _table_3d != null else 38.0))
+		if own_strip: score.position = Vector2(left + name_width + 12.0, bounds.position.y + 2.0)
 		score.size = Vector2(score_width, 38)
 		if round.phase == ROUND_STATE.Phase.SETTLED:
 			var deltas: Array = round.last_result.get("deltas", [])
@@ -2904,7 +2975,7 @@ func _build_labels(seats: Array) -> void:
 			delta.clip_text = true
 			delta.tooltip_text = "本局结算 " + delta.text
 			delta.visible = _settlement_started
-		score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		score.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if own_strip else HORIZONTAL_ALIGNMENT_CENTER
 		score.clip_text = true
 		score.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		var displayed_score := float(data.score)
@@ -2984,7 +3055,8 @@ func _set_seat_score(label: Label, value: float) -> void:
 	if delta != null:
 		var seat := int(str(label.name).trim_prefix("SeatScore"))
 		var edge := _seat_hud_rect(seat).end.x
-		var left := label.position.x + (label.size.x + _hud_text_width(caption, font_size)) / 2.0 + 6.0
+		var text_width := _hud_text_width(caption, font_size)
+		var left := label.position.x + (text_width if label.horizontal_alignment == HORIZONTAL_ALIGNMENT_LEFT else (label.size.x + text_width) / 2.0) + 6.0
 		var available := maxf(0.0, edge - left)
 		var delta_font := clampi(floori(24.0 * (available - 2.0) / maxf(_hud_text_width(delta.text, 24), 1.0)), 17, 24)
 		if _hud_text_width(delta.text, delta_font) <= available:
@@ -3024,8 +3096,21 @@ func count_kind(kind: String) -> int:
 	if layer == null: return 0
 	return layer.get_child_count()
 
+func _own_hand_top() -> float:
+	var top := G.DESIGN_SIZE.y
+	if _table_3d != null and human_seat < hand_boxes.size():
+		for box in [hand_boxes[human_seat], draw_boxes[human_seat]]:
+			for tile in box.get_children():
+				if not tile is TileView or not tile.is_visible_in_tree(): continue
+				var bounds: Rect2 = _table_3d.project_tile(tile)
+				if bounds.has_area(): top = minf(top, bounds.position.y)
+	return top
+
 func _seat_hud_rect(seat: int) -> Rect2:
 	var rel := G.relative_seat(human_seat, seat)
+	if _table_3d != null:
+		return [Rect2(300, _own_hand_top() - 60.0, 330, 44), Rect2(2112, 300, 144, 96),
+			Rect2(1010, 8, 260, 78), Rect2(24, 300, 144, 96)][rel]
 	var along: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][rel]
 	var first := Rect2()
 	var first_distance := INF
@@ -3033,7 +3118,7 @@ func _seat_hud_rect(seat: int) -> Rect2:
 		for node in hand_boxes[seat].get_children() + draw_boxes[seat].get_children():
 			if not node is TileView or node.is_queued_for_deletion(): continue
 			if _reconciling and not _render_seen.has(node.get_instance_id()): continue
-			var rect := _visual_rect(node)
+			var rect := _visual_rect(node, true)
 			var shadow: Vector2 = (Vector2(2, 4) * node.unit * node.scale).rotated(node.rotation)
 			rect = rect.merge(Rect2(rect.position + shadow, rect.size))
 			var distance := rect.get_center().dot(along)
@@ -3053,10 +3138,14 @@ func _seat_hud_rect(seat: int) -> Rect2:
 	][rel]
 	at.y = clampf(at.y, G.TABLE_BOUNDS.position.y, G.TABLE_BOUNDS.end.y - size.y)
 	if rel in [0, 2]: at.x = clampf(at.x, G.TABLE_BOUNDS.position.x, G.TABLE_BOUNDS.end.x - size.x)
-	return Rect2(at, size)
+	# Rotated tile bounds can differ by a float ULP after pool reuse.
+	return Rect2(at.snapped(Vector2.ONE * 0.001), size)
 
 func _process(_delta: float) -> void:
 	_follow_hand_hud()
+	if _table_3d != null:
+		_layout_arrangement_controls()
+		_layout_meld_badges()
 	if _arrangement_thread != null and not _arrangement_thread.is_alive():
 		var choices: Array = _arrangement_thread.wait_to_finish()
 		_arrangement_thread = null

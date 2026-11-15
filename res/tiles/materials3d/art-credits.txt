@@ -1,0 +1,2 @@
+Mahjong and dice: meshes and textures from the supplied MahJong.zip.
+No author or license information was included in the archive.

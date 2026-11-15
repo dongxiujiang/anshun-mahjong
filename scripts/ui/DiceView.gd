@@ -7,7 +7,13 @@ var value := 1:
 		queue_redraw()
 var face_color := Color.WHITE
 var pip_color := Color("#284438")
+var presentation_3d := false:
+	set(next):
+		if presentation_3d == next: return
+		presentation_3d = next
+		queue_redraw()
 
 func _draw() -> void:
+	if presentation_3d: return
 	var row := 0 if pip_color.r > pip_color.g else 1
 	draw_texture_rect_region(ATLAS, Rect2(Vector2.ZERO, size), Rect2((value - 1) * 256, row * 256, 256, 256), face_color)

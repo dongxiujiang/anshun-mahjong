@@ -284,6 +284,10 @@ func refresh_layout() -> void:
 	if not is_instance_valid(layer): return
 	layer.size = UI.DESIGN_SIZE
 	for seat in identity_labels:
+		# The native settlement table already contains each player's called/win status.
+		if table._new_areas != null and table._new_areas._table_3d != null:
+			identity_labels[seat].hide()
+			continue
 		var score: Label = null
 		if table._new_areas != null and DisplayServer.get_name() != "headless" \
 				and table._new_areas.get("_labels") != null \

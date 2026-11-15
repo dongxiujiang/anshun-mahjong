@@ -114,6 +114,8 @@ func refresh() -> void:
 				continue
 			var local: Transform2D = get_global_transform().affine_inverse() * tile.get_global_transform()
 			var rect: Rect2 = local * Rect2(Vector2.ZERO, tile.size)
+			if view._table_3d != null:
+				rect = view._table_3d.project_tile(tile)
 			bounds = bounds.merge(rect) if has_hand else rect
 			has_hand = true
 		var button := _hit_button(seat)
