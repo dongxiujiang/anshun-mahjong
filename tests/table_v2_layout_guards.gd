@@ -73,15 +73,19 @@ func _test_red_cap(deck) -> void:
 		player.discard_ids = range(24)
 	deck.set_round(r, 1)
 	deck.refresh()
+	deck._table_3d.sync_tiles()
 	for seat in 4:
 		var rects := _seat_tiles(deck._red_layer, seat) + _seat_tiles(deck._discard_layer, seat)
-		t.expect(rects.size() == G.river_capacity(G.relative_seat(deck.human_seat, seat)),
+		t.expect(rects.size() == 24,
 			"seat%d: full mixed river keeps every tile" % seat)
 		var clear := true
-		for i in rects.size():
-			clear = clear and G.TABLE_BOUNDS.encloses(rects[i])
-			for j in range(i):
-				clear = clear and not rects[i].intersects(rects[j].grow(-0.05))
+		# The source sprites overlap after perspective projection; test the rendered faces.
+		for tile in deck._discard_layer.get_children():
+			if int(tile.get_meta("v2_seat")) != seat: continue
+			var mesh: MeshInstance3D = deck._table_3d.tile_nodes[tile.get_instance_id()]
+			for offset in [Vector2.ZERO, Vector2(-0.29, -0.40), Vector2(0.29, 0.40)]:
+				var point: Vector2 = deck._table_3d.camera.unproject_position(mesh.transform * Vector3(offset.x, 0.31, offset.y)) / Vector2(deck._table_3d.viewport.size) * deck._table_3d.size
+				clear = clear and deck._table_3d.pick_tile(point, false) == tile
 		t.expect(clear, "seat%d: mixed chicken and ordinary slots stay clear" % seat)
 
 func _test_short_hand_anchor(deck) -> void:
@@ -115,6 +119,9 @@ func _test_short_hand_anchor(deck) -> void:
 func _test_meld_clearance(deck) -> void:
 	deck.set_round(_fixture(), 1)
 	deck.refresh()
+	if deck._table_3d != null:
+		t.expect(preload("res://tests/table_3d_visibility.gd").public_faces_visible(deck), "3D chicken faces and meld sources remain visible past the standing hand")
+		return
 	for seat in 4:
 		var hand_rects := _seat_tiles(deck.hand_boxes[seat], seat)
 		var hand_clearance := true
@@ -153,14 +160,17 @@ func _test_hud_clearance(deck) -> void:
 		player.score = -1234567.0
 	deck.set_round(r, 1)
 	deck.refresh()
+	deck._table_3d.sync_tiles()
+	deck._follow_hand_hud()
 	var tiles: Array[Rect2] = []
 	for layer in deck.hand_boxes + deck.draw_boxes + [deck._red_layer, deck._meld_layer, deck._wall_layer]:
 		for node in layer.get_children():
-			tiles.append(_rect(node))
+			tiles.append(deck._table_3d.project_tile(node))
 	var occupied: Array[Rect2] = []
 	var clear := true
-	for node in deck._label_layer.get_children():
-		var rect := _rect(node)
+	# Names and scores share font leading inside one seat panel; compare the panels.
+	for seat in 4:
+		var rect: Rect2 = deck._seat_hud_rect(seat)
 		for other in occupied + tiles:
 			if rect.intersects(other):
 				clear = false

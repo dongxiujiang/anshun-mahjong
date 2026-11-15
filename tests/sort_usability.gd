@@ -85,6 +85,9 @@ func _check_controls(view, table) -> void:
 	var controls: Array = [view._sort_button, view._restore_button, view._previous_sort_button]
 	for i in controls.size():
 		t.expect(controls[i].visible and controls[i].size.y >= 76, "each sorting control remains a full-height touch target")
+		if view._table_3d != null:
+			for source in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
+				t.expect(not controls[i].get_rect().intersects(view._table_3d.project_tile(source)), "sorting and restore controls never cover the arranged hand")
 		for j in range(i):
 			t.expect(not controls[i].get_global_rect().intersects(controls[j].get_global_rect()), "sorting controls do not overlap")
 		t.expect(not controls[i].get_global_rect().intersects(view._arrangement_caption.get_global_rect()), "caption never covers a sorting control")

@@ -271,7 +271,8 @@ func _check_final(r: RoundState, context: String) -> void:
 	else:
 		t.expect(c.boards.size() == 4 and c.payment_labels.size() == 4, context + ": four tabletop boards")
 	for seat in 4:
-		t.expect(c.identity_labels.has(seat) and c.identity_labels[seat].is_visible_in_tree(), context + ": settled identity visible beside every score")
+		var native_3d: bool = table._new_areas != null and table._new_areas._table_3d != null
+		t.expect(c.identity_labels.has(seat) and c.identity_labels[seat].is_visible_in_tree() != native_3d, context + ": native settlement keeps status in its table instead of covering player names")
 		t.expect(table.center_labels[seat].text == "%.0f分" % r.players[seat].score, context + ": exact final score including negatives")
 		t.expect(table.center_labels[seat].get_theme_color("font_color").is_equal_approx(Color.WHITE), context + ": final score returns white")
 		t.expect(table.net_labels[seat].visible == not all_called, context + ": final net visibility")
@@ -367,6 +368,7 @@ func _check_layout() -> void:
 			t.expect(is_equal_approx(offset_x, 560.0 if relative == 1 else -560.0), "side payment boards move inward symmetrically without changing vertical spacing")
 	for seat in 4:
 		var label: Label = c.identity_labels[seat]
+		if not label.is_visible_in_tree(): continue
 		var bounds: Rect2 = label.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, label.size)
 		t.expect(screen.grow(1).encloses(bounds), "identity fits rotated/resized viewport")
 		for previous in occupied: t.expect(not bounds.grow(-1).intersects(previous.grow(-1)), "identity does not overlap payment boards or other identities")
@@ -646,6 +648,16 @@ func _test_all_called_timeline() -> void:
 				view._next_round_button.pressed.emit()
 				view._refresh_next_round_controls()
 				t.expect(endpoint.ready_calls == [true, false] and view._next_round_status.text.contains("2 / 4"), "ready button dispatches cancellation through same handler")
+			var areas = view._new_areas
+			var obstacle = areas._tile(areas._wall_layer, "", false, Vector2.ZERO, 1.0, 0.0)
+			areas._table_3d._rects[obstacle.get_instance_id()] = Rect2(0, TableV2Geometry.ACTION_TOP, UI.DESIGN_SIZE.x, 200)
+			view._settlement_card.refresh_layout()
+			var opposite_hud: Rect2 = areas.get_global_transform() * areas._seat_hud_rect(posmod(view.human_seat + 2, 4))
+			for button in [view._settlement_card._next_round_button, view._settlement_card._return_seat_button]:
+				if not button.is_visible_in_tree(): continue
+				t.expect(not button.get_global_rect().intersects(opposite_hud), "crowded solo and online actions leave the opposite name and score clear")
+				t.expect(root.get_visible_rect().encloses(button.get_global_rect()), "both crowded settlement actions remain on screen")
+			areas._release_visual_node(obstacle)
 			var requests: int = view.new_game_requests
 			var ready_calls := endpoint.ready_calls.duplicate()
 			c.start()

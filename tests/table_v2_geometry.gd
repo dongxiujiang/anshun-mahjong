@@ -10,17 +10,22 @@ func _run() -> void:
 	var own := G.hand13_rect(human, human)
 	var north := G.hand13_rect(3, human)
 	var east := G.hand13_rect(0, human)
-	t.expect(is_equal_approx(own.size.x, 13.0 * (115.2 + 4.0) - 4.0), "自己13张参考宽度")
-	t.expect(is_equal_approx(own.size.y, 153.6), "自己13张参考高度")
+	t.expect(is_equal_approx(own.size.x, 13.0 * (127.2 + 4.0) - 4.0), "自己13张参考宽度")
+	t.expect(is_equal_approx(own.size.y, 169.6), "自己13张参考高度")
 	t.expect(is_equal_approx(north.size.x, 13.0 * (64.8 + 4.0) - 4.0), "北家13张参考宽度")
-	t.expect(is_equal_approx(east.size.y, 13.0 * (64.8 + 4.0) - 4.0), "东家13张参考高度")
+	t.expect(is_equal_approx(east.size.y, 13.0 * (50.4 + 4.0) - 4.0), "侧家13张手牌缩短为透视距离")
+	for seat in [0, 2]:
+		var near_end := G.hand_slot_center(seat, 0 if seat == 0 else 12, human)
+		var far_end := G.hand_slot_center(seat, 12 if seat == 0 else 0, human)
+		t.expect(near_end.y > far_end.y and absf(near_end.x - G.CENTER.x) > absf(far_end.x - G.CENTER.x),
+			"东西两排手牌都从近端向远端收拢")
 
 	var s0: Vector2 = G.hand_slot_center(human, 0, human)
 	var s3: Vector2 = G.hand_slot_center(human, 3, human)
 	var s4: Vector2 = G.hand_slot_center(human, 4, human)
 	t.expect(s0.x < s3.x and s3.x < s4.x, "手牌槽从左到右递增")
-	t.expect(is_equal_approx(s0.x, own.position.x + 115.2 / 2.0), "第一张在手牌最左槽中心")
-	t.expect(is_equal_approx(s0.y, own.position.y + 153.6 / 2.0), "第一张在手牌行中心")
+	t.expect(is_equal_approx(s0.x, own.position.x + 127.2 / 2.0), "第一张在手牌最左槽中心")
+	t.expect(is_equal_approx(s0.y, own.position.y + 169.6 / 2.0), "第一张在手牌行中心")
 
 	var d0: Vector2 = G.draw_slot_center(human, human)
 	var span := G.hand_span(13, G.OWN_UNIT)
@@ -62,7 +67,7 @@ func _run() -> void:
 		t.expect(is_equal_approx(gap, 20.0),
 			"%s家摸牌区距手牌20" % ["南", "东", "北", "西"][seat])
 
-	var river: Array[Rect2] = []
+	var river: Array[Vector2] = []
 	for seat in 4:
 		var rel := G.relative_seat(human, seat)
 		var side := rel in [1, 3]
@@ -81,10 +86,10 @@ func _run() -> void:
 			var center := G.ordinary_slot_center(seat, i, human)
 			var rect := Rect2(center - size / 2, size)
 			var clear := G.TABLE_BOUNDS.encloses(rect)
-			for obstacle in river + G.WALL_BOUNDS:
-				if rect.intersects(obstacle): clear = false
-			t.expect(clear, "river slot %d/%d clears other slots and walls" % [seat, i])
-			river.append(rect)
+			# Actual mesh faces and remaining walls are checked in table_3d_river_badges.
+			clear = clear and not river.has(center)
+			t.expect(clear, "river slot %d/%d has a unique in-table position" % [seat, i])
+			river.append(center)
 
 	for viewer in 4:
 		for seat in 4:

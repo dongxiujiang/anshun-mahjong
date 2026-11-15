@@ -43,7 +43,7 @@ func _run() -> void:
 	player.just_drew = ""
 	table._refresh()
 	t.expect(view._sort_button.visible and not view._restore_button.visible, "13 tiles show Sort below the draw slot")
-	t.expect(view._sort_button.position.y >= TableV2Geometry.HAND_BOTTOM, "Sort does not cover the hand")
+	_check_sort_clear(view)
 	view._sort_own_hand()
 	var first: Array = view._local_arrangement.cards
 	t.expect(view.hand_boxes[table.human_seat].get_children().all(func(tile): return not tile.interactive), "off-turn sorting never enables hand input")
@@ -164,8 +164,7 @@ func _run() -> void:
 			view.refresh()
 			view._sort_own_hand()
 			t.expect(view._sort_button.visible and not view._sort_button.disabled and not view._local_arrangement.is_empty(), "every seat can sort 10/7/4/1 concealed tiles")
-			t.expect(is_equal_approx(view._sort_button.position.x + view._sort_button.size.x / 2,
-				TableV2Geometry.draw_slot_center(viewer, viewer, current.concealed.size()).x), "short hand Sort follows the real draw position")
+			_check_sort_clear(view)
 			for tile in view.hand_boxes[viewer].get_children():
 				t.expect(tile.tile == current.concealed[int(tile.get_meta("concealed_index"))], "melded sorting retains authoritative touch indices")
 			current.concealed.append("tong9")
@@ -264,3 +263,13 @@ func _capture(label: String) -> void:
 	await RenderingServer.frame_post_draw
 	DirAccess.make_dir_recursive_absolute("res://build/feedback-next")
 	t.expect(root.get_texture().get_image().save_png("res://build/feedback-next/%s.png" % label) == OK, "capture arrangement " + label)
+
+func _check_sort_clear(view) -> void:
+	if view._table_3d == null:
+		t.expect(view._sort_button.position.y >= TableV2Geometry.HAND_BOTTOM, "Sort does not cover the hand")
+		return
+	view._table_3d.sync_tiles()
+	var rect: Rect2 = view._sort_button.get_rect()
+	t.expect(Rect2(Vector2.ZERO, TableV2Geometry.DESIGN_SIZE).encloses(rect), "3D Sort stays on screen")
+	for tile in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
+		t.expect(not rect.intersects(view._table_3d.project_tile(tile)), "Sort does not cover any projected hand or draw tile")

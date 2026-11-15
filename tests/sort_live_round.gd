@@ -126,6 +126,9 @@ func _run() -> void:
 
 func _click(control: Control) -> void:
 	var position := control.get_global_rect().get_center()
+	if control is TileView and control.presentation_3d:
+		var renderer = table._new_areas._table_3d
+		position = renderer.get_global_transform() * renderer.project_tile(control).get_center()
 	for pressed in [true, false]:
 		var event := InputEventMouseButton.new()
 		event.button_index = MOUSE_BUTTON_LEFT

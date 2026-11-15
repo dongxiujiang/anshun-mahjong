@@ -206,9 +206,9 @@ func _river_centering():
 	root.get_node("GameConfig").set_tile_animation_seconds(0.4,false)
 	for seat in 4:
 		var rel := G.relative_seat(1,seat)
-		var columns := 6 if rel in [1,3] else 12
+		var columns := G.river_columns(rel)
 		var axis: Vector2 = [Vector2.RIGHT,Vector2.UP,Vector2.LEFT,Vector2.DOWN][rel]
-		for count in [1,columns-1,columns,columns+1]:
+		for count in [1,columns-1,columns,columns+1,2*columns-1,2*columns,G.river_capacity(rel)-1,G.river_capacity(rel)]:
 			var host = _fixture()
 			var deck = host._new_areas
 			var p = host.round.players[seat]
@@ -223,6 +223,11 @@ func _river_centering():
 			p.discard_ids.append(count)
 			var done := {"count":0}
 			deck._fly_discard(source,seat,"tong2",func():done.count+=1)
+			if count == G.river_capacity(rel):
+				t.expect(done.count == 1 and deck._discard_flights.is_empty(), "full river never starts a flight into an extra row")
+				t.expect(deck._take_river_node(seat,count) == null and deck._discard_layer.get_child_count() == count, "full river keeps the requested row cap")
+				await _cleanup(host)
+				continue
 			var flight: Dictionary = deck._discard_flights.values()[0]
 			var expected := G.ordinary_slot_center(seat,count,1,count+1)
 			if count%columns>0:
