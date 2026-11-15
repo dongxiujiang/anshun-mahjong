@@ -103,6 +103,33 @@ func _check_entities(view, renderer) -> void:
 		t.expect(expected.has(id) or not is_instance_valid(entity) or not entity.visible,
 			"a removed or hidden source never leaves a visible 3D ghost")
 
+func _check_merged_hand(view, renderer) -> void:
+	view._sort_own_hand()
+	renderer.sync_tiles()
+	await process_frame
+	var hand: Array = view.hand_boxes[view.human_seat].get_children()
+	t.expect(hand.size() == 14 and view.draw_boxes[view.human_seat].get_child_count() == 0,
+		"sorting merges the drawn tile into the fourteen-tile hand")
+	var indices := {}
+	for source in hand:
+		var bounds: Rect2 = renderer.project_tile(source)
+		t.expect(Rect2(Vector2.ZERO, renderer.size).encloses(bounds),
+			"sorted fourteen-tile hand stays fully on screen at %s: %s" % [root.size, bounds])
+		t.expect(renderer.pick_tile(bounds.get_center()) == source,
+			"every sorted tile keeps its own input target")
+		var index: int = source.get_meta("concealed_index", -1)
+		t.expect(index >= 0 and not indices.has(index)
+			and view.round.players[view.human_seat].concealed[index] == source.tile,
+			"sorting preserves each authoritative tile index")
+		indices[index] = true
+	await _capture("merged-%d-%d.png" % [view.human_seat, root.size.x])
+	view._restore_own_hand()
+	renderer.sync_tiles()
+	await process_frame
+	t.expect(view.hand_boxes[view.human_seat].get_child_count() == 13
+		and view.draw_boxes[view.human_seat].get_child_count() == 1,
+		"restoring sorting returns the separate drawn tile")
+
 func _record(event: InputEvent, source: TileView) -> void:
 	if event is InputEventMouseButton or event is InputEventScreenTouch:
 		_events.append({"source": source, "pressed": event.pressed,
@@ -249,6 +276,7 @@ func run() -> void:
 				t.expect(mesh == concealed_mesh, "all concealed opponents use the same anonymous mesh")
 		await _check_own_input(view, renderer)
 		await _check_touch(view, renderer)
+		await _check_merged_hand(view, renderer)
 		await _capture("seat-%d.png" % viewer)
 	# Emulate Android's independent horizontal and vertical surface scaling.
 	root.size = Vector2i(1600, 720)
@@ -260,6 +288,14 @@ func run() -> void:
 	_check_entities(view, view._table_3d)
 	await _check_own_input(view, view._table_3d)
 	await _capture("wide.png")
+	await _check_merged_hand(view, view._table_3d)
+	root.size = Vector2i(1600, 1000)
+	view.scale = Vector2(root.size) / G.DESIGN_SIZE
+	await process_frame
+	await _check_merged_hand(view, view._table_3d)
+	root.size = Vector2i(1600, 720)
+	view.scale = Vector2(root.size) / G.DESIGN_SIZE
+	await process_frame
 	var renderer = view._table_3d
 	var masked = view._tile(view._deal_layer, "hidden0", true, G.CENTER, G.WALL_UNIT, 0.0)
 	masked.flight_pitch = 0.0
