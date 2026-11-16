@@ -83,11 +83,21 @@ func _run() -> void:
 
 func _check_controls(view, table) -> void:
 	var controls: Array = [view._sort_button, view._restore_button, view._previous_sort_button]
+	var renderer = view._table_3d
 	for i in controls.size():
-		t.expect(controls[i].visible and controls[i].size.y >= 76, "each sorting control remains a full-height touch target")
-		if view._table_3d != null:
+		var minimum_height := 48.0 if renderer != null else 76.0
+		t.expect(controls[i].visible and controls[i].size.y >= minimum_height, "each sorting control has the intended touch height")
+		if renderer != null:
+			t.expect(is_equal_approx(controls[i].get_rect().end.y, renderer.size.y), "all sorting controls sit on the lower edge")
 			for source in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
-				t.expect(not controls[i].get_rect().intersects(view._table_3d.project_tile(source)), "sorting and restore controls never cover the arranged hand")
+				var mesh: MeshInstance3D = renderer.tile_nodes.get(source.get_instance_id())
+				if mesh == null or not mesh.visible: continue
+				var face_bottom := 0.0
+				for x in [-0.45, 0.45]:
+					for z in [-0.60, 0.60]:
+						var pixel: Vector2 = renderer.camera.unproject_position(mesh.transform * Vector3(x, 0.31, z))
+						face_bottom = maxf(face_bottom, pixel.y / renderer.viewport.size.y * renderer.size.y)
+				t.expect(controls[i].position.y >= face_bottom, "sorting controls may overlap the base but not the printed face")
 		for j in range(i):
 			t.expect(not controls[i].get_global_rect().intersects(controls[j].get_global_rect()), "sorting controls do not overlap")
 		t.expect(not controls[i].get_global_rect().intersects(view._arrangement_caption.get_global_rect()), "caption never covers a sorting control")

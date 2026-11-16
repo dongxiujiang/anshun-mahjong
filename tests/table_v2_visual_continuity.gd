@@ -162,7 +162,10 @@ func _test_exposed_kongs_on_every_seat() -> void:
 				view.animate_meld({"seat": owner, "source": source, "source_discard_id": 7,
 					"kind": "kong", "tile": card, "index": 0, "hand_indices": [0, 1, 2]}, func(): pass)
 				var name := "seat %d source %d %s" % [owner, offset, card]
-				t.expect(await _watch_meld_motion(view, owner, destination, true, "seat%d-source%d-%s" % [owner, offset, card]), name + ": visible flight moves before an unobstructed landing")
+				var side_3d: bool = view._table_3d != null and G.relative_seat(view.human_seat, owner) in [1, 3]
+				if side_3d:
+					t.expect(view.native_actions_pending() and claimed.get_parent() != destination, name + ": holds source tiles before landing")
+				t.expect(await _watch_meld_motion(view, owner, destination, not side_3d, "seat%d-source%d-%s" % [owner, offset, card]), name + (": unobstructed side landing" if side_3d else ": visible flight moves before an unobstructed landing"))
 				t.expect(claimed.get_parent() == destination and claimed.get_meta("meld_slot", -1) == (0 if offset == 1 else 3),
 					name + ": preserves the source discard in its correct slot")
 				var tail := r.wall._tail_index()

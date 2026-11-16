@@ -2471,7 +2471,7 @@ func _move_existing_exposed(tween: Tween, duration: float, layout: Array = []) -
 			else: tween.tween_property(node, "position", target, duration)
 			break
 
-func _center_hand_after_meld(seat: int, action_id: int, done: Callable) -> void:
+func _center_hand_after_meld(seat: int, action_id: int, done: Callable, instant := false) -> void:
 	_held_hand_centers.erase(seat)
 	var moves: Array = []
 	var hand: Array = hand_boxes[seat].get_children()
@@ -2484,7 +2484,7 @@ func _center_hand_after_meld(seat: int, action_id: int, done: Callable) -> void:
 	# releasing input cannot trigger a second, snapping layout adjustment.
 	_invalidate_exposed_layout()
 	var layout := _exposed_layout()
-	var seconds := minf(0.12, GameConfig.tile_motion_seconds() * 0.4)
+	var seconds := 0.0 if instant else minf(0.12, GameConfig.tile_motion_seconds() * 0.4)
 	if seconds <= 0.0 or moves.is_empty():
 		_move_existing_exposed(null, 0.0, layout)
 		_complete_visual_action(action_id, done)
@@ -2511,6 +2511,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 	var chicken := TILES.is_chicken(tile)
 	var targets: Array = []
 	var target_angles: Array = []
+	var target_specs: Array = []
 	var meld_index := int(event.get("index", 0))
 	var rel := G.relative_seat(human_seat, seat)
 	var source_slot := G.exposed_kong_source_slot(seat, int(event.get("source", -1))) if kind == "kong" else -1
@@ -2583,6 +2584,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 	for spec in _live_exposed_layout(seat):
 		if int(spec.meld_index) != meld_index: continue
 		targets.append(Vector2(spec.center))
+		target_specs.append(spec)
 		target_angles.append(UI.ROTATIONS[rel] + (PI / 2.0 if spec.sideways else 0.0))
 	if targets.size() != count:
 		_complete_visual_action(action_id, done)
@@ -2611,6 +2613,8 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			node.set_meta("meld_index", meld_index)
 			node.set_meta("meld_slot", i)
 			node.set_meta("meld_sideways", i if i == source_slot else -1)
+			node.set_meta("kong_offset_2d", target_specs[i].kong_offset_2d)
+			node.set_meta("kong_offset_3d", target_specs[i].kong_offset_3d)
 			node.set_meta("meld_concealed", concealed)
 			node.set_meta("meld_revealed", visible_face)
 		for slot in remaining_sources.size():
@@ -2622,9 +2626,15 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			kept.set_meta("v2_hand_slot", slot)
 			hand_boxes[seat].move_child(kept, slot)
 	var duration := GameConfig.tile_motion_seconds()
-	if duration <= 0.0:
-		land.call()
-		_center_hand_after_meld(seat, action_id, done)
+	# A side flight uses the standing-hand projection until landing and can cross
+	# the remaining opaque tiles. Commit placement and recentering together.
+	var side_3d := _table_3d != null and rel in [1, 3]
+	if duration <= 0.0 or side_3d:
+		var settle := func():
+			land.call()
+			_center_hand_after_meld(seat, action_id, done, side_3d)
+		if duration <= 0.0: settle.call()
+		else: _motion_tween().tween_callback(settle).set_delay(duration)
 		return
 	var flight := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_move_existing_exposed(flight, duration)
