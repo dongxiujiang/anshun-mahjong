@@ -254,6 +254,19 @@ func _dense_round(action_count := -1) -> RoundState:
 		t.expect(accepted, "public tile visibility is checked against a legal replay")
 	return result
 
+func _check_arrangement_buttons(view, renderer) -> void:
+	var buttons := [view._sort_button, view._restore_button, view._previous_sort_button]
+	var shown: Array = buttons.map(func(button): return button.visible)
+	for button in buttons: button.show()
+	view._layout_arrangement_controls()
+	for button in buttons:
+		t.expect(Rect2(Vector2.ZERO, renderer.size).encloses(button.get_rect()), "expanded sorting stays on screen")
+		for source in _sources(view):
+			t.expect(not button.get_rect().intersects(renderer.project_tile(source)),
+				"sorting %s avoids %s %s for viewer %d" % [button.text, source.get_meta("new_kind", ""), source.tile, view.human_seat])
+	for index in buttons.size(): buttons[index].visible = shown[index]
+	view._layout_arrangement_controls()
+
 func _capture(filename: String) -> void:
 	await process_frame
 	await RenderingServer.frame_post_draw
@@ -427,6 +440,7 @@ func run() -> void:
 		renderer.sync_tiles()
 		await create_timer(0.35).timeout
 		_check_entities(view, renderer)
+		_check_arrangement_buttons(view, renderer)
 		await _capture("public-seat-%d.png" % viewer)
 	await create_timer(0.1).timeout
 	t.expect(RenderingServer.viewport_get_update_mode(renderer.viewport.get_viewport_rid()) == RenderingServer.VIEWPORT_UPDATE_DISABLED,
