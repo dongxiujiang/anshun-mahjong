@@ -816,6 +816,44 @@ func _center_after_meld():
 				await _cleanup(host)
 	config.set_tile_animation_seconds(0.3, false)
 
+func _own_discard_reorder() -> void:
+	for insert in [false, true]:
+		var host = _fixture()
+		var deck = host._new_areas
+		var seat := 1
+		var hand: Array = ["wan1", "wan3", "wan2", "wan4"] if not insert else ["wan1", "wan3", "wan4", "wan5"]
+		var nodes: Array = []
+		for i in hand.size():
+			nodes.append(_card(deck, deck.hand_boxes[seat], hand[i], seat, i, G.hand_slot_center(seat, i, seat, hand.size())))
+		var discarded: String = hand.pop_back()
+		nodes.pop_back()
+		var player = host.round.players[seat]
+		player.discards = [discarded]
+		player.discard_ids = [0]
+		if insert:
+			nodes.append(_card(deck, deck.draw_boxes[seat], "wan2", seat, 4, G.draw_slot_center(seat, seat, hand.size() + 1)))
+			hand.append("wan2")
+		player.concealed = hand
+		var done := [false]
+		var finish := func(): done[0] = true
+		if insert: deck.animate_draw_insert(seat, discarded, "wan2", finish, 3)
+		else: deck.animate_hand_discard(seat, discarded, 3, finish)
+		t.expect(deck._table_3d != null and deck.native_actions_pending() and not done[0], "own 3D discard retains its input lock")
+		var separated := true
+		var deadline := Time.get_ticks_msec() + 2500
+		while not done[0] and Time.get_ticks_msec() < deadline:
+			await process_frame
+			for i in nodes.size():
+				for j in range(i + 1, nodes.size()):
+					var a: Control = nodes[i]
+					var b: Control = nodes[j]
+					separated = separated and absf(a.get_global_rect().get_center().x - b.get_global_rect().get_center().x) > 56.0
+		var name := "draw insertion" if insert else "hand discard"
+		t.expect(separated, name + ": remaining printed faces never cross while reordering")
+		var expected: Array = ["wan1", "wan2", "wan3", "wan4"] if insert else ["wan1", "wan2", "wan3"]
+		t.expect(done[0] and deck.draw_boxes[seat].get_child_count() == 0 and deck.hand_boxes[seat].get_children().map(func(node): return node.tile) == expected, name + ": locks until all original tiles are in their new slots")
+		await _cleanup(host)
+
 func _capture_motion(name: String) -> void:
 	DirAccess.make_dir_recursive_absolute("res://build/equal-table/motion")
 	await RenderingServer.frame_post_draw
@@ -833,6 +871,7 @@ func _run():
 	if selected_case in ["all","kong_sources"]: await _kong_sources()
 	if selected_case in ["all","discard_sources"]: await _discard_sources()
 	if selected_case in ["all","river_centering"]: await _river_centering()
+	if selected_case in ["all","own_discard_reorder"]: await _own_discard_reorder()
 	if selected_case in ["all","remote_discards"]: await _remote_discards()
 	if selected_case in ["all","discard_during_draw"]: await _discard_during_draw()
 	if selected_case in ["all","remote_discard_without_draw"]: await _remote_discard_without_draw()

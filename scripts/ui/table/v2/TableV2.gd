@@ -2331,15 +2331,17 @@ func animate_hand_discard(seat: int, discard_card: String, discard_index: int,
 	var move := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD) \
 		.set_ease(Tween.EASE_IN_OUT)
 	var duration := GameConfig.tile_motion_seconds()
+	# All tiles that trade places must land together instead of sliding through one another.
+	var crosses := _table_3d != null and seat == human_seat and ordered != remaining
+	var travel := 0.0 if crosses else duration * 0.4
 	for slot in ordered.size():
 		var node: Control = ordered[slot]
+		var delay := duration * (0.9 + (ordered.size() - 1) * 0.006) if crosses else duration * (0.5 + slot * 0.006)
 		move.tween_property(node, "position",
-			G.hand_slot_center(seat, slot, human_seat, ordered.size()) - node.size / 2.0,
-			duration * 0.4).set_delay(duration * (0.5 + slot * 0.006))
+			G.hand_slot_center(seat, slot, human_seat, ordered.size()) - node.size / 2.0, travel).set_delay(delay)
 		if seat == human_seat:
 			move.tween_method(func(value): node.set_meta("v2_draw_reserve", value),
-				float(node.get_meta("v2_draw_reserve", 1.0)), 1.0,
-				duration * 0.4).set_delay(duration * (0.5 + slot * 0.006))
+				float(node.get_meta("v2_draw_reserve", 1.0)), 1.0, travel).set_delay(delay)
 	move.chain().tween_callback(func():
 		for i in ordered.size():
 			var tile: Control = ordered[i]
@@ -2410,11 +2412,13 @@ func animate_draw_insert(seat: int, discard_card: String, draw_card: String, don
 				break
 	var tw := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 	var duration := GameConfig.tile_motion_seconds()
+	var crosses := _table_3d != null and seat == human_seat and moves.map(func(m): return m.node) != remaining + [draw_node]
+	var travel := 0.0 if crosses else duration * 0.4
 	for m in moves:
 		var node: Control = m.node
+		var delay := duration * (0.9 + (moves.size() - 1) * 0.006) if crosses else duration * (0.5 + int(m.slot) * 0.006)
 		tw.tween_property(node, "position",
-			G.hand_slot_center(seat, int(m.slot), human_seat, moves.size()) - node.size / 2.0, duration * 0.4) \
-			.set_delay(duration * (0.5 + int(m.slot) * 0.006))
+			G.hand_slot_center(seat, int(m.slot), human_seat, moves.size()) - node.size / 2.0, travel).set_delay(delay)
 	tw.chain().tween_callback(func():
 		if draw_node != null and is_instance_valid(draw_node):
 			draw_boxes[seat].remove_child(draw_node)
