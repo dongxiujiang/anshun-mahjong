@@ -5,6 +5,8 @@ var value := 1:
 	set(next):
 		value = clampi(next, 1, 6)
 		queue_redraw()
+var roll_progress := 1.0
+var roll_lift := 0.0
 var face_color := Color.WHITE
 var pip_color := Color("#284438")
 var presentation_3d := false:

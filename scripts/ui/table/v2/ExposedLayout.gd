@@ -51,8 +51,8 @@ static func place(group: Dictionary, start: float, lower: bool, outward: float =
 		var along := float(i) + (0.34 if group.source_slot == 0 and i > 0 else 0.0) + (0.17 if sideways else 0.0)
 		if group.opposite and sideways: along = 1.0
 		var inward := (-0.17 if sideways else 0.0) + (1.34 if group.opposite and sideways else 0.0)
-		spec["kong_offset_2d"] = center - anchor if int(group.count) == 4 else Vector2.ZERO
-		spec["kong_offset_3d"] = AXES[rel]*along + INWARD[rel]*inward if int(group.count) == 4 else Vector2.ZERO
+		spec["kong_offset_2d"] = center - anchor if int(group.count) > 1 else Vector2.ZERO
+		spec["kong_offset_3d"] = AXES[rel]*along + INWARD[rel]*inward if int(group.count) > 1 else Vector2.ZERO
 		out.append(spec)
 		cursor+=width+4
 	return out

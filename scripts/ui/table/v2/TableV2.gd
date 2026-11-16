@@ -398,9 +398,9 @@ func _layout_arrangement_controls() -> void:
 		minf(G.HAND_BOTTOM + 14.0, G.DESIGN_SIZE.y - _sort_button.size.y - 2.0))
 	if _table_3d != null:
 		for button in [_sort_button, _restore_button, _previous_sort_button]:
-			button.size = Vector2(160, 48)
+			button.size = Vector2(160, 48 * 1.3)
 			button.add_theme_font_size_override("font_size", 24)
-		anchor = G.DESIGN_SIZE - _sort_button.size - Vector2(24, 0)
+		anchor = G.DESIGN_SIZE - _sort_button.size - Vector2(24 + G.TILE_BASE.x * G.OWN_UNIT, 0)
 	_sort_button.position = anchor
 	_restore_button.position = anchor - Vector2(_restore_button.size.x + 12.0, 0.0)
 	_previous_sort_button.position = _restore_button.position - Vector2(_previous_sort_button.size.x + 12.0, 0.0)
@@ -488,7 +488,6 @@ func clear_dice_visual() -> void:
 
 func animate_dice(value: int, white: int) -> void:
 	clear_dice_visual()
-	AudioManager.play_dice()
 	var die_size := Vector2(UI.DICE_SIZE, UI.DICE_SIZE)
 	var center := UI.LANDSCAPE_CENTER
 	var red := DICE.new()
@@ -510,6 +509,10 @@ func animate_dice(value: int, white: int) -> void:
 	_dice_red = red
 	_dice_white = white_die
 	_dice_shadow = shadow
+	if DisplayServer.get_name() != "headless":
+		RenderingServer.frame_post_draw.connect(func():
+			if is_instance_valid(red) and red == _dice_red and red.is_visible_in_tree():
+				AudioManager.play_dice(), CONNECT_ONE_SHOT)
 	var red_rest := center + Vector2(-UI.DICE_SIZE - 4.0, -UI.DICE_SIZE * 0.5)
 	var white_rest := center + Vector2(4.0, -UI.DICE_SIZE * 0.5)
 	red.position = red_rest + Vector2(-8, -30)
@@ -519,6 +522,7 @@ func animate_dice(value: int, white: int) -> void:
 	red.scale = Vector2.ONE * 0.8
 	white_die.scale = Vector2.ONE * 0.8
 	shadow.position = center + Vector2(-UI.DICE_SIZE - 4.0, UI.DICE_SIZE * 0.5 - 14.0)
+	_tick_dice(0.0, value, white, red_rest, white_rest)
 	_dice_tween = create_tween()
 	_dice_tween.tween_method(Callable(self, "_tick_dice").bind(value, white, red_rest, white_rest),
 		0.0, 1.0, UI.DICE_DURATION)
@@ -527,6 +531,19 @@ func animate_dice(value: int, white: int) -> void:
 func _tick_dice(progress: float, value: int, white: int,
 		red_rest: Vector2, white_rest: Vector2) -> void:
 	if not is_instance_valid(_dice_red) or not is_instance_valid(_dice_white): return
+	if _table_3d != null:
+		var slide := pow(1.0 - progress, 2.2)
+		_dice_red.position = red_rest + Vector2(-94.0, -56.0) * slide
+		_dice_white.position = white_rest + Vector2(101.0, -44.0) * slide
+		_dice_red.rotation = -0.28
+		_dice_white.rotation = 0.32
+		_dice_red.value = value
+		_dice_white.value = white
+		_dice_red.roll_progress = progress
+		_dice_white.roll_progress = progress
+		_dice_red.roll_lift = -_dice_bounce(progress, 65.0) / 45.0
+		_dice_white.roll_lift = -_dice_bounce(progress, 53.0) / 45.0
+		return
 	var bounce := _dice_bounce(progress, 46.0)
 	var bounce2 := _dice_bounce(progress, 40.0)
 	_dice_red.rotation = lerpf(-0.55, TAU, progress)
@@ -768,9 +785,14 @@ func _settlement_faces(entry: Dictionary) -> Dictionary:
 			faces.append({"card": entry.tiles[spec.meld_slot], "center": (spec.center - bounds.position) * scale_factor,
 				"angle": PI / 2.0 if spec.sideways else 0.0})
 		return {"tiles": faces, "size": bounds.size * scale_factor}
+	var x := 0.0
 	for index in entry.tiles.size():
-		faces.append({"card": entry.tiles[index], "center": Vector2(index * 38.4 + 19.2, 25.6), "angle": 0.0})
-	return {"tiles": faces, "size": Vector2(entry.tiles.size() * 38.4, 51.2)}
+		var sideways: bool = index in entry.get("sideways", [])
+		var width := 51.2 if sideways else 38.4
+		faces.append({"card": entry.tiles[index], "center": Vector2(x + width / 2.0, 51.2 - (19.2 if sideways else 25.6)),
+			"angle": PI / 2.0 if sideways else 0.0})
+		x += width
+	return {"tiles": faces, "size": Vector2(x, 51.2)}
 
 func _settlement_entry_lines(blocks: Array, width: float, factor: float) -> int:
 	var x := 0.0
@@ -2188,6 +2210,9 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 	var tw := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_discard_flights[flight_id].tween = tw
 	if chicken: _move_existing_exposed(tw, duration)
+	if _table_3d != null:
+		node.flight_progress = 0.0
+		tw.tween_property(node, "flight_progress", 1.0, duration).set_trans(Tween.TRANS_LINEAR)
 	tw.tween_property(node, "position", target - node.size / 2.0, duration)
 	tw.tween_property(node, "scale", target_scale, duration)
 	tw.tween_property(node, "rotation", target_angle, duration)
@@ -2233,6 +2258,7 @@ func _finish_discard_flight(flight_id: int) -> void:
 	if node is TileView:
 		var destination: Control = _red_layer if chicken else _discard_layer
 		node.flight_pitch = -1.0
+		node.flight_progress = -1.0
 		if node.get_parent() != destination: node.reparent(destination, false)
 		node.set_interactive(false)
 		node.set_card(card, true)
@@ -2613,6 +2639,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			node.rotation = float(target_angles[i])
 			node.set_meta("new_kind", "red" if chicken else "meld")
 			node.flight_pitch = -1.0
+			node.flight_progress = -1.0
 			node.face_depth_top = false
 			node.standing_back_view = -1
 			if chicken: node.set_meta("v2_red_kind", kind if kind != "concealed" else "kong")
@@ -2633,15 +2660,24 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			kept.set_meta("v2_hand_slot", slot)
 			hand_boxes[seat].move_child(kept, slot)
 	var duration := GameConfig.tile_motion_seconds()
-	# A side flight uses the standing-hand projection until landing and can cross
-	# the remaining opaque tiles. Commit placement and recentering together.
 	var side_3d := _table_3d != null and rel in [1, 3]
-	if duration <= 0.0 or side_3d:
-		var settle := func():
+	if duration <= 0.0:
+		land.call()
+		_center_hand_after_meld(seat, action_id, done, side_3d)
+		return
+	if side_3d:
+		# Side hand fronts sit in the camera's path to the meld. Set the
+		# group down from just above its own belt instead of crossing that row.
+		_motion_tween().tween_callback(func():
 			land.call()
-			_center_hand_after_meld(seat, action_id, done, side_3d)
-		if duration <= 0.0: settle.call()
-		else: _motion_tween().tween_callback(settle).set_delay(duration)
+			var lower := _motion_tween().set_parallel(true)
+			for node in nodes:
+				node.flight_progress = 0.5
+				lower.tween_property(node, "flight_progress", 1.0, duration * 0.55).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			lower.chain().tween_callback(func():
+				for node in nodes: node.flight_progress = -1.0
+				_center_hand_after_meld(seat, action_id, done, true))
+		).set_delay(duration * 0.45)
 		return
 	var flight := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_move_existing_exposed(flight, duration)
@@ -2654,13 +2690,16 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 		node.set_latest_highlight(false)
 		var target: Vector2 = targets[i]
 		var tile_size := _exposed_size(seat)
+		if _table_3d != null:
+			node.flight_progress = 0.0
+			flight.tween_property(node, "flight_progress", 1.0, duration).set_trans(Tween.TRANS_LINEAR)
 		flight.tween_property(node, "position", target - node.size / 2.0, duration)
 		flight.tween_property(node, "scale", tile_size / node.size, duration)
 		flight.tween_property(node, "rotation", target_angles[i], duration)
 		flight.tween_property(node, "flight_pitch", 0.0 if visible_face else PI, duration)
 	flight.chain().tween_callback(func():
 		land.call()
-		_center_hand_after_meld(seat, action_id, done))
+		_center_hand_after_meld(seat, action_id, done, side_3d))
 
 func _build_melds() -> void:
 	for data in snapshot.get("seats", []):

@@ -49,6 +49,7 @@ func run() -> void:
 					card.refresh_layout()
 					await process_frame
 					var bounds: Rect2 = card._post_controls.get_rect()
+					t.expect(is_equal_approx(bounds.size.y, 104.0 if online else 80.0), "only the two online controls are 30 percent taller")
 					t.expect(is_equal_approx(bounds.end.y, G.DESIGN_SIZE.y), "next/ready controls align with the screen bottom")
 					t.expect(Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(bounds), "both solo and online controls stay fully on screen")
 					for tile in view.hand_boxes[viewer].get_children() + view.draw_boxes[viewer].get_children():

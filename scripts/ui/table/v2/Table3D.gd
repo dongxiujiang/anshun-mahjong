@@ -194,7 +194,7 @@ func sync_tiles() -> void:
 			if not settled and source.latest_highlight and source.is_visible_in_tree() and kind in ["ordinary", "red"] and int(source.get_meta("meld_index", -1)) < 0:
 				latest = source
 			var signature := hash([key, source.face_up, xf, source.size, source.is_visible_in_tree(),
-				source.modulate, source.self_modulate, source.standing_back_view, kind, source.flight_pitch,
+				source.modulate, source.self_modulate, source.standing_back_view, kind, source.flight_pitch, source.flight_progress,
 				source.z_index, source.highlight, source.latest_highlight, source.ai_teach_highlight,
 				source.score_highlight, source.get_parent().get_instance_id(),
 				source.get_meta("charge_chicken", false), source.get_meta("gold_chicken", false),
@@ -237,12 +237,15 @@ func sync_tiles() -> void:
 				center -= Vector2(source.get_meta("kong_offset_2d", Vector2.ZERO))
 				kong_offset = source.get_meta("kong_offset_3d", Vector2.ZERO)
 			var side_hand: bool = hand and source.standing_back_view in [1, 3]
-			var side_row: bool = side_wall or side_hand or (kind in ["meld", "red", "ordinary"] and rel in [1, 3])
+			var motion := float(source.flight_progress)
+			var flight := motion if source.get_parent() == view._deal_layer else -1.0
+			var hand_blend := 1.0 if flight < 0.0 else 1.0 - smoothstep(0.0, 0.75, flight)
+			var side_row: bool = side_wall or (side_hand and flight < 0.0) or (kind in ["meld", "red", "ordinary"] and rel in [1, 3] and flight < 0.0)
 			if rel == 0 and kind in ["meld", "red"] and center.y < G.HAND_BOTTOM - G.TILE_BASE.y * G.OWN_UNIT:
 				center.y -= 72.0 if settlement_started else 12.0
 			var near_fit := lerpf(1.0, width_fit, 0.55)
 			var side_unit := 1.07 if face_up else 1.30
-			var weight := (1.04 * near_fit / width_fit * 1.02 if own_hand else (side_unit if side_hand else 1.0))
+			var weight := lerpf(1.0, 1.04 * near_fit / width_fit * 1.02 if own_hand else (side_unit if side_hand else 1.0), hand_blend)
 			var factor: float = world_unit * source.size.x * scale_2d.x * weight
 			var row_offset := 0.0
 			if side_row:
@@ -261,30 +264,44 @@ func sync_tiles() -> void:
 				row_offset = (center.y - first_y) / absf(step_y) * 1.34 * world_unit * source.size.x * scale_2d.x
 				center.y = first_y
 			var converge := lerpf(0.79, 1.09, center.y / size.y)
+			var along_scale := converge * lerpf(0.58, 1.0, width_fit)
+			var row_x := center.x
+			var row_anchor := G.CENTER.x
 			if own_hand:
 				var draw_gap := 24.0 if kind == "draw" else 0.0
 				# A merged fourteen-tile row no longer reserves space for a separate draw.
 				var reserve_draw := float(source.get_meta("v2_draw_reserve", 1.0)) if not settled else 1.0
-				center.x = G.CENTER.x + (center.x - G.CENTER.x - 64.0 * reserve_draw + draw_gap) * 1.13 * near_fit * 1.02 - 46.0 * reserve_draw
-				center.y += 32.0
-			else:
-				center.x = G.CENTER.x + (center.x - G.CENTER.x) * converge * lerpf(0.58, 1.0, width_fit)
-			if side_hand: center.y -= 112.0
+				var own_scale := 1.13 * near_fit * 1.02
+				along_scale = lerpf(along_scale, own_scale, hand_blend)
+				row_anchor += ((-64.0 * reserve_draw + draw_gap) * own_scale - 46.0 * reserve_draw) * hand_blend
+				center.y += 32.0 * hand_blend
+			center.x = row_anchor + (row_x - G.CENTER.x) * along_scale
+			if side_hand: center.y -= 112.0 * hand_blend
 			var height := (1.34 * absf(sin(pitch)) + 0.62 * absf(cos(pitch))) * factor / 2.0 + 0.03
 			var position_3d := _at_height(center, height)
 			position_3d.z += row_offset
 			position_3d += Vector3(kong_offset.x, 0, kong_offset.y) * factor
+			if flight >= 0.0:
+				position_3d.y += factor * (1.0 - pow(absf(flight * 2.0 - 1.0), 2.0)) * (1.75 if side_hand else 0.9)
+			elif motion >= 0.0:
+				position_3d.y += factor * (1.0 - motion) * 0.38
 			if kind == "wall":
 				if wall_upper or source.face_up: position_3d.y += 0.62 * factor
 				if source == view._settlement_flip_view: position_3d.y += sin(pitch) * factor * 0.35
 			var basis := Basis(Vector3.UP, angle) * Basis(Vector3.RIGHT, pitch)
 			node.transform = Transform3D(basis.scaled(Vector3.ONE * factor), position_3d)
-			if own_hand:
-				# Keep standing and flattened tile feet just inside the near wood rail.
+			if own_hand and flight < 0.0:
+				# The taller online controls must clear the printed faces at settlement.
 				for _step in 2:
-					center.y += size.y - 44.0 - _project_mesh(node).end.y
+					center.y += size.y - (68.0 if settled else 60.0) - _project_mesh(node).end.y
 					node.position = _at_height(center, height)
-			elif side_hand or source.get_parent() == view._deal_layer:
+			if hand and not side_hand and flight < 0.0:
+				var step: float = (source.size.x + G.TILE_GAP) * along_scale
+				var normal_step := _at_height(center + Vector2(step, 0), height).x - node.position.x
+				if normal_step > factor * 0.98:
+					var anchor := _at_height(Vector2(row_anchor, center.y), height).x
+					node.position.x = lerpf(anchor, node.position.x, factor * 0.98 / normal_step)
+			if side_hand or (source.get_parent() == view._deal_layer and flight < 0.0):
 				# Include flights before their destination hand metadata is assigned.
 				for _step in 3:
 					var bounds := _project_mesh(node)
@@ -301,7 +318,7 @@ func sync_tiles() -> void:
 		var node: MeshInstance3D = dice_nodes.get(id)
 		var color := "red" if source == view._dice_red else "black"
 		if node == null: node = _new_mesh(source, _meshes[color], dice_nodes)
-		var signature := hash([source.value, source.position, source.scale, source.rotation, source.visible])
+		var signature := hash([source.value, source.position, source.scale, source.rotation, source.visible, source.roll_progress, source.roll_lift])
 		if _signatures.get(id) == signature: continue
 		_changed = true
 		_signatures[id] = signature
@@ -310,9 +327,13 @@ func sync_tiles() -> void:
 		var normal := Vector3(coords[0], coords[1], coords[2])
 		var center: Vector2 = source.position + source.size / 2.0
 		var factor := _pixel_scale(center, source.size.x * source.scale.x) / 0.8
-		node.transform = Transform3D(
-			(Basis(Vector3.UP, -source.rotation) * Basis(Quaternion(normal, Vector3.UP))).scaled(Vector3.ONE * factor),
-			_at_height(center, 0.4 * factor + 0.04))
+		var remaining := pow(1.0 - float(source.roll_progress), 2.3)
+		var direction := 1.0 if color == "red" else -1.0
+		var basis := Basis(Vector3.FORWARD, direction * TAU * remaining) * Basis(Vector3.RIGHT, TAU * 2.0 * remaining)
+		basis *= Basis(Vector3.UP, -source.rotation) * Basis(Quaternion(normal, Vector3.UP))
+		var support := 0.4 * (absf(basis.x.y) + absf(basis.y.y) + absf(basis.z.y))
+		node.transform = Transform3D(basis.scaled(Vector3.ONE * factor),
+			_at_height(center, support * factor + 0.04) + Vector3.UP * factor * float(source.roll_lift))
 	if is_instance_valid(view._dice_shadow): view._dice_shadow.hide()
 	for collection in [tile_nodes, dice_nodes]:
 		for id in collection.keys():

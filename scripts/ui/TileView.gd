@@ -5,6 +5,7 @@ extends Control
 var tile := ""       # 牌值 "tong3"/"tiao1"/"wan9"
 var face_up := true
 var flight_pitch := -1.0
+var flight_progress := -1.0
 var face_depth_top := true:
 	set(value):
 		if face_depth_top == value: return
@@ -273,6 +274,7 @@ func reset() -> void:
 	"""重置 TileView 为默认状态，用于对象池回收。"""
 	presentation_3d = false
 	flight_pitch = -1.0
+	flight_progress = -1.0
 	set_selected(false)
 	set_interactive(false)
 	set_winning(false)

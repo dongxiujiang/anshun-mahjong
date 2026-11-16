@@ -481,6 +481,16 @@ func _settlement_faces():
 			t.expect(deck.draw_boxes[seat].get_child_count()==1 and deck.draw_boxes[seat].get_child(0).tile=="wan9","each winner retains a separate public winning tile")
 	deck._settlement_plan={"called":[true,true,true,true],"burned":-1,"gold_tiles":[],"flip_tiles":[],"is_draw":false}
 	deck._highlight_native_stage({"key":"chicken"})
+	var rows := preload("res://scripts/ui/table/v2/SettlementRows.gd")
+	var player: PlayerState = host.round.players[1]
+	player.discards = ["tiao1", "tiao2", "tiao1"]
+	player.discard_ids = [1, 4, 7]
+	var meta := {"charge_chickens": {"tiao1": {"owner": 1, "location": "discard", "discard_id": 1}}}
+	var items := {"items": [[], [{"kind": "penalty", "label": "未叫牌出牌鸡", "amount": -6.0}], [], []]}
+	var entry: Dictionary = rows.entries(items, meta, host.round.players, {"called": [true, false, true, true]}, 1)[0]
+	var faces: Array = deck._settlement_faces(entry).tiles
+	t.expect(faces.size() == 2 and faces[0].card == faces[1].card and is_equal_approx(faces[0].angle, PI / 2.0)
+		and is_zero_approx(faces[1].angle), "settlement turns only the first chicken sideways in unpaid discard debt")
 	var highlighted=0
 	for node in deck.hand_boxes[0].get_children():
 		if node.tile=="tiao1" and node.score_highlight:highlighted+=1

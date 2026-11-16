@@ -41,6 +41,9 @@ static func entries(result: Dictionary, meta: Dictionary, players: Array, plan: 
 		var cards: Array = item.get("tiles", []).duplicate()
 		if cards.is_empty() and str(item.get("tile", "")) != "": cards.append(item.tile)
 		var parts: Array = []
+		var sideways: Array = []
+		if kind == "charge":
+			for index in cards.size(): sideways.append(index)
 		if kind == "kong":
 			for split in [["base_amount", label, "未叫牌杠分"], ["chicken_amount", "杠中鸡", "未叫牌杠中鸡"], ["flip_amount", "翻鸡", ""]]:
 				var amount := float(item.get(split[0], 0.0)) / multiplier
@@ -50,11 +53,11 @@ static func entries(result: Dictionary, meta: Dictionary, players: Array, plan: 
 				if not is_zero_approx(amount): parts.append({"label": split[1], "amount": amount})
 		else:
 			if label in ["未叫牌出牌鸡", "未叫牌碰鸡"]:
-				cards = _debt_tiles(players[seat], meta, seat, label == "未叫牌碰鸡")
+				cards = _debt_tiles(players[seat], meta, seat, label == "未叫牌碰鸡", sideways)
 			label = caption(label)
 			parts.append({"label": label, "amount": float(item.get("amount", 0.0)) / multiplier})
 		if not parts.is_empty():
-			var entry := {"tiles": cards, "parts": parts}
+			var entry := {"tiles": cards, "parts": parts, "sideways": sideways}
 			if kind == "kong": entry["kong"] = {"label": label, "from_seat": int(item.get("from_seat", -1)), "seat": seat}
 			out.append(entry)
 	var fees := {}
@@ -77,14 +80,22 @@ static func _paid_kong_debt(result: Dictionary, item: Dictionary, seat: int, rea
 			return true
 	return false
 
-static func _debt_tiles(player, meta: Dictionary, seat: int, pung: bool) -> Array:
+static func _debt_tiles(player, meta: Dictionary, seat: int, pung: bool, sideways: Array) -> Array:
 	var cards: Array = []
 	if pung:
 		for meld in player.melds:
 			if meld.kind == "pung" and TILES.is_chicken(meld.tile): cards.append_array([meld.tile, meld.tile, meld.tile])
 	else:
-		for tile in player.discards:
-			if TILES.is_chicken(tile): cards.append(tile)
+		for index in player.discards.size():
+			var tile: String = player.discards[index]
+			if not TILES.is_chicken(tile): continue
+			var charge: Dictionary = meta.get("charge_chickens", {}).get(tile, {})
+			var id: int = player.discard_ids[index] if index < player.discard_ids.size() else index
+			if charge.get("owner", -1) == seat and charge.get("location", "") == "discard" and charge.get("discard_id", -1) == id:
+				sideways.append(cards.size())
+			cards.append(tile)
 		for resolved in meta.get("resolved_chicken_discards", []):
-			if int(resolved.owner) == seat: cards.append(resolved.tile)
+			if int(resolved.owner) != seat: continue
+			if bool(resolved.get("charge", false)): sideways.append(cards.size())
+			cards.append(resolved.tile)
 	return cards
