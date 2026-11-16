@@ -40,6 +40,7 @@ const HAND_RIGHT := 2236.0
 const DRAW_GAP_TILES := 0.5
 
 const ORDINARY_UNIT := 1.35 # 64.8 × 86.4
+const RIVER_Y_SHIFT := -TILE_BASE.y * ORDINARY_UNIT
 
 static func relative_seat(human_seat: int, seat: int) -> int:
 	return posmod(human_seat - seat, 4)
@@ -173,10 +174,10 @@ static func ordinary_slot_center(seat: int, index: int, human_seat: int, count: 
 	var offset := (index % columns - (used - 1) / 2.0) * 68.8
 	# First row is nearest the centre; later rows grow toward the owner.
 	match rel:
-		0: return Vector2(CENTER.x + offset, 670 + row * 70)
-		2: return Vector2(CENTER.x - offset, 550 - row * 70)
-		1: return Vector2(1602 + row * 93, 540 - offset)
-	return Vector2(678 - row * 93, 540 + offset)
+		0: return Vector2(CENTER.x + offset, 670 + row * 70 + RIVER_Y_SHIFT)
+		2: return Vector2(CENTER.x - offset, 550 - row * 70 + RIVER_Y_SHIFT)
+		1: return Vector2(1602 + row * 93, 540 - offset + RIVER_Y_SHIFT)
+	return Vector2(678 - row * 93, 540 + offset + RIVER_Y_SHIFT)
 
 static func side_wall_shift() -> float:
 	var hand_edge := HAND_RIGHT - TILE_BASE.y * OPPONENT_UNIT

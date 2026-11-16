@@ -119,7 +119,9 @@ static func solve(view) -> Array:
 			var c: Vector2=badge+AXES[rel]*64*(i-(label_count-1)/2.0)
 			obstacles.append(Rect2(c-Vector2(28,28),Vector2(56,56)))
 		var ordinary: int=view._ordinary_count(seat)
-		for i in ordinary:obstacles.append(rect_for(G.ordinary_slot_center(seat,i,view.human_seat,ordinary),Vector2(64.8,86.4),ANGLES[rel]))
+		# Keep the established meld belts when shifting the 3D river.
+		var river_shift:=Vector2(0,G.RIVER_Y_SHIFT) if view._table_3d!=null else Vector2.ZERO
+		for i in ordinary:obstacles.append(rect_for(G.ordinary_slot_center(seat,i,view.human_seat,ordinary)-river_shift,Vector2(64.8,86.4),ANGLES[rel]))
 	for node in view._wall_layer.get_children():
 		if node is TileView and (not view._reconciling or view._render_seen.has(node.get_instance_id())):obstacles.append(rect_for(node.position+node.size/2,node.size*node.scale,node.rotation))
 	obstacles.append(view.reserved_action_rect())
