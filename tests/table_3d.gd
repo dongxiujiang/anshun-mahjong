@@ -426,6 +426,19 @@ func run() -> void:
 	renderer.sync_tiles()
 	await process_frame
 	t.expect(renderer.dice_nodes.is_empty(), "clearing the dice removes their 3D entities")
+	var audio := root.get_node("AudioManager")
+	audio.begin_table(view)
+	audio.stop_effects()
+	view.animate_dice(3, 4)
+	view.clear_dice_visual()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	t.expect(not audio.effects_player.playing, "dice cancelled before rendering never play a delayed roll sound")
+	view.animate_dice(4, 6)
+	await RenderingServer.frame_post_draw
+	t.expect(audio.effects_player.playing, "a replacement dice throw plays its sound after it is rendered")
+	view.clear_dice_visual()
+	audio.end_table(view)
 	round.phase = RoundState.Phase.SETTLED
 	view.refresh()
 	renderer.sync_tiles()

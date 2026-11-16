@@ -545,8 +545,10 @@ func animate_dice(value: int, white: int) -> void:
 	_dice_white = white_die
 	_dice_shadow = shadow
 	if DisplayServer.get_name() != "headless":
+		var rendered_red: WeakRef = weakref(red)
 		RenderingServer.frame_post_draw.connect(func():
-			if is_instance_valid(red) and red == _dice_red and red.is_visible_in_tree():
+			var die = rendered_red.get_ref()
+			if die != null and die == _dice_red and die.is_visible_in_tree():
 				AudioManager.play_dice(), CONNECT_ONE_SHOT)
 	var red_rest := center + Vector2(-UI.DICE_SIZE - 4.0, -UI.DICE_SIZE * 0.5)
 	var white_rest := center + Vector2(4.0, -UI.DICE_SIZE * 0.5)

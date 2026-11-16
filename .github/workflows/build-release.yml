@@ -247,6 +247,7 @@ jobs:
           xvfb-run -a python -X utf8 tests/run_network.py --godot "$(command -v godot)" --section online --graphical-table 2>&1 | tee build/ci/graphical-opening.log
           for suite in table_3d ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
             timeout 600s xvfb-run -a godot --path . --audio-driver Dummy --resolution 1280x720 --script "res://tests/$suite.gd" > "build/ci/$suite.log" 2>&1 || { tail -n 100 "build/ci/$suite.log"; exit 1; }
+            if grep -qE 'SCRIPT ERROR:|ERROR: Lambda capture' "build/ci/$suite.log"; then tail -n 100 "build/ci/$suite.log"; exit 1; fi
             tail -n 4 "build/ci/$suite.log"
           done
 
