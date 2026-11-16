@@ -22,6 +22,7 @@ var _own_hand_pitch := deg_to_rad(63)
 var discard_marker: MeshInstance3D
 var _marker_source_id := 0
 var _marker_blocked := false
+var geometry_revision := 0
 
 func _ready() -> void:
 	name = "Table3D"
@@ -77,6 +78,16 @@ func _ready() -> void:
 	environment.environment.ambient_light_color = Color("#e6eadc")
 	environment.environment.ambient_light_energy = 0.35
 	world.add_child(environment)
+	var surround := MeshInstance3D.new()
+	var surround_mesh := PlaneMesh.new()
+	surround_mesh.size = Vector2(140, 140)
+	surround.mesh = surround_mesh
+	surround.position.y = -4.4
+	surround.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var surround_material := ShaderMaterial.new()
+	surround_material.shader = load(MODEL_PATH + "room.gdshader")
+	surround.material_override = surround_material
+	world.add_child(surround)
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-62, -25, 0)
 	light.light_color = Color("#fff2db")
@@ -173,6 +184,7 @@ func sync_tiles() -> void:
 	var settled: bool = view.round != null and view.round.phase == RoundState.Phase.SETTLED
 	var settlement_started: bool = view.native_settlement_started()
 	var seen := {}
+	var moved: Array[MeshInstance3D] = []
 	var latest: TileView = null
 	var board_inverse := view.get_global_transform().affine_inverse()
 	var width_fit := minf(1.0, G.DESIGN_SIZE.aspect() / Vector2(viewport.size).aspect())
@@ -204,6 +216,7 @@ func sync_tiles() -> void:
 				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0])
 			if _signatures.get(id) == signature: continue
 			_signatures[id] = signature
+			moved.append(node)
 			_changed = true
 			node.mesh = _meshes[key]
 			node.visible = source.is_visible_in_tree() and source.modulate.a > 0.01
@@ -324,6 +337,7 @@ func sync_tiles() -> void:
 		if _signatures.get(id) == signature: continue
 		_changed = true
 		_signatures[id] = signature
+		moved.append(node)
 		node.visible = source.is_visible_in_tree()
 		var coords: Array = _dice_normals[color][str(source.value)]
 		var normal := Vector3(coords[0], coords[1], coords[2])
@@ -350,9 +364,11 @@ func sync_tiles() -> void:
 			_changed = true
 	_update_discard_marker(latest)
 	if _changed:
+		geometry_revision += 1
 		# frame_pre_draw runs after the normal transform flush.
-		for node in tile_nodes.values() + dice_nodes.values() + [discard_marker]:
+		for node in moved:
 			node.force_update_transform()
+		discard_marker.force_update_transform()
 		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 		queue_redraw()
 		_changed = false

@@ -21,9 +21,9 @@ const WALL_BLOCK_GAP := 0.0
 const WALL_EDGE_GAP := 8.0
 const CENTRAL_SIZE := Vector2(1320, 520)
 const OWN_UNIT := 2.65
-const SIDE_HAND_UNIT := 1.05
-const OPPONENT_UNIT := 1.35    # 64.8 × 86.4
-const WALL_UNIT := OPPONENT_UNIT
+const SIDE_HAND_UNIT := 1.16
+const OPPONENT_UNIT := 1.50
+const WALL_UNIT := 1.35
 const WALL_LAYER_SHIFT := 8.0
 const MELD_SIZE := TILE_BASE * OPPONENT_UNIT
 const ACTION_TOP := 816.8
@@ -39,8 +39,8 @@ const HAND_LEFT := 44.0
 const HAND_RIGHT := 2236.0
 const DRAW_GAP_TILES := 0.5
 
-const ORDINARY_UNIT := 1.35 # 64.8 × 86.4
-const RIVER_Y_SHIFT := -TILE_BASE.y * ORDINARY_UNIT
+const ORDINARY_UNIT := 1.48
+const RIVER_Y_SHIFT := -86.4
 
 static func relative_seat(human_seat: int, seat: int) -> int:
 	return posmod(human_seat - seat, 4)
@@ -171,13 +171,13 @@ static func ordinary_slot_center(seat: int, index: int, human_seat: int, count: 
 	var columns := river_columns(rel)
 	var row := index / columns
 	var used := clampi(count - row * columns, 1, columns)
-	var offset := (index % columns - (used - 1) / 2.0) * 68.8
+	var offset := (index % columns - (used - 1) / 2.0) * (TILE_BASE.x * ORDINARY_UNIT + TILE_GAP)
 	# First row is nearest the centre; later rows grow toward the owner.
 	match rel:
-		0: return Vector2(CENTER.x + offset, 670 + row * 70 + RIVER_Y_SHIFT)
-		2: return Vector2(CENTER.x - offset, 550 - row * 70 + RIVER_Y_SHIFT)
-		1: return Vector2(1602 + row * 93, 540 - offset + RIVER_Y_SHIFT)
-	return Vector2(678 - row * 93, 540 + offset + RIVER_Y_SHIFT)
+		0: return Vector2(CENTER.x + offset, 702 + row * 70 + RIVER_Y_SHIFT)
+		2: return Vector2(CENTER.x - offset, 582 - row * 70 + RIVER_Y_SHIFT)
+		1: return Vector2(1577 + row * 102, 572 - offset + RIVER_Y_SHIFT)
+	return Vector2(703 - row * 102, 572 + offset + RIVER_Y_SHIFT)
 
 static func side_wall_shift() -> float:
 	var hand_edge := HAND_RIGHT - TILE_BASE.y * OPPONENT_UNIT

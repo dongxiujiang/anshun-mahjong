@@ -14,6 +14,7 @@ const EXPOSED := preload("res://scripts/ui/table/v2/ExposedLayout.gd")
 var _exposed_specs: Array = []
 var _exposed_key: Variant = null
 var _exposed_checked := false
+var _badge_layout_key: Variant = null
 
 const SCORE_INSPECTION := preload("res://scripts/ui/table/v2/TableV2ScoreInspection.gd")
 const SETTLEMENT_ROWS := preload("res://scripts/ui/table/v2/SettlementRows.gd")
@@ -109,6 +110,7 @@ var _name_labels: Array = []
 const SEAT_BADGE_SIZE := 56.0
 
 var _voice_buttons: Dictionary = {}
+var _turn_markers: Dictionary = {}
 var _ready_meld_badges: Array[Label] = []
 var _dealer_meld_badges: Array[Label] = []
 var _sort_button: Button
@@ -441,6 +443,11 @@ func _meld_badge(caption: String, node_name: String, background: Color, border: 
 
 func _layout_meld_badges() -> void:
 	if round == null or _ready_meld_badges.is_empty(): return
+	if _table_3d != null:
+		var key := [round.get_instance_id(), human_seat, _table_3d.geometry_revision, round.dealer_seat]
+		for player in round.players: key.append(player.ready)
+		if key == _badge_layout_key: return
+		_badge_layout_key = key
 	for seat in 4:
 		var rel := G.relative_seat(human_seat, seat)
 		var axis: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][rel]
@@ -461,14 +468,16 @@ func _layout_meld_badges() -> void:
 			for badge in [dealer, ready_badge]:
 				if badge.get_theme_font_size("font_size") != text_size:
 					badge.add_theme_font_size_override("font_size", text_size)
-				if badge.size != Vector2.ONE * badge_size:
+				if not badge.size.is_equal_approx(Vector2.ONE * badge_size):
 					badge.size = Vector2.ONE * badge_size
+				if not badge.size.is_equal_approx(Vector2.ONE * badge_size): _badge_layout_key = null
+			if badges.is_empty(): continue
 			var at := Vector2(info.end.x + 12.0, info.get_center().y - SEAT_BADGE_SIZE / 2.0)
 			var step := 64.0
 			if rel == 0:
 				step = 44.0
 				# Keep the local badges in the free left margin beside the hand strip.
-				at = Vector2(24.0, _own_hand_top() - 42.0)
+				at = _own_badge_position(Vector2(badges.size() * step - 4.0, badge_size))
 			if rel == 2: at.y = info.position.y
 			if rel in [1, 3]:
 				at = Vector2(info.get_center().x - (badges.size() * 64.0 - 8.0) / 2.0,
@@ -477,6 +486,25 @@ func _layout_meld_badges() -> void:
 			continue
 		for index in badges.size():
 			badges[index].position = center - Vector2(28, 28) + axis * 64.0 * (index - (badges.size() - 1) / 2.0)
+
+func _own_badge_position(dimensions: Vector2) -> Vector2:
+	var top := _own_hand_top() - 44.0
+	var obstacles: Array[Rect2] = []
+	for layer in _render_layers():
+		for tile in layer.get_children():
+			if tile is TileView and tile.is_visible_in_tree(): obstacles.append(_table_3d.project_tile(tile))
+	for seat in 4: obstacles.append(_seat_hud_rect(seat))
+	for row in 8:
+		var y := top - row * 44.0
+		var candidates := [24.0]
+		for rect in obstacles:
+			if rect.position.y < y + dimensions.y and rect.end.y > y: candidates.append(rect.end.x + 8.0)
+		candidates.sort()
+		for x: float in candidates:
+			var rect := Rect2(Vector2(x, y), dimensions)
+			if rect.end.x < G.DESIGN_SIZE.x - 24.0 and obstacles.all(func(other): return not rect.intersects(other)):
+				return rect.position
+	return Vector2(24.0, top)
 
 func clear_dice_visual() -> void:
 	if _dice_tween != null and _dice_tween.is_valid(): _dice_tween.kill()
@@ -1466,8 +1494,7 @@ func refresh() -> void:
 	_clear(_debug_layer)
 	_build_wall()
 	_build_hands()
-	# Exposed layout uses hand-following HUD bounds, so project the new hands first.
-	if _table_3d != null: _table_3d.sync_tiles()
+	# Exposed layout reserves source geometry; project once after reconciliation.
 	if not test_frozen:
 		_build_discards()
 		_build_melds()
@@ -2981,7 +3008,9 @@ func _refresh_hud() -> void:
 	if round == null or _label_layer == null:
 		return
 	var seats: Array = snapshot.get("seats", [])
-	var signature := str([snapshot.get("turn", -1), seats.map(
+	for seat in _turn_markers:
+		_turn_markers[seat].visible = int(snapshot.get("turn", -1)) == seat and round.phase == ROUND_STATE.Phase.PLAYING
+	var signature := str([seats.map(
 		func(data): return [data.name, data.score, data.ready, data.is_dealer, data.is_human]),
 		round.phase, AudioManager.seat_voice_packs, table != null and table._net_mode() != ""])
 	if signature == _label_signature and not _labels.is_empty():
@@ -3023,6 +3052,7 @@ func _build_labels(seats: Array) -> void:
 	_labels.clear()
 	_name_labels.clear()
 	_voice_buttons.clear()
+	_turn_markers.clear()
 	var names := _seat_display_names(seats)
 	for data in seats:
 		var seat := int(data.seat)
@@ -3049,11 +3079,12 @@ func _build_labels(seats: Array) -> void:
 		name_label.size = Vector2(name_width, 32)
 		name_label.tooltip_text = who
 		_name_labels.append(name_label)
-		if is_turn:
-			var turn_marker := _table_text(_label_layer, "●", 18, UI.GOLD)
-			turn_marker.name = "SeatTurn%d" % seat
-			turn_marker.position = name_label.position - Vector2(24, 0)
-			turn_marker.size = Vector2(20, 32)
+		var turn_marker := _table_text(_label_layer, "●", 18, UI.GOLD)
+		turn_marker.name = "SeatTurn%d" % seat
+		turn_marker.position = name_label.position - Vector2(24, 0)
+		turn_marker.size = Vector2(20, 32)
+		turn_marker.visible = is_turn
+		_turn_markers[seat] = turn_marker
 
 		var score := _table_text(_label_layer, "", 28, UI.GOLD if is_dealer else UI.INK)
 		score.name = "SeatScore%d" % seat

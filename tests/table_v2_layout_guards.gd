@@ -283,13 +283,17 @@ func _test_voice_hud_bounds(deck) -> void:
 				deck.refresh_voice_control(seat)
 				t.expect(nickname.get_theme_color("font_color") == closed_color, "remote microphone off returns name to white")
 		var name_position: Vector2 = deck._name_labels[1].position
+		var name_instance: int = deck._name_labels[1].get_instance_id()
+		var voice_instance: int = deck._voice_buttons[1].get_instance_id()
 		for turn in 4:
 			mock.round.current_turn = turn
 			deck.refresh()
 			t.expect(deck._name_labels[1].position == name_position, "turn changes do not move the name")
+			t.expect(deck._name_labels[1].get_instance_id() == name_instance and deck._voice_buttons[1].get_instance_id() == voice_instance,
+				"turn changes reuse the name and voice touch target")
 			for seat in 4:
 				var marker = deck._label_layer.get_node_or_null("SeatTurn%d" % seat)
-				t.expect((marker != null) == (seat == turn), "only the current player has a turn marker")
+				t.expect(marker != null and marker.visible == (seat == turn), "only the current player's turn marker is visible")
 				t.expect(deck._name_labels[seat].get_theme_color("font_color") == deck.UI.INK, "turn alone never makes a name yellow")
 				if marker != null:
 					t.expect(marker.get_theme_color("font_color") == deck.UI.GOLD, "turn marker stays yellow")

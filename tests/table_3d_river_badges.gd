@@ -9,6 +9,7 @@ var badge_combinations := 0
 func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
+	check_obstacle_compaction()
 	for viewer in 4:
 		for seat in 4:
 			var rel := G.relative_seat(viewer, seat)
@@ -20,7 +21,7 @@ func run() -> void:
 					var used := mini(columns, count - row * columns)
 					var a := G.ordinary_slot_center(seat, row * columns, viewer, count)
 					var b := G.ordinary_slot_center(seat, row * columns + used - 1, viewer, count)
-					t.expect(is_equal_approx(absf(b.y - a.y) if rel in [1, 3] else absf(b.x - a.x), (used - 1) * 68.8), "each row fills before wrapping, including every partial row")
+					t.expect(is_equal_approx(absf(b.y - a.y) if rel in [1, 3] else absf(b.x - a.x), (used - 1) * 75.04), "each row fills before wrapping, including every partial row")
 	root.get_node("UpdateManager").auto_check = false
 	var view = load("res://scenes/table/TableV2.tscn").instantiate()
 	root.add_child(view)
@@ -40,6 +41,7 @@ func run() -> void:
 						await process_frame
 						view._table_3d.sync_tiles()
 						check_rivers(view)
+						check_exposed(view)
 						check_badges(view)
 						if not settled: check_actions(view)
 			print("completed pixels=%s viewer=%d layouts=%d combinations=%d" % [pixels, viewer, layouts, badge_combinations])
@@ -177,7 +179,7 @@ func check_badges(view) -> void:
 				t.expect(view._ready_meld_badges[seat].visible == bool(mask & (1 << seat)), "every declared-ready player has a ready badge")
 				for badge in [view._dealer_meld_badges[seat], view._ready_meld_badges[seat]]:
 					if not badge.visible: continue
-					t.expect(badge.size == Vector2.ONE * (40.0 if seat == view.human_seat else 56.0), "badge width and height both follow the seat after deferred font layout")
+					t.expect(badge.size.is_equal_approx(Vector2.ONE * (40.0 if seat == view.human_seat else 56.0)), "badge width and height both follow the seat after deferred font layout")
 					var rect: Rect2 = badge.get_rect()
 					clear = clear and Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(rect)
 					for other in badges + obstacles:
@@ -206,3 +208,34 @@ func check_actions(view) -> void:
 			var control := PackedVector2Array([action.position, Vector2(action.position.x, action.end.y), action.end, Vector2(action.end.x, action.position.y)])
 			if not Geometry2D.intersect_polygons(face, control).is_empty(): failures.append([tile.get_meta("new_kind"), tile.get_meta("v2_seat"), tile.tile])
 		t.expect(failures.is_empty(), "action row avoids every printed public face: pixels%s viewer%d width%d melds%d chickens%d %s" % [renderer.viewport.size, view.human_seat, width, view.round.players[view.human_seat].melds.size(), view.round.players[view.human_seat].discards.filter(func(card): return Tiles.is_chicken(card)).size(), failures])
+
+func check_obstacle_compaction() -> void:
+	var original := [Rect2(0, 0, 10, 10), Rect2(10, 0, 10, 10), Rect2(0, 10, 10, 10),
+		Rect2(24, 0, 10, 10), Rect2(34, 0, 10, 10), Rect2(44, 1, 10, 10)]
+	var compact: Array = preload("res://scripts/ui/table/v2/ExposedLayout.gd").compact_obstacles(original)
+	t.expect(compact.size() < original.size(), "aligned touching obstacles collapse into fewer rectangles")
+	for x in range(-2, 57, 2):
+		for y in range(-2, 23, 2):
+			var probe := Rect2(x, y, 3, 3)
+			var before: bool = original.any(func(rect): return rect.intersects(probe))
+			var after: bool = compact.any(func(rect): return rect.intersects(probe))
+			t.expect(before == after, "compaction preserves gaps, L-shaped free space and all collision edges")
+
+func check_exposed(view) -> void:
+	var expected := 0
+	for seat in 4:
+		for meld in view.MODEL.melds_for_seat(view.round, seat): expected += 3 if meld.kind == "pung" else 4
+		expected += view.round.players[seat].discards.filter(func(tile): return Tiles.is_chicken(tile)).size()
+	var public_tiles: Array = view._red_layer.get_children() + view._meld_layer.get_children()
+	t.expect(public_tiles.size() == expected, "all meld and chicken tiles remain displayed at the enlarged size")
+	var failures := []
+	var renderer = view._table_3d
+	for tile in public_tiles:
+		if int(tile.get_meta("v2_seat")) == view.human_seat or not tile.face_up: continue
+		var mesh: MeshInstance3D = renderer.tile_nodes[tile.get_instance_id()]
+		for offset in [Vector2.ZERO, Vector2(-0.25, -0.35), Vector2(0.25, -0.35), Vector2(-0.25, 0.35), Vector2(0.25, 0.35)]:
+			var point: Vector2 = renderer.camera.unproject_position(mesh.transform * Vector3(offset.x, 0.31, offset.y)) / Vector2(renderer.viewport.size) * renderer.size
+			if renderer.pick_tile(point, false) != tile:
+				failures.append("%s seat%d meld%s" % [tile.tile, tile.get_meta("v2_seat"), tile.get_meta("meld_index", -1)])
+				break
+	t.expect(failures.is_empty(), "enlarged opponent meld and chicken faces stay visible: %s" % [failures])

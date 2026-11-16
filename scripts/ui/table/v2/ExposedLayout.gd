@@ -6,7 +6,7 @@ const INWARD := [Vector2.UP, Vector2.LEFT, Vector2.DOWN, Vector2.RIGHT]
 const ANGLES := [0.0, -PI/2, PI, PI/2]
 
 static func size_for(rel: int) -> Vector2:
-	return Vector2(64.8,86.4) * (0.85 if rel in [1,3] else 1.0)
+	return Vector2(64.8,86.4) * (0.85 if rel in [1,3] else 1.0) * (1.08 if rel != 0 else 1.0)
 
 static func rect_for(center: Vector2, size: Vector2, angle: float) -> Rect2:
 	var extent := size if is_zero_approx(sin(angle)) else Vector2(size.y,size.x)
@@ -17,7 +17,7 @@ static func rect_for(center: Vector2, size: Vector2, angle: float) -> Rect2:
 static func origin(rel: int, lower: bool) -> Vector2:
 	if lower:
 		return [Vector2(1140,G.HAND_BOTTOM),Vector2(G.HAND_RIGHT,640),Vector2(1140,G.HAND_TOP),Vector2(G.HAND_LEFT,640)][rel]
-	return [Vector2(1140,G.HAND_BOTTOM-G.TILE_BASE.y*G.OWN_UNIT-8),Vector2(G.HAND_RIGHT-86.4-8,640),Vector2(1140,G.HAND_TOP+86.4+8),Vector2(G.HAND_LEFT+86.4+8,640)][rel]
+	return [Vector2(1140,G.HAND_BOTTOM-G.TILE_BASE.y*G.OWN_UNIT-8),Vector2(G.HAND_RIGHT-G.TILE_BASE.y*G.OPPONENT_UNIT-8,640),Vector2(1140,G.HAND_TOP+G.TILE_BASE.y*G.OPPONENT_UNIT+8),Vector2(G.HAND_LEFT+G.TILE_BASE.y*G.OPPONENT_UNIT+8,640)][rel]
 
 static func interval(rect: Rect2, rel: int) -> Vector2:
 	var axis: Vector2=AXES[rel]
@@ -57,15 +57,33 @@ static func place(group: Dictionary, start: float, lower: bool, outward: float =
 		cursor+=width+4
 	return out
 
-static func clear(specs: Array, obstacles: Array) -> bool:
+static func clear(specs: Array, obstacles: Array, offset: Vector2 = Vector2.ZERO) -> bool:
 	for spec in specs:
-		if not G.TABLE_BOUNDS.grow(0.1).encloses(spec.rect): return false
-		var span:=interval(spec.rect,int(spec.rel))
+		var rect: Rect2 = spec.rect
+		rect.position += offset
+		if not G.TABLE_BOUNDS.grow(0.1).encloses(rect): return false
+		var span:=interval(rect,int(spec.rel))
 		var bounds:=axis_bounds(int(spec.rel))
 		if span.x<bounds.x or span.y>bounds.y:return false
+		var interior := rect.grow(-0.05)
 		for obstacle: Rect2 in obstacles:
-			if spec.rect.grow(-0.05).intersects(obstacle): return false
+			if interior.intersects(obstacle): return false
 	return true
+
+static func compact_obstacles(obstacles: Array) -> Array:
+	var compact := []
+	for obstacle: Rect2 in obstacles:
+		var rect := obstacle
+		for i in range(compact.size() - 1, -1, -1):
+			var other: Rect2 = compact[i]
+			# Only merge rectangles whose union is exactly another rectangle.
+			var same_row := rect.position.y == other.position.y and rect.size.y == other.size.y
+			var same_column := rect.position.x == other.position.x and rect.size.x == other.size.x
+			if (same_row or same_column) and rect.intersects(other, true):
+				rect = rect.merge(other)
+				compact.remove_at(i)
+		compact.append(rect)
+	return compact
 
 static func solve(view) -> Array:
 	var groups:=[]
@@ -106,12 +124,25 @@ static func solve(view) -> Array:
 		var hand_size:=G.hand_tile_size(seat,view.human_seat)
 		if rel in [1,3] and not view._face_visible(seat): hand_size.x = 2.0 * hand_size.y
 		var hand_shift := Vector2.ZERO
-		if view._table_3d != null and rel in [1, 3] and not view._face_visible(seat):
-			# Reserve the same wider, raised standing backs that the 3D view displays.
-			hand_size.y *= 1.30
+		var hand_stretch := 1.0
+		if view._table_3d != null and rel in [1, 3]:
+			# Match the raised 3D row both while standing and after settlement.
+			var weight := 1.07 if view._face_visible(seat) else 1.30
+			hand_size.y *= weight
+			hand_stretch = weight * 0.95
 			hand_shift.y = -112.0
-		for i in view._current_hand_count(seat):obstacles.append(rect_for(view._hand_center(seat,i,view._current_hand_count(seat)) + hand_shift,hand_size,ANGLES[rel]))
-		if not str(player.just_drew).is_empty():obstacles.append(rect_for(view._draw_center(seat,view._current_hand_count(seat)) + hand_shift,hand_size,ANGLES[rel]))
+		var hand_centers := []
+		for i in view._current_hand_count(seat): hand_centers.append(view._hand_center(seat,i,view._current_hand_count(seat)))
+		if not str(player.just_drew).is_empty(): hand_centers.append(view._draw_center(seat,view._current_hand_count(seat)))
+		for center: Vector2 in hand_centers:
+			if view._table_3d != null and rel in [1, 3]: center.x -= (center.y - G.CENTER.y) * 0.105 * (1 if rel == 1 else -1)
+			center.y = G.CENTER.y + (center.y - G.CENTER.y) * hand_stretch
+			var hand_rect := rect_for(center + hand_shift,hand_size,ANGLES[rel])
+			if view._table_3d != null and rel in [1, 3]:
+				# Leave a tile length for the projected ends of the raised hand row.
+				var margin := G.TILE_BASE.y * G.OPPONENT_UNIT
+				hand_rect = hand_rect.grow_individual(0, margin, 0, margin)
+			obstacles.append(hand_rect)
 		obstacles.append(view._seat_hud_rect(seat))
 		var badge: Vector2=G.meld_anchor(seat,view.human_seat)
 		var label_count:=int(seat==view.round.dealer_seat)+int(player.ready)
@@ -121,10 +152,11 @@ static func solve(view) -> Array:
 		var ordinary: int=view._ordinary_count(seat)
 		# Keep the established meld belts when shifting the 3D river.
 		var river_shift:=Vector2(0,G.RIVER_Y_SHIFT) if view._table_3d!=null else Vector2.ZERO
-		for i in ordinary:obstacles.append(rect_for(G.ordinary_slot_center(seat,i,view.human_seat,ordinary)-river_shift,Vector2(64.8,86.4),ANGLES[rel]))
+		for i in ordinary:obstacles.append(rect_for(G.ordinary_slot_center(seat,i,view.human_seat,ordinary)-river_shift,G.TILE_BASE*G.ORDINARY_UNIT,ANGLES[rel]))
 	for node in view._wall_layer.get_children():
 		if node is TileView and (not view._reconciling or view._render_seen.has(node.get_instance_id())):obstacles.append(rect_for(node.position+node.size/2,node.size*node.scale,node.rotation))
 	obstacles.append(view.reserved_action_rect())
+	obstacles = compact_obstacles(obstacles)
 	for attempt in 10:
 		var order:=groups.duplicate()
 		order.sort_custom(func(a,b):
@@ -158,13 +190,14 @@ static func find_space(group: Dictionary, obstacles: Array) -> Array:
 	for hand_space in [true,false]:
 		var limits:=Vector2(maxf(bounds.x,-hand_half),minf(bounds.y,hand_half)) if hand_space else bounds
 		for lower in [false,true]:
+			var shape := place(group,0,lower)
 			for side in [-1,1]:
 				var candidates: Array=starts.keys().filter(func(x):return x>=limits.x+8 and x+width<=limits.y-8 and ((x<0 if side<0 else x>=0) if lower else (x+width<=-8 if side<0 else x>=8)))
 				candidates.sort()
 				if (side<0 and not lower) or (side>0 and lower):candidates.reverse()
 				for start in candidates:
-					var specs:=place(group,float(start),lower)
-					if clear(specs,obstacles):return specs
+					if clear(shape,obstacles,AXES[rel]*float(start)):
+						return place(group,float(start),lower)
 	# A held hand or a two-row kong may leave neither fixed belt usable.
 	# Search the free belt, including just inside that wall, as a whole group.
 	var inward: Vector2=INWARD[rel]
@@ -191,6 +224,6 @@ static func find_space(group: Dictionary, obstacles: Array) -> Array:
 	for offset in values:
 		for start in starts:
 			if start<bounds.x+8 or start+width>bounds.y-8:continue
-			var specs:=place(group,float(start),false,float(offset))
-			if clear(specs,obstacles):return specs
+			if clear(shape,obstacles,AXES[rel]*float(start)-inward*float(offset)):
+				return place(group,float(start),false,float(offset))
 	return []
