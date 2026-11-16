@@ -854,6 +854,37 @@ func _own_discard_reorder() -> void:
 		t.expect(done[0] and deck.draw_boxes[seat].get_child_count() == 0 and deck.hand_boxes[seat].get_children().map(func(node): return node.tile) == expected, name + ": locks until all original tiles are in their new slots")
 		await _cleanup(host)
 
+func _own_meld_recenter() -> void:
+	var host = _fixture()
+	var deck = host._new_areas
+	var seat := 1
+	var original := ["tong7", "tong9", "wan3", "tiao2", "tong6"]
+	host.round.players[seat].concealed = original.duplicate()
+	var box: Control = deck.hand_boxes[seat]
+	for i in original.size():
+		_card(deck, box, original[i], seat, i, G.hand_slot_center(seat, i + 2, seat, original.size() + 2))
+	var nodes: Array = box.get_children()
+	# Children have their new order, with positions still held while the meld lands.
+	for i in [2, 3, 4, 0, 1]:
+		box.move_child(nodes[i], box.get_child_count() - 1)
+	var done := [false]
+	deck._center_hand_after_meld(seat, deck._begin_visual_action(), func(): done[0] = true)
+	var separated := true
+	var deadline := Time.get_ticks_msec() + 2500
+	while not done[0] and Time.get_ticks_msec() < deadline:
+		await process_frame
+		for i in nodes.size():
+			for j in range(i + 1, nodes.size()):
+				var a: Control = nodes[i]
+				var b: Control = nodes[j]
+				separated = separated and absf(a.get_global_rect().get_center().x - b.get_global_rect().get_center().x) > 56.0
+	t.expect(separated, "the 3D hand does not cross when a meld changes its remaining order")
+	t.expect(done[0] and not deck.native_actions_pending(), "post-meld centering ends before releasing input")
+	for i in box.get_child_count():
+		var node: Control = box.get_child(i)
+		t.expect((node.position + node.size / 2.0).is_equal_approx(G.hand_slot_center(seat, i, seat, nodes.size())), "post-meld hand lands in its final slot")
+	await _cleanup(host)
+
 func _own_opening_sort() -> void:
 	var host = _fixture()
 	var deck = host._new_areas
@@ -898,6 +929,7 @@ func _run():
 	if selected_case in ["all","kong_sources"]: await _kong_sources()
 	if selected_case in ["all","discard_sources"]: await _discard_sources()
 	if selected_case in ["all","river_centering"]: await _river_centering()
+	if selected_case in ["all","own_meld_recenter"]: await _own_meld_recenter()
 	if selected_case in ["all","own_opening_sort"]: await _own_opening_sort()
 	if selected_case in ["all","own_discard_reorder"]: await _own_discard_reorder()
 	if selected_case in ["all","remote_discards"]: await _remote_discards()

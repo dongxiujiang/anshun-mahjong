@@ -2479,8 +2479,11 @@ func _center_hand_after_meld(seat: int, action_id: int, done: Callable, instant 
 	_held_hand_centers.erase(seat)
 	var moves: Array = []
 	var hand: Array = hand_boxes[seat].get_children()
+	var previous_x := -INF
 	for slot in hand.size():
 		var node: Control = hand[slot]
+		if _table_3d != null and seat == human_seat and node.position.x < previous_x: instant = true
+		previous_x = node.position.x
 		var target := G.hand_slot_center(seat, slot, human_seat, hand.size()) - node.size / 2.0
 		if not node.position.is_equal_approx(target): moves.append({"node": node, "from": node.position, "target": target})
 		node.position = target
