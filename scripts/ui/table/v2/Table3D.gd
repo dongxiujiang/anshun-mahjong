@@ -308,7 +308,7 @@ func sync_tiles() -> void:
 			if own_hand and flight < 0.0:
 				# Bottom controls can cover the base while leaving every printed face clear.
 				for _step in 2:
-					center.y += size.y - (44.0 if settled else 68.0) - _project_mesh(node).end.y
+					center.y += size.y - (60.0 if settled else 68.0) - _project_mesh(node).end.y
 					node.position = _at_height(center, height)
 			if hand and not side_hand and flight < 0.0:
 				var step: float = (source.size.x + G.TILE_GAP) * along_scale
