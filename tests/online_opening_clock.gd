@@ -24,6 +24,7 @@ func _wait(predicate: Callable, seconds := 30.0) -> bool:
 		if table != null and Time.get_ticks_msec() >= next_progress:
 			next_progress = Time.get_ticks_msec() + 10000
 			print("[opening-clock] phase=%d dealt=%s sorting=%s" % [table.round.phase, table._table_animation_controller._dealt, table._new_areas._sort_animating])
+			print("[opening-detail] started=%s opening=%s sorting=%s busy=%s queue=%s native=%s ack=%s session=%s turn=%s awaiting=%s" % [table._new_areas._sort_started, table._table_animation_controller._opening, table._table_animation_controller._sorting, table._table_animation_controller._animation_busy, table._table_animation_controller._animation_queue.size(), table._new_areas.native_presentation_pending(), root.get_node("Network").net_node._opening_ack_session, table.round.audio_session, table.round.current_turn, table.round.awaiting])
 		await process_frame
 	return bool(predicate.call())
 
