@@ -2669,6 +2669,8 @@ func _build_melds() -> void:
 			tile.set_meta("meld_index", meld_index)
 			tile.set_meta("meld_slot", slot)
 			tile.set_meta("meld_sideways", slot if spec.sideways else -1)
+			tile.set_meta("kong_offset_2d", spec.kong_offset_2d)
+			tile.set_meta("kong_offset_3d", spec.kong_offset_3d)
 			tile.set_meta("meld_concealed", spec.concealed)
 			tile.set_meta("meld_revealed", revealed)
 			if chicken: tile.set_meta("v2_red_kind", spec.kind)

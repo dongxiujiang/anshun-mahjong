@@ -198,7 +198,7 @@ func sync_tiles() -> void:
 				source.z_index, source.highlight, source.latest_highlight, source.ai_teach_highlight,
 				source.score_highlight, source.get_parent().get_instance_id(),
 				source.get_meta("charge_chicken", false), source.get_meta("gold_chicken", false),
-				source.get_meta("v2_charge", false), settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
+				source.get_meta("v2_charge", false), source.get_meta("kong_offset_2d", Vector2.ZERO), source.get_meta("kong_offset_3d", Vector2.ZERO), settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
 				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0])
 			if _signatures.get(id) == signature: continue
 			_signatures[id] = signature
@@ -231,6 +231,11 @@ func sync_tiles() -> void:
 			# Uniform world scales preserve the source model's 1 : 1.34 : 0.62 shape.
 			# A single physical baseline gives near and far rows their natural parallax.
 			var rel := G.relative_seat(view.human_seat, int(source.get_meta("v2_seat", view.human_seat)))
+			var kong_offset := Vector2.ZERO
+			if kind in ["meld", "red"] and int(source.get_meta("meld_index", -1)) >= 0:
+				# Pack a kong in model units; sprite spacing changes with the camera and aspect.
+				center -= Vector2(source.get_meta("kong_offset_2d", Vector2.ZERO))
+				kong_offset = source.get_meta("kong_offset_3d", Vector2.ZERO)
 			var side_hand: bool = hand and source.standing_back_view in [1, 3]
 			var side_row: bool = side_wall or side_hand or (kind in ["meld", "red", "ordinary"] and rel in [1, 3])
 			if rel == 0 and kind in ["meld", "red"] and center.y < G.HAND_BOTTOM - G.TILE_BASE.y * G.OWN_UNIT:
@@ -268,6 +273,7 @@ func sync_tiles() -> void:
 			var height := (1.34 * absf(sin(pitch)) + 0.62 * absf(cos(pitch))) * factor / 2.0 + 0.03
 			var position_3d := _at_height(center, height)
 			position_3d.z += row_offset
+			position_3d += Vector3(kong_offset.x, 0, kong_offset.y) * factor
 			if kind == "wall":
 				if wall_upper or source.face_up: position_3d.y += 0.62 * factor
 				if source == view._settlement_flip_view: position_3d.y += sin(pitch) * factor * 0.35
