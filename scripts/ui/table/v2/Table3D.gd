@@ -257,7 +257,7 @@ func sync_tiles() -> void:
 			var hand_blend := 1.0 if flight < 0.0 else 1.0 - smoothstep(0.0, 0.75, flight)
 			var side_row: bool = side_wall or (side_hand and flight < 0.0) or (kind in ["meld", "red", "ordinary"] and rel in [1, 3] and flight < 0.0)
 			if rel == 0 and kind in ["meld", "red"] and center.y < G.HAND_BOTTOM - G.TILE_BASE.y * G.OWN_UNIT:
-				center.y -= 72.0 if settlement_started else 12.0
+				center.y -= 72.0 if settled or settlement_started else 12.0
 			var near_fit := lerpf(1.0, width_fit, 0.55)
 			var side_unit := 1.07 if face_up else 1.30
 			var weight := lerpf(1.0, 1.04 * near_fit / width_fit * 1.02 if own_hand else (side_unit if side_hand else 1.0), hand_blend)

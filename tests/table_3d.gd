@@ -185,7 +185,7 @@ func _check_own_input(view, renderer) -> void:
 		"sorting stays on screen at the lower right")
 	for source in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
 		var bounds: Rect2 = renderer.project_tile(source)
-		t.expect(absf(bounds.end.y - (renderer.size.y - 44.0)) < 2.0, "the local hand rests close to the bottom table edge: %s" % bounds)
+		t.expect(absf(bounds.end.y - (renderer.size.y - 68.0)) < 2.0, "the local hand leaves room for the taller bottom controls: %s" % bounds)
 		t.expect(bounds.has_area() and Rect2(Vector2.ZERO, renderer.size).encloses(bounds),
 			"the complete local tile remains in the viewport")
 		var hit = renderer.pick_tile(bounds.get_center())
