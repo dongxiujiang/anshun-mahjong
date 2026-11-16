@@ -272,4 +272,10 @@ func _check_sort_clear(view) -> void:
 	var rect: Rect2 = view._sort_button.get_rect()
 	t.expect(Rect2(Vector2.ZERO, TableV2Geometry.DESIGN_SIZE).encloses(rect), "3D Sort stays on screen")
 	for tile in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
-		t.expect(not rect.intersects(view._table_3d.project_tile(tile)), "Sort does not cover any projected hand or draw tile")
+		var renderer = view._table_3d
+		var mesh: MeshInstance3D = renderer.tile_nodes[tile.get_instance_id()]
+		var face := PackedVector2Array()
+		for corner in [Vector2(-0.5,-0.67), Vector2(-0.5,0.67), Vector2(0.5,0.67), Vector2(0.5,-0.67)]:
+			face.append(renderer.camera.unproject_position(mesh.transform * Vector3(corner.x,0.31,corner.y)) / Vector2(renderer.viewport.size) * renderer.size)
+		var button := PackedVector2Array([rect.position,Vector2(rect.position.x,rect.end.y),rect.end,Vector2(rect.end.x,rect.position.y)])
+		t.expect(Geometry2D.intersect_polygons(face,button).is_empty(), "Sort leaves the entire printed face clear while allowing base overlap")

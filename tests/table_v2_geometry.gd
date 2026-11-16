@@ -12,8 +12,8 @@ func _run() -> void:
 	var east := G.hand13_rect(0, human)
 	t.expect(is_equal_approx(own.size.x, 13.0 * (127.2 + 4.0) - 4.0), "自己13张参考宽度")
 	t.expect(is_equal_approx(own.size.y, 169.6), "自己13张参考高度")
-	t.expect(is_equal_approx(north.size.x, 13.0 * (64.8 + 4.0) - 4.0), "北家13张参考宽度")
-	t.expect(is_equal_approx(east.size.y, 13.0 * (50.4 + 4.0) - 4.0), "侧家13张手牌缩短为透视距离")
+	t.expect(is_equal_approx(north.size.x, 13.0 * (72.0 + 4.0) - 4.0), "北家13张参考宽度")
+	t.expect(is_equal_approx(east.size.y, 13.0 * (55.68 + 4.0) - 4.0), "侧家13张手牌缩短为透视距离")
 	for seat in [0, 2]:
 		var near_end := G.hand_slot_center(seat, 0 if seat == 0 else 12, human)
 		var far_end := G.hand_slot_center(seat, 12 if seat == 0 else 0, human)
@@ -71,7 +71,7 @@ func _run() -> void:
 	for seat in 4:
 		var rel := G.relative_seat(human, seat)
 		var side := rel in [1, 3]
-		var wall_size := G.MELD_SIZE if seat in [1, 3] else Vector2(G.MELD_SIZE.y, G.MELD_SIZE.x)
+		var wall_size := G.TILE_BASE * G.WALL_UNIT if seat in [1, 3] else Vector2(G.TILE_BASE.y, G.TILE_BASE.x) * G.WALL_UNIT
 		var wall_clear := true
 		for columns in [13, 14]:
 			for column in columns:

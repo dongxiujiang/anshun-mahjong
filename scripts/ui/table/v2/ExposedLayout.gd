@@ -63,7 +63,7 @@ static func clear(specs: Array, obstacles: Array, offset: Vector2 = Vector2.ZERO
 		rect.position += offset
 		if not G.TABLE_BOUNDS.grow(0.1).encloses(rect): return false
 		var span:=interval(rect,int(spec.rel))
-		var bounds:=axis_bounds(int(spec.rel))
+		var bounds: Vector2=spec.get("bounds",axis_bounds(int(spec.rel)))
 		if span.x<bounds.x or span.y>bounds.y:return false
 		var interior := rect.grow(-0.05)
 		for obstacle: Rect2 in obstacles:
@@ -88,6 +88,7 @@ static func compact_obstacles(obstacles: Array) -> Array:
 static func solve(view) -> Array:
 	var groups:=[]
 	var obstacles:=[]
+	var own_chicken_obstacles:=[]
 	for seat in 4:
 		var rel: int=G.relative_seat(view.human_seat,seat)
 		var player=view.round.players[seat]
@@ -120,6 +121,10 @@ static func solve(view) -> Array:
 		for g in upper:
 			g.start=right;g.lower=false;right+=float(g.width)+8
 		for g in melds.slice(2):g.start=0.0;g.lower=true
+		if view._table_3d != null and rel in [1,3] and view._current_hand_count(view.human_seat) >= 10:
+			# A full local hand occupies both near corners after perspective projection.
+			var corner_half := G.hand_span(13,G.SIDE_HAND_UNIT)/2
+			for g in singles+melds: g["bounds"] = Vector2(-corner_half,corner_half)
 		groups.append_array(singles+melds)
 		var hand_size:=G.hand_tile_size(seat,view.human_seat)
 		if rel in [1,3] and not view._face_visible(seat): hand_size.x = 2.0 * hand_size.y
@@ -142,6 +147,10 @@ static func solve(view) -> Array:
 				# Leave a tile length for the projected ends of the raised hand row.
 				var margin := G.TILE_BASE.y * G.OPPONENT_UNIT
 				hand_rect = hand_rect.grow_individual(0, margin, 0, margin)
+			if view._table_3d != null and rel == 0:
+				# The foreground hand fans wider than its source rectangles.
+				var margin := G.TILE_BASE.x*G.OWN_UNIT
+				own_chicken_obstacles.append(hand_rect.grow_individual(margin,0,margin,0))
 			obstacles.append(hand_rect)
 		obstacles.append(view._seat_hud_rect(seat))
 		var badge: Vector2=G.meld_anchor(seat,view.human_seat)
@@ -152,9 +161,20 @@ static func solve(view) -> Array:
 		var ordinary: int=view._ordinary_count(seat)
 		# Keep the established meld belts when shifting the 3D river.
 		var river_shift:=Vector2(0,G.RIVER_Y_SHIFT) if view._table_3d!=null else Vector2.ZERO
-		for i in ordinary:obstacles.append(rect_for(G.ordinary_slot_center(seat,i,view.human_seat,ordinary)-river_shift,G.TILE_BASE*G.ORDINARY_UNIT,ANGLES[rel]))
+		for i in ordinary:
+			var center := G.ordinary_slot_center(seat,i,view.human_seat,ordinary)-river_shift
+			var river := rect_for(center,G.TILE_BASE*G.ORDINARY_UNIT,ANGLES[rel])
+			if view._table_3d != null and rel in [1,3]:
+				river = river.grow_individual(0,G.TILE_BASE.x*G.ORDINARY_UNIT,0,0)
+			obstacles.append(river)
 	for node in view._wall_layer.get_children():
-		if node is TileView and (not view._reconciling or view._render_seen.has(node.get_instance_id())):obstacles.append(rect_for(node.position+node.size/2,node.size*node.scale,node.rotation))
+		if node is TileView and (not view._reconciling or view._render_seen.has(node.get_instance_id())):
+			var position: Vector2 = node.position.snapped(Vector2.ONE * 0.001)
+			var dimensions: Vector2 = node.size.snapped(Vector2.ONE * 0.001)
+			var wall_rect := rect_for(position+dimensions/2,dimensions*node.scale,node.rotation)
+			if view._table_3d != null and absf(sin(node.rotation)) > 0.5:
+				wall_rect = wall_rect.grow_individual(0,G.TILE_BASE.x*G.WALL_UNIT,0,0)
+			obstacles.append(wall_rect)
 	obstacles.append(view.reserved_action_rect())
 	obstacles = compact_obstacles(obstacles)
 	for attempt in 10:
@@ -168,8 +188,10 @@ static func solve(view) -> Array:
 		var result:=[]
 		var failed:=false
 		for g in order:
+			var blocked := occupied
+			if g.seat == view.human_seat and g.count == 1: blocked = occupied + own_chicken_obstacles
 			var specs:=place(g,float(g.start),bool(g.lower))
-			if g.lower or not clear(specs,occupied):specs=find_space(g,occupied)
+			if g.lower or not clear(specs,blocked):specs=find_space(g,blocked)
 			if specs.is_empty():failed=true;break
 			result.append_array(specs)
 			for spec in specs:occupied.append(spec.rect)
@@ -179,7 +201,7 @@ static func solve(view) -> Array:
 
 static func find_space(group: Dictionary, obstacles: Array) -> Array:
 	var rel: int=group.rel
-	var bounds:=axis_bounds(rel)
+	var bounds: Vector2=group.get("bounds",axis_bounds(rel))
 	var width: float=group.width
 	var starts:={bounds.x+8:true,bounds.y-width-8:true,-36-width:true,36.0:true}
 	var hand_half:=G.hand_span(13,G.OWN_UNIT if rel==0 else G.OPPONENT_UNIT)/2

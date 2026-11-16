@@ -1613,8 +1613,18 @@ func voice_chat_allowed() -> bool:
 	# Clients do not set the host-only _started flag until their first snapshot.
 	# Voice follows the active round instead, so a guest can talk as soon as the
 	# first deal reaches the table.
-	return game != null and game.phase != RoundState.Phase.IDLE and my_seat >= 0 and not dedicated \
-		and not _reconnecting and not _resume_sync_pending
+	if game == null or game.phase == RoundState.Phase.IDLE or my_seat < 0 or dedicated \
+		or _reconnecting or _resume_sync_pending:
+		return false
+	if online_room:
+		# Native audio is unnecessary when every other seat is a bot or absent.
+		# A human using auto-play still has a peer, even when marked ai.
+		for seat in lobby.get("seats", []):
+			if int(seat.get("seat", -1)) != my_seat and int(seat.get("peer", -1)) > 0 \
+				and not bool(seat.get("disconnected", false)):
+				return true
+		return false
+	return true
 
 func toggle_voice_chat() -> bool:
 	if voice_chat == null:

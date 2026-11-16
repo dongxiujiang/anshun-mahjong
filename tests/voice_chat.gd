@@ -106,7 +106,20 @@ func _run() -> void:
 	net.game = probe
 	net.my_seat = 1
 	net._started = false
+	net.lobby = {"seats": [{"seat":1,"peer":3}, {"seat":2,"peer":4}]}
 	t.expect(net.voice_chat_allowed(), "a guest can use voice before the host-only started flag is set")
+	net.online_room = true
+	net.lobby = {"seats": [{"seat":1,"peer":3,"ai":false}, {"seat":2,"peer":-1,"ai":true}]}
+	t.expect(not net.voice_chat_allowed(), "one human with AI opponents does not start the native voice service")
+	net.lobby.seats[1] = {"seat":2,"peer":4,"ai":true,"disconnected":false}
+	t.expect(net.voice_chat_allowed(), "a connected human using auto-play still receives voice")
+	net.lobby.seats[1].disconnected = true
+	t.expect(not net.voice_chat_allowed(), "an absent peer does not keep native audio running")
+	net.lobby.seats[1].disconnected = false
+	t.expect(net.voice_chat_allowed(), "a returning human makes voice available again")
+	net.online_room = false
+	net.lobby.clear()
+
 	var accepted := 0
 	for batch in 20:
 		for frame in 5:

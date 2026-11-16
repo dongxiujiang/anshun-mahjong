@@ -52,5 +52,5 @@ func run():
 					var n:=mini(width,count-row*width)
 					var first:=TableV2Geometry.ordinary_slot_center(seat,row*width,viewer,count)
 					var last:=TableV2Geometry.ordinary_slot_center(seat,row*width+n-1,viewer,count)
-					t.expect(is_equal_approx((first.x+last.x)/2,1140) if rel in [0,2] else is_equal_approx((first.y+last.y)/2,540),"each occupied river row remains centered")
+					t.expect(is_equal_approx((first.x+last.x)/2,1140) if rel in [0,2] else is_equal_approx((first.y+last.y)/2,572+TableV2Geometry.RIVER_Y_SHIFT),"each occupied river row remains centered")
 	await H.quit_cleanly(self,t.finish("feedback_20261112"))

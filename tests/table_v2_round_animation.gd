@@ -238,7 +238,7 @@ func _river_centering():
 			var flight: Dictionary = deck._discard_flights.values()[0]
 			var expected := G.ordinary_slot_center(seat,count,1,count+1)
 			if count%columns>0:
-				expected = old_position+previous.size/2+axis*68.8
+				expected = old_position+previous.size/2+axis*(G.TILE_BASE.x*G.ORDINARY_UNIT+G.TILE_GAP)
 			t.expect(flight.target.is_equal_approx(expected),"new discard first lands on owner's right, or at new row centre")
 			await create_timer(0.10).timeout
 			t.expect(previous.position.is_equal_approx(old_position) and done.count==0,"existing row stays still during discard flight")

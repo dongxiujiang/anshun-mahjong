@@ -306,9 +306,9 @@ func sync_tiles() -> void:
 			var basis := Basis(Vector3.UP, angle) * Basis(Vector3.RIGHT, pitch)
 			node.transform = Transform3D(basis.scaled(Vector3.ONE * factor), position_3d)
 			if own_hand and flight < 0.0:
-				# The taller online controls must clear the printed faces at settlement.
+				# Bottom controls can cover the base while leaving every printed face clear.
 				for _step in 2:
-					center.y += size.y - (68.0 if settled else 60.0) - _project_mesh(node).end.y
+					center.y += size.y - 68.0 - _project_mesh(node).end.y
 					node.position = _at_height(center, height)
 			if hand and not side_hand and flight < 0.0:
 				var step: float = (source.size.x + G.TILE_GAP) * along_scale

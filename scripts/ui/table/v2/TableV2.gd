@@ -438,6 +438,9 @@ func _meld_badge(caption: String, node_name: String, background: Color, border: 
 	badge.add_theme_font_size_override("font_size", 34)
 	badge.get_theme_stylebox("normal").set_border_width_all(2)
 	badge.size = Vector2.ONE * SEAT_BADGE_SIZE
+	badge.minimum_size_changed.connect(func():
+		_badge_layout_key = null
+		_layout_meld_badges.call_deferred())
 	badge.hide()
 	return badge
 
@@ -494,6 +497,7 @@ func _own_badge_position(dimensions: Vector2) -> Vector2:
 		for tile in layer.get_children():
 			if tile is TileView and tile.is_visible_in_tree(): obstacles.append(_table_3d.project_tile(tile))
 	for seat in 4: obstacles.append(_seat_hud_rect(seat))
+	obstacles.append(action_bar_rect(Vector2(750, 112)))
 	for row in 8:
 		var y := top - row * 44.0
 		var candidates := [24.0]
@@ -1807,7 +1811,8 @@ func _exposed_layout() -> Array:
 	# the authoritative hand changes. Cache the geometry actually used by solve.
 	for node in _wall_layer.get_children():
 		if node is TileView and (not _reconciling or _render_seen.has(node.get_instance_id())):
-			state.append([node.position, node.size, node.scale, node.rotation])
+			state.append([node.position.snapped(Vector2.ONE * 0.001),
+				node.size.snapped(Vector2.ONE * 0.001), node.scale, node.rotation])
 	var key := hash(state)
 	if key != _exposed_key:
 		_exposed_key = key
@@ -2214,7 +2219,7 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 	var columns := G.river_columns(rel)
 	if not chicken and index % columns > 0:
 		# Land on the old row's right edge before shifting the entire row by half a tile.
-		target += [Vector2.RIGHT,Vector2.UP,Vector2.LEFT,Vector2.DOWN][rel] * 34.4
+		target += [Vector2.RIGHT,Vector2.UP,Vector2.LEFT,Vector2.DOWN][rel] * (G.TILE_BASE.x * G.ORDINARY_UNIT + G.TILE_GAP) / 2.0
 	var target_size := _exposed_size(seat) if chicken else G.TILE_BASE * G.ORDINARY_UNIT
 	var target_angle: float = UI.ROTATIONS[rel] + (PI / 2.0 if charge else 0.0)
 	if missing_source:

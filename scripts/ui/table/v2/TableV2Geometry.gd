@@ -180,7 +180,7 @@ static func ordinary_slot_center(seat: int, index: int, human_seat: int, count: 
 	return Vector2(703 - row * 102, 572 + offset + RIVER_Y_SHIFT)
 
 static func side_wall_shift() -> float:
-	var hand_edge := HAND_RIGHT - TILE_BASE.y * OPPONENT_UNIT
+	var hand_edge := HAND_RIGHT - TILE_BASE.y * WALL_UNIT
 	var wall_outer := CENTER.x + CENTRAL_SIZE.x / 2.0 + WALL_EDGE_GAP + TILE_BASE.y * WALL_UNIT
 	return hand_edge - (SIDE_RED_RESERVE + SIDE_RED_GAP * 2.0 + WALL_LAYER_SHIFT + 4.0) - wall_outer
 
