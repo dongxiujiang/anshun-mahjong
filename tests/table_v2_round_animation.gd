@@ -854,6 +854,33 @@ func _own_discard_reorder() -> void:
 		t.expect(done[0] and deck.draw_boxes[seat].get_child_count() == 0 and deck.hand_boxes[seat].get_children().map(func(node): return node.tile) == expected, name + ": locks until all original tiles are in their new slots")
 		await _cleanup(host)
 
+func _own_opening_sort() -> void:
+	var host = _fixture()
+	var deck = host._new_areas
+	var seat := 1
+	var cards := ["tong4", "tong3", "tong2", "tong1", "wan9", "wan8", "wan7",
+		"wan6", "wan5", "wan4", "wan3", "wan2", "wan1"]
+	host.round.players[seat].concealed = cards.duplicate()
+	host._table_animation_controller._dealt_cards[seat] = cards.duplicate()
+	for i in cards.size():
+		_card(deck, deck.hand_boxes[seat], cards[i], seat, i, G.hand_slot_center(seat, i, seat, cards.size(), false))
+	deck._sort_started = false
+	deck._begin_hand_sort()
+	t.expect(deck._table_3d != null and deck._sort_animating, "3D opening retains the timed sorting gate")
+	var separated := true
+	var deadline := Time.get_ticks_msec() + 2500
+	while deck._sort_animating and Time.get_ticks_msec() < deadline:
+		await process_frame
+		var nodes: Array = deck.hand_boxes[seat].get_children()
+		for i in nodes.size():
+			for j in range(i + 1, nodes.size()):
+				var a: Control = nodes[i]
+				var b: Control = nodes[j]
+				separated = separated and absf(a.get_global_rect().get_center().x - b.get_global_rect().get_center().x) > 56.0
+	t.expect(separated, "opening sort never slides 3D printed faces through each other")
+	t.expect(not deck._sort_animating and deck._frozen_hands[seat].front() == "wan1" and deck._frozen_hands[seat].back() == "tong4", "opening ends with the correct sorted cards")
+	await _cleanup(host)
+
 func _capture_motion(name: String) -> void:
 	DirAccess.make_dir_recursive_absolute("res://build/equal-table/motion")
 	await RenderingServer.frame_post_draw
@@ -871,6 +898,7 @@ func _run():
 	if selected_case in ["all","kong_sources"]: await _kong_sources()
 	if selected_case in ["all","discard_sources"]: await _discard_sources()
 	if selected_case in ["all","river_centering"]: await _river_centering()
+	if selected_case in ["all","own_opening_sort"]: await _own_opening_sort()
 	if selected_case in ["all","own_discard_reorder"]: await _own_discard_reorder()
 	if selected_case in ["all","remote_discards"]: await _remote_discards()
 	if selected_case in ["all","discard_during_draw"]: await _discard_during_draw()

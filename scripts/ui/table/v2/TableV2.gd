@@ -2819,6 +2819,10 @@ func _begin_hand_sort() -> void:
 		var nodes: Array = hand_boxes[seat].get_children()
 		var cards: Array = table._table_animation_controller.dealt_cards(seat)
 		if cards.size() != 13 or nodes.size() != 13: continue
+		if _table_3d != null and seat == human_seat:
+			# The opening gate still waits while the visible hand sorts in one step.
+			max_end = maxf(max_end, (12 * GameConfig.DEAL_SORT_STAGGER + GameConfig.DEAL_SORT_SECONDS) * time_scale)
+			continue
 		var sorted := TILES.sort_hand(cards)
 		var used: Dictionary = {}
 		var available: Array = nodes.duplicate()
