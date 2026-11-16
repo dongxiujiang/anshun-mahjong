@@ -397,39 +397,13 @@ func _layout_arrangement_controls() -> void:
 	var anchor := Vector2(_draw_center(human_seat, _current_hand_count(human_seat)).x - _sort_button.size.x / 2.0,
 		minf(G.HAND_BOTTOM + 14.0, G.DESIGN_SIZE.y - _sort_button.size.y - 2.0))
 	if _table_3d != null:
-		_sort_button.size.x = 128
-		_sort_button.add_theme_font_size_override("font_size", 24)
-		anchor = G.DESIGN_SIZE - _sort_button.size - Vector2(16, 4)
-		anchor.x -= 216.0
-		anchor.y = minf(anchor.y, _own_hand_top() - _sort_button.size.y - 12.0)
+		for button in [_sort_button, _restore_button, _previous_sort_button]:
+			button.size = Vector2(160, 48)
+			button.add_theme_font_size_override("font_size", 24)
+		anchor = G.DESIGN_SIZE - _sort_button.size - Vector2(24, 0)
 	_sort_button.position = anchor
 	_restore_button.position = anchor - Vector2(_restore_button.size.x + 12.0, 0.0)
 	_previous_sort_button.position = _restore_button.position - Vector2(_previous_sort_button.size.x + 12.0, 0.0)
-	if _table_3d != null:
-		for button in [_restore_button, _previous_sort_button]:
-			button.size.x = _sort_button.size.x
-			button.add_theme_font_size_override("font_size", 24)
-		_restore_button.position = anchor - Vector2(0, _restore_button.size.y + 12)
-		_previous_sort_button.position = _restore_button.position - Vector2(0, _previous_sort_button.size.y + 12)
-		var obstacles: Array[Rect2] = []
-		for layer in _render_layers():
-			for tile in layer.get_children():
-				if tile is TileView and tile.is_visible_in_tree(): obstacles.append(_table_3d.project_tile(tile))
-		for button in [_sort_button, _restore_button, _previous_sort_button]:
-			if not button.visible: continue
-			var preferred: float = button.position.x
-			var candidates := [preferred]
-			for obstacle in obstacles:
-				if obstacle.end.y <= button.position.y or obstacle.position.y >= button.get_rect().end.y: continue
-				candidates.append(obstacle.position.x - button.size.x - 8.0)
-				candidates.append(obstacle.end.x + 8.0)
-			candidates.sort_custom(func(a, b): return absf(a - preferred) < absf(b - preferred))
-			for x: float in candidates:
-				if x < 16.0 or x + button.size.x > G.DESIGN_SIZE.x - 16.0: continue
-				var candidate := Rect2(Vector2(x, button.position.y), button.size)
-				if obstacles.all(func(obstacle): return not candidate.intersects(obstacle)):
-					button.position.x = x
-					break
 	var left := 60.0
 	var teaching: Label = table.get("status_label") if table != null else null
 	if is_instance_valid(teaching):

@@ -181,11 +181,10 @@ func _check_own_input(view, renderer) -> void:
 	var indices := {}
 	t.expect(Rect2(Vector2.ZERO, renderer.size).encloses(view._sort_button.get_rect())
 		and view._sort_button.position.x > renderer.size.x * 0.75
-		and view._sort_button.get_rect().end.y <= view._own_hand_top() - 10.0,
-		"sorting stays on screen to the right and above the local hand")
+		and is_equal_approx(view._sort_button.get_rect().end.y, renderer.size.y),
+		"sorting stays on screen at the lower right")
 	for source in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
 		var bounds: Rect2 = renderer.project_tile(source)
-		t.expect(not bounds.intersects(view._sort_button.get_rect()), "sorting never covers the hand or separate draw: %s" % bounds)
 		t.expect(absf(bounds.end.y - (renderer.size.y - 44.0)) < 2.0, "the local hand rests close to the bottom table edge: %s" % bounds)
 		t.expect(bounds.has_area() and Rect2(Vector2.ZERO, renderer.size).encloses(bounds),
 			"the complete local tile remains in the viewport")
@@ -205,6 +204,7 @@ func _check_own_input(view, renderer) -> void:
 		t.expect(_events.size() == 2 and _events.all(func(e): return e.source == source and e.inside),
 			"real GUI input forwards one press and release for seat %d tile %d at %s" % [view.human_seat, index, root.size])
 		source.gui_input.disconnect(_record.bind(source))
+	_check_arrangement_buttons(view, renderer)
 	t.expect(indices.size() == 14, "all thirteen hand tiles and the separate draw remain selectable")
 	var first: TileView = view.hand_boxes[view.human_seat].get_child(0)
 	first.gui_input.connect(_record.bind(first))
@@ -261,9 +261,19 @@ func _check_arrangement_buttons(view, renderer) -> void:
 	view._layout_arrangement_controls()
 	for button in buttons:
 		t.expect(Rect2(Vector2.ZERO, renderer.size).encloses(button.get_rect()), "expanded sorting stays on screen")
+		t.expect(is_equal_approx(button.get_rect().end.y, renderer.size.y), "sorting controls share the bottom baseline")
 		for source in _sources(view):
-			t.expect(not button.get_rect().intersects(renderer.project_tile(source)),
+			var bounds: Rect2 = renderer.project_tile(source)
+			if str(source.get_meta("new_kind", "")) in ["hand", "draw"] and int(source.get_meta("v2_seat", -1)) == view.human_seat:
+				var mesh: MeshInstance3D = renderer.tile_nodes[source.get_instance_id()]
+				var points: Array[Vector2] = []
+				for x in [-0.45, 0.45]:
+					for z in [-0.60, 0.60]: points.append(renderer.camera.unproject_position(mesh.transform * Vector3(x, 0.31, z)) / Vector2(renderer.viewport.size) * renderer.size)
+				bounds = Rect2(points[0], Vector2.ZERO).expand(points[1]).expand(points[2]).expand(points[3]).grow(4.0)
+			t.expect(not button.get_rect().intersects(bounds),
 				"sorting %s avoids %s %s for viewer %d" % [button.text, source.get_meta("new_kind", ""), source.tile, view.human_seat])
+	t.expect(is_equal_approx(buttons[1].position.x - buttons[2].get_rect().end.x, 12.0)
+		and is_equal_approx(buttons[0].position.x - buttons[1].get_rect().end.x, 12.0), "sorting controls stay in one horizontal row")
 	for index in buttons.size(): buttons[index].visible = shown[index]
 	view._layout_arrangement_controls()
 
