@@ -398,8 +398,10 @@ func _layout_arrangement_controls() -> void:
 		minf(G.HAND_BOTTOM + 14.0, G.DESIGN_SIZE.y - _sort_button.size.y - 2.0))
 	if _table_3d != null:
 		for button in [_sort_button, _restore_button, _previous_sort_button]:
-			button.size = Vector2(160, 48 * 1.3)
-			button.add_theme_font_size_override("font_size", 24)
+			if button.size != Vector2(160, 48 * 1.3):
+				button.size = Vector2(160, 48 * 1.3)
+			if button.get_theme_font_size("font_size") != 24:
+				button.add_theme_font_size_override("font_size", 24)
 		anchor = G.DESIGN_SIZE - _sort_button.size - Vector2(24 + G.TILE_BASE.x * G.OWN_UNIT, 0)
 	_sort_button.position = anchor
 	_restore_button.position = anchor - Vector2(_restore_button.size.x + 12.0, 0.0)
@@ -419,7 +421,8 @@ func _layout_arrangement_controls() -> void:
 	if _table_3d != null:
 		_arrangement_caption.position.y = 1232
 		_arrangement_caption.size.y = 48
-		_arrangement_caption.add_theme_constant_override("line_spacing", -10)
+		if _arrangement_caption.get_theme_constant("line_spacing") != -10:
+			_arrangement_caption.add_theme_constant_override("line_spacing", -10)
 
 func _build_ready_decorations() -> void:
 	for seat in 4:
@@ -3236,9 +3239,6 @@ func _seat_hud_rect(seat: int) -> Rect2:
 
 func _process(_delta: float) -> void:
 	_follow_hand_hud()
-	if _table_3d != null:
-		_layout_arrangement_controls()
-		_layout_meld_badges()
 	if _arrangement_thread != null and not _arrangement_thread.is_alive():
 		var choices: Array = _arrangement_thread.wait_to_finish()
 		_arrangement_thread = null

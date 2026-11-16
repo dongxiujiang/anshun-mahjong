@@ -32,6 +32,7 @@ var presentation_3d := false:
 	set(value):
 		if presentation_3d == value: return
 		presentation_3d = value
+		if value: _artwork = null
 		set_interactive(interactive)
 		queue_redraw()
 var _table_position := Vector2.ZERO
@@ -47,16 +48,17 @@ var _win_glow := 0.0:
 const BASE_W := 48.0
 const BASE_H := 64.0
 const FACE_ROWS := {"wan": 0, "tiao": 1, "tong": 2}
-const BACK_ATLAS := preload("res://res/tiles/backs-atlas.png")
-const HAND_FACES := preload("res://res/tiles/materials3d/hand-faces.png")
-const FLAT_FACES := preload("res://res/tiles/materials3d/flat-faces.png")
+const BACK_ATLAS := "res://res/tiles/backs-atlas.png"
+const HAND_FACES := "res://res/tiles/materials3d/hand-faces.png"
+const FLAT_FACES := "res://res/tiles/materials3d/flat-faces.png"
 const STANDING_BACKS := [null,
-	preload("res://res/tiles/materials3d/standing-right.png"),
-	preload("res://res/tiles/materials3d/standing-north.png"),
-	preload("res://res/tiles/materials3d/standing-left.png")]
-const BACK_TOP := preload("res://res/tiles/materials3d/back-top.png")
-const BACK_BOTTOM := preload("res://res/tiles/materials3d/back-bottom.png")
+	"res://res/tiles/materials3d/standing-right.png",
+	"res://res/tiles/materials3d/standing-north.png",
+	"res://res/tiles/materials3d/standing-left.png"]
+const BACK_TOP := "res://res/tiles/materials3d/back-top.png"
+const BACK_BOTTOM := "res://res/tiles/materials3d/back-bottom.png"
 const SOFT_SHADOW := preload("res://res/tiles/tile-shadow.svg")
+var _artwork: Texture2D
 
 static var _style_cache := {}
 
@@ -167,7 +169,8 @@ func _draw_procedural_back(river: bool) -> void:
 	var h := BASE_H * unit
 	if not river:
 		draw_texture_rect(SOFT_SHADOW, Rect2(2 * unit, 4 * unit, w, h), false)
-	draw_texture_rect(BACK_TOP if back_depth_top else BACK_BOTTOM, Rect2(0, 0, w, h), false)
+	_artwork = load(BACK_TOP if back_depth_top else BACK_BOTTOM)
+	draw_texture_rect(_artwork, Rect2(0, 0, w, h), false)
 
 func artwork_rect(reserve_standing: bool = false) -> Rect2:
 	if (reserve_standing or not face_up) and standing_back_view in [1, 3]:
@@ -189,7 +192,8 @@ func _draw() -> void:
 		var face_y := depth if face_depth_top else 0.0
 		var row: int = FACE_ROWS.get(Tiles.suit(tile), 0)
 		var region := Rect2((Tiles.rank(tile) - 1) * 256, row * 344, 256, 344)
-		draw_texture_rect_region(HAND_FACES if face_depth_top else FLAT_FACES, Rect2(0, 0, w, h), region)
+		_artwork = load(HAND_FACES if face_depth_top else FLAT_FACES)
+		draw_texture_rect_region(_artwork, Rect2(0, 0, w, h), region)
 		if score_highlight:
 			draw_rect(Rect2(0, face_y, w, h - depth), Color(0.95, 0.78, 0.22, 0.30))
 		if Tiles.is_chicken(tile):
@@ -197,14 +201,16 @@ func _draw() -> void:
 	else:
 		var back_y := depth if back_depth_top else 0.0
 		if standing_back_view >= 1 and standing_back_view <= 3:
-			draw_texture_rect(STANDING_BACKS[standing_back_view], artwork_rect(), false)
+			_artwork = load(STANDING_BACKS[standing_back_view])
+			draw_texture_rect(_artwork, artwork_rect(), false)
 		elif is_equal_approx(unit, 1.0) or is_equal_approx(unit, 1.35):
 			# Bake each used unit separately: StyleBox borders stay one pixel wide
 			# rather than scaling with tile size. Other sizes retain vector drawing.
 			var variant := int(back_depth_top) + 2 * int(river)
 			var region := Rect2(variant * (292 if unit > 1 else 216),
 				288 if unit > 1 else 0, 216 * unit, 288 * unit)
-			draw_texture_rect_region(BACK_ATLAS, Rect2(-2 * unit, -2 * unit, 54 * unit, 72 * unit), region)
+			_artwork = load(BACK_ATLAS)
+			draw_texture_rect_region(_artwork, Rect2(-2 * unit, -2 * unit, 54 * unit, 72 * unit), region)
 		else:
 			_draw_procedural_back(river)
 		if score_highlight:

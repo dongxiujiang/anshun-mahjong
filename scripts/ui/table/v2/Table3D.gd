@@ -20,6 +20,8 @@ var _pointer := -1
 var _changed := true
 var _own_hand_pitch := deg_to_rad(63)
 var discard_marker: MeshInstance3D
+var _marker_source_id := 0
+var _marker_blocked := false
 
 func _ready() -> void:
 	name = "Table3D"
@@ -356,9 +358,15 @@ func sync_tiles() -> void:
 		_changed = false
 
 func _update_discard_marker(source: TileView) -> void:
+	var source_id := source.get_instance_id() if is_instance_valid(source) else 0
+	var blocked: bool = view.native_actions_pending()
+	# Occlusion only changes when a mesh, latest discard, or presentation queue changes.
+	if not _changed and source_id == _marker_source_id and blocked == _marker_blocked: return
+	_marker_source_id = source_id
+	_marker_blocked = blocked
 	var show_marker: bool = is_instance_valid(source) and tile_nodes.has(source.get_instance_id()) and tile_nodes[source.get_instance_id()].visible
 	if show_marker:
-		show_marker = source.get_parent() != view._deal_layer and not view.native_actions_pending() and pick_tile(project_tile(source).get_center(), false) == source
+		show_marker = source.get_parent() != view._deal_layer and not blocked and pick_tile(project_tile(source).get_center(), false) == source
 	if discard_marker.visible != show_marker:
 		discard_marker.visible = show_marker
 		_changed = true
