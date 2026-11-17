@@ -113,6 +113,7 @@ var _sent_audio := {}
 var _heartbeat_seq := 0
 var _last_ping_ms := 0
 var _last_pong_ms := 0
+var _last_server_activity_ms := 0
 var _peer_protocol := {}
 var _last_sent_state := {}
 var _client_sync_cache := {}
@@ -819,6 +820,7 @@ func lobby_action(action: String, data: Dictionary) -> void:
 
 func _apply_lobby_action(peer: int, action: String, data: Dictionary) -> void:
 	if not _members.has(peer): return
+	_peer_last_seen[peer] = Time.get_ticks_msec()
 	if action == "submit_record":
 		if not _peer_seat.has(peer) or game == null or str(data.get("session", "")) != game.audio_session: return
 		if _round_submitter == null:
@@ -1581,7 +1583,11 @@ func _poll_heartbeat() -> void:
 	if _last_pong_ms == 0:
 		_last_pong_ms = now
 		return
-	if now - _last_pong_ms > HEARTBEAT_TIMEOUT_MS:
+	# Accepted reliable state still proves the server is alive when unreliable pongs are lost.
+	var last_activity := _last_pong_ms
+	if _last_server_activity_ms > 0:
+		last_activity = maxi(last_activity, _last_server_activity_ms)
+	if now - last_activity > HEARTBEAT_TIMEOUT_MS:
 		_begin_reconnect("连接心跳超时")
 		return
 	if now - _last_ping_ms >= HEARTBEAT_INTERVAL_MS:
@@ -1735,6 +1741,7 @@ func _on_client_sync(state: Dictionary) -> void:
 	round_number = int(state.get("round_number", 1))
 	_client_sync_cache = state
 	game.apply_sync(state)
+	_last_server_activity_ms = Time.get_ticks_msec()
 	var resumed := _resume_sync_pending
 	_resume_sync_pending = false
 	_resume_sync_deadline_ms = 0
@@ -1771,6 +1778,7 @@ func seat_assign(seat: int, issued_token: String = "") -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func lobby_sync(state: Dictionary) -> void:
+	_last_server_activity_ms = Time.get_ticks_msec()
 	lobby = state
 	if _settings_owner != int(state.get("owner", -1)):
 		_settings_owner = int(state.get("owner", -1))
@@ -1816,6 +1824,7 @@ func send_turn(seat: int, dict: Dictionary) -> void:
 	if _seat_peer.get(seat, -1) != multiplayer.get_remote_sender_id() or int(dict.get("prompt_id", -1)) != game.prompt_id:
 		game._recorder.request(seat, "turn", dict, false, "座位身份或提示编号不匹配")
 		return
+	_peer_last_seen[multiplayer.get_remote_sender_id()] = Time.get_ticks_msec()
 	game.submit_turn(seat, dict)
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -1824,6 +1833,7 @@ func send_response(seat: int, tile: String, dict: Dictionary) -> void:
 	if _seat_peer.get(seat, -1) != multiplayer.get_remote_sender_id() or int(dict.get("prompt_id", -1)) != game.prompt_id:
 		game._recorder.request(seat, "response", dict, false, "座位身份或提示编号不匹配")
 		return
+	_peer_last_seen[multiplayer.get_remote_sender_id()] = Time.get_ticks_msec()
 	game.submit_response(seat, tile, dict)
 
 @rpc("authority", "call_remote", "reliable")

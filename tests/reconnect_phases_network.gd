@@ -69,7 +69,28 @@ func _host() -> void:
 	previous = _guest_peer()
 	net.multiplayer.multiplayer_peer.disconnect_peer(previous)
 	if not await _wait(func(): return net.ack_text == "rejoined-pong", "Lost ENet connection recovers the pending pong window"): return
-	net.notice.rpc_id(_guest_peer(), "pong")
+	# Pause only this node's timers; SceneTree continues receiving real ENet RPCs.
+	net.set_process(false)
+	previous = _guest_peer()
+	var expired_seen := Time.get_ticks_msec() - NetGameNode.HEARTBEAT_TIMEOUT_MS - 1
+	net._peer_last_seen[previous] = expired_seen
+	net.notice.rpc_id(previous, "pong")
+	if not await _wait(func(): return net.game.players[seat].melds.size() == 1, "Authenticated guest sends its reliable pong action while heartbeats are expired"): return
+	var response_alive := int(net._peer_last_seen.get(previous, expired_seen)) > expired_seen
+	t.expect(response_alive, "Authenticated reliable response refreshes host liveness")
+	if response_alive: net._process(0.0)
+	t.expect(net._peer_connected(previous) and not net._orphaned.has(seat), "Host keeps the active response sender's original connection and seat")
+	expired_seen = Time.get_ticks_msec() - NetGameNode.HEARTBEAT_TIMEOUT_MS - 1
+	net._peer_last_seen[previous] = expired_seen
+	net.notice.rpc_id(previous, "discard")
+	if not await _wait(func(): return net.game.players[seat].discard_count == 1, "Authenticated guest sends its reliable discard action while heartbeats are expired"): return
+	var turn_alive := int(net._peer_last_seen.get(previous, expired_seen)) > expired_seen
+	t.expect(turn_alive, "Authenticated reliable turn refreshes host liveness")
+	if turn_alive: net._process(0.0)
+	t.expect(net._peer_connected(previous) and not net._orphaned.has(seat), "Host keeps the active turn sender's original connection and seat")
+	# Preserve the remaining reconnect checks after a failed liveness assertion.
+	net._peer_last_seen[previous] = Time.get_ticks_msec()
+	net.set_process(true)
 	if not await _wait(func(): return net.ack_text == "played", "Guest acts on recovered pong and discard prompts"): return
 	t.expect(net.game.players[seat].melds.size() == 1 and net.game.players[seat].melds[0].kind == "pung",
 		"Guest's pong is applied exactly once")
@@ -148,13 +169,16 @@ func _guest() -> void:
 	_ack("waiting-pong")
 	if not await _wait(func(): return joins == 4 and not net._resume_sync_pending, "Pong reconnect applies a fresh snapshot"): return
 	t.expect(_claim_stage() == RoundState.ResponseStage.MELD and net.game.prompt_id == prompt, "Pong reconnect keeps the same response prompt")
+	net.set_process(false)
 	_ack("rejoined-pong")
 	if not await _wait(func(): return notice == "pong", "Authority allows pong on the recovered prompt"): return
 	for duplicate in 2: net.submit_client_response(TILE, {"action": "pong"})
 	if not await _wait(func(): return net.game.awaiting and net.game.current_turn == seat and net.game._awaiting_response.is_empty(), "Pong leads to the guest's discard prompt"): return
+	if not await _wait(func(): return notice == "discard", "Authority allows the independently aged reliable turn check"): return
 	for duplicate in 2: net.submit_client_turn({"discard": "tong1"})
 	if not await _wait(func(): return net.game.players[seat].discard_count == 1, "Guest observes a single discard from the recovered turn"): return
 	_ack("played")
+	net.set_process(true)
 	if not await _wait(func(): return net.game.phase == RoundState.Phase.SETTLED, "Initial settlement arrives"): return
 	var result := net.game.last_result.duplicate(true)
 	scores = net.game.players.map(func(player): return player.score)

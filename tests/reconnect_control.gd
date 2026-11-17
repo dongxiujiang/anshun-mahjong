@@ -143,12 +143,16 @@ func _run() -> void:
 
 	var client := NetGameNode.new()
 	root.add_child(client)
+	client.set_process(false)
 	client.game = _fixture()
 	client._client_joined = true
 	client._server_ip = "127.0.0.1"
 	client._begin_reconnect("test")
+	var assigned_at := Time.get_ticks_msec()
 	client.seat_assign(1)
+	t.expect(client._resume_sync_deadline_ms >= assigned_at + 5000 and client._resume_sync_deadline_ms <= Time.get_ticks_msec() + 5000, "Resume snapshot keeps its independent five-second deadline")
 	t.expect(client._resume_sync_pending, "Seat assignment alone cannot enable stale game input")
+	await process_frame # Drain seat-assignment callbacks while resume input is still blocked.
 	var decision := {"discard": "tong9"}
 	client.submit_client_turn(decision)
 	t.expect(not decision.has("prompt_id"), "Client blocks turn submission before fresh state")
@@ -160,7 +164,66 @@ func _run() -> void:
 	state.revision = 3
 	client._on_client_sync(state)
 	t.expect(not client._resume_sync_pending and client._resume_sync_deadline_ms == 0, "Applying current state restores input and clears the synchronization deadline")
+	root.multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	client._last_pong_ms = Time.get_ticks_msec() - NetGameNode.HEARTBEAT_TIMEOUT_MS - 1
+	client._last_ping_ms = Time.get_ticks_msec()
+	var stale_pong := client._last_pong_ms
+	state.revision = 4
+	client.sync(state)
+	client._poll_heartbeat()
+	t.expect(client._client_joined and not client._reconnecting and client._received_revision == 4,
+		"A fresh authoritative snapshot keeps a connected client alive when unreliable pongs expired")
+	t.expect(client._last_pong_ms == stale_pong, "Reliable state activity does not overwrite the actual pong timestamp")
+	client._last_server_activity_ms = 1
+	state.revision = 3
+	client.sync(state)
+	t.expect(client._last_server_activity_ms == 1 and client._received_revision == 4, "An outdated snapshot cannot refresh server activity or replace the accepted revision")
+	client.lobby_sync({"number": "4242", "name": "存活测试", "owner": -1, "started": true})
+	client._poll_heartbeat()
+	t.expect(client._client_joined and not client._reconnecting and client._last_server_activity_ms > 1,
+		"An authoritative reliable lobby snapshot keeps the client alive without a new pong")
+	t.expect(client._last_pong_ms == stale_pong, "Reliable lobby activity also leaves the actual pong timestamp unchanged")
+	var accepted_activity := client._last_server_activity_ms
+	await create_timer((NetGameNode.HEARTBEAT_TIMEOUT_MS + 20) / 1000.0).timeout
+	t.expect(accepted_activity > 0 and Time.get_ticks_msec() - accepted_activity > NetGameNode.HEARTBEAT_TIMEOUT_MS,
+		"The accepted positive activity timestamp naturally becomes older than fifteen seconds")
+	client._poll_heartbeat()
+	t.expect(client._reconnecting and not client._client_joined, "Previously active reliable traffic cannot keep a subsequently silent server alive forever")
 	client.free()
+	# A fresh node has no accepted snapshot activity left over from the live case.
+	var silent := NetGameNode.new()
+	root.add_child(silent)
+	silent.set_process(false)
+	silent.game = _fixture()
+	silent._server_ip = "127.0.0.1"
+	silent._client_joined = true
+	root.multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	silent._last_pong_ms = Time.get_ticks_msec() - NetGameNode.HEARTBEAT_TIMEOUT_MS - 1
+	silent._last_ping_ms = Time.get_ticks_msec()
+	silent._poll_heartbeat()
+	t.expect(silent._reconnecting and not silent._client_joined, "A genuinely silent connected client still times out after fifteen seconds")
+	silent.free()
+	root.multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	var unauthenticated := NetGameNode.new()
+	root.add_child(unauthenticated)
+	unauthenticated.set_process(false)
+	unauthenticated.host_mode = true
+	unauthenticated._started = true
+	unauthenticated.game = _fixture()
+	unauthenticated._peer_last_seen[99] = 123
+	var untouched: Dictionary = unauthenticated._peer_last_seen.duplicate()
+	unauthenticated.heartbeat_ping(1)
+	unauthenticated.lobby_action("ready", {"value": true})
+	unauthenticated.request_full_state()
+	unauthenticated.send_turn(1, {"discard": "tong9", "prompt_id": unauthenticated.game.prompt_id})
+	unauthenticated.send_response(1, "tong9", {"action": "pass", "prompt_id": unauthenticated.game.prompt_id})
+	t.expect(unauthenticated._peer_last_seen == untouched and unauthenticated._members.is_empty(),
+		"An unauthenticated sender cannot create or refresh host liveness through heartbeat or reliable actions")
+	unauthenticated._members[99] = {"ready": false}
+	unauthenticated._apply_lobby_action(99, "ready", {"value": true})
+	t.expect(int(unauthenticated._peer_last_seen[99]) > int(untouched[99]), "An authenticated reliable lobby action refreshes host liveness")
+	unauthenticated.free()
+	root.multiplayer.multiplayer_peer = null
 	var resumed := NetGameNode.new()
 	root.add_child(resumed)
 	resumed._resume_requested = true
@@ -198,12 +261,16 @@ func _run() -> void:
 	lost._resume_sync_deadline_ms = Time.get_ticks_msec() - 1
 	root.multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	lost.heartbeat_pong(1)
+	var resume_pong := lost._last_pong_ms
+	lost.lobby_sync({"number": "4242", "name": "恢复同步测试", "owner": -1, "started": true})
+	t.expect(lost._last_server_activity_ms > 0 and lost._last_pong_ms == resume_pong and lost._resume_sync_pending,
+		"A fresh reliable lobby snapshot keeps pong timing and the pending resume snapshot separate")
 	var blocked := {"discard":"tong9"}
 	lost.submit_client_turn(blocked)
 	t.expect(not blocked.has("prompt_id"), "A heartbeat alone cannot unlock a stale hand before the fresh snapshot")
 	progress.clear()
 	lost._poll_heartbeat()
-	t.expect(lost._reconnecting and progress.size() == 1, "A live heartbeat cannot leave snapshot synchronization stuck forever")
+	t.expect(lost._reconnecting and progress.size() == 1, "Fresh heartbeat and reliable activity cannot bypass the independent resume snapshot deadline")
 	lost.free()
 	root.multiplayer.multiplayer_peer = null
 	quit(t.finish("reconnect_control"))
