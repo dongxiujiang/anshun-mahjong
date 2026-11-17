@@ -14,6 +14,8 @@ class SettlementTableStub extends Node:
 	var round: RoundState
 	var human_seat := 0
 	var finished := false
+	var _table_animation_controller = null
+	func _net_mode() -> String: return ""
 	func _clear_actions() -> void:
 		pass
 	func _update_interactivity() -> void:
@@ -24,7 +26,7 @@ class SettlementTableStub extends Node:
 func _initialize() -> void:
 	call_deferred("_run")
 
-func _fixture(kind: String) -> RoundState:
+func _fixture(kind: String, flip_card: String = "wan8", flip_index: int = 0, multiplier: int = 1) -> RoundState:
 	var r := RoundState.new()
 	r.set_rng_seed(20261018)
 	r.build_players(0)
@@ -37,7 +39,10 @@ func _fixture(kind: String) -> RoundState:
 		r.players[seat].discard_count = 2
 	r.players[0].concealed = WIN.duplicate()
 	r.players[0].just_drew = "wan9"
-	var flip := "wan8"
+	var flip := flip_card
+	r.round_meta.chicken_multiplier = multiplier
+	r.round_meta.dice_double = multiplier > 1
+	r.round_meta.previous_draw_double = multiplier > 1
 	if kind == "ron":
 		r.round_meta.self_draw = false
 		r.round_meta.discard_seat = 1
@@ -63,8 +68,8 @@ func _fixture(kind: String) -> RoundState:
 		r.round_meta.self_draw = true
 		r.round_meta.win_tile = "wan9"
 	r.wall = WallRing.new(TileSetFactory.create_deck())
-	r.wall.set_head(0)
-	r.wall._ring[0] = flip
+	r.wall.set_head(flip_index)
+	r.wall._ring[flip_index] = flip
 	r._finish()
 	return r
 
@@ -351,6 +356,94 @@ func _check_two_exposed_example() -> void:
 		stub.queue_free()
 		await process_frame
 
+func _check_flip_preview(view, card: String, case: String) -> TileView:
+	var panel: Control = view._native_settlement
+	var preview: TileView = panel.get_node_or_null("SettlementFlipTile")
+	if not t.expect(preview != null, case + ": panel contains a readable flip tile independent of the physical wall"):
+		return null
+	t.expect(panel.find_children("SettlementFlipTile", "", true, false).size() == 1, case + ": exactly one flip preview")
+	t.expect(preview.tile == card and preview.face_up and preview.is_visible_in_tree(), case + ": flip identity remains face-up and visible")
+	t.expect(not preview.interactive and preview.mouse_filter == Control.MOUSE_FILTER_IGNORE, case + ": flip preview cannot intercept input")
+	t.expect(preview.unit >= 0.8, case + ": flip face is no smaller than existing score-row tiles")
+	var bounds := preview.get_global_rect()
+	t.expect(panel.get_global_rect().encloses(bounds) and root.get_visible_rect().encloses(bounds), case + ": complete flip tile stays inside panel and screen")
+	for other in panel.get_children():
+		if other == preview or not other is Control or not other.is_visible_in_tree(): continue
+		if other is Label and other.text.is_empty(): continue
+		t.expect(not bounds.intersects(other.get_global_rect()), case + ": flip clears " + other.name)
+	for other in view._name_labels + view._labels + view._dealer_meld_badges + view._ready_meld_badges:
+		if other.is_visible_in_tree(): t.expect(not bounds.intersects(other.get_global_rect()), case + ": flip clears player identity markers")
+	return preview
+
+func _check_flip_previews() -> void:
+	var original_size := root.size
+	var original_scale := root.content_scale_mode
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
+	var config := root.get_node("GameConfig")
+	var previous_details: bool = config.score_details_enabled
+	var previous_speed: String = config.settlement_speed
+	config.set_score_details_enabled(false, false)
+	config.set_settlement_speed("0.50", false)
+	var captures: Array = []
+	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864), Vector2i(1600, 1000)]:
+		root.size = screen
+		for side in 4:
+			var card: String = ["wan8", "tong8", "tiao1", "tong9"][side]
+			for mode in ["instant", "animated", "restored"]:
+				var case := "%dx%d side%d %s %s" % [screen.x, screen.y, side, card, mode]
+				var r := _fixture("self_draw", card, side * 27, 2 if side % 2 else 1)
+				if mode == "restored":
+					var synced := RoundState.new()
+					synced.apply_sync(r.serialize_for_seat(0))
+					r = synced
+				var stub := SettlementTableStub.new()
+				stub.round = r
+				root.add_child(stub)
+				var surface := Control.new()
+				surface.size = TableV2Geometry.DESIGN_SIZE
+				surface.scale = Vector2(screen) / TableV2Geometry.DESIGN_SIZE
+				root.add_child(surface)
+				var view = load("res://scenes/table/TableV2.tscn").instantiate()
+				view.set_script(load("res://tests/fixtures/table_touch_footer_view.gd"))
+				view.test_touch_height = 150.0
+				surface.add_child(view)
+				view.table = stub
+				view.auto_sort_hands = false
+				view.set_round(r, 0)
+				view.start_native_settlement(mode != "animated")
+				var preview := _check_flip_preview(view, card, case)
+				if mode == "animated" and view._settlement_tween != null:
+					view._settlement_tween.pause()
+					view._settlement_tween.custom_step(0.2)
+					t.expect(view.native_settlement_active(), case + ": checks an actual active settlement timeline")
+					_check_flip_preview(view, card, case + " during flip")
+					view._finish_native_settlement()
+				_check_flip_preview(view, card, case + " completed")
+				t.expect(view._settlement_complete and stub.finished, case + ": original settlement completion hook remains intact")
+				if mode == "animated" and DisplayServer.get_name() != "headless":
+					await process_frame
+					await RenderingServer.frame_post_draw
+					captures.append(["%dx%d-side%d-%s.png" % [screen.x, screen.y, side, card], root.get_texture().get_image()])
+				view.reset_native_settlement()
+				t.expect(view._native_settlement == null and (preview == null or not preview.is_inside_tree()), case + ": reset removes the flip preview with the panel")
+				for kind in ["draw", "all_called_draw"] if side == 0 and mode == "instant" else []:
+					stub.round = _fixture(kind)
+					view.set_round(stub.round, 0)
+					view.start_native_settlement(true)
+					t.expect(view._native_settlement.get_node_or_null("SettlementFlipTile") == null, kind + ": no invented or stale flip preview")
+					view.reset_native_settlement()
+				surface.queue_free()
+				stub.queue_free()
+				await process_frame
+	var destination := OS.get_environment("SETTLEMENT_FLIP_CAPTURE_DIR")
+	if not destination.is_empty():
+		DirAccess.make_dir_recursive_absolute(destination)
+		for capture in captures: capture[1].save_png(destination.path_join(capture[0]))
+	config.set_score_details_enabled(previous_details, false)
+	config.set_settlement_speed(previous_speed, false)
+	root.size = original_size
+	root.content_scale_mode = original_scale
+
 func _run() -> void:
 	_check_total_values()
 	await _check_two_exposed_example()
@@ -364,6 +457,7 @@ func _run() -> void:
 		_check_stage_order(plan, kind)
 		_check_details(plan, r, kind)
 	await _run_native_api()
+	await _check_flip_previews()
 	root.get_node("AudioManager").stop_effects()
 	root.get_node("AudioManager").end_table(null)
 	quit(t.finish("table_v2_settlement"))

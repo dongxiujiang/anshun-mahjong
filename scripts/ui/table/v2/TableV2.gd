@@ -707,10 +707,27 @@ func _build_native_settlement_panel() -> void:
 	_native_settlement = panel
 	get_node("/root/FpsOverlay").hide_during_settlement(panel)
 
+	var flip_width := 0.0
+	var flip_height := 0.0
+	var flip_card := _native_flip_tile()
+	if flip_card != "":
+		var flip := TileView.new()
+		flip.name = "SettlementFlipTile"
+		flip.tile = flip_card
+		flip.unit = 0.8
+		flip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(flip)
+		flip.position = Vector2(panel.size.x - 24.0 - flip.size.x, 4.0)
+		var caption := _table_text(panel, "翻鸡", 22, UI.GOLD)
+		caption.name = "SettlementFlipCaption"
+		caption.position = flip.position - Vector2(54.0, 0.0)
+		caption.size = Vector2(48.0, flip.size.y)
+		flip_width = flip.size.x + 66.0
+		flip_height = flip.size.y + 12.0
 	var title := _table_text(panel, _settlement_result_title(), 30, UI.GOLD)
 	title.name = "ResultTitle"
-	title.position = Vector2(24, 4)
-	title.size = Vector2(panel.size.x - 48, 40)
+	title.position = Vector2(24 + flip_width, 4)
+	title.size = Vector2(panel.size.x - 48 - flip_width * 2.0, 40)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", clampi(floori(30.0 * title.size.x / maxf(_hud_text_width(title.text, 30), title.size.x)), 18, 30))
 	title.clip_text = true
@@ -718,8 +735,8 @@ func _build_native_settlement_panel() -> void:
 	var multiplier := _table_text(panel, _settlement_multiplier_title(), 22, UI.GOLD)
 	multiplier.name = "MultiplierTitle"
 	multiplier.position = Vector2(24, 42)
-	multiplier.size = Vector2(panel.size.x - 48, 28)
-	var header_y := 72.0 if multiplier.text != "" else 44.0
+	multiplier.size = Vector2(panel.size.x - 48 - flip_width, 28)
+	var header_y := maxf(72.0 if multiplier.text != "" else 44.0, flip_height)
 	for column in [["玩家", 24.0, 200.0], ["得分项", 224.0, 528.0], ["总分", 756.0, 184.0], ["本局增减", 956.0, 120.0]]:
 		var caption := _table_text(panel, column[0], 22, UI.MUTED)
 		caption.name = "ScoreHeading" if column[0] == "得分项" else ("TotalHeading" if column[0] == "总分" else str(column[0]))
