@@ -305,6 +305,7 @@ func _refresh_hand_arrangement() -> void:
 	var can_arrange := _can_arrange_hand()
 	if can_arrange: _start_arrangement_search()
 	_arrangement_caption.visible = can_arrange and not _local_arrangement.is_empty()
+	_clear(_hand_groups)
 	_layout_arrangement_controls()
 	if not _local_arrangement.is_empty():
 		var at := -1
@@ -369,7 +370,6 @@ func _refresh_hand_arrangement() -> void:
 	_restore_button.disabled = not can_arrange
 	_previous_sort_button.visible = _restore_button.visible
 	_previous_sort_button.disabled = not can_arrange or _arrangement_choices.size() <= 1
-	_clear(_hand_groups)
 	if round.phase != ROUND_STATE.Phase.PLAYING or _local_arrangement.is_empty() \
 			or hand_boxes[human_seat].get_child_count() != _local_arrangement.cards.size(): return
 	var count: int = _local_arrangement.cards.size()

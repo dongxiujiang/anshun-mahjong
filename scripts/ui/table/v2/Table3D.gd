@@ -27,6 +27,7 @@ var _own_exposed_layout_key := 0
 var _own_exposed_targets := {}
 var _own_exposed_origins := {}
 var _own_exposed_previous := {}
+var _own_exposed_left_hand := Rect2()
 
 func clear_own_exposed_flight() -> void:
 	if _own_exposed_targets.is_empty(): return
@@ -240,6 +241,11 @@ func sync_tiles() -> void:
 				own_travel if _own_exposed_targets.has(id) else 1.0])
 			if source.get_parent() != view._deal_layer and (own_hand or (kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat)):
 				own_layout_state.append([id, signature])
+			if kind == "wall" and view._wall_screen_seat(int(view._wall_segment_for_index(int(source.get_meta("wall_ring_index", 0))).get("seat", 0))) in [1, 2]:
+				own_layout_state.append([id, signature])
+			if source.get_parent() != view._deal_layer and kind in ["ordinary", "meld", "red", "hand", "draw"] and not (int(source.get_meta("v2_seat", -1)) == view.human_seat and kind != "ordinary"):
+				# Only spatial obstacle changes invalidate this cache; highlights do not.
+				own_layout_state.append([id, xf, source.size, source.is_visible_in_tree(), kind, source.face_up, source.standing_back_view, source.flight_pitch])
 			if _signatures.get(id) == signature: continue
 			_signatures[id] = signature
 			moved.append(node)
@@ -431,6 +437,8 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 	var groups := {}
 	var hand := Rect2()
 	var walls := {}
+	var obstacles: Array[Rect2] = []
+	var left_hand := Rect2()
 	for id in tile_nodes:
 		var source = _sources[id].get_ref()
 		var node: MeshInstance3D = tile_nodes[id]
@@ -438,6 +446,11 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 		if source.get_parent() == view._deal_layer: continue
 		var kind := str(source.get_meta("new_kind", ""))
 		var seat := int(source.get_meta("v2_seat", -1))
+		if kind in ["ordinary", "meld", "red", "hand", "draw"] and not (seat == view.human_seat and kind != "ordinary"):
+			var obstacle := _project_mesh(node)
+			obstacles.append(obstacle)
+			if kind in ["hand", "draw"] and obstacle.get_center().x < size.x * 0.25:
+				left_hand = left_hand.merge(obstacle) if left_hand.has_area() else obstacle
 		if kind == "wall":
 			var segment: Dictionary = view._wall_segment_for_index(int(source.get_meta("wall_ring_index", 0)))
 			var side: int = view._wall_screen_seat(int(segment.get("seat", 0)))
@@ -454,36 +467,62 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 			if not groups.has(key): groups[key] = []
 			groups[key].append(id)
 	if groups.is_empty() or not hand.has_area(): return
+	_own_exposed_left_hand = left_hand
 	# Own exposed tiles stay together beside the hand, on the near side of its wall.
 	var order: Array = groups.keys()
 	order.sort_custom(func(a, b): return a < b)
-	var near_wall: Rect2 = walls.get(1, Rect2(G.WALL_BOUNDS[1]))
-	var side_wall: Rect2 = walls.get(2, Rect2(G.WALL_BOUNDS[2]))
+	# Missing walls leave real free space beside the hand. The old sprite wall
+	# rectangles are not projected geometry and must not act as phantom obstacles.
+	var group_height := 0.0
+	for ids in groups.values(): group_height = maxf(group_height, _exposed_printed_bounds(ids).size.y)
+	var free_top := maxf(size.y * 0.6, hand.position.y - group_height * 2.0 - 24.0)
+	var near_wall: Rect2 = walls.get(1, Rect2(Vector2(G.CENTER.x, free_top), Vector2.ZERO))
+	var side_wall: Rect2 = walls.get(2, Rect2(Vector2(left_hand.end.x, free_top), Vector2.ZERO))
 	var bottom := minf(G.TABLE_BOUNDS.end.y, size.y - view.minimum_touch_height() - 6.0)
 	var beside := Rect2(Vector2(2.0, maxf(near_wall.end.y, side_wall.end.y) + 6.0), Vector2.ZERO)
 	beside.size = Vector2(hand.position.x - 2.0 - beside.position.x, bottom - beside.position.y)
-	var corner := Rect2(Vector2(side_wall.end.x + 6.0, near_wall.position.y + 6.0), Vector2.ZERO)
-	corner.size = Vector2(near_wall.position.x - 6.0 - corner.position.x, hand.position.y - 6.0 - corner.position.y)
+	var corner := Rect2(Vector2(side_wall.end.x + 6.0, near_wall.position.y + 2.0), Vector2.ZERO)
+	corner.size = Vector2(near_wall.position.x - 6.0 - corner.position.x, hand.position.y - 2.0 - corner.position.y)
 	var placed := false
+	obstacles.sort_custom(func(a, b): return a.position.x > b.position.x)
 	for area: Rect2 in [beside, corner]:
 		for key in order:
 			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
-		var cursor := Vector2(area.end.x, area.position.y)
-		var row_height := 0.0
-		placed = true
-		for key in order:
-			var bounds := _position_exposed_group(groups[key], cursor)
-			if bounds.position.x < area.position.x and row_height > 0.0:
-				cursor.y += row_height + 6.0
-				cursor.x = area.end.x
-				row_height = 0.0
-				bounds = _position_exposed_group(groups[key], cursor)
-			if bounds.position.x < area.position.x - 0.2 or bounds.end.y > area.end.y + 0.2:
-				placed = false
-				break
-			cursor.x = bounds.position.x - 6.0
-			row_height = maxf(row_height, bounds.size.y)
+		placed = _pack_own_exposed(groups, order, area, obstacles)
 		if placed: break
+	if not placed:
+		for key in order:
+			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
+		placed = _pack_own_exposed(groups, order, beside, obstacles, true)
+	if not placed:
+		for key in order:
+			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
+		var long_groups: Array = order.filter(func(key): return groups[key].size() == 4)
+		var short_groups: Array = order.filter(func(key): return groups[key].size() != 4)
+		if not long_groups.is_empty() and not short_groups.is_empty():
+			placed = _pack_own_exposed(groups, long_groups, beside, obstacles, true)
+			if placed:
+				var occupied: Array[Rect2] = obstacles.duplicate()
+				var upper := corner
+				var short_width := 0.0
+				for key in short_groups: short_width += _exposed_printed_bounds(groups[key]).size.x + 6.0
+				upper.size.x = minf(upper.end.x, beside.end.x + short_width) - upper.position.x
+				for key in long_groups:
+					var bounds := _exposed_printed_bounds(groups[key])
+					occupied.append(bounds)
+				occupied.sort_custom(func(a, b): return a.position.x > b.position.x)
+				placed = _pack_own_exposed(groups, short_groups, upper, occupied, true)
+				if placed:
+					var upper_bottom := 0.0
+					var lower_top := bottom
+					for key in short_groups: upper_bottom = maxf(upper_bottom, _exposed_printed_bounds(groups[key]).end.y)
+					for key in long_groups: lower_top = minf(lower_top, _exposed_printed_bounds(groups[key]).position.y)
+					var gap := lower_top - upper_bottom - 6.0
+					if gap > 0.0:
+						var compact := beside
+						compact.position.y = upper_bottom + 6.0
+						compact.size.y = beside.end.y - compact.position.y
+						placed = _pack_own_exposed(groups, long_groups, compact, obstacles)
 	if not placed:
 		for key in order:
 			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
@@ -493,9 +532,52 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 			_rects[id] = _project_mesh(tile_nodes[id])
 			if not moved.has(tile_nodes[id]): moved.append(tile_nodes[id])
 
+func _pack_own_exposed(groups: Dictionary, order: Array, area: Rect2, obstacles: Array[Rect2], bottom_up: bool = false) -> bool:
+	if area.size.x <= 0.0 or area.size.y <= 0.0: return false
+	var cursor := Vector2(area.end.x, area.end.y if bottom_up else area.position.y)
+	var row_height := 0.0
+	for key in order:
+		var bounds := _position_own_exposed_row(groups[key], cursor, obstacles, bottom_up)
+		if bounds.position.x == -INF and row_height == 0.0 and not bottom_up:
+			cursor.y = maxf(cursor.y, _own_exposed_left_hand.end.y + 6.0)
+			bounds = _position_own_exposed_row(groups[key], cursor, obstacles, bottom_up)
+		if bounds.position.x < area.position.x and row_height > 0.0:
+			cursor.y += (row_height + 6.0) * (-1.0 if bottom_up else 1.0)
+			cursor.x = area.end.x
+			row_height = 0.0
+			bounds = _position_own_exposed_row(groups[key], cursor, obstacles, bottom_up)
+		if bounds.position.x < area.position.x - 0.2 or bounds.position.y < area.position.y - 0.2 or bounds.end.y > area.end.y + 0.2:
+			return false
+		cursor.x = bounds.position.x - 6.0
+		row_height = maxf(row_height, bounds.size.y)
+	return true
+
+func _position_own_exposed_row(ids: Array, cursor: Vector2, obstacles: Array[Rect2], bottom_up: bool) -> Rect2:
+	var top := cursor
+	if bottom_up: top.y -= _exposed_printed_bounds(ids).size.y
+	var bounds := _position_exposed_group_clear(ids, top, obstacles)
+	if bottom_up:
+		top.y += cursor.y - bounds.end.y
+		bounds = _position_exposed_group_clear(ids, top, obstacles)
+	return bounds
+
+func _position_exposed_group_clear(ids: Array, right_top: Vector2, obstacles: Array[Rect2]) -> Rect2:
+	var bounds := _position_exposed_group(ids, right_top)
+	if bounds.intersects(_own_exposed_left_hand):
+		bounds.position.x = -INF
+		return bounds
+	for obstacle in obstacles:
+		if not bounds.intersects(obstacle): continue
+		right_top.x = obstacle.position.x - 6.0
+		bounds = _position_exposed_group(ids, right_top)
+		if bounds.intersects(_own_exposed_left_hand):
+			bounds.position.x = -INF
+			return bounds
+	return bounds
+
 func _position_exposed_group(ids: Array, right_top: Vector2) -> Rect2:
 	var bounds := _exposed_printed_bounds(ids)
-	for _step in 2:
+	for _step in 4:
 		var anchor: MeshInstance3D = tile_nodes[ids[0]]
 		var screen := camera.unproject_position(anchor.position) / Vector2(viewport.size) * size
 		var shift := right_top - Vector2(bounds.end.x, bounds.position.y)

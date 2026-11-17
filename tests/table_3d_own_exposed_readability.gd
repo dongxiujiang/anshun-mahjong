@@ -36,10 +36,11 @@ func _run() -> void:
 		await H.quit_cleanly(self, t.finish("table_3d_own_exposed_readability"))
 		return
 	var cases := 0
-	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
+	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864), Vector2i(1600, 1000)]:
 		root.size = screen
 		host.scale = Vector2(screen) / G.DESIGN_SIZE
 		for height in [0.0, 110.0, 150.0]:
+			if screen.x == 1600 and height != 150: continue
 			view.test_touch_height = height
 			host.round = replay.round
 			for player in host.round.players: player.ready = true
@@ -48,33 +49,35 @@ func _run() -> void:
 			view._table_3d.sync_tiles()
 			_check(view, "record %s footer%d" % [screen, height])
 			await _capture(view, "record-%dx%d-footer%d" % [screen.x, screen.y, height])
-			for melds in 5:
-				for drawn in [false, true]:
-					for direction in [1, 2, 3]:
-						for kind in ["kong", "concealed", "add_kong"]:
-							if kind != "kong" and (melds not in [1, 4] or direction != 1): continue
-							host.round = _make_round(melds, drawn, direction, kind)
-							view.set_round(host.round, 1)
-							await process_frame
-							view._table_3d.sync_tiles()
-							var label := "matrix %s footer%d melds%d drawn%s direction%d %s" % [screen, height, melds, drawn, direction, kind]
-							_check(view, label)
-							_check_source_semantics(view, label)
-							cases += 1
-							if drawn and ((kind == "kong" and (melds in [0,4] and direction == 2 or melds == 1 and height == 150)) or (kind != "kong" and melds in [1,4] and height == 150)):
-								await _capture(view, "%s-%d-melds-source%d-%dx%d-footer%d" % [kind, melds, direction, screen.x, screen.y, height])
-							if melds == 1:
-								host.round.phase = RoundState.Phase.SETTLED
+			for wall_mode in ["full", "no-near", "no-left", "empty"]:
+				for melds in 5:
+					for drawn in [false, true]:
+						for direction in [1, 2, 3]:
+							for kind in ["kong", "concealed", "add_kong"]:
+								if screen.x == 1600 and (melds not in [0,4] or not drawn or direction != 2 or kind != "kong"): continue
+								if kind != "kong" and (melds not in [1, 4] or direction != 1): continue
+								host.round = _make_round(melds, drawn, direction, kind, wall_mode)
 								view.set_round(host.round, 1)
-								view._table_3d._own_hand_pitch = 0.0
+								await process_frame
 								view._table_3d.sync_tiles()
-								_check_source_semantics(view, label + " settled")
+								var label := "matrix %s footer%d melds%d drawn%s direction%d %s wall%s" % [screen, height, melds, drawn, direction, kind, wall_mode]
+								_check(view, label)
+								_check_source_semantics(view, label)
+								cases += 1
+								if drawn and (wall_mode == "full" or (height == 150 and melds in [0,4] and direction == 2 and kind == "kong")) and ((kind == "kong" and (melds in [0,4] and direction == 2 or melds == 1 and height == 150)) or (kind != "kong" and melds in [1,4] and height == 150)):
+									await _capture(view, "%s%s-%d-melds-source%d-%dx%d-footer%d" % ["" if wall_mode == "full" else wall_mode + "-", kind, melds, direction, screen.x, screen.y, height])
+								if melds == 1:
+									host.round.phase = RoundState.Phase.SETTLED
+									view.set_round(host.round, 1)
+									view._table_3d._own_hand_pitch = 0.0
+									view._table_3d.sync_tiles()
+									_check_source_semantics(view, label + " settled")
 	host.queue_free()
 	await process_frame
-	print("[table_3d_own_exposed_readability] matrix_cases=", cases, " replay_cases=6")
+	print("[table_3d_own_exposed_readability] matrix_cases=", cases, " replay_cases=7")
 	await H.quit_cleanly(self, t.finish("table_3d_own_exposed_readability"))
 
-func _make_round(melds: int, drawn: bool, direction: int, kind: String = "kong") -> RoundState:
+func _make_round(melds: int, drawn: bool, direction: int, kind: String = "kong", wall_mode: String = "full") -> RoundState:
 	var round := RoundState.new()
 	round.build_players(1)
 	round.controllers = [null, null, null, null]
@@ -86,6 +89,11 @@ func _make_round(melds: int, drawn: bool, direction: int, kind: String = "kong")
 	rng.seed = 2026111719
 	var built: Dictionary = WallBuilder.setup(rng, 0)
 	round.wall = WallRing.new(built.ring, 0)
+	if wall_mode != "full":
+		var seat := 1 if wall_mode == "no-near" else 2
+		var segment: Dictionary = WallRing.SEG.values().filter(func(row): return int(row.seat) == seat)[0]
+		round.wall.set_head(int(segment.start))
+		for _tile in (WallRing.N if wall_mode == "empty" else int(segment.len)): round.wall.draw_head()
 	for player in round.players:
 		player.concealed.assign(["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "wan7", "wan8", "tong1", "tong2", "tong3", "tong4", "tong5"])
 		player.ready = true
