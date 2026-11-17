@@ -383,6 +383,8 @@ func _refresh_hand_arrangement() -> void:
 		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		line.position = Vector2(first.x - half + 8.0, G.HAND_BOTTOM + 4.0)
 		line.size = Vector2(last.x - first.x + 2.0 * half - 16.0, 6.0)
+		line.set_meta("arrangement_start", slot)
+		line.set_meta("arrangement_count", int(length))
 		_hand_groups.add_child(line)
 		slot += int(length)
 	if _local_arrangement.has("discard"):
@@ -393,15 +395,33 @@ func _refresh_hand_arrangement() -> void:
 		mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		mark.position = Vector2(target.x - 38, G.HAND_BOTTOM + 4)
 		mark.size = Vector2(76, 6)
+		mark.set_meta("arrangement_start", count - 1)
+		mark.set_meta("arrangement_count", 1)
 		_hand_groups.add_child(mark)
+	_layout_arrangement_controls()
+
+func _arrangement_projected_bounds(start: int, count: int) -> Rect2:
+	var bounds := Rect2()
+	for slot in range(start, mini(start + count, hand_boxes[human_seat].get_child_count())):
+		var tile = hand_boxes[human_seat].get_child(slot)
+		if not tile is TileView or not tile.is_visible_in_tree(): continue
+		var projected: Rect2 = _table_3d.project_tile(tile)
+		if projected.has_area(): bounds = projected if not bounds.has_area() else bounds.merge(projected)
+	return bounds
+
+func minimum_touch_height() -> float:
+	if not OS.has_feature("android"): return 0.0
+	var pixels_per_unit := (get_viewport().get_screen_transform() * get_global_transform_with_canvas()).get_scale().abs().y
+	return 48.0 * DisplayServer.screen_get_dpi() / 160.0 / maxf(0.001, pixels_per_unit)
 
 func _layout_arrangement_controls() -> void:
 	var anchor := Vector2(_draw_center(human_seat, _current_hand_count(human_seat)).x - _sort_button.size.x / 2.0,
 		minf(G.HAND_BOTTOM + 14.0, G.DESIGN_SIZE.y - _sort_button.size.y - 2.0))
 	if _table_3d != null:
+		var height := maxf(48 * 1.3, minimum_touch_height())
 		for button in [_sort_button, _restore_button, _previous_sort_button]:
-			if button.size != Vector2(160, 48 * 1.3):
-				button.size = Vector2(160, 48 * 1.3)
+			if button.size != Vector2(160, height):
+				button.size = Vector2(160, height)
 			if button.get_theme_font_size("font_size") != 24:
 				button.add_theme_font_size_override("font_size", 24)
 		anchor = G.DESIGN_SIZE - _sort_button.size - Vector2(24 + G.TILE_BASE.x * G.OWN_UNIT, 0)
@@ -420,11 +440,22 @@ func _layout_arrangement_controls() -> void:
 			left = teaching.position.x + teaching.size.x + 30.0
 	_arrangement_caption.position = Vector2(left, G.HAND_BOTTOM + 12.0)
 	_arrangement_caption.size = Vector2(_previous_sort_button.position.x - left - 20.0, 72.0)
-	if _table_3d != null:
-		_arrangement_caption.position.y = 1232
-		_arrangement_caption.size.y = 48
-		if _arrangement_caption.get_theme_constant("line_spacing") != -10:
-			_arrangement_caption.add_theme_constant_override("line_spacing", -10)
+	if _table_3d != null and not _local_arrangement.is_empty():
+		var hand := _arrangement_projected_bounds(0, hand_boxes[human_seat].get_child_count())
+		var bottom := hand.end.y if hand.has_area() else G.DESIGN_SIZE.y - 68.0
+		left = maxf(left, _seat_hud_rect(human_seat).end.x + 20.0)
+		_arrangement_caption.position.x = left
+		_arrangement_caption.size.x = _previous_sort_button.position.x - left - 20.0
+		# Two full CJK lines need 60 units; keep their baseline clear of the group rules.
+		if _arrangement_caption.get_theme_constant("line_spacing") != 0:
+			_arrangement_caption.add_theme_constant_override("line_spacing", 0)
+		_arrangement_caption.size.y = _arrangement_caption.get_theme_font("font").get_height(20) * 2.0
+		_arrangement_caption.position.y = minf(bottom + 6.0, G.DESIGN_SIZE.y - _arrangement_caption.size.y - 2.0)
+		for line in _hand_groups.get_children():
+			var group := _arrangement_projected_bounds(int(line.get_meta("arrangement_start")), int(line.get_meta("arrangement_count")))
+			if not group.has_area(): continue
+			line.position = Vector2(group.position.x + 8.0, group.end.y + 2.0)
+			line.size = Vector2(maxf(1.0, group.size.x - 16.0), 3.0)
 
 func _build_ready_decorations() -> void:
 	for seat in 4:
@@ -511,6 +542,8 @@ func _own_badge_position(dimensions: Vector2) -> Vector2:
 	return Vector2(24.0, top)
 
 func clear_dice_visual() -> void:
+	if RenderingServer.frame_post_draw.is_connected(_play_rendered_dice):
+		RenderingServer.frame_post_draw.disconnect(_play_rendered_dice)
 	if _dice_tween != null and _dice_tween.is_valid(): _dice_tween.kill()
 	_dice_tween = null
 	if _dice_layer != null:
@@ -545,11 +578,7 @@ func animate_dice(value: int, white: int) -> void:
 	_dice_white = white_die
 	_dice_shadow = shadow
 	if DisplayServer.get_name() != "headless":
-		var rendered_red: WeakRef = weakref(red)
-		RenderingServer.frame_post_draw.connect(func():
-			var die = rendered_red.get_ref()
-			if die != null and die == _dice_red and die.is_visible_in_tree():
-				AudioManager.play_dice(), CONNECT_ONE_SHOT)
+		RenderingServer.frame_post_draw.connect(_play_rendered_dice, CONNECT_ONE_SHOT)
 	var red_rest := center + Vector2(-UI.DICE_SIZE - 4.0, -UI.DICE_SIZE * 0.5)
 	var white_rest := center + Vector2(4.0, -UI.DICE_SIZE * 0.5)
 	red.position = red_rest + Vector2(-8, -30)
@@ -564,6 +593,11 @@ func animate_dice(value: int, white: int) -> void:
 	_dice_tween.tween_method(Callable(self, "_tick_dice").bind(value, white, red_rest, white_rest),
 		0.0, 1.0, UI.DICE_DURATION)
 	_dice_tween.tween_interval(GameConfig.OPENING_DICE_HOLD_SECONDS)
+
+func _play_rendered_dice() -> void:
+	if is_instance_valid(_dice_red) and _dice_red.is_visible_in_tree() \
+			and not is_queued_for_deletion() and (table == null or not table.is_queued_for_deletion()):
+		AudioManager.play_dice(table)
 
 func _tick_dice(progress: float, value: int, white: int,
 		red_rest: Vector2, white_rest: Vector2) -> void:
@@ -1520,6 +1554,7 @@ func refresh() -> void:
 
 ## 同一牌桌实例会跨局复用；RoundState 变化时必须清掉上一局的瞬时视觉状态。
 func _reset_round_visual_state() -> void:
+	if _table_3d != null: _table_3d.clear_own_exposed_flight()
 	_invalidate_exposed_layout()
 	_local_arrangement = {}
 	_arrangement_generation += 1
@@ -1583,6 +1618,8 @@ func _begin_visual_action() -> int:
 
 func _complete_visual_action(action_id: int, done: Callable) -> void:
 	if not _visual_actions.erase(action_id): return
+	if not native_actions_pending() and _discard_flights.is_empty() and _table_3d != null:
+		_table_3d.clear_own_exposed_flight()
 	deal_animation_active = native_actions_pending()
 	_layout_meld_badges()
 	if done.is_valid(): done.call()
@@ -2142,6 +2179,11 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 		start, hand_unit, _wall_angle_for_index(wall_index))
 	tile.flight_pitch = 0.0 if tile.face_up else PI
 	tile.scale = Vector2.ONE * (G.WALL_UNIT / hand_unit)
+	if _table_3d != null and seat == human_seat:
+		tile.set_meta("new_kind", "draw")
+		tile.set_meta("v2_seat", seat)
+		tile.set_meta("v2_draw_flight", true)
+		tile.flight_progress = 0.0
 	for node in _wall_layer.get_children():
 		if int(node.get_meta("wall_ring_index", -2)) == wall_index:
 			node.visible = false
@@ -2167,6 +2209,8 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 	var tween := _motion_tween()
 	_draw_flights[seat] = {"tween": tween, "complete": complete}
 	tween.set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	if _table_3d != null and seat == human_seat:
+		tween.tween_property(tile, "flight_progress", 1.0, duration).set_trans(Tween.TRANS_LINEAR)
 	tween.tween_property(tile, "position", target - tile.size / 2.0, duration)
 	tween.tween_property(tile, "scale", Vector2.ONE, duration)
 	tween.tween_property(tile, "rotation", UI.ROTATIONS[rel], duration)
@@ -2185,8 +2229,10 @@ func _finish_pending_draw(seat: int) -> void:
 func _noop() -> void:
 	pass
 
-func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -> void:
+func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable, remaining: Array = []) -> void:
 	var rel := G.relative_seat(human_seat, seat)
+	var mesh: MeshInstance3D = _table_3d.tile_nodes.get(node.get_instance_id()) if _table_3d != null and node != null else null
+	var origin: Vector3 = mesh.position if mesh != null else Vector3.ZERO
 	_invalidate_exposed_layout()
 	var player = table.round.players[seat] if table != null and table.round != null else null
 	var discard_id := int(player.discard_ids.back()) if player != null and not player.discard_ids.is_empty() else -1
@@ -2237,28 +2283,40 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable) -
 			if previous is TileView: previous.set_latest_highlight(false)
 	_discard_flight_id += 1
 	var flight_id := _discard_flight_id
+	var controller = table._table_animation_controller if table != null else null
 	_discard_flights[flight_id] = {"node_id": node.get_instance_id(), "card": card, "seat": seat,
 		"chicken": chicken, "charge": charge, "target": target, "angle": target_angle,
 		"discard_id": discard_id, "centered_target": centered_target, "index": index, "instant": missing_source,
+		"landing_sound": controller != null and controller.defers_discard_sound(),
 		"tween": null, "finish": on_finish}
 	if duration <= 0.0:
 		_finish_discard_flight(flight_id)
 		return
+	if chicken and rel == 0 and _table_3d != null:
+		_preview_own_exposed_flight([node], remaining, func(): _place_discard_flight(_discard_flights[flight_id]))
 	var tw := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_discard_flights[flight_id].tween = tw
 	if chicken: _move_existing_exposed(tw, duration)
 	if _table_3d != null:
 		node.flight_progress = 0.0
+		if rel == 0 and mesh != null:
+			_table_3d.sync_tiles()
+			node.set_meta("flight_origin_offset_3d", origin - mesh.position)
 		tw.tween_property(node, "flight_progress", 1.0, duration).set_trans(Tween.TRANS_LINEAR)
 	tw.tween_property(node, "position", target - node.size / 2.0, duration)
 	tw.tween_property(node, "scale", target_scale, duration)
 	tw.tween_property(node, "rotation", target_angle, duration)
 	tw.tween_property(node, "flight_pitch", 0.0, duration)
+	if rel == 0 and _table_3d != null: _table_3d.sync_tiles()
 	tw.chain().tween_callback(Callable(self, "_finish_discard_flight").bind(flight_id))
 
 func _finish_discard_flight(flight_id: int) -> void:
 	var data: Dictionary = _discard_flights.get(flight_id, {})
 	if data.is_empty(): return
+	# A row can slide after contact. Sound belongs to contact, only once.
+	if data.landing_sound and not table.is_queued_for_deletion():
+		data.landing_sound = false
+		AudioManager.play_discard_impact(table)
 	if not bool(data.chicken) and not bool(data.get("centered",false)):
 		data.centered = true
 		var seat: int=data.seat
@@ -2286,6 +2344,16 @@ func _finish_discard_flight(flight_id: int) -> void:
 			return
 		for move in moves:move[0].position=move[1]-move[0].size/2
 	_discard_flights.erase(flight_id)
+	_place_discard_flight(data)
+	var action_already_done := not native_actions_pending()
+	var finish: Callable = data.get("finish", Callable())
+	if finish.is_valid(): finish.call()
+	if not native_actions_pending() and _discard_flights.is_empty() and _table_3d != null:
+		_table_3d.clear_own_exposed_flight()
+	if action_already_done and not native_presentation_pending() and is_instance_valid(table) and table.is_inside_tree():
+		table.call_deferred("_refresh")
+
+func _place_discard_flight(data: Dictionary) -> void:
 	var node = instance_from_id(int(data.get("node_id", 0)))
 	var card := str(data.get("card", ""))
 	var seat := int(data.get("seat", 0))
@@ -2294,6 +2362,7 @@ func _finish_discard_flight(flight_id: int) -> void:
 	var angle := float(data.get("angle", 0.0))
 	if node is TileView:
 		var destination: Control = _red_layer if chicken else _discard_layer
+		node.remove_meta("flight_origin_offset_3d")
 		node.flight_pitch = -1.0
 		node.flight_progress = -1.0
 		if node.get_parent() != destination: node.reparent(destination, false)
@@ -2305,11 +2374,6 @@ func _finish_discard_flight(flight_id: int) -> void:
 		node.rotation = angle
 		node.scale = _exposed_size(seat) / G.TILE_BASE if chicken else Vector2.ONE
 		_set_river_tile(node, seat, int(data.get("discard_id", -1)), chicken, bool(data.get("charge", false)))
-	var action_already_done := not native_actions_pending()
-	var finish: Callable = data.get("finish", Callable())
-	if finish.is_valid(): finish.call()
-	if action_already_done and not native_presentation_pending() and is_instance_valid(table) and table.is_inside_tree():
-		table.call_deferred("_refresh")
 
 func _take_discard_source(seat: int, discard_id: int, chicken: bool) -> Control:
 	if seat == _latest_discard_seat and discard_id == _latest_discard_id:
@@ -2329,6 +2393,8 @@ func _take_discard_source(seat: int, discard_id: int, chicken: bool) -> Control:
 		var tween: Tween = data.tween
 		if is_instance_valid(tween): tween.kill()
 		_discard_flights.erase(flight_id)
+		if seat == human_seat and _table_3d != null: _table_3d.clear_own_exposed_flight()
+		if node != null: node.remove_meta("flight_origin_offset_3d")
 		var finish: Callable = data.finish
 		if finish.is_valid(): finish.call()
 		return node as Control
@@ -2354,7 +2420,7 @@ func animate_draw_discard(seat: int, done: Callable, discard_card: String = "") 
 			var kept: Control = hand_boxes[seat].get_child(slot)
 			_motion_tween().tween_property(kept, "position", G.hand_slot_center(seat, slot, human_seat, hand_boxes[seat].get_child_count()) - kept.size / 2.0, GameConfig.tile_motion_seconds() * 0.4)
 	if card != "":
-		_fly_discard(node, seat, card, func(): _complete_visual_action(action_id, done))
+		_fly_discard(node, seat, card, func(): _complete_visual_action(action_id, done), hand_boxes[seat].get_children())
 	else:
 		for child in draw_boxes[seat].get_children(): _release_visual_node(child)
 		_complete_visual_action(action_id, done)
@@ -2378,7 +2444,6 @@ func animate_hand_discard(seat: int, discard_card: String, discard_index: int,
 	if discard_node == null:
 		_fly_discard(null, seat, discard_card, func(): _complete_visual_action(action_id, done))
 		return
-	_fly_discard(discard_node, seat, discard_card, Callable(self, "_noop"))
 	var ordered: Array = remaining.duplicate()
 	ordered.sort_custom(func(a, b):
 		return TILES.value_index(str(a.tile)) < TILES.value_index(str(b.tile)))
@@ -2391,6 +2456,7 @@ func animate_hand_discard(seat: int, discard_card: String, discard_index: int,
 				if str(available[index].tile) == card:
 					ordered.append(available.pop_at(index))
 					break
+	_fly_discard(discard_node, seat, discard_card, Callable(self, "_noop"), ordered)
 	var move := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD) \
 		.set_ease(Tween.EASE_IN_OUT)
 	var duration := GameConfig.tile_motion_seconds()
@@ -2440,8 +2506,6 @@ func animate_draw_insert(seat: int, discard_card: String, draw_card: String, don
 		_pending_draws[seat] = ""
 		_fly_discard(discard_node, seat, discard_card, func(): _complete_visual_action(action_id, done))
 		return
-	# 弃牌先飞离手牌区。
-	_fly_discard(discard_node, seat, discard_card, Callable(self, "_noop"))
 	# 摸牌加入后按排序位置插入。
 	var cards: Array = []
 	for node in remaining: cards.append(str(node.tile))
@@ -2473,6 +2537,8 @@ func animate_draw_insert(seat: int, discard_card: String, draw_card: String, don
 				moves.append({"node": node, "slot": slot})
 				used[node] = true
 				break
+	# Keep the original hand-to-discard path, using the final hand geometry for own chickens.
+	_fly_discard(discard_node, seat, discard_card, Callable(self, "_noop"), moves.map(func(m): return m.node))
 	var tw := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 	var duration := GameConfig.tile_motion_seconds()
 	var crosses := _table_3d != null and seat == human_seat and moves.map(func(m): return m.node) != remaining + [draw_node]
@@ -2509,6 +2575,63 @@ func animate_draw_insert(seat: int, discard_card: String, draw_card: String, don
 func _live_exposed_layout(seat: int) -> Array:
 	if round == null: return []
 	return meld_layout(MODEL.melds_for_seat(round, seat), seat, G.relative_seat(human_seat, seat))
+
+func _preview_own_exposed_flight(nodes: Array, remaining: Array, land: Callable) -> void:
+	if nodes.any(func(source): return not _table_3d.tile_nodes.has(source.get_instance_id())): _table_3d.sync_tiles()
+	var saved := []
+	var properties := ["size", "position", "scale", "rotation", "modulate", "pivot_offset",
+		"flight_pitch", "flight_progress", "face_depth_top", "standing_back_view"]
+	var preview: Array = nodes.duplicate()
+	preview.append_array(remaining)
+	for source in _red_layer.get_children() + _meld_layer.get_children():
+		if int(source.get_meta("v2_seat", -1)) == human_seat and not preview.has(source): preview.append(source)
+	var origins := {}
+	var previous := {}
+	for source in preview:
+		var mesh: MeshInstance3D = _table_3d.tile_nodes.get(source.get_instance_id())
+		if mesh != null: previous[source.get_instance_id()] = mesh.transform
+	for source in nodes:
+		var mesh: MeshInstance3D = _table_3d.tile_nodes.get(source.get_instance_id())
+		if mesh != null: origins[source.get_instance_id()] = mesh.position
+	for source in preview:
+		var state := {"node": source, "parent": source.get_parent(), "index": source.get_index(),
+			"unit": source.unit, "tile": source.tile, "face_up": source.face_up,
+			"interactive": source.interactive, "latest": source.latest_highlight, "meta": {}, "properties": {}}
+		for key in source.get_meta_list(): state.meta[key] = source.get_meta(key)
+		for key in properties: state.properties[key] = source.get(key)
+		saved.append(state)
+	land.call()
+	for slot in remaining.size():
+		var source: TileView = remaining[slot]
+		if source.get_parent() != hand_boxes[human_seat]: source.reparent(hand_boxes[human_seat], false)
+		source.set_meta("new_kind", "hand")
+		source.set_meta("drawn", false)
+		source.set_meta("v2_hand_slot", slot)
+		hand_boxes[human_seat].move_child(source, slot)
+		source.position = G.hand_slot_center(human_seat, slot, human_seat, remaining.size()) - source.size / 2.0
+	_table_3d.sync_tiles()
+	var targets := {}
+	for source in _red_layer.get_children() + _meld_layer.get_children():
+		if int(source.get_meta("v2_seat", -1)) != human_seat: continue
+		var mesh: MeshInstance3D = _table_3d.tile_nodes.get(source.get_instance_id())
+		if mesh != null: targets[source.get_instance_id()] = mesh.transform
+	for state in saved:
+		var source: TileView = state.node
+		if source.get_parent() != state.parent: source.reparent(state.parent, false)
+		source.set_unit(state.unit)
+		source.set_card(state.tile, state.face_up)
+		source.set_interactive(state.interactive)
+		source.set_latest_highlight(state.latest)
+		for key in properties: source.set(key, state.properties[key])
+		for key in source.get_meta_list(): source.remove_meta(key)
+		for key in state.meta: source.set_meta(key, state.meta[key])
+	# The final hand may have a different sorted order. Restore child indices
+	# ascending so a later move cannot displace a previously restored child.
+	saved.sort_custom(func(a, b): return int(a.index) < int(b.index))
+	for state in saved: state.parent.move_child(state.node, state.index)
+	_table_3d._own_exposed_targets = targets
+	_table_3d._own_exposed_origins = origins
+	_table_3d._own_exposed_previous = previous
 
 func _place_exposed_tiles(seat: int, excluded_meld: int) -> void:
 	var layout := _exposed_layout()
@@ -2698,6 +2821,12 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			hand_boxes[seat].move_child(kept, slot)
 	var duration := GameConfig.tile_motion_seconds()
 	var side_3d := _table_3d != null and rel in [1, 3]
+	var finish := done
+	if _table_3d != null and rel == 0 and duration > 0.0:
+		_preview_own_exposed_flight(nodes, remaining_sources.map(func(source): return source.node), land)
+		finish = func():
+			_table_3d.clear_own_exposed_flight()
+			if done.is_valid(): done.call()
 	if duration <= 0.0:
 		land.call()
 		_center_hand_after_meld(seat, action_id, done, side_3d)
@@ -2734,9 +2863,13 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 		flight.tween_property(node, "scale", tile_size / node.size, duration)
 		flight.tween_property(node, "rotation", target_angles[i], duration)
 		flight.tween_property(node, "flight_pitch", 0.0 if visible_face else PI, duration)
+	if _table_3d != null and rel == 0:
+		# Preview temporarily renders the final layout; restore the real t=0
+		# meshes now, even when this action starts after Table3D's process.
+		_table_3d.sync_tiles()
 	flight.chain().tween_callback(func():
 		land.call()
-		_center_hand_after_meld(seat, action_id, done, side_3d))
+		_center_hand_after_meld(seat, action_id, finish, side_3d))
 
 func _build_melds() -> void:
 	for data in snapshot.get("seats", []):
@@ -3015,8 +3148,9 @@ func _refresh_hud() -> void:
 	if round == null or _label_layer == null:
 		return
 	var seats: Array = snapshot.get("seats", [])
+	var active := _hud_active_seat()
 	for seat in _turn_markers:
-		_turn_markers[seat].visible = int(snapshot.get("turn", -1)) == seat and round.phase == ROUND_STATE.Phase.PLAYING
+		_turn_markers[seat].visible = active == seat
 	var signature := str([seats.map(
 		func(data): return [data.name, data.score, data.ready, data.is_dealer, data.is_human]),
 		round.phase, AudioManager.seat_voice_packs, table != null and table._net_mode() != ""])
@@ -3024,7 +3158,17 @@ func _refresh_hud() -> void:
 		return
 	_label_signature = signature
 	_clear(_label_layer)
-	_build_labels(seats)
+	_build_labels(seats, active)
+
+func _hud_active_seat() -> int:
+	if round.phase != ROUND_STATE.Phase.PLAYING or _opening_mode() \
+			or (table != null and table.get("_awaiting_rejoin_snapshot") == true):
+		return -1
+	# Only the local player's response should be advertised. The previous
+	# discarder is no longer acting, and other seats' options stay private.
+	if not round._awaiting_response.is_empty():
+		return human_seat if int(round._awaiting_response.get("seat", -1)) == human_seat else -1
+	return int(snapshot.get("turn", -1))
 
 func _seat_display_names(seats: Array) -> Dictionary:
 	var names := {}
@@ -3054,7 +3198,7 @@ func _seat_display_names(seats: Array) -> Dictionary:
 		used[name] = true
 	return names
 
-func _build_labels(seats: Array) -> void:
+func _build_labels(seats: Array, active: int) -> void:
 	_hud_bounds.clear()
 	_labels.clear()
 	_name_labels.clear()
@@ -3068,7 +3212,7 @@ func _build_labels(seats: Array) -> void:
 		var own_strip := _table_3d != null and seat == human_seat
 		var is_dealer := bool(data.is_dealer)
 		var has_voice: bool = table != null and table._net_mode() != "" and (seat == human_seat or bool(data.is_human))
-		var is_turn: bool = int(snapshot.get("turn", -1)) == seat and round.phase == ROUND_STATE.Phase.PLAYING
+		var is_turn := active == seat
 		var who: String = names[seat]
 		var caption := who
 		var name_edge := bounds.end.x - 24.0

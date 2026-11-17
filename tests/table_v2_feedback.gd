@@ -344,6 +344,36 @@ func _settlement(view):
 	view.table = null
 	host.queue_free()
 
+func _turn_marker_follows_action(view) -> void:
+	var host := Host.new()
+	var fixture: RoundState = _round()
+	host.round = fixture
+	view.table = host
+	fixture.current_turn = 3
+	view.set_round(fixture, 1)
+	t.expect(view._turn_markers[3].visible, "normal turn points at the player drawing or discarding")
+	fixture._awaiting_response = {"seat": 1, "disc_seat": 3, "tile": "wan1", "stage": RoundState.ResponseStage.MELD}
+	fixture.awaiting = true
+	view.refresh()
+	t.expect(view._turn_markers[1].visible and not view._turn_markers[3].visible,
+		"a local response moves the cue away from the player who already discarded")
+	fixture._awaiting_response.seat = 2
+	view.refresh()
+	t.expect(view._turn_markers.values().all(func(marker): return not marker.visible),
+		"waiting for another player's response does not mark the discarder or expose the responder")
+	fixture._awaiting_response.clear()
+	fixture.awaiting = false
+	fixture.current_turn = 0
+	view.refresh()
+	t.expect(view._turn_markers[0].visible, "the next normal turn restores the seat cue")
+	view.test_frozen = true
+	view.refresh()
+	t.expect(view._turn_markers.values().all(func(marker): return not marker.visible),
+		"no playable turn is advertised while the opening presentation is locked")
+	view.test_frozen = false
+	view.table = null
+	host.free()
+
 func _run():
 	root.size = Vector2i(1280,720)
 	var view = load("res://scenes/table/TableV2.tscn").instantiate()
@@ -356,6 +386,7 @@ func _run():
 	_ready_meld_clearance(view)
 	await _ready_marker_motion(view)
 	await _settlement(view)
+	_turn_marker_follows_action(view)
 	view.queue_free()
 	await H.quit_cleanly(self,t.finish("table_v2_feedback"))
 

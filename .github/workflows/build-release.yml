@@ -242,10 +242,12 @@ jobs:
 
       - name: Check graphical opening, melds and settlement layouts
         shell: bash
+        env:
+          OWN_EXPOSED_CAPTURE: ${{ github.workspace }}/build/ci/own-exposed
         run: |
           set -euo pipefail
           xvfb-run -a python -X utf8 tests/run_network.py --godot "$(command -v godot)" --section online --graphical-table 2>&1 | tee build/ci/graphical-opening.log
-          for suite in table_3d ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
+          for suite in table_3d table_3d_own_exposed_readability table_3d_own_exposed_flight table_3d_art_acceptance table_action_feedback_acceptance ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
             timeout 600s xvfb-run -a godot --path . --audio-driver Dummy --resolution 1280x720 --script "res://tests/$suite.gd" > "build/ci/$suite.log" 2>&1 || { tail -n 100 "build/ci/$suite.log"; exit 1; }
             if grep -qE 'SCRIPT ERROR:|ERROR: Lambda capture' "build/ci/$suite.log"; then tail -n 100 "build/ci/$suite.log"; exit 1; fi
             tail -n 4 "build/ci/$suite.log"
@@ -472,6 +474,10 @@ jobs:
             build/online_opening_clock.err
             build/ci/graphical-opening.log
             build/ci/table_3d.log
+            build/ci/table_3d_own_exposed_*.log
+            build/ci/table_3d_art_acceptance.log
+            build/ci/table_action_feedback_acceptance.log
+            build/ci/own-exposed/**
             build/table-3d-review/**
             build/ci/table_v2_*.log
             build/ci/settlement_exposed_visibility.log

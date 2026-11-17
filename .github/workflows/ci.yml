@@ -63,8 +63,8 @@ jobs:
         run: |
           set -euo pipefail
           python -X utf8 tests/run_suites.py --godot "$(command -v godot)" \
-            --suite table_render_cache table_input_cache rules_complete rules_update smoke_scoring settlement_card scoring_audit scoring_pairwise \
-              legal_actions ready_pass_win round_sync round_replay replay_export smoke_audio reconnect_control background_lifecycle ui_regression voice_chat gme_voice_chat table_components animation_speed_settings table_v2_static table_v2_hand_discard table_v2_round_animation table_v2_feedback settlement_score_details table_v2_settlement_scenarios smoke_ai \
+            --suite table_3d_own_exposed_readability table_3d_own_exposed_flight table_render_cache table_input_cache rules_complete rules_update smoke_scoring settlement_card scoring_audit scoring_pairwise \
+              legal_actions ready_pass_win round_sync round_replay replay_export smoke_audio reconnect_control background_lifecycle ui_regression voice_chat gme_voice_chat table_components animation_speed_settings table_v2_static table_3d_touch_footer sort_annotations_layout table_v2_hand_discard table_v2_round_animation table_v2_feedback settlement_score_details table_v2_settlement_scenarios smoke_ai \
             --simulation-timeout 180
 
       - name: Run Python CI checks
@@ -107,9 +107,11 @@ jobs:
           sed -i 's/^driver\/enable_input=true/driver\/enable_input=false/' project.godot
           godot --headless --path . --editor --import > build/ci/import.log 2>&1
       - name: Check graphical suites
+        env:
+          OWN_EXPOSED_CAPTURE: ${{ github.workspace }}/build/qa/own-exposed
         run: |
           failed=0
-          for suite in table_3d ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
+          for suite in table_3d table_3d_own_exposed_readability table_3d_own_exposed_flight table_3d_art_acceptance table_action_feedback_acceptance ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
             timeout 600s xvfb-run -a godot --path . --audio-driver Dummy --resolution 1280x720 --script "res://tests/$suite.gd" > "build/ci/$suite.log" 2>&1 || failed=1
             echo "$suite"
             tail -n 80 "build/ci/$suite.log"
@@ -126,3 +128,6 @@ jobs:
             build/settlement-exposed/**
             build/back-render/**
             build/ui-feedback/**
+            build/qa/art-acceptance/**
+            build/qa/action-feedback/**
+            build/qa/own-exposed/**

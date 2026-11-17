@@ -398,6 +398,8 @@ func request_join(number: String, player_name: String, token: String = "", resum
 			_sent_audio.erase(previous)
 			_peer_protocol.erase(previous)
 			_last_sent_state.erase(previous)
+			# This peer leaves membership before the disconnect callback runs.
+			_opening_waiters.erase(previous)
 			if _owner_peer == previous: _owner_peer = peer
 			multiplayer.multiplayer_peer.disconnect_peer(previous)
 			resumed = true

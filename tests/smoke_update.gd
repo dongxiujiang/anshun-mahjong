@@ -114,6 +114,14 @@ func _test_ui() -> void:
 	t.expect(panel.is_open(), "已下载的补丁在启动时提醒重启")
 	panel.close()
 	updater.auto_check = false
+	var last_summary: String = panel.summary.text
+	root.remove_child(menu)
+	updater.message = "离开主菜单后检查完成"
+	updater.state_changed.emit()
+	t.expect(panel.summary.text == last_summary, "离开场景后更新回调不访问已移出的界面")
+	root.add_child(menu)
+	updater.state_changed.emit()
+	t.expect(panel.summary.text == updater.message, "回到场景后更新状态仍能显示")
 	menu.queue_free()
 	await process_frame
 	updater.latest.clear()

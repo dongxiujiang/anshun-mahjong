@@ -14,8 +14,11 @@ var _selected_tile: TileView
 var _declaring_ready := false
 var _ready_discards: Array = []
 var _ready_button: Button
-var _last_tile_input_ms := -1000
 var _pressed_tile: TileView
+var _press_prompt_id := -1
+var _press_outline: Panel
+var _press_rendered := false
+var _clear_after_draw := false
 var _press_position := Vector2.ZERO
 var _dragged := false
 var _touch_index := -1
@@ -112,9 +115,9 @@ func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
 			_touch_index = -1
 			released = true
 	elif event is InputEventScreenDrag:
-		if event.index == _touch_index and event.position.distance_to(_press_position) > 20.0: _dragged = true
+		if event.index == _touch_index: _drag(event.position)
 	elif event is InputEventMouseMotion:
-		if is_instance_valid(_pressed_tile) and event.position.distance_to(_press_position) > 20.0: _dragged = true
+		if _touch_index < 0: _drag(event.position)
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		# 原生触控优先，忽略系统模拟的鼠标事件，避免一指提交两次。
 		if OS.has_feature("android") or _touch_index >= 0: return
@@ -124,23 +127,74 @@ func _on_human_tile_gui(event: InputEvent, tile: TileView) -> void:
 		_begin_press(tile, Vector2.ZERO)
 		released = true
 	if not released: return
-	var valid := is_instance_valid(_pressed_tile) and _pressed_tile == tile and not _dragged and tile._has_point(event.position if not event is InputEventKey else Vector2.ZERO)
-	_pressed_tile = null
+	var valid: bool = is_instance_valid(_pressed_tile) and _pressed_tile == tile and not _dragged \
+		and _press_prompt_id == table.round.prompt_id \
+		and tile._has_point(event.position if not event is InputEventKey else Vector2.ZERO)
+	var carry_feedback := valid and DisplayServer.get_name() != "headless" \
+		and is_instance_valid(_press_outline) and _press_outline.visible and not _press_rendered
+	_reset_press()
 	if not valid: return
-	var now := Time.get_ticks_msec()
-	if now - _last_tile_input_ms < UI.TILE_INPUT_DEBOUNCE_MS: return
-	_last_tile_input_ms = now
+	var round_at_press: RoundState = table.round
 	table._submit_discard(tile.tile, int(tile.get_meta("concealed_index", -1)))
+	# A down/up pair delivered in one frame still needs one visible response.
+	if carry_feedback and table.round == round_at_press and table.round.phase == RoundState.Phase.PLAYING \
+			and not table.is_queued_for_deletion():
+		_press_outline.show()
+		_clear_after_draw = true
+		_watch_feedback_frame()
 
 func _begin_press(tile: TileView, position: Vector2) -> void:
 	_pressed_tile = tile
+	_press_prompt_id = table.round.prompt_id
 	_press_position = position
 	_dragged = false
+	_clear_after_draw = false
+	_press_rendered = false
+	if not is_instance_valid(_press_outline):
+		_press_outline = Panel.new()
+		_press_outline.name = "TilePressFeedback"
+		_press_outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_press_outline.z_index = 20
+		var outline := StyleBoxFlat.new()
+		outline.bg_color = Color(0.04, 0.22, 0.17, 0.22)
+		outline.border_color = Color("#ffe3a0")
+		outline.set_border_width_all(4)
+		outline.set_corner_radius_all(6)
+		_press_outline.add_theme_stylebox_override("panel", outline)
+		table.add_child(_press_outline)
+	var rect: Rect2 = tile.get_global_rect()
+	var view: Control = table._new_areas
+	if tile.presentation_3d and view != null and view._table_3d != null:
+		var projected: Rect2 = view._table_3d.project_tile(tile)
+		rect = view._table_3d.get_global_transform() * projected
+	_press_outline.visible = rect.has_area()
+	var local: Rect2 = table.get_global_transform().affine_inverse() * rect
+	_press_outline.position = local.position
+	_press_outline.size = local.size
+	if _press_outline.visible: _watch_feedback_frame()
 
-func _reset_press() -> void:
+func _watch_feedback_frame() -> void:
+	if DisplayServer.get_name() != "headless" and not RenderingServer.frame_post_draw.is_connected(_feedback_drawn):
+		RenderingServer.frame_post_draw.connect(_feedback_drawn, CONNECT_ONE_SHOT)
+
+func _feedback_drawn() -> void:
+	_press_rendered = true
+	if _clear_after_draw: _hide_press_feedback()
+
+func _hide_press_feedback() -> void:
+	if is_instance_valid(_press_outline): _press_outline.hide()
+	_clear_after_draw = false
+
+func _drag(position: Vector2) -> void:
+	if is_instance_valid(_pressed_tile) and position.distance_to(_press_position) > 20.0:
+		_dragged = true
+		_hide_press_feedback()
+
+func _reset_press(keep_committed_feedback: bool = false) -> void:
 	_pressed_tile = null
 	_touch_index = -1
 	_dragged = false
+	if not keep_committed_feedback or not _clear_after_draw: _hide_press_feedback()
 
 func _on_require_turn(seat: int) -> void:
 	if seat != table.human_seat:
@@ -255,8 +309,8 @@ func _toggle_ready() -> void:
 func _update_interactivity() -> void:
 	var syncing: bool = bool(table._awaiting_rejoin_snapshot)
 	var blocked: bool = input_locked() or syncing
-	if not _selecting or blocked: _reset_press()
 	if table.round == null or table.human_seat >= table.round.players.size():
+		_reset_press()
 		return
 	var player: PlayerState = table.round.players[table.human_seat]
 	if _selecting:
@@ -271,6 +325,8 @@ func _update_interactivity() -> void:
 			_input_window = table.round.allowed_actions(table.human_seat)
 			_input_window_key = key
 		if str(_input_window.get("kind", "")) != "turn": _selecting = false
+	if not _selecting or blocked or (is_instance_valid(_pressed_tile) and _press_prompt_id != table.round.prompt_id):
+		_reset_press(table.round.phase == RoundState.Phase.PLAYING and not syncing)
 	var legal_discards: Array = _input_window.options.discards if _selecting else []
 	var boxes: Array = [table.hand_box[table.human_seat], table.draw_box[table.human_seat]]
 	if table._new_areas != null and table._new_areas.get("hand_boxes") != null:

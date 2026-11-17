@@ -2,7 +2,7 @@ shader_type spatial;
 uniform sampler2D artwork : source_color, filter_linear_mipmap_anisotropic;
 uniform sampler2D engraving : hint_normal, filter_linear_mipmap_anisotropic;
 uniform vec4 ivory : source_color = vec4(0.98, 0.97, 0.92, 1.0);
-uniform vec4 green : source_color = vec4(0.16, 0.37, 0.23, 1.0);
+uniform vec4 green : source_color = vec4(0.20, 0.44, 0.29, 1.0);
 void fragment() {
 	vec3 ink = texture(artwork, UV).rgb;
 	// The green resin lives in the lower UV islands; retain the painted bamboo ink.

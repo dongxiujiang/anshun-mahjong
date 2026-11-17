@@ -159,9 +159,6 @@ var _animation_queue: Array:
 var _skip_visual_once: bool:
 	get: return _table_animation_controller._skip_visual_once
 	set(value): _table_animation_controller._skip_visual_once = value
-var _last_tile_input_ms: int:
-	get: return _table_actions._last_tile_input_ms
-	set(value): _table_actions._last_tile_input_ms = value
 
 func _on_visual_event(event: Dictionary) -> void:
 	_table_animation_controller._on_visual_event(event)
@@ -457,7 +454,7 @@ func _connect_audio_round() -> void:
 	_settlement_card.hide_post_settlement_controls()
 	_settlement_round_id = 0
 	_settlement_phase = -1
-	_last_tile_input_ms = -1000
+	_table_actions._reset_press()
 	round.audio_event.connect(_on_audio_event)
 	if not round.visual_event.is_connected(_on_visual_event):
 		round.visual_event.connect(_on_visual_event)
@@ -1508,7 +1505,6 @@ func _on_input_focus_changed() -> void:
 	# which suppresses the next mouse AND touch press. Drop only the gesture;
 	# preserve prompts, ready selection, and authoritative animation locks.
 	_table_actions._reset_press()
-	_last_tile_input_ms = -1000
 	if is_node_ready(): _update_interactivity()
 
 func _notification(what: int) -> void:

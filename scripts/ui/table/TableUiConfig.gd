@@ -109,7 +109,6 @@ const ACTION_FONT_SIZE := 42
 const SETTINGS_FONT_SIZE := 32
 const NEXT_ROUND_FONT_SIZE := 38
 const BUTTON_RADIUS := 18
-const TILE_INPUT_DEBOUNCE_MS := 100
 
 # 统一调色板：背景、牌桌、按钮、结算与禁用牌面。
 const TRANSPARENT_FILL := Color(0, 0, 0, 0)

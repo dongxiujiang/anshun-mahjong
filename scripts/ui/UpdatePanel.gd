@@ -101,6 +101,7 @@ func _layout() -> void:
 	panel.position = available.position + (available.size - PANEL_SIZE * panel.scale) / 2.0
 
 func _sync() -> void:
+	if not is_inside_tree(): return
 	summary.text = _manager.message
 	rollback_button.visible = get_node("/root/PatchBoot").can_rollback()
 	rollback_button.disabled = _manager.state in ["checking", "downloading", "opening"]

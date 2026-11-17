@@ -72,6 +72,8 @@ func _add_persistent_die(node: Control) -> void:
 	_dice_nodes.append(node)
 
 func clear_dice() -> void:
+	if RenderingServer.frame_post_draw.is_connected(_play_rendered_dice):
+		RenderingServer.frame_post_draw.disconnect(_play_rendered_dice)
 	for node in _dice_nodes:
 		if is_instance_valid(node):
 			remove_child(node)
@@ -82,7 +84,6 @@ func clear_dice() -> void:
 func _dice(event: Dictionary) -> void:
 	clear_dice()
 	dice_animating = true
-	AudioManager.play_dice()
 	var die_size := Vector2(UI.DICE_SIZE, UI.DICE_SIZE)
 	var red := DICE.new()
 	red.size = die_size
@@ -113,6 +114,7 @@ func _dice(event: Dictionary) -> void:
 	white.scale = Vector2.ONE * 0.8
 	_add_persistent_die(red)
 	_add_persistent_die(white)
+	RenderingServer.frame_post_draw.connect(_play_rendered_dice, CONNECT_ONE_SHOT)
 	_active.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_active.tween_method(func(progress: float):
 		red.rotation = lerpf(-0.55, TAU, progress)
@@ -132,6 +134,12 @@ func _dice(event: Dictionary) -> void:
 		red.value = int(event.get("value", 1))
 		white.value = int(event.get("white", event.get("die_white", 1))))
 	_active.tween_interval(_duration(GameConfig.OPENING_DICE_HOLD_SECONDS))
+
+func _play_rendered_dice() -> void:
+	if _active != null and not _dice_nodes.is_empty() and _dice_nodes[0].is_visible_in_tree() \
+			and not is_queued_for_deletion() \
+			and not get_parent().is_queued_for_deletion():
+		AudioManager.play_dice()
 
 func _dice_bounce(progress: float, height: float) -> float:
 	# 第一段下落，随后两次高度递减的落地回弹。

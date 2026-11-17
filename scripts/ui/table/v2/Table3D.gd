@@ -23,6 +23,17 @@ var discard_marker: MeshInstance3D
 var _marker_source_id := 0
 var _marker_blocked := false
 var geometry_revision := 0
+var _own_exposed_layout_key := 0
+var _own_exposed_targets := {}
+var _own_exposed_origins := {}
+var _own_exposed_previous := {}
+
+func clear_own_exposed_flight() -> void:
+	if _own_exposed_targets.is_empty(): return
+	_own_exposed_targets.clear()
+	_own_exposed_origins.clear()
+	_own_exposed_previous.clear()
+	_own_exposed_layout_key = 0
 
 func _ready() -> void:
 	name = "Table3D"
@@ -182,6 +193,7 @@ func sync_tiles() -> void:
 	if view == null or viewport == null: return
 	_fit_viewport()
 	var settled: bool = view.round != null and view.round.phase == RoundState.Phase.SETTLED
+	if settled: clear_own_exposed_flight()
 	var settlement_started: bool = view.native_settlement_started()
 	var seen := {}
 	var moved: Array[MeshInstance3D] = []
@@ -189,6 +201,15 @@ func sync_tiles() -> void:
 	var board_inverse := view.get_global_transform().affine_inverse()
 	var width_fit := minf(1.0, G.DESIGN_SIZE.aspect() / Vector2(viewport.size).aspect())
 	var world_unit := _pixel_scale(G.CENTER, 1.0) * width_fit
+	var touch_height: float = view.minimum_touch_height()
+	var own_layout_state := [viewport.size, settled, touch_height, view.human_seat]
+	var own_meld_key := hash(view.round.players[view.human_seat].melds) if view.round != null else 0
+	var own_travel := 1.0
+	for id in _own_exposed_origins:
+		var moving = _sources[id].get_ref() if _sources.has(id) else null
+		if is_instance_valid(moving) and moving.get_parent() == view._deal_layer:
+			own_travel = 1.0 - pow(1.0 - clampf(moving.flight_progress, 0.0, 1.0), 3.0)
+			break
 	for layer in [view._wall_layer, view._discard_layer, view._red_layer, view._meld_layer,
 			view._deal_layer] + view.hand_boxes + view.draw_boxes:
 		for source in layer.get_children():
@@ -210,10 +231,15 @@ func sync_tiles() -> void:
 			var signature := hash([key, source.face_up, xf, source.size, source.is_visible_in_tree(),
 				source.modulate, source.self_modulate, source.standing_back_view, kind, source.flight_pitch, source.flight_progress,
 				source.z_index, source.highlight, source.latest_highlight, source.ai_teach_highlight,
+				source.get_meta("flight_origin_offset_3d", Vector3.ZERO), source.get_meta("v2_draw_flight", false),
 				source.score_highlight, source.get_parent().get_instance_id(),
 				source.get_meta("charge_chicken", false), source.get_meta("gold_chicken", false),
 				source.get_meta("v2_charge", false), source.get_meta("kong_offset_2d", Vector2.ZERO), source.get_meta("kong_offset_3d", Vector2.ZERO), settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
-				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0])
+				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0, touch_height if own_hand else 0.0,
+				own_meld_key if kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat else 0,
+				own_travel if _own_exposed_targets.has(id) else 1.0])
+			if source.get_parent() != view._deal_layer and (own_hand or (kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat)):
+				own_layout_state.append([id, signature])
 			if _signatures.get(id) == signature: continue
 			_signatures[id] = signature
 			moved.append(node)
@@ -251,10 +277,22 @@ func sync_tiles() -> void:
 				# Pack a kong in model units; sprite spacing changes with the camera and aspect.
 				center -= Vector2(source.get_meta("kong_offset_2d", Vector2.ZERO))
 				kong_offset = source.get_meta("kong_offset_3d", Vector2.ZERO)
+				if rel == 0 and view.round != null and int(source.get_meta("meld_index")) < view.round.players[view.human_seat].melds.size():
+					var meld: Dictionary = view.round.players[view.human_seat].melds[int(source.get_meta("meld_index"))]
+					var from_seat := int(meld.get("from_seat", -1))
+					if meld.kind in ["kong", "add_kong"] and (meld.get("concealed", false) or meld.kind == "add_kong" or from_seat not in range(4)):
+						if int(source.get_meta("meld_slot")) == 3: kong_offset = Vector2(1, -1.34)
+					elif meld.kind == "kong" and from_seat in range(4) and posmod(from_seat - view.human_seat, 4) != 2:
+						var source_slot := G.exposed_kong_source_slot(view.human_seat, from_seat)
+						# Keep the left/right source crosswise above that end of the three-tile row.
+						if int(source.get_meta("meld_slot")) == source_slot:
+							kong_offset = Vector2(0.17 if source_slot == 0 else 1.83, -1.17)
+						elif source_slot == 0: kong_offset.x -= 1.34
 			var side_hand: bool = hand and source.standing_back_view in [1, 3]
 			var motion := float(source.flight_progress)
 			var flight := motion if source.get_parent() == view._deal_layer else -1.0
-			var hand_blend := 1.0 if flight < 0.0 else 1.0 - smoothstep(0.0, 0.75, flight)
+			var draw_flight: bool = flight >= 0.0 and bool(source.get_meta("v2_draw_flight", false))
+			var hand_blend := (smoothstep(0.0, 0.75, flight) if draw_flight else 1.0 - smoothstep(0.0, 0.75, flight)) if flight >= 0.0 else 1.0
 			var side_row: bool = side_wall or (side_hand and flight < 0.0) or (kind in ["meld", "red", "ordinary"] and rel in [1, 3] and flight < 0.0)
 			if rel == 0 and kind in ["meld", "red"] and center.y < G.HAND_BOTTOM - G.TILE_BASE.y * G.OWN_UNIT:
 				center.y -= 72.0 if settlement_started else 12.0
@@ -305,17 +343,20 @@ func sync_tiles() -> void:
 				if source == view._settlement_flip_view: position_3d.y += sin(pitch) * factor * 0.35
 			var basis := Basis(Vector3.UP, angle) * Basis(Vector3.RIGHT, pitch)
 			node.transform = Transform3D(basis.scaled(Vector3.ONE * factor), position_3d)
-			if own_hand and flight < 0.0:
+			if own_hand and (flight < 0.0 or draw_flight):
 				# Bottom controls can cover the base while leaving every printed face clear.
+				var extra_footer := maxf(0.0, touch_height - (104.0 if settled else 62.4))
 				for _step in 2:
-					center.y += size.y - (60.0 if settled else 68.0) - _project_mesh(node).end.y
+					center.y += (size.y - (60.0 if settled else 68.0) - extra_footer - _project_mesh(node).end.y) * hand_blend
 					node.position = _at_height(center, height)
-			if hand and not side_hand and flight < 0.0:
+			if hand and not side_hand and (flight < 0.0 or draw_flight):
 				var step: float = (source.size.x + G.TILE_GAP) * along_scale
 				var normal_step := _at_height(center + Vector2(step, 0), height).x - node.position.x
 				if normal_step > factor * 0.98:
 					var anchor := _at_height(Vector2(row_anchor, center.y), height).x
-					node.position.x = lerpf(anchor, node.position.x, factor * 0.98 / normal_step)
+					node.position.x = lerpf(node.position.x, lerpf(anchor, node.position.x, factor * 0.98 / normal_step), hand_blend)
+			if flight >= 0.0:
+				node.position += Vector3(source.get_meta("flight_origin_offset_3d", Vector3.ZERO)) * (1.0 - smoothstep(0.0, 1.0, flight))
 			if side_hand or (source.get_parent() == view._deal_layer and flight < 0.0):
 				# Include flights before their destination hand metadata is assigned.
 				for _step in 3:
@@ -324,6 +365,15 @@ func sync_tiles() -> void:
 					if is_zero_approx(shift): break
 					var screen := camera.unproject_position(node.position) / Vector2(viewport.size) * size
 					node.position += _at_height(screen + Vector2(shift, 0), height) - _at_height(screen, height)
+			if rel == 0 and kind in ["meld", "red"]:
+				node.set_meta("exposed_transform", node.transform)
+			if _own_exposed_targets.has(id):
+				if flight >= 0.0 and _own_exposed_origins.has(id):
+					var travel := 1.0 - pow(1.0 - clampf(flight, 0.0, 1.0), 3.0)
+					node.position = Vector3(_own_exposed_origins[id]).lerp(_own_exposed_targets[id].origin, travel)
+					node.position.y += factor * (1.0 - pow(absf(flight * 2.0 - 1.0), 2.0)) * 0.9
+				elif source.get_parent() != view._deal_layer:
+					node.transform = Transform3D(_own_exposed_previous.get(id, _own_exposed_targets[id])).interpolate_with(_own_exposed_targets[id], own_travel)
 			_rects[id] = _project_mesh(node)
 	for source in [view._dice_red, view._dice_white]:
 		if not is_instance_valid(source): continue
@@ -362,6 +412,10 @@ func sync_tiles() -> void:
 			_signatures.erase(id)
 			_rects.erase(id)
 			_changed = true
+	var own_layout_key := hash(own_layout_state)
+	if own_layout_key != _own_exposed_layout_key:
+		_own_exposed_layout_key = own_layout_key
+		if not settled and _own_exposed_targets.is_empty(): _clear_own_exposed_faces(moved)
 	_update_discard_marker(latest)
 	if _changed:
 		geometry_revision += 1
@@ -372,6 +426,95 @@ func sync_tiles() -> void:
 		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 		queue_redraw()
 		_changed = false
+
+func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
+	var groups := {}
+	var hand := Rect2()
+	var walls := {}
+	for id in tile_nodes:
+		var source = _sources[id].get_ref()
+		var node: MeshInstance3D = tile_nodes[id]
+		if not is_instance_valid(source) or not node.visible: continue
+		if source.get_parent() == view._deal_layer: continue
+		var kind := str(source.get_meta("new_kind", ""))
+		var seat := int(source.get_meta("v2_seat", -1))
+		if kind == "wall":
+			var segment: Dictionary = view._wall_segment_for_index(int(source.get_meta("wall_ring_index", 0)))
+			var side: int = view._wall_screen_seat(int(segment.get("seat", 0)))
+			var wall_bounds := _project_mesh(node)
+			walls[side] = walls[side].merge(wall_bounds) if walls.has(side) else wall_bounds
+		if seat == view.human_seat and kind in ["hand", "draw"]:
+			var bounds := _project_mesh(node)
+			hand = hand.merge(bounds) if hand.has_area() else bounds
+		if seat == view.human_seat and kind in ["meld", "red"]:
+			node.transform = node.get_meta("exposed_transform", node.transform)
+			_rects[id] = _project_mesh(node)
+			var meld := int(source.get_meta("meld_index", -1))
+			var key := "meld%d" % meld if meld >= 0 else "red%d" % id
+			if not groups.has(key): groups[key] = []
+			groups[key].append(id)
+	if groups.is_empty() or not hand.has_area(): return
+	# Own exposed tiles stay together beside the hand, on the near side of its wall.
+	var order: Array = groups.keys()
+	order.sort_custom(func(a, b): return a < b)
+	var near_wall: Rect2 = walls.get(1, Rect2(G.WALL_BOUNDS[1]))
+	var side_wall: Rect2 = walls.get(2, Rect2(G.WALL_BOUNDS[2]))
+	var bottom := minf(G.TABLE_BOUNDS.end.y, size.y - view.minimum_touch_height() - 6.0)
+	var beside := Rect2(Vector2(2.0, maxf(near_wall.end.y, side_wall.end.y) + 6.0), Vector2.ZERO)
+	beside.size = Vector2(hand.position.x - 2.0 - beside.position.x, bottom - beside.position.y)
+	var corner := Rect2(Vector2(side_wall.end.x + 6.0, near_wall.position.y + 6.0), Vector2.ZERO)
+	corner.size = Vector2(near_wall.position.x - 6.0 - corner.position.x, hand.position.y - 6.0 - corner.position.y)
+	var placed := false
+	for area: Rect2 in [beside, corner]:
+		for key in order:
+			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
+		var cursor := Vector2(area.end.x, area.position.y)
+		var row_height := 0.0
+		placed = true
+		for key in order:
+			var bounds := _position_exposed_group(groups[key], cursor)
+			if bounds.position.x < area.position.x and row_height > 0.0:
+				cursor.y += row_height + 6.0
+				cursor.x = area.end.x
+				row_height = 0.0
+				bounds = _position_exposed_group(groups[key], cursor)
+			if bounds.position.x < area.position.x - 0.2 or bounds.end.y > area.end.y + 0.2:
+				placed = false
+				break
+			cursor.x = bounds.position.x - 6.0
+			row_height = maxf(row_height, bounds.size.y)
+		if placed: break
+	if not placed:
+		for key in order:
+			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
+		push_error("自己碰杠和鸡牌近侧空间不足，禁止移到桌心: %s / %s" % [beside, corner])
+	for key in order:
+		for id in groups[key]:
+			_rects[id] = _project_mesh(tile_nodes[id])
+			if not moved.has(tile_nodes[id]): moved.append(tile_nodes[id])
+
+func _position_exposed_group(ids: Array, right_top: Vector2) -> Rect2:
+	var bounds := _exposed_printed_bounds(ids)
+	for _step in 2:
+		var anchor: MeshInstance3D = tile_nodes[ids[0]]
+		var screen := camera.unproject_position(anchor.position) / Vector2(viewport.size) * size
+		var shift := right_top - Vector2(bounds.end.x, bounds.position.y)
+		var delta := _at_height(screen + shift, anchor.position.y) - _at_height(screen, anchor.position.y)
+		for id in ids: tile_nodes[id].position += delta
+		bounds = _exposed_printed_bounds(ids)
+	return bounds
+
+func _exposed_printed_bounds(ids: Array) -> Rect2:
+	var bounds := Rect2()
+	var first := true
+	for id in ids:
+		var node: MeshInstance3D = tile_nodes[id]
+		for x in [-0.45, 0.45]:
+			for z in [-0.60, 0.60]:
+				var point := camera.unproject_position(node.transform * Vector3(x, 0.31, z)) / Vector2(viewport.size) * size
+				bounds = Rect2(point, Vector2.ZERO) if first else bounds.expand(point)
+				first = false
+	return bounds
 
 func _update_discard_marker(source: TileView) -> void:
 	var source_id := source.get_instance_id() if is_instance_valid(source) else 0

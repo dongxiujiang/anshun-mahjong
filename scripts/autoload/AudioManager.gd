@@ -5,6 +5,7 @@ signal settings_changed
 signal seat_voice_pack_changed
 signal event_played(event: Dictionary)
 signal discard_impact_played
+signal dice_played
 signal settlement_cue_played(cue: String)
 signal voice_test_progress(pack_id: String, key: String, index: int, total: int)
 
@@ -171,16 +172,21 @@ func stop_effects() -> void:
 		settlement_player.stream = null
 	_streams.clear()
 
-func play_dice() -> void:
+func play_dice(owner: Node = null) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	if not table_active or effects_player == null:
+	if not table_active or _application_paused or effects_player == null:
+		return
+	if owner != null and owner.get_instance_id() != _table_owner:
+		return
+	if not enabled.effects or float(volumes.effects) <= 0.0:
 		return
 	var stream := _stream("effects/dice_roll")
 	if stream == null:
 		return
 	effects_player.stream = stream
 	effects_player.play()
+	dice_played.emit()
 
 func play_event(event: Dictionary, defer_discard_effect: bool = false) -> void:
 	if not table_active:

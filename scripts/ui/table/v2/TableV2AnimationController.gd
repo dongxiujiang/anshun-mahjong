@@ -271,7 +271,7 @@ func cancel(skip_next_event: bool = false) -> void:
 	_pending_test_deals.clear()
 	_pending_draw_after_meld.clear()
 	_draw_cards = {0: "", 1: "", 2: "", 3: ""}
-	_dice_pending = false
+	clear_dice()
 	_dice_gate_until = 0
 	_dealt = [0, 0, 0, 0]
 	_dealt_cards = {0: [], 1: [], 2: [], 3: []}
@@ -359,7 +359,8 @@ func _dispatch_visual_event(event: Dictionary) -> void:
 		return
 	if pause_after_dice and event_type != "dice":
 		return
-	if event_type == "discard" and _dice_pending and table.round != null \
+	# Keep the rolled result during dealing and clear it before the dealer can play.
+	if event_type in ["draw", "discard"] and _dice_pending and table.round != null \
 			and int(event.get("seat", -1)) == int(table.round.dealer_seat):
 		clear_dice()
 	if event_type == "draw" and _meld_animating:

@@ -22,14 +22,14 @@ func _wait_until(predicate: Callable) -> bool:
 		await process_frame
 	return bool(predicate.call())
 
-func _send_frames(net: NetGameNode) -> void:
-	for batch in 20:
+func _send_frames(net: NetGameNode, first: int = 0, batches: int = 20) -> void:
+	for batch in batches:
 		for index in 5:
 			var packet := PackedByteArray()
 			packet.resize(PCM.PACKET_BYTES)
 			packet[0] = 1
 			packet[1] = 3
-			packet.encode_u32(2, batch * 5 + index)
+			packet.encode_u32(2, first + batch * 5 + index)
 			for sample in PCM.FRAME_COUNT: packet.encode_s16(PCM.HEADER_BYTES + sample * 2, 4096)
 			net.send_local_voice(packet)
 		await create_timer(0.1).timeout
@@ -65,12 +65,33 @@ func _run() -> void:
 		t.expect(receiver.seats.keys() == [0], "host associates speech with the authenticated client seat")
 		await _send_frames(net)
 		t.expect(await _wait_until(func(): return net.ack_text == "voice-client-checked"), "client checks host playback")
+		await _send_frames(net, 100, 2)
+		t.expect(await _wait_until(func(): return net.ack_text == "voice-muted"), "client checks mute while receiving live packets")
+		var previous := int(net._seat_peer[0])
+		net.multiplayer.multiplayer_peer.disconnect_peer(previous)
+		t.expect(await _wait_until(func(): return net.ack_text == "voice-rejoined" and int(net._seat_peer[0]) != previous), "guest reconnects to the same voice seat")
+		await _send_frames(net, 110, 2)
+		t.expect(await _wait_until(func(): return receiver.received.has(100)), "host receives the guest's fresh speech after reconnect")
+		t.expect(await _wait_until(func(): return net.ack_text == "voice-restored"), "both peers check voice after reconnect")
 	else:
 		await _send_frames(net)
 		net.rpc_id(1, "ack", "voice-client-sent")
 		t.expect(await _wait_until(func(): return receiver.received.size() == 100), "client receives all 100 host PCM frames at 15 FPS")
 		t.expect(receiver.samples_valid and receiver.seats.keys() == [1], "client receives intact audio tagged with host seat")
+		receiver.set_speaker_enabled(1, false)
 		net.rpc_id(1, "ack", "voice-client-checked")
+		t.expect(await _wait_until(func(): return receiver.received.has(109)), "muted client still receives the host packets")
+		t.expect(not receiver._fallback._playbacks.has(1), "live packets from the muted seat do not make sound")
+		var original_peer := net.multiplayer.get_unique_id()
+		net.rpc_id(1, "ack", "voice-muted")
+		t.expect(await _wait_until(func(): return net._client_joined and not net._resume_sync_pending and net.multiplayer.get_unique_id() != original_peer),
+			"client receives a fresh game snapshot before restoring voice")
+		t.expect(not receiver.speaker_enabled(1), "seat mute survives reconnect")
+		receiver.set_speaker_enabled(1, true)
+		net.rpc_id(1, "ack", "voice-rejoined")
+		await _send_frames(net, 100, 2)
+		t.expect(await _wait_until(func(): return receiver._fallback._last_rx.get(1, -1) >= 110), "client plays newly received speech after reconnect and unmute")
+		net.rpc_id(1, "ack", "voice-restored")
 		await create_timer(0.3).timeout
 	network.reset()
 	await H.quit_cleanly(self, t.finish("voice_network"))
