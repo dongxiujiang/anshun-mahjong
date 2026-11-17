@@ -61,7 +61,10 @@ func _run() -> void:
 		return
 	if host:
 		t.expect(await _wait_until(func(): return net.ack_text == "voice-client-sent"), "client burst finishes")
-		t.expect(receiver.received.size() == 100 and receiver.samples_valid, "host receives all 100 PCM frames without corruption at 15 FPS")
+		# A reliable ACK can arrive before the final unreliable PCM packet.
+		var received_all := await _wait_until(func(): return receiver.received.size() == 100)
+		var missing: Array = range(100).filter(func(sequence): return not receiver.received.has(sequence))
+		t.expect(received_all and receiver.samples_valid, "host receives all 100 PCM frames without corruption at 15 FPS (received=%d/100 valid=%s missing=%s)" % [receiver.received.size(), receiver.samples_valid, missing])
 		t.expect(receiver.seats.keys() == [0], "host associates speech with the authenticated client seat")
 		await _send_frames(net)
 		t.expect(await _wait_until(func(): return net.ack_text == "voice-client-checked"), "client checks host playback")

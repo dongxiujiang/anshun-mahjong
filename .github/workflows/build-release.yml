@@ -454,6 +454,8 @@ jobs:
             build/ci/android-template.log
             build/ci/android-export.log
             build/ci/table_3d_river_badges.log
+            build/voice_*.log
+            build/voice_*.err
             build/test_results/**
 
       - name: Upload rendered table review
