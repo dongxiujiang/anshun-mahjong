@@ -227,6 +227,7 @@ func sync_tiles() -> void:
 			var kind := str(source.get_meta("new_kind", ""))
 			var hand := kind in ["hand", "draw"]
 			var own_hand: bool = hand and source.standing_back_view == -1
+			var own_exposed: bool = kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat
 			if not settled and source.latest_highlight and source.is_visible_in_tree() and kind in ["ordinary", "red"] and int(source.get_meta("meld_index", -1)) < 0:
 				latest = source
 			var signature := hash([key, source.face_up, xf, source.size, source.is_visible_in_tree(),
@@ -235,7 +236,7 @@ func sync_tiles() -> void:
 				source.get_meta("flight_origin_offset_3d", Vector3.ZERO), source.get_meta("v2_draw_flight", false),
 				source.score_highlight, source.get_parent().get_instance_id(),
 				source.get_meta("charge_chicken", false), source.get_meta("gold_chicken", false),
-				source.get_meta("v2_charge", false), source.get_meta("kong_offset_2d", Vector2.ZERO), source.get_meta("kong_offset_3d", Vector2.ZERO), settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
+				source.get_meta("v2_charge", false), source.get_meta("kong_offset_2d", Vector2.ZERO), source.get_meta("kong_offset_3d", Vector2.ZERO), settlement_started if own_exposed else settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
 				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0, touch_height if own_hand else 0.0,
 				own_meld_key if kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat else 0,
 				own_travel if _own_exposed_targets.has(id) else 1.0])

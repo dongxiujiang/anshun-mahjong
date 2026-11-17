@@ -229,7 +229,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/ci
-          timeout 300s godot --headless --path . --script res://tests/table_3d_river_badges.gd > build/ci/table_3d_river_badges.log 2>&1
+          timeout 300s godot --headless --path . --script res://tests/table_3d_river_badges.gd > build/ci/table_3d_river_badges.log 2>&1 || { status=$?; tail -n 100 build/ci/table_3d_river_badges.log; exit "$status"; }
           tail -n 4 build/ci/table_3d_river_badges.log
 
       - name: Run real network and reconnect regression
@@ -453,6 +453,7 @@ jobs:
             build/ci/configure_tests.log
             build/ci/android-template.log
             build/ci/android-export.log
+            build/ci/table_3d_river_badges.log
             build/test_results/**
 
       - name: Upload rendered table review
@@ -474,6 +475,7 @@ jobs:
             build/online_opening_clock.err
             build/ci/graphical-opening.log
             build/ci/table_3d.log
+            build/realtime-3d/row-spacing-review/matrix-result.json
             build/ci/table_3d_own_exposed_*.log
             build/ci/table_3d_art_acceptance.log
             build/ci/table_action_feedback_acceptance.log

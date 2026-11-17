@@ -67,13 +67,24 @@ func run() -> void:
 				check_badges(view)
 		var pending := fixture(0, 3, 2)
 		view.set_round(pending, 0)
-		var exposed: TileView = view._red_layer.get_children().filter(func(tile): return int(tile.get_meta("v2_seat")) == 0)[0]
+		# Pool reuse can put a kong tile before the independent chickens.
+		var chickens: Array = view._red_layer.get_children().filter(func(tile): return int(tile.get_meta("v2_seat")) == 0 and int(tile.get_meta("meld_index", -1)) < 0)
+		t.expect(chickens.size() == 2, "pending fixture selects independent chicken discards rather than splitting a meld")
+		var exposed: TileView = chickens[0]
 		exposed.position = Vector2(1050, 900)
 		view._table_3d.sync_tiles()
+		check_pending_own_exposed(view)
 		var live_position: Vector3 = view._table_3d.tile_nodes[exposed.get_instance_id()].position
+		var live_poses := {}
+		for tile in view._red_layer.get_children() + view._meld_layer.get_children():
+			if int(tile.get_meta("v2_seat")) == 0:
+				live_poses[tile.get_instance_id()] = view._table_3d.tile_nodes[tile.get_instance_id()].transform
 		pending.phase = RoundState.Phase.SETTLED
 		view._table_3d.sync_tiles()
 		t.expect(view._table_3d.tile_nodes[exposed.get_instance_id()].position.is_equal_approx(live_position), "exposed tiles stay clear of the river while settlement is pending")
+		for id in live_poses:
+			t.expect(view._table_3d.tile_nodes[id].transform.is_equal_approx(live_poses[id]), "every own meld and chicken preserves its complete pose while settlement is pending")
+		check_pending_own_exposed(view)
 		view._settlement_started = true
 		view._discard_layer.hide()
 		view._table_3d.sync_tiles()
@@ -239,3 +250,35 @@ func check_exposed(view) -> void:
 				failures.append("%s seat%d meld%s" % [tile.tile, tile.get_meta("v2_seat"), tile.get_meta("meld_index", -1)])
 				break
 	t.expect(failures.is_empty(), "enlarged opponent meld and chicken faces stay visible: %s" % [failures])
+
+func check_pending_own_exposed(view) -> void:
+	var renderer = view._table_3d
+	var groups := {}
+	for tile in view._red_layer.get_children() + view._meld_layer.get_children():
+		if int(tile.get_meta("v2_seat")) != view.human_seat: continue
+		var id: int = tile.get_instance_id()
+		var mesh: MeshInstance3D = renderer.tile_nodes[id]
+		var meld := int(tile.get_meta("meld_index", -1))
+		var key := "meld%d" % meld if meld >= 0 else "red%d" % id
+		if not groups.has(key): groups[key] = []
+		groups[key].append(id)
+		var sideways: bool = int(tile.get_meta("meld_sideways", -1)) >= 0
+		for x in ([-0.45, 0.0, 0.45] if sideways else [-0.38, 0.0, 0.38]):
+			for z in ([-0.60, 0.0, 0.60] if sideways else [-0.50, 0.0, 0.50]):
+				var point: Vector2 = renderer.camera.unproject_position(mesh.transform * Vector3(x, 0.311, z)) / Vector2(renderer.viewport.size) * renderer.size
+				t.expect(renderer.pick_tile(point, false) == tile, "pending own chicken/meld printed point stays visible, including sideways source corners")
+				t.expect(Rect2(Vector2.ZERO, G.DESIGN_SIZE).has_point(point), "pending own chicken/meld artwork stays on screen")
+	var order: Array = groups.keys()
+	t.expect(groups.size() == 5, "pending fixture retains three complete melds and two independent chickens")
+	for key in groups:
+		t.expect(groups[key].size() == (3 if key == "meld0" else (4 if key.begins_with("meld") else 1)), "pending fixture retains every tile in each exposed group")
+	var reached: Array = [order[0]] if not order.is_empty() else []
+	for _step in order.size():
+		for key in order:
+			if reached.has(key): continue
+			var bounds: Rect2 = renderer._exposed_printed_bounds(groups[key])
+			for adjacent in reached:
+				if bounds.grow(8.0).intersects(renderer._exposed_printed_bounds(groups[adjacent])):
+					reached.append(key)
+					break
+	t.expect(reached.size() == groups.size(), "pending own chickens and complete meld groups remain one nearby cluster")
