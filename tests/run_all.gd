@@ -12,6 +12,7 @@ const SUITES: Array[String] = [
 	"res://tests/table_3d_own_exposed_readability.gd",
 	"res://tests/table_3d_own_exposed_flight.gd",
 	"res://tests/sort_annotations_layout.gd",
+	"res://tests/settlement_arrangement_toolbar.gd",
 	"res://tests/table_render_cache.gd",
 	"res://tests/table_input_cache.gd",
 	"res://tests/smoke_lan_discovery.gd",

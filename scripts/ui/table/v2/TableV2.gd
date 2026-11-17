@@ -302,6 +302,7 @@ func _order_local_cards(cards: Array) -> Array:
 
 func _refresh_hand_arrangement() -> void:
 	var show_buttons: bool = round.phase == ROUND_STATE.Phase.PLAYING and not test_frozen
+	_hand_groups.visible = show_buttons
 	var can_arrange := _can_arrange_hand()
 	if can_arrange: _start_arrangement_search()
 	_arrangement_caption.visible = can_arrange and not _local_arrangement.is_empty()
@@ -1514,6 +1515,13 @@ func refresh() -> void:
 		_reset_round_visual_state()
 		round = table.round
 		human_seat = table.human_seat
+	# SETTLED can begin flipping the hand before the last native action lands.
+	if round != null and round.phase != ROUND_STATE.Phase.PLAYING and _wall_layer != null:
+		_sort_button.hide()
+		_restore_button.hide()
+		_previous_sort_button.hide()
+		_arrangement_caption.hide()
+		_hand_groups.hide()
 	if native_presentation_pending():
 		return
 	if table != null:
