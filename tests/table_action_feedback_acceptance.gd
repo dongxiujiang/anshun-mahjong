@@ -172,13 +172,12 @@ func _confirm_discard(tile: TileView) -> void:
 	t.expect(view._discard_flights.size() == 1, "redelivered confirmation cannot start another flight")
 	var started := Time.get_ticks_usec()
 	var next_shot := started
-	var shown := 0
+	var captured: Array[Image] = []
 	while Time.get_ticks_usec() - started < 1500000 and view.native_presentation_pending():
 		await RenderingServer.frame_post_draw
 		var now := Time.get_ticks_usec()
 		if now >= next_shot:
-			root.get_texture().get_image().save_png(OUT.path_join("discard-%02d.png" % shown))
-			shown += 1
+			captured.append(root.get_texture().get_image())
 			next_shot += 100000
 		if is_instance_valid(tile) and tile.flight_progress >= 0.0 and tile.flight_progress < 0.999:
 			t.expect(impacts.is_empty(), "impact is silent in flight")
@@ -196,3 +195,6 @@ func _confirm_discard(tile: TileView) -> void:
 		table._table_animation_controller.cancel()
 		await create_timer(0.35).timeout
 		t.expect(impacts.size() == 1 and not view.native_presentation_pending(), "cancelling a flight has no late impact or stuck tile")
+	# PNG encoding must not consume the animation observation deadline.
+	for index in captured.size():
+		captured[index].save_png(OUT.path_join("discard-%02d.png" % index))
