@@ -270,6 +270,13 @@ func _case(record: Dictionary, settled: bool, screen: Vector2i, relative: int, f
 	if renderer.discard_marker.visible:
 		t.expect(marker_blocked.is_empty(), "latest-discard triangle does not cover visible printed faces: %s" % JSON.stringify(marker_blocked))
 		var marker: MeshInstance3D = renderer.discard_marker
+		var pointer_vertices: PackedVector3Array = marker.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var pointer_bounds := Rect2()
+		for i in pointer_vertices.size():
+			var point: Vector2 = renderer.camera.unproject_position(marker.transform * pointer_vertices[i]) / Vector2(renderer.viewport.size) * renderer.size
+			pointer_bounds = Rect2(point, Vector2.ZERO) if i == 0 else pointer_bounds.expand(point)
+		# Permit subpixel contact with the ivory bevel, never the printed face.
+		t.expect(not pointer_bounds.intersects(renderer.project_tile(moving).grow(-1.0)), "actual triangle vertices stay clear of the latest tile face: %s vs %s" % [pointer_bounds, renderer.project_tile(moving)])
 		var tip: Vector2 = renderer.camera.unproject_position(marker.global_transform * Vector3(0, 0.275, 0))
 		var base: Vector2 = renderer.camera.unproject_position(marker.global_transform * Vector3(0, -0.275, 0))
 		var target: Vector2 = renderer.camera.unproject_position(renderer.tile_nodes[moving.get_instance_id()].global_position)

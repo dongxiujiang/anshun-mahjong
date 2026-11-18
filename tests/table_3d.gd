@@ -361,8 +361,15 @@ func run() -> void:
 	t.expect(renderer.discard_marker.visible and renderer.discard_marker.mesh is CylinderMesh,
 		"the latest discard has a real three-sided 3D pointer")
 	var tip: Vector2 = renderer.camera.unproject_position(renderer.discard_marker.transform * Vector3(0, 0.275, 0)) / Vector2(renderer.viewport.size) * renderer.size
+	var base: Vector2 = renderer.camera.unproject_position(renderer.discard_marker.transform * Vector3(0, -0.275, 0)) / Vector2(renderer.viewport.size) * renderer.size
 	var discard_bounds: Rect2 = renderer.project_tile(latest)
-	t.expect(absf(tip.x - discard_bounds.get_center().x) < 6 and tip.y < discard_bounds.position.y,
+	var pointer_vertices: PackedVector3Array = renderer.discard_marker.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var pointer_bounds := Rect2()
+	for i in pointer_vertices.size():
+		var point: Vector2 = renderer.camera.unproject_position(renderer.discard_marker.transform * pointer_vertices[i]) / Vector2(renderer.viewport.size) * renderer.size
+		pointer_bounds = Rect2(point, Vector2.ZERO) if i == 0 else pointer_bounds.expand(point)
+	# The ivory bevel can meet the tip by less than one projected pixel.
+	t.expect(not pointer_bounds.intersects(discard_bounds.grow(-1.0)) and (tip - base).normalized().dot((discard_bounds.get_center() - base).normalized()) > 0.98,
 		"the pointer aims at the latest discard without covering its printed face")
 	await _capture("discard-pointer.png")
 	# Reproduce a late tween update after the engine's normal 3D transform flush.
