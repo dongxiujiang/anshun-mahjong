@@ -261,6 +261,7 @@ func _wait_for_opening(generation: int) -> void:
 		_finish_opening()
 
 func _finish_opening() -> void:
+	print("[clk-host] finish_opening ", Time.get_ticks_msec(), " paused=", pause_after_opening)
 	phase = Phase.PLAYING
 	_recorder.begin(self)
 	if pause_after_opening:
@@ -332,6 +333,7 @@ func _begin_turn() -> void:
 	_clear_draw_locks(player)
 	player.just_drew = tile
 	player.concealed.append(tile)
+	if _steps == 1: print("[clk-host] first_draw ", Time.get_ticks_msec(), " seat=", current_turn, " wall=", wall.remaining)
 	_emit_visual_event("draw", {"seat": current_turn, "tile": tile, "kind": "head",
 		"wall_index": int(wall.draw_log.back().index)})
 	_ask_turn_actor()

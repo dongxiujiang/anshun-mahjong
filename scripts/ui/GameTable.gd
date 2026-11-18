@@ -1426,8 +1426,10 @@ func _on_net_lobby_updated() -> void:
 func _on_opening_visual_finished() -> void:
 	if round == null or _new_areas == null or not _new_areas._sort_started \
 			or _new_areas._sort_animating or _table_animation_controller.deal_sequence_active(): return
+	print("[clk-client] gate_await_draw ", Time.get_ticks_msec())
 	var session := round.audio_session
 	if DisplayServer.get_name() != "headless": await RenderingServer.frame_post_draw
+	print("[clk-client] gate_after_draw ", Time.get_ticks_msec(), " same_session=", round != null and round.audio_session == session, " mode=", _net_mode())
 	if round == null or round.audio_session != session: return
 	if _net_mode() != "":
 		var net = _net_node()

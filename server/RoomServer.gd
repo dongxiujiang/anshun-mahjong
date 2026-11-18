@@ -1,6 +1,7 @@
 extends SceneTree
 ## 云端每个房间一个无界面 Godot 进程，复用同一权威状态机和 RPC。
 var _status_path := ""
+var _clock_last := []
 var _tick := 0.0
 var _empty_seconds := 0.0
 var _net: NetGameNode
@@ -37,6 +38,13 @@ func _run() -> void:
 
 func _process(delta: float) -> bool:
 	if _closing or _net == null or not _net.host_mode: return false
+	if OS.get_environment("CLOCK_FORCE_DROP") == "yes" and not _net.has_meta("clock_dropped_peer") and _net.game.phase == RoundState.Phase.PLAYING and _net.game.pause_after_opening and _net._opening_waiters.size() == 1 and _net._members.size() == 1:
+		var target := int(_net._opening_waiters.keys()[0])
+		if _net._peer_connected(target):
+			_net.set_meta("clock_dropped_peer", target)
+			_net.set_meta("clock_dropped_seat", int(_net._peer_seat[target]))
+			print("[clk-host] force_disconnect ", Time.get_ticks_msec(), " wall=", _net.game.wall.remaining, " steps=", _net.game._steps, " paused=", _net.game.pause_after_opening)
+			_net.multiplayer.multiplayer_peer.disconnect_peer(target)
 	_tick += delta
 	_empty_seconds = _empty_seconds + delta if _net._members.is_empty() else 0.0
 	# Keep only a short transport-recovery window, never an AI-only room for 30 minutes.
@@ -70,6 +78,11 @@ func _token_digest(token: String) -> String:
 	return "sha256:" + context.finish().hex_encode()
 
 func _write_status() -> void:
+	var game = _net.game
+	var stamp := [game.phase, game.pause_after_opening, _net._opening_waiters.size(), _net._members.size(), game._steps, game.awaiting, game.visual_event_id]
+	if stamp != _clock_last:
+		_clock_last = stamp
+		print("[clk-host] state ", Time.get_ticks_msec(), " phase/pause/waiters/members/steps/await/event=", stamp)
 	if _status_path == "": return
 	var file := FileAccess.open(_status_path + ".tmp", FileAccess.WRITE)
 	if file == null:

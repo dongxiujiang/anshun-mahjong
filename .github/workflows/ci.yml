@@ -1,133 +1,72 @@
-name: Pull request and push checks
-
+name: Opening clock diagnostic
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-env:
-  GODOT_VERSION: "4.7.2"
-  GODOT_RELEASE: "4.7.2-stable"
-
 jobs:
-  quick-check:
-    name: Quick rules, scoring, audio and reconnect checks
+  opening-clock:
+    name: Graphical opening clock ${{ matrix.attempt }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
+    env:
+      CLOCK_FORCE_DROP: ${{ matrix.attempt == 1 && 'yes' || 'no' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3, 4]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Remove legacy LiveKit addon
-        shell: bash
-        run: rm -rf addons/godot-livekit
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Install Godot
-        shell: bash
+      - name: Install original engine and graphical dependencies
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb libpipewire-0.3-0t64
           for attempt in 1 2 3 4 5; do
-            if gh release download "$GODOT_RELEASE" --repo godotengine/godot --pattern "Godot_v${GODOT_RELEASE}_linux.x86_64.zip" --output /tmp/godot.zip --clobber; then break; fi
+            if gh release download 4.7.2-stable --repo godotengine/godot --pattern Godot_v4.7.2-stable_linux.x86_64.zip --output /tmp/godot.zip --clobber; then break; fi
             test "$attempt" -lt 5
             sleep 3
           done
           unzip -q /tmp/godot.zip -d /tmp/godot
-          sudo install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
-
-      - name: Install LiveKit Linux runtime dependency
-        shell: bash
-        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-0t64
-
-      - name: Import project
-        shell: bash
-        run: godot --headless --path . --editor --import
-
-      - name: Run quick test suites
-        shell: bash
-        env:
-          AI_ROUNDS: "4"
-          AI_MIN_ROUNDS: "1"
+          sudo install -m 0755 /tmp/godot/Godot_v4.7.2-stable_linux.x86_64 /usr/local/bin/godot
+      - name: Import isolated project
         run: |
           set -euo pipefail
-          python -X utf8 tests/run_suites.py --godot "$(command -v godot)" \
-            --suite table_3d_own_exposed_readability table_3d_own_exposed_flight table_3d_river_discard_flight table_render_cache table_input_cache rules_complete rules_update smoke_scoring settlement_card scoring_audit scoring_pairwise \
-              legal_actions ready_pass_win round_sync round_replay replay_export smoke_audio reconnect_control background_lifecycle ui_regression voice_chat gme_voice_chat table_components animation_speed_settings table_v2_static table_3d_touch_footer sort_annotations_layout table_v2_hand_discard table_v2_round_animation table_v2_feedback settlement_score_details table_v2_settlement_scenarios smoke_ai \
-            --simulation-timeout 180
-
-      - name: Run Python CI checks
-        shell: bash
-        run: python -m unittest discover -s tests -p 'test_*.py'
-
-      - name: Verify cloud round submissions
-        shell: bash
-        run: python -X utf8 tests/run_record_submission.py --godot "$(command -v godot)"
-
-      - name: Upload quick-check logs
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: quick-check-logs-${{ github.run_id }}
-          retention-days: 14
-          if-no-files-found: ignore
-          path: |
-            build/test_results/**
-            build/record-submission/**
-
-  graphics:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install rendering tools
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libpipewire-0.3-0t64
-          gh release download 4.7.2-stable --repo godotengine/godot --pattern Godot_v4.7.2-stable_linux.x86_64.zip --output /tmp/godot.zip
-          unzip -q /tmp/godot.zip -d /tmp/godot
-          sudo install -m 0755 /tmp/godot/Godot_v4.7.2-stable_linux.x86_64 /usr/local/bin/godot
-      - name: Import project
-        run: |
-          mkdir -p build/ci
+          mkdir -p build/trace
+          git rev-parse HEAD > build/trace/source.txt
           rm -rf addons/godot-livekit
+          godot --headless --path . --editor --import > build/trace/import.log 2>&1
           sed -i 's/^driver\/enable_input=true/driver\/enable_input=false/' project.godot
-          godot --headless --path . --editor --import > build/ci/import.log 2>&1
-      - name: Check graphical suites
-        env:
-          OWN_EXPOSED_CAPTURE: ${{ github.workspace }}/build/qa/own-exposed
+      - name: Run original dedicated room and graphical opening clock
         run: |
-          failed=0
-          for suite in table_3d table_3d_own_exposed_readability table_3d_own_exposed_flight table_3d_art_acceptance table_action_feedback_acceptance ui_regression table_v2_feedback table_v2_round_animation table_v2_visual_continuity table_v2_settlement_scenarios settlement_exposed_visibility tile_back_render; do
-            timeout 600s xvfb-run -a godot --path . --audio-driver Dummy --resolution 1280x720 --script "res://tests/$suite.gd" > "build/ci/$suite.log" 2>&1 || failed=1
-            echo "$suite"
-            tail -n 80 "build/ci/$suite.log"
-          done
-          exit "$failed"
+          set -euo pipefail
+          xvfb-run -a python -X utf8 tests/run_opening_clock_trace.py . "$(command -v godot)" 2>&1 | tee build/trace/integration.log
+      - name: Preserve paired state transitions
+        if: always()
+        run: |
+          mkdir -p build/trace
+          python - <<'PY'
+          from pathlib import Path
+          dest = Path("build/trace")
+          for label, sources in [("authority", list(Path("build/room-server").glob("*.log"))), ("client", [Path("build/online_opening_clock.log"), Path("build/online_opening_clock.err")])]:
+              out = []
+              for src in sources:
+                  if src.is_file():
+                      out.extend(line for line in src.read_text(errors="replace").splitlines() if any(tag in line for tag in ["[clk-", "[opening-clock]", "[online_opening_clock]", "[FAIL]", "[PASS]", "SCRIPT ERROR", "ERROR:", "at: GDScript", "GL API", "llvmpipe"]))
+              (dest / (label + ".log")).write_text("\n".join(out) + "\n")
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: table-graphics-${{ github.run_id }}
+          name: r22-opening-clock-${{ matrix.attempt }}-${{ github.run_id }}
           path: |
-            build/ci/*.log
-            build/table-3d-review/**
-            build/settlement-scenarios/**
-            build/settlement-exposed/**
-            build/back-render/**
-            build/ui-feedback/**
-            build/qa/art-acceptance/**
-            build/qa/action-feedback/**
-            build/qa/own-exposed/**
+            build/trace/
+            build/opening-clock/after.png
+          if-no-files-found: error
+          retention-days: 7

@@ -359,6 +359,7 @@ func _process(delta: float) -> void:
 			_peer_last_seen.erase(peer)
 			continue
 		if Time.get_ticks_msec() - int(_peer_last_seen[peer]) > HEARTBEAT_TIMEOUT_MS:
+			print("[clk-host] heartbeat_expired ", Time.get_ticks_msec(), " age=", Time.get_ticks_msec() - int(_peer_last_seen[peer]))
 			_peer_last_seen.erase(peer)
 			multiplayer.multiplayer_peer.disconnect_peer(int(peer))
 	for peer in _pending_peers.keys():
@@ -458,6 +459,8 @@ func request_join(number: String, player_name: String, token: String = "", resum
 	if _started and game != null and (game.pause_after_opening or game.phase == RoundState.Phase.DEALING):
 		_opening_waiters[peer] = true
 		game.pause_after_opening = true
+	if has_meta("clock_dropped_peer"):
+		print("[clk-host] replacement ", Time.get_ticks_msec(), " authenticated=", resumed, " same_seat=", seat == int(get_meta("clock_dropped_seat")), " new_peer=", peer != int(get_meta("clock_dropped_peer")), " waiter=", _opening_waiters.has(peer), " wall=", game.wall.remaining, " steps=", game._steps)
 	if was_owner:
 		# A reconnecting owner gets a new ENet peer id; bind ownership to it.
 		_owner_peer = peer
@@ -570,6 +573,8 @@ func _on_peer_disconnected(peer: int) -> void:
 	_host_broadcast()
 	_opening_waiters.erase(peer)
 	_resume_opening_if_ready()
+	if get_meta("clock_dropped_peer", -1) == peer:
+		print("[clk-host] retained_gap ", Time.get_ticks_msec(), " retained=", retained, " holds=", bool(_orphaned.get(seat, {}).get("opening_wait", false)), " paused=", game.pause_after_opening, " members=", _members.size(), " wall=", game.wall.remaining, " steps=", game._steps)
 
 func _install_ai_for_seat(seat: int) -> void:
 	if game == null or seat < 0 or seat > 3:
@@ -1451,6 +1456,7 @@ func _apply_opening_delay() -> void:
 	for peer in _members:
 		if int(peer) > 1 or (not dedicated and DisplayServer.get_name() != "headless"):
 			_opening_waiters[int(peer)] = true
+	print("[clk-host] waiters_armed ", Time.get_ticks_msec(), " count=", _opening_waiters.size())
 	game.pause_after_opening = not _opening_waiters.is_empty()
 
 func report_opening_finished() -> void:
@@ -1461,13 +1467,16 @@ func report_opening_finished() -> void:
 		_accept_opening_ready(1, round_number, game.audio_session)
 	elif _client_joined and multiplayer.multiplayer_peer != null and multiplayer.get_unique_id() > 1:
 		_opening_ack_session = game.audio_session
+		print("[clk-client] ack_send ", Time.get_ticks_msec(), " round=", round_number)
 		opening_ready.rpc_id(1, round_number, game.audio_session)
+		print("[clk-client] ack_call_returned ", Time.get_ticks_msec())
 
 @rpc("any_peer", "call_remote", "reliable")
 func opening_ready(number: int, session: String) -> void:
 	_accept_opening_ready(multiplayer.get_remote_sender_id(), number, session)
 
 func _accept_opening_ready(peer: int, number: int, session: String) -> void:
+	print("[clk-host] ack_recv ", Time.get_ticks_msec(), " round_ok=", number == round_number, " session_ok=", game != null and session == game.audio_session, " member=", _members.has(peer), " waiter=", _opening_waiters.has(peer), " count=", _opening_waiters.size())
 	if not host_mode or game == null or number != round_number or session != game.audio_session: return
 	if not _opening_waiters.has(peer) or not _members.has(peer): return
 	_opening_waiters.erase(peer)
@@ -1480,6 +1489,7 @@ func _resume_opening_if_ready() -> void:
 		if bool(orphan.get("opening_wait", false)) and not bool(orphan.get("replaced", false)) \
 				and int(orphan.member.get("round_number", -1)) == round_number:
 			return
+	print("[clk-host] resume ", Time.get_ticks_msec(), " phase=", game.phase)
 	game.resume_after_opening()
 
 func set_opening_speed(value: String) -> void:
@@ -1587,6 +1597,7 @@ func _on_server_disconnected() -> void:
 	_begin_reconnect("房间连接已断开")
 
 func _begin_reconnect(_reason: String) -> void:
+	print("[clk-client] reconnect_reason ", Time.get_ticks_msec(), " reason=", _reason, " since_pong=", Time.get_ticks_msec() - _last_pong_ms, " since_server=", Time.get_ticks_msec() - _last_server_activity_ms)
 	if host_mode or _server_ip == "" or _reconnecting: return
 	if not _client_joined and not _resume_requested:
 		connection_error.emit("连接失败，房间可能已关闭或网络不可达")
@@ -1786,6 +1797,9 @@ func _on_client_sync(state: Dictionary) -> void:
 	var first := game.phase == RoundState.Phase.IDLE
 	round_number = int(state.get("round_number", 1))
 	_client_sync_cache = state
+	var trace_events: Array = state.get("visual_events", [])
+	if game.phase in [RoundState.Phase.IDLE, RoundState.Phase.DEALING] or game._steps == 0:
+		print("[clk-client] snapshot ", Time.get_ticks_msec(), " rev=", revision, " phase=", state.get("phase"), " initialized=", game._presentation.sync_initialized, " has_draw=", trace_events.any(func(ev): return ev.type == "draw"), " awaiting=", state.get("awaiting"))
 	game.apply_sync(state)
 	_last_server_activity_ms = Time.get_ticks_msec()
 	var resumed := _resume_sync_pending
