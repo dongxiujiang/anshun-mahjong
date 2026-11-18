@@ -24,6 +24,8 @@ var _marker_source_id := 0
 var _marker_blocked := false
 var geometry_revision := 0
 var _own_exposed_layout_key := 0
+var _own_placed_context := []
+var _own_placed_poses := {}
 var _own_exposed_targets := {}
 var _own_exposed_origins := {}
 var _own_exposed_previous := {}
@@ -218,7 +220,8 @@ func sync_tiles() -> void:
 	var width_fit := minf(1.0, G.DESIGN_SIZE.aspect() / Vector2(viewport.size).aspect())
 	var world_unit := _pixel_scale(G.CENTER, 1.0) * width_fit
 	var touch_height: float = view.minimum_touch_height()
-	var own_layout_state := [viewport.size, settled, touch_height, view.human_seat]
+	var visual_session: String = view.round._presentation.session if view.round != null else ""
+	var own_layout_state := [viewport.size, settled, touch_height, view.human_seat, visual_session]
 	var own_meld_key := hash(view.round.players[view.human_seat].melds) if view.round != null else 0
 	var own_travel := 1.0
 	for id in _own_exposed_origins:
@@ -458,8 +461,10 @@ func sync_tiles() -> void:
 
 func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 	var groups := {}
+	var pieces := {}
 	var hand := Rect2()
 	var walls := {}
+	var wall_and_hand_tiles: Array[Rect2] = []
 	var obstacles: Array[Rect2] = []
 	var left_hand := Rect2()
 	for id in tile_nodes:
@@ -478,18 +483,23 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 			var segment: Dictionary = view._wall_segment_for_index(int(source.get_meta("wall_ring_index", 0)))
 			var side: int = view._wall_screen_seat(int(segment.get("seat", 0)))
 			var wall_bounds := _project_mesh(node)
+			wall_and_hand_tiles.append(wall_bounds)
 			walls[side] = walls[side].merge(wall_bounds) if walls.has(side) else wall_bounds
 		if seat == view.human_seat and kind in ["hand", "draw"]:
 			var bounds := _project_mesh(node)
+			wall_and_hand_tiles.append(bounds)
 			hand = hand.merge(bounds) if hand.has_area() else bounds
 		if seat == view.human_seat and kind in ["meld", "red"]:
+			pieces[view._render_key(source)] = id
 			node.transform = node.get_meta("exposed_transform", node.transform)
 			_rects[id] = _project_mesh(node)
 			var meld := int(source.get_meta("meld_index", -1))
 			var key := "meld%d" % meld if meld >= 0 else "red%d" % id
 			if not groups.has(key): groups[key] = []
 			groups[key].append(id)
-	if groups.is_empty() or not hand.has_area(): return
+	if groups.is_empty() or not hand.has_area():
+		_own_placed_poses.clear()
+		return
 	_own_exposed_left_hand = left_hand
 	# Own exposed tiles stay together beside the hand, on the near side of its wall.
 	var order: Array = groups.keys()
@@ -506,7 +516,11 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 	beside.size = Vector2(hand.position.x - 2.0 - beside.position.x, bottom - beside.position.y)
 	var corner := Rect2(Vector2(side_wall.end.x + 6.0, near_wall.position.y + 2.0), Vector2.ZERO)
 	corner.size = Vector2(near_wall.position.x - 6.0 - corner.position.x, hand.position.y - 2.0 - corner.position.y)
+	var context := [view.round._presentation.session, view.human_seat, viewport.size,
+		camera.global_transform, camera.get_camera_projection(), bottom, hash(view.round.players[view.human_seat].melds)]
 	var placed := false
+	if context == _own_placed_context and pieces.size() == _own_placed_poses.size():
+		placed = _restore_own_placement(pieces, bottom, obstacles + wall_and_hand_tiles)
 	obstacles.sort_custom(func(a, b): return a.position.x > b.position.x)
 	var areas := [beside, corner]
 	# Where the left player's hand spans the entire strip, anchor below it to
@@ -517,10 +531,10 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 		aligned.size.y = bottom - aligned.position.y
 		areas.push_front(aligned)
 	for area: Rect2 in areas:
+		if placed: break
 		for key in order:
 			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
 		placed = _pack_own_exposed(groups, order, area, obstacles)
-		if placed: break
 	if not placed:
 		for key in order:
 			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
@@ -558,10 +572,29 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 		for key in order:
 			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
 		push_error("自己碰杠和鸡牌近侧空间不足，禁止移到桌心: %s / %s" % [beside, corner])
+	_own_placed_context = context
+	_own_placed_poses.clear()
+	if placed:
+		for key in pieces: _own_placed_poses[key] = tile_nodes[pieces[key]].transform
+	_changed = true
 	for key in order:
 		for id in groups[key]:
 			_rects[id] = _project_mesh(tile_nodes[id])
 			if not moved.has(tile_nodes[id]): moved.append(tile_nodes[id])
+
+func _restore_own_placement(pieces: Dictionary, bottom: float, obstacles: Array[Rect2]) -> bool:
+	# Keep the last legal landing when an ordinary draw/discard frees space.
+	var area := Rect2(0.0, 0.0, size.x, bottom).grow(0.2)
+	for key in pieces:
+		var id: int = pieces[key]
+		var node: MeshInstance3D = tile_nodes[id]
+		if not _own_placed_poses.has(key) or not node.basis.is_equal_approx(_own_placed_poses[key].basis): return false
+		node.transform = _own_placed_poses[key]
+		var bounds := _exposed_printed_bounds([id])
+		if not area.encloses(bounds): return false
+		for obstacle in obstacles:
+			if bounds.intersects(obstacle): return false
+	return true
 
 func _pack_own_exposed(groups: Dictionary, order: Array, area: Rect2, obstacles: Array[Rect2], bottom_up: bool = false) -> bool:
 	if area.size.x <= 0.0 or area.size.y <= 0.0: return false

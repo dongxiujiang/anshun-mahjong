@@ -17,6 +17,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	await _recorded_other_draws()
+	await _recorded_own_discards()
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
 		for from_seat in [2, 3, 0]: await _case(screen, from_seat)
 	await _case(Vector2i(1920, 864), 3, true)
@@ -28,10 +29,7 @@ func _run() -> void:
 		for footer in [0.0, 110.0, 150.0]: await _endpoint_case(screen, footer)
 	await H.quit_cleanly(self, t.finish("table_3d_own_exposed_flight"))
 
-func _recorded_other_draws() -> void:
-	# Real R10 Android round 1, recorded actions 0–33 and draw events 70/72.
-	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/own-exposed-r10-round1.json"))
-	var actions: Array = data.actions
+func _recorded_table():
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	root.size = Vector2i(1600, 1000)
 	var host := Host.new()
@@ -47,6 +45,14 @@ func _recorded_other_draws() -> void:
 	host.add_child(view)
 	view.table = host
 	view.auto_sort_hands = false
+	return view
+
+func _recorded_other_draws() -> void:
+	# Real R10 Android round 1, recorded actions 0–33 and draw events 70/72.
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/own-exposed-r10-round1.json"))
+	var actions: Array = data.actions
+	var view = _recorded_table()
+	var host: Host = view.table
 	var positions := []
 	for count in [32, 33, 34]:
 		data.actions = actions.slice(0, count)
@@ -74,6 +80,68 @@ func _recorded_other_draws() -> void:
 				"stationary %s stays beside the hand during recorded draws (%s -> %s)" % [piece, before, after])
 	host.free()
 
+func _recorded_own_discards() -> void:
+	# Real R11 Android round 1, first 26 actions; own pungs 41/49 and discards 42/50.
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/own-exposed-r11-round1.json"))
+	var actions: Array = data.actions
+	var view = _recorded_table()
+	var host: Host = view.table
+	var renderer = view._table_3d
+	var previous := {}
+	for count in [20, 21, 25, 26]:
+		data.actions = actions.slice(0, count)
+		var state := REPLAY.replay(data)
+		t.expect(state.ok, "real R11 prefix %d replays" % count)
+		if not state.ok: break
+		host.round = state.round
+		view.set_round(host.round, 1)
+		view._sort_started = true
+		view.refresh()
+		await process_frame
+		renderer.sync_tiles()
+		view._layout_meld_badges()
+		var dealer: Label = view._dealer_meld_badges[1]
+		var hand_count: int = view.hand_boxes[1].get_child_count()
+		t.expect(hand_count == {20: 11, 21: 10, 25: 8, 26: 7}[count], "the local hand loses one tile on each ordinary discard")
+		var poses := {}
+		for source in view._meld_layer.get_children():
+			if int(source.get_meta("v2_seat", -1)) != 1: continue
+			poses[view._render_key(source)] = renderer.project_tile(source)
+			_check_recorded_face(renderer, source, dealer)
+		t.expect(poses.size() == (3 if count <= 21 else 6), "complete own pung(s) present")
+		if dealer.visible: poses.dealer = dealer.get_rect()
+		if count in [21, 26]:
+			for key in previous:
+				t.expect(previous[key].is_equal_approx(poses[key]),
+					"ordinary discard after %d actions keeps %s at its legal position (%s -> %s)" % [count, key, previous[key], poses[key]])
+		previous = poses
+	var revision: int = renderer.geometry_revision
+	renderer.sync_tiles()
+	renderer.sync_tiles()
+	t.expect(renderer.geometry_revision == revision, "two idle syncs with two exposed pungs do not redraw")
+	# A separated opponent draw can extend the hand's bounding box across the
+	# pung while leaving every actual tile clear (also seen in R10 action 45).
+	var first: TileView = view._meld_layer.get_children().filter(func(s): return int(s.get_meta("v2_seat", -1)) == 1)[0]
+	var side: MeshInstance3D = renderer.tile_nodes[view.hand_boxes[2].get_child(0).get_instance_id()]
+	var side_pose := side.transform
+	var second: TileView = view._meld_layer.get_children().filter(func(s): return view._render_key(s) == "meld:1:1:0")[0]
+	var second_rect: Rect2 = renderer.project_tile(second)
+	side.position = renderer._at_height(second_rect.get_center() + Vector2.DOWN * second_rect.size.y * 2.0, side.position.y)
+	var moved: Array[MeshInstance3D] = []
+	renderer._clear_own_exposed_faces(moved)
+	t.expect(renderer._own_exposed_left_hand.intersects(second_rect) and not renderer._project_mesh(side).intersects(second_rect), "the separated hand spans an empty gap over the second pung")
+	t.expect(renderer.project_tile(second).is_equal_approx(second_rect), "empty space inside a hand's bounding box preserves the landing")
+	side.transform = side_pose
+	# An actual landed river tile across the artwork must invalidate the cache.
+	renderer._clear_own_exposed_faces(moved)
+	var before: Rect2 = renderer.project_tile(first)
+	var river: TileView = view._discard_layer.get_child(0)
+	renderer.tile_nodes[river.get_instance_id()].transform = renderer.tile_nodes[first.get_instance_id()].transform
+	renderer._clear_own_exposed_faces(moved)
+	var after: Rect2 = renderer.project_tile(first)
+	t.expect(not before.is_equal_approx(after) and renderer.pick_tile(after.get_center(), false) == first, "a real occupied position is repacked and readable")
+	host.free()
+
 func _recorded_exposed_positions(view) -> Dictionary:
 	var renderer = view._table_3d
 	renderer.sync_tiles()
@@ -89,16 +157,19 @@ func _recorded_exposed_positions(view) -> Dictionary:
 		var tile_rect: Rect2 = renderer.project_tile(source)
 		t.expect(tile_rect.get_center().x < hand_left, "the exposed group stays on the hand's left")
 		result["%s_%d" % [source.tile, source.get_meta("meld_slot", -1)]] = tile_rect
-		var mesh: MeshInstance3D = renderer.tile_nodes[source.get_instance_id()]
-		var sideways: bool = int(source.get_meta("meld_sideways", -1)) >= 0
-		for x in ([-0.45, 0.0, 0.45] if sideways else [-0.38, 0.0, 0.38]):
-			for z in ([-0.60, 0.0, 0.60] if sideways else [-0.50, 0.0, 0.50]):
-				var point: Vector2 = renderer.camera.unproject_position(mesh.transform * Vector3(x, 0.311, z)) / Vector2(renderer.viewport.size) * renderer.size
-				var picked: TileView = renderer.pick_tile(point, false)
-				t.expect(picked == source and not dealer.get_rect().has_point(point),
-					"recorded %s face at %s is visible (picked %s)" % [source.tile, Vector2(x, z), picked.tile if picked != null else "none"])
+		_check_recorded_face(renderer, source, dealer)
 	t.expect(result.size() == 5 and result.has("wan7_0") and result.has("tong8_-1"), "all three pung tiles and the chicken are present")
 	return result
+
+func _check_recorded_face(renderer, source: TileView, dealer: Label) -> void:
+	var mesh: MeshInstance3D = renderer.tile_nodes[source.get_instance_id()]
+	var sideways: bool = int(source.get_meta("meld_sideways", -1)) >= 0
+	for x in ([-0.45, 0.0, 0.45] if sideways else [-0.38, 0.0, 0.38]):
+		for z in ([-0.60, 0.0, 0.60] if sideways else [-0.50, 0.0, 0.50]):
+			var point: Vector2 = renderer.camera.unproject_position(mesh.transform * Vector3(x, 0.311, z)) / Vector2(renderer.viewport.size) * renderer.size
+			var picked: TileView = renderer.pick_tile(point, false)
+			t.expect(picked == source and not (dealer.visible and dealer.get_rect().has_point(point)),
+				"recorded %s face at %s is visible (picked %s)" % [source.tile, Vector2(x, z), picked.tile if picked != null else "none"])
 
 func _case(screen: Vector2i, from_seat: int, cancel: bool = false, existing: bool = false) -> void:
 	root.get_node("UpdateManager").auto_check = false
