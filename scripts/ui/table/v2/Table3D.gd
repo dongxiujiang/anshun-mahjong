@@ -169,6 +169,22 @@ func _pixel_scale(screen: Vector2, width: float) -> float:
 	return _at_height(screen + Vector2(width * 0.5, 0), 0).distance_to(
 		_at_height(screen - Vector2(width * 0.5, 0), 0))
 
+func _wall_flip_landing(index: int, factor: float, world_unit: float, width_fit: float) -> Transform3D:
+	var segment: Dictionary = view._wall_segment_for_index(index)
+	var side: int = view._wall_screen_seat(int(segment.seat))
+	var center: Vector2 = view.wall_center_for_index(index | 1)
+	if side == 1: center.y -= 28.0
+	var row_offset := 0.0
+	if side in [0, 2]:
+		row_offset = (center.y - G.CENTER.y) * world_unit
+		center.y = G.CENTER.y
+	var along_scale := lerpf(0.79, 1.09, center.y / size.y) * lerpf(0.58, 1.0, width_fit)
+	center.x = G.CENTER.x + (center.x - G.CENTER.x) * along_scale
+	var layers := 2 if index % 2 == 0 else 1
+	var stack_offset := Vector3(0.0, 0.62 * factor * layers, row_offset)
+	var basis := Basis(Vector3.UP, -G.wall_angle(side)).scaled(Vector3.ONE * factor)
+	return Transform3D(basis, _at_height(center, 0.31 * factor + 0.03) + stack_offset)
+
 func _ordinary_position(center: Vector2, seat: int, factor: float, world_unit: float, width_fit: float) -> Vector3:
 	var row_offset := 0.0
 	if G.relative_seat(view.human_seat, seat) in [1, 3]:
@@ -243,6 +259,8 @@ func sync_tiles() -> void:
 			if node == null: node = _new_mesh(source, _meshes[key], tile_nodes)
 			var xf: Transform2D = board_inverse * source.get_global_transform()
 			var kind := str(source.get_meta("new_kind", ""))
+			var wall_index := int(source.get_meta("wall_ring_index", -1)) if kind == "wall" else -1
+			var wall_flip: bool = wall_index >= 0 and wall_index == view._settlement_flip_index
 			var hand := kind in ["hand", "draw"]
 			var own_hand: bool = hand and source.standing_back_view == -1
 			var own_exposed: bool = kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat
@@ -258,9 +276,11 @@ func sync_tiles() -> void:
 				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0, touch_height if own_hand else 0.0,
 				own_meld_key if kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat else 0,
 				own_travel if _own_exposed_targets.has(id) else 1.0])
+			if wall_flip:
+				signature = hash([signature, view._settlement_flip_support, view._settlement_flip_travel])
 			if source.get_parent() != view._deal_layer and (own_hand or (kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat)):
 				own_layout_state.append([id, signature])
-			if kind == "wall" and view._wall_screen_seat(int(view._wall_segment_for_index(int(source.get_meta("wall_ring_index", 0))).get("seat", 0))) in [1, 2]:
+			if kind == "wall" and view._wall_screen_seat(int(view._wall_segment_for_index(wall_index).get("seat", 0))) in [1, 2]:
 				own_layout_state.append([id, signature])
 			if source.get_parent() != view._deal_layer and kind in ["ordinary", "meld", "red", "hand", "draw"] and not (int(source.get_meta("v2_seat", -1)) == view.human_seat and kind != "ordinary"):
 				# Only spatial obstacle changes invalidate this cache; highlights do not.
@@ -285,9 +305,8 @@ func sync_tiles() -> void:
 			var wall_upper := false
 			var side_wall := false
 			if kind == "wall":
-				var index := int(source.get_meta("wall_ring_index", 1))
-				wall_upper = index % 2 == 0
-				var side: int = view._wall_screen_seat(int(view._wall_segment_for_index(index).get("seat", 0)))
+				wall_upper = wall_index % 2 == 0
+				var side: int = view._wall_screen_seat(int(view._wall_segment_for_index(wall_index).get("seat", 0)))
 				side_wall = side in [0, 2]
 				if wall_upper: center -= G.wall_upper_offset(side)
 				if side == 1: center.y -= 28.0
@@ -359,10 +378,16 @@ func sync_tiles() -> void:
 			elif motion >= 0.0:
 				position_3d.y += factor * (1.0 - motion) * 0.38
 			if kind == "wall":
-				if wall_upper or source.face_up: position_3d.y += 0.62 * factor
+				if wall_upper or (source.face_up and not wall_flip): position_3d.y += 0.62 * factor
 				if source == view._settlement_flip_view: position_3d.y += sin(pitch) * factor * 0.35
 			var basis := Basis(Vector3.UP, angle) * Basis(Vector3.RIGHT, pitch)
 			node.transform = Transform3D(basis.scaled(Vector3.ONE * factor), position_3d)
+			if wall_flip and view._settlement_flip_support >= 0:
+				var travel: float = view._settlement_flip_travel if source == view._settlement_flip_view else float(face_up)
+				if travel > 0.0:
+					var landing := _wall_flip_landing(view._settlement_flip_support, world_unit * source.size.x, world_unit, width_fit)
+					node.transform = node.transform.interpolate_with(landing, travel)
+					node.position.y += 3.2 * travel * (1.0 - travel) * factor
 			var ordinary_flight: Dictionary = source.get_meta("ordinary_flight_3d", {})
 			if flight >= 0.0 and not ordinary_flight.is_empty():
 				var target_center: Vector2 = source_center if flight >= 1.0 else ordinary_flight.target

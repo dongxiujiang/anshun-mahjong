@@ -55,6 +55,8 @@ var _settlement_final_scores: Array = []
 var _settlement_stage_key := ""
 var _settlement_flip_view: TileView = null
 var _settlement_flip_index := -1
+var _settlement_flip_support := -1
+var _settlement_flip_travel := 0.0
 var _settlement_flip_revealed := false
 var _settlement_notice: Label = null
 var _settlement_net_labels: Dictionary = {}
@@ -698,10 +700,12 @@ func _build_native_settlement_panel() -> void:
 	panel.size = G.SETTLEMENT_AREA.size
 	panel.position = G.SETTLEMENT_AREA.position
 	if _table_3d != null:
-		var flip_wall := _wall_segment_for_index(_settlement_flip_index)
-		if not flip_wall.is_empty() and _wall_screen_seat(int(flip_wall.seat)) == 1:
-			# The near wall rises into the panel during the physical flip.
-			panel.position.y -= 80.0
+		for index in [_settlement_flip_index, _settlement_flip_support]:
+			var flip_wall := _wall_segment_for_index(index)
+			if not flip_wall.is_empty() and _wall_screen_seat(int(flip_wall.seat)) == 1:
+				# The near wall rises into the panel during the physical flip.
+				panel.position.y -= 112.0 if _settlement_flip_support >= 0 else 80.0
+				break
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("#102c24")
@@ -991,6 +995,8 @@ func start_native_settlement(immediate: bool = false) -> void:
 	_clear_native_settlement_visuals()
 	_discard_layer.hide()
 	_settlement_flip_index = MODEL.flip_wall_index(round)
+	if _table_3d != null and _settlement_flip_index > 0 and _settlement_flip_index % 2 == 1:
+		_settlement_flip_support = _next_wall_flip_support(_settlement_flip_index)
 	_build_native_settlement_panel()
 	if table.has_method("_clear_actions"):
 		table._clear_actions()
@@ -1022,6 +1028,7 @@ func _clear_native_settlement_visuals() -> void:
 	_remove_native_node(_settlement_notice)
 	_native_settlement = null
 	_settlement_flip_index = -1
+	_settlement_flip_support = -1
 	_settlement_notice = null
 	_settlement_net_labels.clear()
 	if _discard_layer != null:
@@ -1087,6 +1094,7 @@ func _finish_native_settlement() -> void:
 	_restore_native_wall_flip(true)
 	_remove_native_node(_settlement_notice)
 	_settlement_notice = null
+	if _native_settlement != null: _native_settlement.show()
 	var title := _native_settlement.get_node_or_null("ResultTitle") as Label if _native_settlement != null else null
 	if title != null: title.show()
 	_settlement_complete = true
@@ -1117,12 +1125,29 @@ func _native_wall_flip_tile() -> TileView:
 			return node
 	return null
 
+func _next_wall_flip_support(index: int) -> int:
+	var nearest := WallRing.N
+	var support := -1
+	for seat in 4:
+		var slots := _wall_slots(seat)
+		for slot in slots.size():
+			if not slots[slot][1]: continue
+			var upper := _wall_ring_index(seat, slot, 0)
+			var distance := posmod(upper - (index - 1), WallRing.N)
+			if distance == 0 or distance >= nearest: continue
+			nearest = distance
+			support = upper if slots[slot][0] else upper + 1
+	return support
+
 func _animate_native_wall_flip() -> void:
 	var tile := _native_wall_flip_tile()
 	var card := _native_flip_tile()
 	if tile == null or card == "":
 		return
 	_settlement_flip_view = tile
+	var moving_to_stack := _settlement_flip_support >= 0
+	# Reveal the result after the tile clears the panel's path around the wall corner.
+	if moving_to_stack: _native_settlement.hide()
 	var source := tile.position
 	var lift := source + (G.CENTER - (source + tile.size / 2.0)).normalized() * 24.0
 	var lift_scale := 1.12
@@ -1130,6 +1155,7 @@ func _animate_native_wall_flip() -> void:
 		lift = source
 		lift_scale = 1.0
 	var duration := UI.SETTLEMENT_FLIP_SECONDS
+	var caption := "翻鸡  " + _tile_short(card)
 	_settlement_tween.tween_callback(func():
 		tile.z_index = 4
 		tile.set_card("", false))
@@ -1138,10 +1164,16 @@ func _animate_native_wall_flip() -> void:
 	_settlement_tween.tween_property(tile, "scale", Vector2(lift_scale, 0.03), duration * 0.28).set_ease(Tween.EASE_IN)
 	_settlement_tween.tween_callback(func():
 		tile.set_card(card, true)
-		_show_native_settlement_notice("翻鸡  " + _tile_short(card)))
+		if not moving_to_stack: _show_native_settlement_notice(caption))
 	_settlement_tween.tween_property(tile, "scale", Vector2.ONE, duration * 0.44).set_ease(Tween.EASE_OUT)
 	_settlement_tween.parallel().tween_property(tile, "position", source, duration * 0.44)
-	_settlement_tween.tween_callback(_restore_native_wall_flip.bind(true))
+	if moving_to_stack:
+		_settlement_tween.parallel().tween_property(self, "_settlement_flip_travel", 1.0, duration * 0.44)
+	_settlement_tween.tween_callback(func():
+		_restore_native_wall_flip(true)
+		if moving_to_stack:
+			_native_settlement.show()
+			_show_native_settlement_notice(caption))
 
 func _restore_native_wall_flip(reveal: bool) -> void:
 	var card := _native_flip_tile()
@@ -1150,11 +1182,11 @@ func _restore_native_wall_flip(reveal: bool) -> void:
 	if tile != null:
 		tile.position = wall_center_for_index(_settlement_flip_index) - tile.size / 2.0
 		tile.scale = Vector2.ONE
-		# A revealed lower tile still needs to be readable if its upper tile remains.
 		tile.z_index = 2 if _settlement_flip_revealed else int(_settlement_flip_index % 2 == 0)
 		tile.set_card(card if _settlement_flip_revealed else "", _settlement_flip_revealed)
 		tile.set_score_highlight(false)
 	_settlement_flip_view = null
+	_settlement_flip_travel = 0.0
 
 func _show_native_settlement_notice(caption: String) -> void:
 	if _settlement_notice == null:

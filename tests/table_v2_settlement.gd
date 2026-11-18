@@ -450,6 +450,79 @@ func _check_flip_previews() -> void:
 	root.size = original_size
 	root.content_scale_mode = original_scale
 
+func _check_wall_flip_landing() -> void:
+	var stub := SettlementTableStub.new()
+	root.add_child(stub)
+	var view = load("res://scenes/table/TableV2.tscn").instantiate()
+	root.add_child(view)
+	view.table = stub
+	view.auto_sort_hands = false
+	# Four walls, each corner, a partial next stack, an isolated tile, and a supported upper tile.
+	for example in [[11, 12], [35, 36], [65, 66], [91, 92], [27, 28], [53, 54],
+			[81, 82], [107, 0], [103, 0], [105, 107], [107, -1], [64, -1]]:
+		var index: int = example[0]
+		var support: int = example[1]
+		var r := _fixture("self_draw", "tong8", index)
+		if support == 107 or (support < 0 and index == 107):
+			r.wall.set_head(0)
+			for i in index: r.wall.draw_head()
+			if support == 107: r.wall.draw_tail()
+		elif index % 2 == 1:
+			r.wall.set_head(index - 1)
+			r.wall.draw_head()
+			if index == 103:
+				for i in 4: r.wall.draw_tail()
+		for synced in [false, true]:
+			stub.round = r
+			if synced:
+				stub.round = RoundState.new()
+				stub.round.apply_sync(r.serialize_for_seat(stub.human_seat))
+			view.set_round(stub.round, stub.human_seat)
+			var renderer = view._table_3d
+			renderer.sync_tiles()
+			var walls := {}
+			for tile in view._wall_layer.get_children():
+				walls[int(tile.get_meta("wall_ring_index"))] = tile
+			var mesh: MeshInstance3D = renderer.tile_nodes[walls[index].get_instance_id()]
+			var before := mesh.position
+			var count: int = view._wall_layer.get_child_count()
+			view.start_native_settlement(true)
+			renderer.sync_tiles()
+			var tag := "%d->%d remote=%s" % [index, support, synced]
+			t.expect(view._native_wall_flip_tile() == walls[index] and walls[index].face_up,
+				tag + ": retains the original tile identity and face")
+			t.expect(view._wall_layer.get_child_count() == count, tag + ": preserves the wall tile count")
+			if support >= 0:
+				var below: MeshInstance3D = renderer.tile_nodes[walls[support].get_instance_id()]
+				t.expect(mesh.position.is_equal_approx(below.position + Vector3.UP * mesh.basis.x.length() * 0.62)
+					and mesh.basis.x.is_equal_approx(below.basis.x), tag + ": lands flush above its next stack")
+			else:
+				t.expect(mesh.position.is_equal_approx(before), tag + ": lands at its supported original height")
+			var landed := mesh.transform
+			view.refresh()
+			t.expect(mesh.transform.is_equal_approx(landed), tag + ": a settlement refresh preserves the landing")
+			if not synced and support >= 0:
+				view._restore_native_wall_flip(false)
+				var tween: Tween = view.create_tween()
+				tween.pause()
+				view._settlement_tween = tween
+				view._animate_native_wall_flip()
+				tween.custom_step(0.34)
+				renderer.sync_tiles()
+				t.expect(walls[index].face_up and not view._native_settlement.visible
+					and not mesh.position.is_equal_approx(landed.origin), tag + ": the face travels with the result clear of its path")
+				tween.custom_step(0.12)
+				renderer.sync_tiles()
+				t.expect(view._native_settlement.visible and mesh.transform.is_equal_approx(landed),
+					tag + ": the result appears once the tile is resting")
+			view.reset_native_settlement()
+			renderer.sync_tiles()
+			t.expect(mesh.position.is_equal_approx(before) and not walls[index].face_up,
+				tag + ": reset restores the original wall pose")
+	view.queue_free()
+	stub.queue_free()
+	await process_frame
+
 func _run() -> void:
 	_check_total_values()
 	await _check_two_exposed_example()
@@ -464,6 +537,7 @@ func _run() -> void:
 		_check_details(plan, r, kind)
 	await _run_native_api()
 	await _check_flip_previews()
+	await _check_wall_flip_landing()
 	root.get_node("AudioManager").stop_effects()
 	root.get_node("AudioManager").end_table(null)
 	quit(t.finish("table_v2_settlement"))
