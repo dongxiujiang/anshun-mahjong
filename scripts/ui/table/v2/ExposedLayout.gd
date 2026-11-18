@@ -138,7 +138,10 @@ static func solve(view) -> Array:
 			hand_shift.y = -112.0
 		var hand_centers := []
 		for i in view._current_hand_count(seat): hand_centers.append(view._hand_center(seat,i,view._current_hand_count(seat)))
-		if not str(player.just_drew).is_empty(): hand_centers.append(view._draw_center(seat,view._current_hand_count(seat)))
+		var side_play: bool = view._table_3d != null and view.round.phase == RoundState.Phase.PLAYING and rel in [1, 3]
+		# Keep the side draw slot reserved when its tile leaves for the river.
+		if not str(player.just_drew).is_empty() or side_play:
+			hand_centers.append(view._draw_center(seat,view._current_hand_count(seat)))
 		for center: Vector2 in hand_centers:
 			if view._table_3d != null and rel in [1, 3]: center.x -= (center.y - G.CENTER.y) * 0.105 * (1 if rel == 1 else -1)
 			center.y = G.CENTER.y + (center.y - G.CENTER.y) * hand_stretch
@@ -159,6 +162,10 @@ static func solve(view) -> Array:
 			var c: Vector2=badge+AXES[rel]*64*(i-(label_count-1)/2.0)
 			obstacles.append(Rect2(c-Vector2(28,28),Vector2(56,56)))
 		var ordinary: int=view._ordinary_count(seat)
+		if side_play:
+			# An open river row recenters on each discard. Reserve its full width.
+			var columns := G.river_columns(rel)
+			ordinary = ceili(float(ordinary) / columns) * columns
 		# Keep the established meld belts when shifting the 3D river.
 		var river_shift:=Vector2(0,G.RIVER_Y_SHIFT) if view._table_3d!=null else Vector2.ZERO
 		for i in ordinary:

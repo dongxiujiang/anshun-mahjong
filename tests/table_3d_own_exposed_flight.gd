@@ -18,6 +18,8 @@ func _initialize() -> void: _run.call_deferred()
 func _run() -> void:
 	await _recorded_other_draws()
 	await _recorded_own_discards()
+	for passage in [[1, 2, [27,28,29]], [1, 2, [30,31,32]], [2, 2, [29,30,31]], [2, 2, [33,34,35]], [2, 3, [39,40]]]:
+		await _recorded_opponent_melds(passage[0], passage[1], passage[2])
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
 		for from_seat in [2, 3, 0]: await _case(screen, from_seat)
 	await _case(Vector2i(1920, 864), 3, true)
@@ -140,6 +142,37 @@ func _recorded_own_discards() -> void:
 	renderer._clear_own_exposed_faces(moved)
 	var after: Rect2 = renderer.project_tile(first)
 	t.expect(not before.is_equal_approx(after) and renderer.pick_tile(after.get_center(), false) == first, "a real occupied position is repacked and readable")
+	host.free()
+
+func _recorded_opponent_melds(number: int, seat: int, counts: Array) -> void:
+	# R13 real rounds. The left seat draws/discards while the north seat's
+	# existing pungs stay clear of the right river as it grows from five to six.
+	var fixture := "res://tests/fixtures/side-exposed-r13-%02d.json" % number
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(fixture))
+	var actions: Array = data.actions
+	var view = _recorded_table()
+	var host: Host = view.table
+	var baseline := {}
+	for count in counts:
+		data.actions = actions.slice(0, count)
+		var state := REPLAY.replay(data)
+		if not t.expect(state.ok, "real R13 round %d replays through %d actions" % [number, count]): break
+		host.round = state.round
+		view.set_round(host.round, 1)
+		view._sort_started = true
+		view.refresh()
+		await process_frame
+		view._table_3d.sync_tiles()
+		var poses := {}
+		for source in view._meld_layer.get_children() + view._red_layer.get_children():
+			if int(source.get_meta("v2_seat", -1)) != seat: continue
+			poses[view._render_key(source)] = view._table_3d.project_tile(source)
+			_check_recorded_face(view._table_3d, source, view._dealer_meld_badges[seat])
+		if baseline.is_empty(): baseline = poses.duplicate()
+		t.expect(poses.size() == baseline.size() and poses.size() >= 6, "original exposed groups present")
+		for key in baseline:
+			t.expect(poses.has(key) and baseline[key].is_equal_approx(poses[key]),
+				"R13 round %d seat %d piece %s stays put through ordinary action %d" % [number, seat, key, count])
 	host.free()
 
 func _recorded_exposed_positions(view) -> Dictionary:
