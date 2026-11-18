@@ -89,6 +89,7 @@ static func solve(view, context: Array = []) -> Array:
 	var groups:=[]
 	var obstacles:=[]
 	var own_chicken_obstacles:=[]
+	var reserved_side_rivers := []
 	for seat in 4:
 		var rel: int=G.relative_seat(view.human_seat,seat)
 		var player=view.round.players[seat]
@@ -162,9 +163,10 @@ static func solve(view, context: Array = []) -> Array:
 			var c: Vector2=badge+AXES[rel]*64*(i-(label_count-1)/2.0)
 			obstacles.append(Rect2(c-Vector2(28,28),Vector2(56,56)))
 		var ordinary: int=view._ordinary_count(seat)
+		var used := ordinary
+		var columns := G.river_columns(rel)
 		if side_play:
 			# An open river row recenters on each discard. Reserve its full width.
-			var columns := G.river_columns(rel)
 			ordinary = ceili(float(ordinary) / columns) * columns
 		# Keep the established meld belts when shifting the 3D river.
 		var river_shift:=Vector2(0,G.RIVER_Y_SHIFT) if view._table_3d!=null else Vector2.ZERO
@@ -173,6 +175,11 @@ static func solve(view, context: Array = []) -> Array:
 			var river := rect_for(center,G.TILE_BASE*G.ORDINARY_UNIT,ANGLES[rel])
 			if view._table_3d != null and rel in [1,3]:
 				river = river.grow_individual(0,G.TILE_BASE.x*G.ORDINARY_UNIT,0,0)
+			if used != ordinary and i >= ordinary - columns:
+				# Keep surviving groups clear of actual tiles. Reserve the full open row for new placements.
+				reserved_side_rivers.append(river)
+				if i >= used: continue
+				river.position += G.ordinary_slot_center(seat,i,view.human_seat,used) - river_shift - center
 			obstacles.append(river)
 	if groups.is_empty(): return []
 	var walls := []
@@ -230,6 +237,7 @@ static func solve(view, context: Array = []) -> Array:
 				result.append_array(stable)
 				for piece in stable: occupied.append(piece.rect)
 				order.erase(g)
+		occupied.append_array(reserved_side_rivers)
 		for g in order:
 			var blocked := occupied
 			if g.seat == view.human_seat and g.count == 1: blocked = occupied + own_chicken_obstacles

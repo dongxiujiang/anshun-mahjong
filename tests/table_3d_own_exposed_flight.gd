@@ -20,6 +20,7 @@ func _run() -> void:
 	await _recorded_own_discards()
 	await _recorded_north_chicken()
 	await _recorded_added_groups()
+	for number in [5, 9]: await _recorded_side_river_opening(number)
 	for passage in [[1, 2, [27,28,29]], [1, 2, [30,31,32]], [2, 2, [29,30,31]], [2, 2, [33,34,35]], [2, 3, [39,40]]]:
 		await _recorded_opponent_melds(passage[0], passage[1], passage[2])
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
@@ -32,6 +33,51 @@ func _run() -> void:
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
 		for footer in [0.0, 110.0, 150.0]: await _endpoint_case(screen, footer)
 	await H.quit_cleanly(self, t.finish("table_3d_own_exposed_flight"))
+
+func _recorded_side_river_opening(number: int) -> void:
+	var path := "res://tests/fixtures/north-pung-r20-river-%02d.json" % number
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var action: Dictionary = data.actions.pop_back()
+	var replayed := REPLAY.replay(data)
+	if not t.expect(replayed.ok, "R20 round %d reaches the side river opening" % number): return
+	var view = _recorded_table()
+	var host: Host = view.table
+	host.round = replayed.round
+	view.set_round(host.round, 1)
+	view._sort_started = true
+	view.refresh()
+	await process_frame
+	var before := _north_pung_rects(view)
+	var prior_count := 0 if number == 5 else 8
+	t.expect(view._ordinary_count(0) == prior_count, "the right river starts with the recorded tile count")
+	t.expect(host.round.submit_turn(action.seat, action.decision), "the recorded right discard is accepted")
+	view.refresh()
+	var after := _north_pung_rects(view)
+	t.expect(view._ordinary_count(0) == prior_count + 1, "the discard opens a right river row")
+	t.expect(before.size() == 3 and after == before,
+		"R20 round %d north pung stays put as a side river row opens" % number)
+	if number == 9:
+		# At 14 occupied river slots a real tile reaches the original pung clearance.
+		var right = host.round.players[0]
+		for i in 5:
+			right.discards.append("wan3")
+			right.discard_ids.append(700 + i)
+			right.discard_count += 1
+		view.refresh()
+		var relocated := _north_pung_rects(view)
+		t.expect(view._ordinary_count(0) == 14 and relocated.size() == 3 and relocated != before,
+			"the north pung yields when an occupied side river slot reaches it")
+	host.free()
+
+func _north_pung_rects(view) -> Dictionary:
+	var renderer = view._table_3d
+	renderer.sync_tiles()
+	var rects := {}
+	for tile in view._red_layer.get_children():
+		if tile.tile != "tiao1" or tile.get_meta("v2_seat", -1) != 3 or tile.get_meta("meld_index", -1) != 0: continue
+		rects[tile.get_meta("meld_slot")] = renderer.project_tile(tile)
+		_check_recorded_face(renderer, tile, view._dealer_meld_badges[3])
+	return rects
 
 func _recorded_added_groups() -> void:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/added-exposed-r15-round3.json"))
