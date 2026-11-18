@@ -638,10 +638,15 @@ func _update_discard_marker(source: TileView) -> void:
 	var node: MeshInstance3D = tile_nodes[source.get_instance_id()]
 	var factor := node.basis.get_scale().x
 	var bounds := project_tile(source)
-	var at := _at_height(Vector2(bounds.get_center().x, bounds.position.y - 20.0), node.position.y + factor)
-	if not discard_marker.position.is_equal_approx(at) or not discard_marker.scale.is_equal_approx(Vector3.ONE * factor):
-		discard_marker.position = at
-		discard_marker.scale = Vector3.ONE * factor
+	# New rows grow outwards; this edge stays clear of the preceding printed row.
+	var outward: Vector2 = [Vector2.DOWN, Vector2.RIGHT, Vector2.UP, Vector2.LEFT][G.relative_seat(view.human_seat, int(source.get_meta("v2_seat")))]
+	var edge := bounds.get_center() + bounds.size * outward / 2.0
+	var height := node.position.y + factor
+	var at := _at_height(edge + outward * 20.0, height)
+	var direction := (_at_height(edge, height) - at).normalized()
+	var marker_transform := Transform3D(Basis(Quaternion(Vector3.UP, direction)).scaled(Vector3.ONE * factor), at)
+	if not discard_marker.transform.is_equal_approx(marker_transform):
+		discard_marker.transform = marker_transform
 		_changed = true
 
 func _project_mesh(node: MeshInstance3D) -> Rect2:

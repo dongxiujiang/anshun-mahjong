@@ -6,6 +6,7 @@ const TILES := preload("res://scripts/core/Tiles.gd")
 const FIXTURE := "res://tests/fixtures/river-corner-round1.json"
 var t := H.new()
 var evidence := []
+var retired_discard_playbacks: Array[WeakRef] = []
 
 class LandingSoundContract extends RefCounted:
 	var enabled := true
@@ -51,11 +52,19 @@ func _run() -> void:
 	for relative in 4:
 		for row_number in range(2, 4 if relative % 2 == 0 else 5):
 			await _case(record, false, Vector2i(1600, 1000), relative, true, "normal", row_number)
+	var cleanup_started := Time.get_ticks_msec()
+	var released := await H.drain_audio(self)
+	var alive_after_drain := retired_discard_playbacks.filter(func(ref): return ref.get_ref() != null).size()
+	var deadline := Time.get_ticks_msec() + 2000
+	while retired_discard_playbacks.any(func(ref): return ref.get_ref() != null) and Time.get_ticks_msec() < deadline:
+		await create_timer(0.05, true, false, true).timeout
+	var alive_at_exit := retired_discard_playbacks.filter(func(ref): return ref.get_ref() != null).size()
+	t.expect(released and alive_at_exit == 0, "all stopped discard playbacks release before test shutdown")
 	var out := OS.get_environment("RIVER_FLIGHT_EVIDENCE")
 	if not out.is_empty():
 		var file := FileAccess.open(out.path_join("samples.json"), FileAccess.WRITE)
-		file.store_string(JSON.stringify({"fixture": FIXTURE, "provenance": record.provenance, "cases": evidence}, "  "))
-	await H.quit_cleanly(self, t.finish("table_3d_river_discard_flight"))
+		file.store_string(JSON.stringify({"fixture": FIXTURE, "provenance": record.provenance, "cases": evidence, "audio_cleanup": {"retired_playbacks_observed": retired_discard_playbacks.size(), "alive_after_initial_drain": alive_after_drain, "alive_at_exit": alive_at_exit, "elapsed_ms": Time.get_ticks_msec() - cleanup_started}}, "  "))
+	quit(t.finish("table_3d_river_discard_flight"))
 
 func _prefix(record: Dictionary, count: int) -> Dictionary:
 	var data := record.duplicate(true)
@@ -257,9 +266,19 @@ func _case(record: Dictionary, settled: bool, screen: Vector2i, relative: int, f
 		t.expect(terminal_probe.blocked.is_empty(), "row%d rel%d exact flight t1 artwork stays readable" % [row_number, relative])
 		t.expect(terminal_jump < 0.1, "row%d rel%d flight t1 -> land has no projection jump (%.3fpx)" % [row_number, relative, terminal_jump])
 	t.expect(not moving.has_meta("ordinary_flight_3d"), "land, cancel or claim removes ordinary flight metadata")
-	evidence.append({"decision_prefix": decision, "owner": owner, "viewer": viewer, "relative": relative, "tile": card, "columns": columns, "full_row": full_row, "row_number": row_number, "synthetic_display_pressure_not_legal_round": row_number > 1 or claiming, "terminal_probe": terminal_probe, "terminal_jump_pixels": terminal_jump, "mode": mode, "settled_pending": settled, "screen": [screen.x, screen.y], "renderer_viewport": [renderer.viewport.size.x, renderer.viewport.size.y], "footer_design_units": view.test_touch_height, "duration_seconds": config.tile_motion_seconds(), "contact_animation_ms": contact_ms, "total_animation_ms": elapsed * 1000, "samples": samples, "blocked_counts": blocked.values().map(func(rows): return rows.size()), "complete_count": complete.count, "impact_count": complete.impacts})
+	var marker_blocked := _marker_print_occlusions(renderer)
+	if renderer.discard_marker.visible:
+		t.expect(marker_blocked.is_empty(), "latest-discard triangle does not cover visible printed faces: %s" % JSON.stringify(marker_blocked))
+		var marker: MeshInstance3D = renderer.discard_marker
+		var tip: Vector2 = renderer.camera.unproject_position(marker.global_transform * Vector3(0, 0.275, 0))
+		var base: Vector2 = renderer.camera.unproject_position(marker.global_transform * Vector3(0, -0.275, 0))
+		var target: Vector2 = renderer.camera.unproject_position(renderer.tile_nodes[moving.get_instance_id()].global_position)
+		t.expect((tip - base).normalized().dot((target - base).normalized()) > 0.98 and renderer._marker_source_id == moving.get_instance_id(), "triangle tip points at the latest discard")
+	evidence.append({"decision_prefix": decision, "owner": owner, "viewer": viewer, "relative": relative, "tile": card, "columns": columns, "full_row": full_row, "row_number": row_number, "synthetic_display_pressure_not_legal_round": row_number > 1 or claiming, "terminal_probe": terminal_probe, "terminal_jump_pixels": terminal_jump, "mode": mode, "settled_pending": settled, "screen": [screen.x, screen.y], "renderer_viewport": [renderer.viewport.size.x, renderer.viewport.size.y], "footer_design_units": view.test_touch_height, "duration_seconds": config.tile_motion_seconds(), "contact_animation_ms": contact_ms, "total_animation_ms": elapsed * 1000, "samples": samples, "blocked_counts": blocked.values().map(func(rows): return rows.size()), "marker_occluded_print_points": marker_blocked, "complete_count": complete.count, "impact_count": complete.impacts})
 	print("[river-discard-flight] screen=", screen, " rel=", relative, " row=", row_number, " full=", full_row, " mode=", mode, " settled=", settled, " blocked=", blocked.values().map(func(rows): return rows.size()), " t1_jump_px=", terminal_jump)
 	audio.discard_impact_played.disconnect(heard)
+	# Capture before stop detaches the playback from its player.
+	if audio.effects_player.has_stream_playback(): retired_discard_playbacks.append(weakref(audio.effects_player.get_stream_playback()))
 	audio.end_table(host)
 	view._reset_round_visual_state()
 	host.queue_free()
@@ -281,3 +300,31 @@ func _sample(renderer, moving: TileView) -> Dictionary:
 			if hit != moving:
 				blocked.append({"local": [x, z], "projected_design": [point.x, point.y], "occluder": hit.tile if hit != null else "none", "seat": int(hit.get_meta("v2_seat", -1)) if hit != null else -1, "kind": str(hit.get_meta("new_kind", "")) if hit != null else ""})
 	return {"printed_polygon_viewport_pixels": polygon, "blocked": blocked}
+
+func _marker_print_occlusions(renderer) -> Array:
+	var blocked := []
+	var marker: MeshInstance3D = renderer.discard_marker
+	if not marker.visible: return blocked
+	var arrays: Array = marker.mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	for id in renderer.tile_nodes:
+		var source = renderer._sources[id].get_ref()
+		var mesh: MeshInstance3D = renderer.tile_nodes[id]
+		if not is_instance_valid(source) or not mesh.visible or not source.face_up or source.tile in ["", "hidden0"]: continue
+		for x in [-0.28, 0.0, 0.28]:
+			for z in [-0.35, 0.0, 0.35]:
+				var point: Vector3 = mesh.global_transform * Vector3(x, 0.31, z)
+				var pixel: Vector2 = renderer.camera.unproject_position(point)
+				if renderer.pick_tile(pixel / Vector2(renderer.viewport.size) * renderer.size, false) != source: continue
+				var origin: Vector3 = renderer.camera.project_ray_origin(pixel)
+				var direction: Vector3 = renderer.camera.project_ray_normal(pixel)
+				for triangle in range(0, indices.size(), 3):
+					var a: Vector3 = marker.global_transform * vertices[indices[triangle]]
+					var b: Vector3 = marker.global_transform * vertices[indices[triangle + 1]]
+					var c: Vector3 = marker.global_transform * vertices[indices[triangle + 2]]
+					var hit = Geometry3D.ray_intersects_triangle(origin, direction, a, b, c)
+					if hit != null and origin.distance_to(hit) < origin.distance_to(point) - 0.0001:
+						blocked.append({"tile": source.tile, "seat": int(source.get_meta("v2_seat", -1)), "kind": str(source.get_meta("new_kind", "")), "local_point": [x, z], "pixel": [pixel.x, pixel.y]})
+						break
+	return blocked
