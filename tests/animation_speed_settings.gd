@@ -141,6 +141,34 @@ func _opening_ready_gate() -> void:
 	t.expect(net.game.wall.remaining == 55, "duplicate confirmations never draw again")
 	net.free()
 
+func _opening_disconnect_gate() -> void:
+	for resumable in [true, false]:
+		var net := RoomProbe.new()
+		root.add_child(net)
+		net.host_mode = true
+		net._started = true
+		net._owner_peer = 1
+		net._members = {1: {}, 2: {"resume_token": "session-token" if resumable else ""}}
+		net._peer_seat = {1: 0, 2: 1}
+		net._seat_peer = {0: 1, 1: 2}
+		net._opening_waiters = {2: true}
+		net.game = RoundState.new()
+		net.game.controllers = [null, null, null, null]
+		net.game.pause_after_opening = true
+		net.game.start_round(0, 2, 3)
+		net._on_peer_disconnected(2)
+		t.expect(net.game.pause_after_opening == resumable and net.game.wall.remaining == (56 if resumable else 55),
+			"recoverable opening keeps the first draw paused, explicit leave releases it")
+		if resumable:
+			t.expect(net._opening_waiters.is_empty() and net._orphaned.has(1), "disconnection leaves a seat reservation without the old peer")
+			net._accept_opening_ready(2, net.round_number, net.game.audio_session)
+			t.expect(net.game.wall.remaining == 56, "the disconnected peer cannot release its old opening wait")
+			net._orphaned[1].until = 0
+			net._process(0.0)
+			t.expect(not net.game.pause_after_opening and net.game.wall.remaining == 55 and net._orphaned[1].replaced,
+				"grace expiry hands the seat to AI and releases exactly one draw")
+		net.free()
+
 func _room_settings() -> void:
 	var config = root.get_node("GameConfig")
 	var room := RoomProbe.new()
@@ -192,6 +220,7 @@ func _room_settings() -> void:
 func _run() -> void:
 	_room_settings()
 	_opening_ready_gate()
+	_opening_disconnect_gate()
 	_config_and_controls()
 	await _ai_waits()
 	quit(t.finish("animation_speed_settings"))

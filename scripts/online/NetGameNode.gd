@@ -509,7 +509,7 @@ func _on_peer_disconnected(peer: int) -> void:
 	if retained:
 		_orphaned[seat] = {"token": member.resume_token, "until": Time.get_ticks_msec() + RESUME_GRACE_MS,
 			"ready_until": Time.get_ticks_msec() + READY_GRACE_MS, "owner": _owner_peer == peer,
-			"member": member}
+			"member": member, "opening_wait": _opening_waiters.has(peer)}
 	else:
 		# Explicit leave: no reconnect reservation and no controller-less seat.
 		_orphaned.erase(seat)
@@ -1474,8 +1474,13 @@ func _accept_opening_ready(peer: int, number: int, session: String) -> void:
 	_resume_opening_if_ready()
 
 func _resume_opening_if_ready() -> void:
-	if game != null and game.pause_after_opening and _opening_waiters.is_empty():
-		game.resume_after_opening()
+	if game == null or not game.pause_after_opening or not _opening_waiters.is_empty(): return
+	# A recoverable seat still owes its opening confirmation after its transport drops.
+	for orphan: Dictionary in _orphaned.values():
+		if bool(orphan.get("opening_wait", false)) and not bool(orphan.get("replaced", false)) \
+				and int(orphan.member.get("round_number", -1)) == round_number:
+			return
+	game.resume_after_opening()
 
 func set_opening_speed(value: String) -> void:
 	if not CONFIG.is_opening_speed(value):
