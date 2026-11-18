@@ -16,6 +16,7 @@ class Host extends Control:
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
+	await _recorded_other_draws()
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
 		for from_seat in [2, 3, 0]: await _case(screen, from_seat)
 	await _case(Vector2i(1920, 864), 3, true)
@@ -26,6 +27,78 @@ func _run() -> void:
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
 		for footer in [0.0, 110.0, 150.0]: await _endpoint_case(screen, footer)
 	await H.quit_cleanly(self, t.finish("table_3d_own_exposed_flight"))
+
+func _recorded_other_draws() -> void:
+	# Real R10 Android round 1, recorded actions 0–33 and draw events 70/72.
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/own-exposed-r10-round1.json"))
+	var actions: Array = data.actions
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
+	root.size = Vector2i(1600, 1000)
+	var host := Host.new()
+	host.size = G.DESIGN_SIZE
+	# Match the recorded Android table's top/side safe margins and 90 px footer.
+	var margin := float(preload("res://scripts/ui/table/TableUiConfig.gd").SAFE_MARGIN) * root.size.x / G.DESIGN_SIZE.x
+	host.position = Vector2(margin, margin)
+	host.scale = (Vector2(root.size) - Vector2(2.0 * margin, margin)) / G.DESIGN_SIZE
+	root.add_child(host)
+	var view = load("res://scenes/table/TableV2.tscn").instantiate()
+	view.set_script(load("res://tests/fixtures/table_touch_footer_view.gd"))
+	view.test_touch_height = 90.0 / host.scale.y
+	host.add_child(view)
+	view.table = host
+	view.auto_sort_hands = false
+	var positions := []
+	for count in [32, 33, 34]:
+		data.actions = actions.slice(0, count)
+		var state := REPLAY.replay(data)
+		t.expect(state.ok, "the real round replays to action %d" % count)
+		if not state.ok: break
+		host.round = state.round
+		t.expect(host.round.players[1].melds.size() == 1 and host.round.players[1].melds[0].from_seat == 2, "own pung still has its original source")
+		view.set_round(host.round, 1)
+		view._sort_started = true
+		view.refresh()
+		await process_frame
+		t.expect(view._wall_layer.get_child_count() == 28 - (count - 32), "the wall loses a real tile after each recorded draw")
+		if count > 32:
+			var draw: Dictionary = data.events[1 if count == 33 else 3]
+			view.animate_draw(int(draw.seat), str(draw.tile), int(draw.wall_index), Callable())
+			positions.append(_recorded_exposed_positions(view))
+			view._finish_pending_draw(int(draw.seat))
+		positions.append(_recorded_exposed_positions(view))
+	for i in range(1, positions.size()):
+		for piece in positions[0]:
+			var before: Rect2 = positions[0][piece]
+			var after: Rect2 = positions[i][piece]
+			t.expect(before.is_equal_approx(after),
+				"stationary %s stays beside the hand during recorded draws (%s -> %s)" % [piece, before, after])
+	host.free()
+
+func _recorded_exposed_positions(view) -> Dictionary:
+	var renderer = view._table_3d
+	renderer.sync_tiles()
+	view._layout_meld_badges()
+	var dealer: Label = view._dealer_meld_badges[1]
+	t.expect(dealer.visible, "the dealer badge is visible in the recorded round")
+	var result := {"dealer": dealer.get_rect()}
+	var hand_left := INF
+	for tile in view.hand_boxes[1].get_children():
+		hand_left = minf(hand_left, renderer.project_tile(tile).position.x)
+	for source in view._meld_layer.get_children() + view._red_layer.get_children():
+		if int(source.get_meta("v2_seat", -1)) != 1: continue
+		var tile_rect: Rect2 = renderer.project_tile(source)
+		t.expect(tile_rect.get_center().x < hand_left, "the exposed group stays on the hand's left")
+		result["%s_%d" % [source.tile, source.get_meta("meld_slot", -1)]] = tile_rect
+		var mesh: MeshInstance3D = renderer.tile_nodes[source.get_instance_id()]
+		var sideways: bool = int(source.get_meta("meld_sideways", -1)) >= 0
+		for x in ([-0.45, 0.0, 0.45] if sideways else [-0.38, 0.0, 0.38]):
+			for z in ([-0.60, 0.0, 0.60] if sideways else [-0.50, 0.0, 0.50]):
+				var point: Vector2 = renderer.camera.unproject_position(mesh.transform * Vector3(x, 0.311, z)) / Vector2(renderer.viewport.size) * renderer.size
+				var picked: TileView = renderer.pick_tile(point, false)
+				t.expect(picked == source and not dealer.get_rect().has_point(point),
+					"recorded %s face at %s is visible (picked %s)" % [source.tile, Vector2(x, z), picked.tile if picked != null else "none"])
+	t.expect(result.size() == 5 and result.has("wan7_0") and result.has("tong8_-1"), "all three pung tiles and the chicken are present")
+	return result
 
 func _case(screen: Vector2i, from_seat: int, cancel: bool = false, existing: bool = false) -> void:
 	root.get_node("UpdateManager").auto_check = false

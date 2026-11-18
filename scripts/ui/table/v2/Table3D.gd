@@ -508,7 +508,15 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 	corner.size = Vector2(near_wall.position.x - 6.0 - corner.position.x, hand.position.y - 2.0 - corner.position.y)
 	var placed := false
 	obstacles.sort_custom(func(a, b): return a.position.x > b.position.x)
-	for area: Rect2 in [beside, corner]:
+	var areas := [beside, corner]
+	# Where the left player's hand spans the entire strip, anchor below it to
+	# our hand instead of following the wall or the opponent's separate draw.
+	if beside.end.x <= left_hand.end.x:
+		var aligned := beside
+		aligned.position.y = maxf(beside.position.y, hand.position.y - 6.0)
+		aligned.size.y = bottom - aligned.position.y
+		areas.push_front(aligned)
+	for area: Rect2 in areas:
 		for key in order:
 			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
 		placed = _pack_own_exposed(groups, order, area, obstacles)
