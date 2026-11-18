@@ -1662,6 +1662,12 @@ func _begin_visual_action() -> int:
 	if is_instance_valid(_previous_sort_button): _previous_sort_button.disabled = true
 	return _visual_action_id
 
+static func queue_motion_refresh(host: Node) -> void:
+	if host.has_method("_queue_refresh"):
+		host.call("_queue_refresh")
+	else:
+		host.call_deferred("_refresh")
+
 func _complete_visual_action(action_id: int, done: Callable) -> void:
 	if not _visual_actions.erase(action_id): return
 	if not native_actions_pending() and _discard_flights.is_empty() and _table_3d != null:
@@ -1670,7 +1676,7 @@ func _complete_visual_action(action_id: int, done: Callable) -> void:
 	_layout_meld_badges()
 	if done.is_valid(): done.call()
 	if not native_actions_pending() and is_instance_valid(table) and table.is_inside_tree():
-		table.call_deferred("_refresh")
+		queue_motion_refresh(table)
 
 func _motion_tween() -> Tween:
 	var tween := create_tween()
@@ -2414,7 +2420,7 @@ func _finish_discard_flight(flight_id: int) -> void:
 	if not native_actions_pending() and _discard_flights.is_empty() and _table_3d != null:
 		_table_3d.clear_own_exposed_flight()
 	if action_already_done and not native_presentation_pending() and is_instance_valid(table) and table.is_inside_tree():
-		table.call_deferred("_refresh")
+		queue_motion_refresh(table)
 
 func _place_discard_flight(data: Dictionary) -> void:
 	var node = instance_from_id(int(data.get("node_id", 0)))

@@ -391,7 +391,7 @@ func _dispatch_visual_event(event: Dictionary) -> void:
 		table._new_areas.animate_draw(draw_seat, draw_card, draw_index, func():
 			_draw_animating = false
 			table._update_interactivity()
-			table.call_deferred("_refresh"))
+			TableV2.queue_motion_refresh(table))
 		return
 	if event_type == "discard" and DisplayServer.get_name() != "headless" \
 			and table._new_areas != null and table._new_areas.has_method("animate_draw_insert"):
@@ -406,7 +406,7 @@ func _dispatch_visual_event(event: Dictionary) -> void:
 			table._new_areas.animate_draw_discard(discard_seat, func():
 				_draw_cards[discard_seat] = ""
 				table._update_interactivity()
-				table.call_deferred("_refresh"), str(event.get("tile", "")))
+				TableV2.queue_motion_refresh(table), str(event.get("tile", "")))
 			return
 		if draw_card != "":
 			_insert_animating = true
@@ -415,7 +415,7 @@ func _dispatch_visual_event(event: Dictionary) -> void:
 					_insert_animating = false
 					_draw_cards[discard_seat] = ""
 					table._update_interactivity()
-					table.call_deferred("_refresh"), int(event.get("discard_index", -1)),
+					TableV2.queue_motion_refresh(table), int(event.get("discard_index", -1)),
 				event.get("hand_slot_map", {}))
 			return
 		# 碰牌后的出牌没有摸牌位。第一段让选中的旧牌飞向弃牌区，
@@ -427,7 +427,7 @@ func _dispatch_visual_event(event: Dictionary) -> void:
 				str(event.get("tile", "")), int(event.get("discard_index", -1)), func():
 					_insert_animating = false
 					table._update_interactivity()
-					table.call_deferred("_refresh"))
+					TableV2.queue_motion_refresh(table))
 			return
 	if event_type == "deal_batch" and table._new_areas != null \
 			and table._new_areas.has_method("animate_deal_group"):
