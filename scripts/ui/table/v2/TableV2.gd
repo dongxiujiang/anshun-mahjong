@@ -12,6 +12,7 @@ const DICE := preload("res://scripts/ui/DiceView.gd")
 const PLAN := preload("res://scripts/ui/table/SettlementAnimationPlan.gd")
 const EXPOSED := preload("res://scripts/ui/table/v2/ExposedLayout.gd")
 var _exposed_specs: Array = []
+var _exposed_placement_key: Variant = null
 var _exposed_key: Variant = null
 var _exposed_checked := false
 var _badge_layout_key: Variant = null
@@ -1866,7 +1867,11 @@ func _build_discards() -> void:
 func _exposed_layout() -> Array:
 	if round == null: return []
 	if _reconciling and _exposed_checked: return _exposed_specs
-	var state: Array = [human_seat, round.phase, round.dealer_seat, _held_hand_centers,
+	var context := [round._presentation.session, human_seat, round.phase, get_viewport_rect().size,
+		get_global_transform_with_canvas(), test_reveal_all_hands and not formal_mode]
+	if _table_3d != null and _table_3d.camera != null:
+		context.append([_table_3d.camera.transform, _table_3d.camera.fov])
+	var state: Array = [context, round.dealer_seat, _held_hand_centers,
 		round.round_meta.get("charge_chickens", {}), reserved_action_rect()]
 	for player in round.players:
 		state.append([player.concealed, player.just_drew, player.melds, player.discards,
@@ -1880,7 +1885,7 @@ func _exposed_layout() -> Array:
 	var key := hash(state)
 	if key != _exposed_key:
 		_exposed_key = key
-		_exposed_specs = EXPOSED.solve(self)
+		_exposed_specs = EXPOSED.solve(self, context)
 	_exposed_checked = true
 	return _exposed_specs
 

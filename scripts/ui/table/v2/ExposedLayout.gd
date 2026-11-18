@@ -85,7 +85,7 @@ static func compact_obstacles(obstacles: Array) -> Array:
 		compact.append(rect)
 	return compact
 
-static func solve(view) -> Array:
+static func solve(view, context: Array = []) -> Array:
 	var groups:=[]
 	var obstacles:=[]
 	var own_chicken_obstacles:=[]
@@ -107,7 +107,7 @@ static func solve(view) -> Array:
 			var slot:=G.exposed_kong_source_slot(seat,int(m.get("from_seat",-1))) if m.kind=="kong" and not m.get("concealed",false) else -1
 			var opposite:=slot>=0 and posmod(int(m.from_seat)-seat,4)==2
 			var n:=3 if opposite else count
-			melds.append({"seat":seat,"rel":rel,"tile":m.tile,"count":count,"charge":false,"source_slot":slot,"opposite":opposite,"width":n*size.x+(n-1)*4+(size.y-size.x if slot>=0 and not opposite else 0),"meld_index":i,"discard_id":-1,"kind":m.kind,"concealed":m.get("concealed",false),"revealed":m.get("revealed",false)})
+			melds.append({"seat":seat,"rel":rel,"tile":m.tile,"count":count,"charge":false,"source_slot":slot,"opposite":opposite,"width":n*size.x+(n-1)*4+(size.y-size.x if slot>=0 and not opposite else 0),"source_seat":int(m.get("from_seat",-1)),"meld_index":i,"discard_id":-1,"kind":m.kind,"concealed":m.get("concealed",false),"revealed":m.get("revealed",false)})
 		var half:=60 if seat==view.round.dealer_seat and player.ready else 28
 		var left: float=-half-8
 		for i in range(mini(6,singles.size())-1,-1,-1):
@@ -174,6 +174,8 @@ static func solve(view) -> Array:
 			if view._table_3d != null and rel in [1,3]:
 				river = river.grow_individual(0,G.TILE_BASE.x*G.ORDINARY_UNIT,0,0)
 			obstacles.append(river)
+	if groups.is_empty(): return []
+	var walls := []
 	for node in view._wall_layer.get_children():
 		if node is TileView and (not view._reconciling or view._render_seen.has(node.get_instance_id())):
 			var position: Vector2 = node.position.snapped(Vector2.ONE * 0.001)
@@ -181,9 +183,26 @@ static func solve(view) -> Array:
 			var wall_rect := rect_for(position+dimensions/2,dimensions*node.scale,node.rotation)
 			if view._table_3d != null and absf(sin(node.rotation)) > 0.5:
 				wall_rect = wall_rect.grow_individual(0,G.TILE_BASE.x*G.WALL_UNIT,0,0)
-			obstacles.append(wall_rect)
+			walls.append(wall_rect)
+	obstacles.append_array(compact_obstacles(walls))
 	obstacles.append(view.reserved_action_rect())
 	obstacles = compact_obstacles(obstacles)
+	for i in groups.size(): groups[i]["group_index"] = i
+	if not context.is_empty():
+		# A matched group gets current metadata and only its old placement geometry.
+		var key := [context, groups, view.round.dealer_seat, view.round.players.map(func(player): return player.ready)]
+		var previous: Array = view._exposed_specs if key == view._exposed_placement_key else []
+		view._exposed_placement_key = key
+		if view._table_3d != null and view.round.phase == RoundState.Phase.PLAYING and not str(context[0]).is_empty() and not previous.is_empty():
+			var stable := []
+			for old in previous:
+				var piece: Dictionary = groups[old.group_index].duplicate()
+				for field in ["center","sideways","meld_slot","rect","lower","kong_offset_2d","kong_offset_3d"]:
+					piece[field] = old[field]
+				var blocked: Array = obstacles + own_chicken_obstacles if piece.rel == 0 and piece.count == 1 else obstacles
+				if not clear([piece], blocked): break
+				stable.append(piece)
+			if stable.size() == previous.size(): return stable
 	for attempt in 10:
 		var order:=groups.duplicate()
 		order.sort_custom(func(a,b):

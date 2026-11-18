@@ -18,6 +18,7 @@ func _initialize() -> void: _run.call_deferred()
 func _run() -> void:
 	await _recorded_other_draws()
 	await _recorded_own_discards()
+	await _recorded_north_chicken()
 	for passage in [[1, 2, [27,28,29]], [1, 2, [30,31,32]], [2, 2, [29,30,31]], [2, 2, [33,34,35]], [2, 3, [39,40]]]:
 		await _recorded_opponent_melds(passage[0], passage[1], passage[2])
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
@@ -30,6 +31,97 @@ func _run() -> void:
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
 		for footer in [0.0, 110.0, 150.0]: await _endpoint_case(screen, footer)
 	await H.quit_cleanly(self, t.finish("table_3d_own_exposed_flight"))
+
+func _recorded_north_chicken() -> void:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/red-exposed-r14-round1.json"))
+	var actions: Array = data.actions
+	data.actions = actions.slice(0, 20)
+	var replayed: Dictionary = REPLAY.replay(data)
+	t.expect(replayed.ok, "R14 chicken replay reaches the response to eight wan")
+	if not replayed.ok: return
+	var view = _recorded_table()
+	var host: Host = view.table
+	host.round = replayed.round
+	view.set_round(host.round, 1)
+	view._sort_started = true
+	view.refresh()
+	await process_frame
+	var pung: Dictionary = data.events[0]
+	t.expect(host.round.submit_response(0, "wan8", actions[20].decision), "recorded event 49 pung accepted")
+	view.animate_meld(pung, Callable())
+	await create_timer(0.7).timeout
+	view.refresh()
+	var landed: Rect2 = _north_chicken_face(view)
+	var discard: Dictionary = data.events[1]
+	var draw: Dictionary = data.events[2]
+	t.expect(host.round.submit_turn(0, actions[21].decision), "recorded event 50 discard accepted")
+	view.animate_hand_discard(0, discard.tile, int(discard.discard_hand_index), Callable())
+	await create_timer(0.5).timeout
+	view.animate_draw(3, draw.tile, int(draw.wall_index), Callable())
+	await create_timer(0.4).timeout
+	view.refresh()
+	t.expect(_north_chicken_face(view).is_equal_approx(landed), "north chicken stays at its legal landing across events 50 and 51")
+	_check_chicken_placement_changes(view)
+	host.free()
+
+func _north_chicken_face(view) -> Rect2:
+	view._table_3d.sync_tiles()
+	for tile in view._red_layer.get_children():
+		if int(tile.get_meta("v2_seat", -1)) == 3 and tile.tile == "tong8":
+			_check_recorded_face(view._table_3d, tile, view._dealer_meld_badges[3])
+			return view._table_3d.project_tile(tile)
+	t.expect(false, "the recorded north chicken is visible")
+	return Rect2()
+
+
+func _check_chicken_placement_changes(view) -> void:
+	var original: Array = view._exposed_specs.duplicate(true)
+	var placement: Array = view._exposed_placement_key.duplicate(true)
+	t.expect(view.EXPOSED.solve(view) != original, "the saved layout differs from first-free in this snapshot")
+	var north_chicken := func(piece): return piece.seat == 3 and piece.tile == "tong8"
+	var original_center: Vector2 = original.filter(north_chicken)[0].center
+	var wall = view._wall_layer.get_child(0)
+	var wall_position: Vector2 = wall.position
+	wall.position = original_center - wall.size / 2
+	var obstruction: Rect2 = view.EXPOSED.rect_for(wall.position + wall.size / 2, wall.size * wall.scale, wall.rotation)
+	var relocated: Array = view._exposed_layout().filter(north_chicken)
+	t.expect(relocated.size() == 1 and not relocated[0].center.is_equal_approx(original_center) and not relocated[0].rect.grow(-0.05).intersects(obstruction),
+		"a real wall entity occupying the previous chicken landing forces a clear relocation")
+	wall.position = wall_position
+
+	var state: RoundState = view.round
+	var host: Host = view.table
+	var session := state._presentation.session
+	var scale_before := host.scale
+	var from_seat: int = state.players[0].melds[0].from_seat
+	var reveal_before: bool = view.test_reveal_all_hands
+	var formal_before: bool = view.formal_mode
+	for changed in ["session", "viewport transform", "face reveal", "pung source", "kong upgrade", "human seat", "settled"]:
+		# Each change starts with the same proven, legal placement, distinct from a fresh solve.
+		view._exposed_specs = original.duplicate(true)
+		view._exposed_placement_key = placement.duplicate(true)
+		match changed:
+			"session": state._presentation.session = "new-round"
+			"viewport transform": host.scale = scale_before * 0.97
+			"face reveal":
+				view.test_reveal_all_hands = true
+				view.formal_mode = false
+			"pung source": state.players[0].melds[0].from_seat = posmod(from_seat + 1, 4)
+			"kong upgrade": state.players[0].melds[0].kind = "kong"
+			"human seat": view.human_seat = 2
+			"settled": state.phase = RoundState.Phase.SETTLED
+		view._invalidate_exposed_layout()
+		var actual: Array = view._exposed_layout()
+		t.expect(actual == view.EXPOSED.solve(view), "a change in %s yields current geometry and metadata" % changed)
+		t.expect(view._exposed_placement_key != placement, "previous placement identity expires after a change in " + changed)
+		state._presentation.session = session
+		host.scale = scale_before
+		view.test_reveal_all_hands = reveal_before
+		view.formal_mode = formal_before
+		state.players[0].melds[0].from_seat = from_seat
+		state.players[0].melds[0].kind = "pung"
+		view.human_seat = 1
+		state.phase = RoundState.Phase.PLAYING
 
 func _recorded_table():
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
