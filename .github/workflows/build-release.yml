@@ -98,7 +98,7 @@ jobs:
     name: Build Android
     needs: hot-update-windows
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       RELEASE_KIND: ${{ inputs.release_kind || 'full' }}
       BASELINE_RUN_ID: ${{ inputs.baseline_run_id || '' }}
