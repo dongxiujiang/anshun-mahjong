@@ -1174,6 +1174,8 @@ func _animate_native_wall_flip() -> void:
 		if moving_to_stack:
 			_native_settlement.show()
 			_show_native_settlement_notice(caption))
+	if moving_to_stack:
+		_settlement_tween.tween_interval(UI.SETTLEMENT_PAUSE_SECONDS)
 
 func _restore_native_wall_flip(reveal: bool) -> void:
 	var card := _native_flip_tile()

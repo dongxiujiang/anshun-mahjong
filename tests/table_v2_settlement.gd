@@ -5,6 +5,7 @@ const H := preload("res://tests/test_harness.gd")
 const PLAN := preload("res://scripts/ui/table/SettlementAnimationPlan.gd")
 const SCORING := preload("res://scripts/core/ScoringEngine.gd")
 const ROWS := preload("res://scripts/ui/table/v2/SettlementRows.gd")
+const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
 const WAIT := ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
 const WIN := ["tiao1", "tiao2", "tiao3", "wan4", "wan5", "wan6", "tong7", "tong8", "tong9", "wan3", "wan4", "wan5", "wan9", "wan9"]
 
@@ -503,10 +504,13 @@ func _check_wall_flip_landing() -> void:
 			t.expect(mesh.transform.is_equal_approx(landed), tag + ": a settlement refresh preserves the landing")
 			if not synced and support >= 0:
 				view._restore_native_wall_flip(false)
-				var tween: Tween = view.create_tween()
+				view._settlement_complete = false
+				view._play_native_settlement()
+				var tween: Tween = view._settlement_tween
 				tween.pause()
-				view._settlement_tween = tween
-				view._animate_native_wall_flip()
+				tween.set_speed_scale(1.0)
+				t.expect(view._settlement_matrix_changed(view._settlement_plan.stages[0].scores),
+					tag + ": the first score stage can immediately replace the reveal")
 				tween.custom_step(0.34)
 				renderer.sync_tiles()
 				t.expect(walls[index].face_up and not view._native_settlement.visible
@@ -515,6 +519,12 @@ func _check_wall_flip_landing() -> void:
 				renderer.sync_tiles()
 				t.expect(view._native_settlement.visible and mesh.transform.is_equal_approx(landed),
 					tag + ": the result appears once the tile is resting")
+				var notice: Label = view._settlement_notice
+				t.expect(is_instance_valid(notice) and notice.is_visible_in_tree()
+					and notice.text == "翻鸡  " + view._tile_short("tong8") and view._settlement_stage_key == "",
+					tag + ": the landed tile name is shown before scoring")
+				tween.custom_step(UI.SETTLEMENT_PAUSE_SECONDS)
+				t.expect(view._settlement_stage_key == "flip", tag + ": scoring follows the reveal pause")
 			view.reset_native_settlement()
 			renderer.sync_tiles()
 			t.expect(mesh.position.is_equal_approx(before) and not walls[index].face_up,
