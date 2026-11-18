@@ -419,6 +419,12 @@ func _check_flip_previews() -> void:
 					_check_flip_preview(view, card, case + " during flip")
 					view._finish_native_settlement()
 				_check_flip_preview(view, card, case + " completed")
+				var physical: TileView = view._native_wall_flip_tile()
+				if t.expect(physical != null and physical.face_up, case + ": actual wall tile is revealed"):
+					view._table_3d.sync_tiles()
+					var projected: Rect2 = view._table_3d.project_tile(physical)
+					t.expect(projected.has_area() and not projected.intersects(view._native_settlement.get_rect()),
+						case + ": result panel leaves the physical flip visible")
 				t.expect(view._settlement_complete and stub.finished, case + ": original settlement completion hook remains intact")
 				if mode == "animated" and DisplayServer.get_name() != "headless":
 					await process_frame

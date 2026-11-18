@@ -490,7 +490,10 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 			wall_and_hand_tiles.append(bounds)
 			hand = hand.merge(bounds) if hand.has_area() else bounds
 		if seat == view.human_seat and kind in ["meld", "red"]:
-			pieces[view._render_key(source)] = id
+			var meld_index := int(source.get_meta("meld_index", -1))
+			var melds: Array = view.round.players[view.human_seat].melds
+			var shape = melds[meld_index].duplicate(true) if meld_index >= 0 and meld_index < melds.size() else null
+			pieces[[view._render_key(source), source.tile, source.face_up, shape]] = id
 			node.transform = node.get_meta("exposed_transform", node.transform)
 			_rects[id] = _project_mesh(node)
 			var meld := int(source.get_meta("meld_index", -1))
@@ -517,10 +520,11 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 	var corner := Rect2(Vector2(side_wall.end.x + 6.0, near_wall.position.y + 2.0), Vector2.ZERO)
 	corner.size = Vector2(near_wall.position.x - 6.0 - corner.position.x, hand.position.y - 2.0 - corner.position.y)
 	var context := [view.round._presentation.session, view.human_seat, viewport.size,
-		camera.global_transform, camera.get_camera_projection(), bottom, hash(view.round.players[view.human_seat].melds)]
+		camera.global_transform, camera.get_camera_projection(), bottom]
 	var placed := false
 	if context == _own_placed_context and pieces.size() == _own_placed_poses.size():
 		placed = _restore_own_placement(pieces, bottom, obstacles + wall_and_hand_tiles)
+	var restored := placed
 	obstacles.sort_custom(func(a, b): return a.position.x > b.position.x)
 	var areas := [beside, corner]
 	# Where the left player's hand spans the entire strip, anchor below it to
@@ -572,6 +576,20 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 		for key in order:
 			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
 		push_error("自己碰杠和鸡牌近侧空间不足，禁止移到桌心: %s / %s" % [beside, corner])
+	# New groups have legal landings now. Keep each old group if its full face is still clear.
+	if placed and not restored and context == _own_placed_context and not _own_placed_poses.is_empty():
+		for group in order:
+			var subset := {}
+			var packed := {}
+			var blocked: Array[Rect2] = obstacles + wall_and_hand_tiles
+			for other in order:
+				for id in groups[other]:
+					if other == group:
+						subset[pieces.find_key(id)] = id
+						packed[id] = tile_nodes[id].transform
+					else: blocked.append(_project_mesh(tile_nodes[id]))
+			if not _restore_own_placement(subset, bottom, blocked):
+				for id in packed: tile_nodes[id].transform = packed[id]
 	_own_placed_context = context
 	_own_placed_poses.clear()
 	if placed:

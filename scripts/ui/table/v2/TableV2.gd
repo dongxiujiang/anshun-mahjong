@@ -697,6 +697,11 @@ func _build_native_settlement_panel() -> void:
 	panel.name = "V2SettlementRows"
 	panel.size = G.SETTLEMENT_AREA.size
 	panel.position = G.SETTLEMENT_AREA.position
+	if _table_3d != null:
+		var flip_wall := _wall_segment_for_index(_settlement_flip_index)
+		if not flip_wall.is_empty() and _wall_screen_seat(int(flip_wall.seat)) == 1:
+			# The near wall rises into the panel during the physical flip.
+			panel.position.y -= 80.0
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("#102c24")
@@ -1082,6 +1087,8 @@ func _finish_native_settlement() -> void:
 	_restore_native_wall_flip(true)
 	_remove_native_node(_settlement_notice)
 	_settlement_notice = null
+	var title := _native_settlement.get_node_or_null("ResultTitle") as Label if _native_settlement != null else null
+	if title != null: title.show()
 	_settlement_complete = true
 	_settlement_stage_key = ""
 	_render_native_pairs(_settlement_final_scores)
@@ -1155,7 +1162,20 @@ func _show_native_settlement_notice(caption: String) -> void:
 		_settlement_notice.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		_settlement_notice.size = Vector2(700, 48)
 		_settlement_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_settlement_notice.position = Vector2(790, G.SETTLEMENT_AREA.position.y - 54.0) if _table_3d != null else Vector2(790, 16)
+		_settlement_notice.position = Vector2(790, 16)
+	if _table_3d != null:
+		var title := _native_settlement.get_node_or_null("ResultTitle") as Label if _native_settlement != null else null
+		if title != null and _settlement_flip_index >= 0:
+			# Use the empty left side of the heading before borrowing its full line.
+			var title_width := minf(title.size.x, _hud_text_width(title.text, title.get_theme_font_size("font_size")))
+			var stage_width := _hud_text_width(caption, 30) + 8.0
+			var fits := 24.0 + stage_width + 4.0 <= title.position.x + (title.size.x - title_width) / 2.0
+			_settlement_notice.position = _native_settlement.position + (Vector2(24.0, title.position.y) if fits else title.position)
+			_settlement_notice.size = Vector2(stage_width if fits else title.size.x, title.size.y)
+			title.visible = fits
+		else:
+			var top := _native_settlement.position.y if _native_settlement != null else G.SETTLEMENT_AREA.position.y
+			_settlement_notice.position.y = top - 54.0
 	_settlement_notice.text = caption
 
 func _begin_native_stage(stage: Dictionary) -> void:

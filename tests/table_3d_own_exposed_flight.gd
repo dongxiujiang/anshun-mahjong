@@ -19,6 +19,7 @@ func _run() -> void:
 	await _recorded_other_draws()
 	await _recorded_own_discards()
 	await _recorded_north_chicken()
+	await _recorded_added_groups()
 	for passage in [[1, 2, [27,28,29]], [1, 2, [30,31,32]], [2, 2, [29,30,31]], [2, 2, [33,34,35]], [2, 3, [39,40]]]:
 		await _recorded_opponent_melds(passage[0], passage[1], passage[2])
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
@@ -31,6 +32,53 @@ func _run() -> void:
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
 		for footer in [0.0, 110.0, 150.0]: await _endpoint_case(screen, footer)
 	await H.quit_cleanly(self, t.finish("table_3d_own_exposed_flight"))
+
+func _recorded_added_groups() -> void:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/added-exposed-r15-round3.json"))
+	var actions: Array = data.actions
+	data.actions = actions.slice(0, 14)
+	var replayed := REPLAY.replay(data)
+	if not t.expect(replayed.ok, "R15 round 3 reaches the first own pung"): return
+	var view = _recorded_table()
+	var host: Host = view.table
+	host.round = replayed.round
+	view.set_round(host.round, 1)
+	view._sort_started = true
+	view.refresh()
+	await process_frame
+	var previous := {}
+	for i in range(14, actions.size()):
+		var action: Dictionary = actions[i]
+		var ok := host.round.submit_turn(action.seat, action.decision) if action.kind == "turn" else host.round.submit_response(action.seat, action.tile, action.decision)
+		if not t.expect(ok, "R15 recorded action %d accepted" % (i + 1)): break
+		if i == 14 or i == 49:
+			view.animate_meld(data.events[0 if i == 14 else 4], Callable())
+			await create_timer(0.65).timeout
+		elif i == 38:
+			var discard: Dictionary = data.events[1]
+			view.animate_draw_insert(1, discard.tile, discard.draw_tile, Callable(), int(discard.discard_index), discard.hand_slot_map)
+			await create_timer(0.65).timeout
+			var draw: Dictionary = data.events[2]
+			view.animate_draw(draw.seat, draw.tile, draw.wall_index, Callable())
+			await create_timer(0.4).timeout
+		view.refresh()
+		var renderer = view._table_3d
+		renderer.sync_tiles()
+		if i not in [37, 38, 48, 49]: continue
+		var keys := ["meld:1:0:0", "meld:1:0:1", "meld:1:0:2"] if i <= 38 else ["red-discard:2:4"]
+		var current := {}
+		for source in view._meld_layer.get_children() + view._red_layer.get_children():
+			var key: String = view._render_key(source)
+			if key in keys: current[key] = renderer.project_tile(source)
+			if i in [38, 49] and source.face_up:
+				_check_recorded_face(renderer, source, view._dealer_meld_badges[int(source.get_meta("v2_seat"))])
+		t.expect(current.size() == keys.size(), "R15 old group is drawn in full")
+		if i in [38, 49]:
+			for key in keys:
+				t.expect(current.has(key) and previous.has(key) and current[key].is_equal_approx(previous[key]),
+					"R15 stable %s through added group at action %d" % [key, i + 1])
+		previous = current
+	host.free()
 
 func _recorded_north_chicken() -> void:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/red-exposed-r14-round1.json"))

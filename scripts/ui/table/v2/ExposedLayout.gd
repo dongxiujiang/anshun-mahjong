@@ -187,23 +187,21 @@ static func solve(view, context: Array = []) -> Array:
 	obstacles.append_array(compact_obstacles(walls))
 	obstacles.append(view.reserved_action_rect())
 	obstacles = compact_obstacles(obstacles)
-	for i in groups.size(): groups[i]["group_index"] = i
+	var prior_groups := {}
 	if not context.is_empty():
-		# A matched group gets current metadata and only its old placement geometry.
 		var key := [context, groups, view.round.dealer_seat, view.round.players.map(func(player): return player.ready)]
-		var previous: Array = view._exposed_specs if key == view._exposed_placement_key else []
+		var last = view._exposed_placement_key
+		var added: bool = (last != null and last[0] == context and last[2] == key[2]
+			and last[3] == key[3] and groups.size() > last[1].size())
+		if (key == last or added) and view._table_3d != null \
+				and view.round.phase == RoundState.Phase.PLAYING and not str(context[0]).is_empty():
+			for old in view._exposed_specs:
+				var id := Vector3i(old.seat, old.meld_index, old.discard_id)
+				prior_groups.get_or_add(id, []).append(old)
 		view._exposed_placement_key = key
-		if view._table_3d != null and view.round.phase == RoundState.Phase.PLAYING and not str(context[0]).is_empty() and not previous.is_empty():
-			var stable := []
-			for old in previous:
-				var piece: Dictionary = groups[old.group_index].duplicate()
-				for field in ["center","sideways","meld_slot","rect","lower","kong_offset_2d","kong_offset_3d"]:
-					piece[field] = old[field]
-				var blocked: Array = obstacles + own_chicken_obstacles if piece.rel == 0 and piece.count == 1 else obstacles
-				if not clear([piece], blocked): break
-				stable.append(piece)
-			if stable.size() == previous.size(): return stable
-	for attempt in 10:
+	# Try surviving groups first. If the new ones do not fit, retain all ten ordinary searches.
+	for pass_index in range(-1 if not prior_groups.is_empty() else 0, 10):
+		var attempt := maxi(0, pass_index)
 		var order:=groups.duplicate()
 		order.sort_custom(func(a,b):
 			if (a.count==1)!=(b.count==1):return (a.count==1) if attempt==0 else (a.count!=1)
@@ -213,6 +211,25 @@ static func solve(view, context: Array = []) -> Array:
 		var occupied:=obstacles.duplicate()
 		var result:=[]
 		var failed:=false
+		if pass_index < 0:
+			for g in order.duplicate():
+				var prior: Array = prior_groups.get(Vector3i(g.seat, g.meld_index, g.discard_id), [])
+				if prior.size() != g.count: continue
+				var old: Dictionary = prior[0]
+				if g.tile != old.tile or g.kind != old.kind or g.charge != old.charge \
+						or g.source_slot != old.source_slot or g.get("source_seat") != old.get("source_seat") \
+						or g.concealed != old.concealed or g.revealed != old.revealed: continue
+				var stable := []
+				for saved in prior:
+					var piece: Dictionary = g.duplicate()
+					for field in ["center","sideways","meld_slot","rect","lower","kong_offset_2d","kong_offset_3d"]:
+						piece[field] = saved[field]
+					stable.append(piece)
+				var blocked: Array = occupied + own_chicken_obstacles if g.rel == 0 and g.count == 1 else occupied
+				if not clear(stable, blocked): continue
+				result.append_array(stable)
+				for piece in stable: occupied.append(piece.rect)
+				order.erase(g)
 		for g in order:
 			var blocked := occupied
 			if g.seat == view.human_seat and g.count == 1: blocked = occupied + own_chicken_obstacles
