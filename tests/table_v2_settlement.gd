@@ -502,29 +502,34 @@ func _check_wall_flip_landing() -> void:
 			var landed := mesh.transform
 			view.refresh()
 			t.expect(mesh.transform.is_equal_approx(landed), tag + ": a settlement refresh preserves the landing")
-			if not synced and support >= 0:
+			if not synced:
 				view._restore_native_wall_flip(false)
 				view._settlement_complete = false
 				view._play_native_settlement()
 				var tween: Tween = view._settlement_tween
 				tween.pause()
 				tween.set_speed_scale(1.0)
-				t.expect(view._settlement_matrix_changed(view._settlement_plan.stages[0].scores),
-					tag + ": the first score stage can immediately replace the reveal")
-				tween.custom_step(0.34)
+				tween.custom_step(0.18)
 				renderer.sync_tiles()
-				t.expect(walls[index].face_up and not view._native_settlement.visible
-					and not mesh.position.is_equal_approx(landed.origin), tag + ": the face travels with the result clear of its path")
-				tween.custom_step(0.12)
-				renderer.sync_tiles()
-				t.expect(view._native_settlement.visible and mesh.transform.is_equal_approx(landed),
-					tag + ": the result appears once the tile is resting")
-				var notice: Label = view._settlement_notice
-				t.expect(is_instance_valid(notice) and notice.is_visible_in_tree()
-					and notice.text == "翻鸡  " + view._tile_short("tong8") and view._settlement_stage_key == "",
-					tag + ": the landed tile name is shown before scoring")
-				tween.custom_step(UI.SETTLEMENT_PAUSE_SECONDS)
-				t.expect(view._settlement_stage_key == "flip", tag + ": scoring follows the reveal pause")
+				t.expect(not walls[index].face_up and mesh.mesh == renderer._meshes["tong8"],
+					tag + ": the lifting tile already has the correct face geometry")
+				if support >= 0:
+					t.expect(view._settlement_matrix_changed(view._settlement_plan.stages[0].scores),
+						tag + ": the first score stage can immediately replace the reveal")
+					tween.custom_step(0.16)
+					renderer.sync_tiles()
+					t.expect(walls[index].face_up and not view._native_settlement.visible
+						and not mesh.position.is_equal_approx(landed.origin), tag + ": the face travels with the result clear of its path")
+					tween.custom_step(0.12)
+					renderer.sync_tiles()
+					t.expect(view._native_settlement.visible and mesh.transform.is_equal_approx(landed),
+						tag + ": the result appears once the tile is resting")
+					var notice: Label = view._settlement_notice
+					t.expect(is_instance_valid(notice) and notice.is_visible_in_tree()
+						and notice.text == "翻鸡  " + view._tile_short("tong8") and view._settlement_stage_key == "",
+						tag + ": the landed tile name is shown before scoring")
+					tween.custom_step(UI.SETTLEMENT_PAUSE_SECONDS)
+					t.expect(view._settlement_stage_key == "flip", tag + ": scoring follows the reveal pause")
 			view.reset_native_settlement()
 			renderer.sync_tiles()
 			t.expect(mesh.position.is_equal_approx(before) and not walls[index].face_up,

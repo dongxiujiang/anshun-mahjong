@@ -245,6 +245,8 @@ func sync_tiles() -> void:
 		if is_instance_valid(moving) and moving.get_parent() == view._deal_layer:
 			own_travel = 1.0 - pow(1.0 - clampf(moving.flight_progress, 0.0, 1.0), 3.0)
 			break
+	var flip_view: TileView = view._settlement_flip_view
+	var flip_card: String = view._native_flip_tile() if is_instance_valid(flip_view) else ""
 	for layer in [view._wall_layer, view._discard_layer, view._red_layer, view._meld_layer,
 			view._deal_layer] + view.hand_boxes + view.draw_boxes:
 		for source in layer.get_children():
@@ -254,7 +256,10 @@ func sync_tiles() -> void:
 			source.presentation_3d = true
 			var masked: bool = source.tile == "hidden0"
 			var face_up: bool = source.face_up and not masked
+			var flipping_wall: bool = source == flip_view
 			var key: String = source.tile if face_up and source.tile != "" else "wan1"
+			# Its printed surface can become visible as the selected tile turns onto its edge.
+			if flipping_wall and flip_card != "": key = flip_card
 			var node: MeshInstance3D = tile_nodes.get(id)
 			if node == null: node = _new_mesh(source, _meshes[key], tile_nodes)
 			var xf: Transform2D = board_inverse * source.get_global_transform()
@@ -311,7 +316,7 @@ func sync_tiles() -> void:
 				if wall_upper: center -= G.wall_upper_offset(side)
 				if side == 1: center.y -= 28.0
 				# The flip is a physical rotation, not a shrinking cardboard sprite.
-				if source == view._settlement_flip_view:
+				if flipping_wall:
 					pitch = acos(clampf(scale_2d.y / maxf(scale_2d.x, 0.001), 0, 1))
 					if not source.face_up: pitch = PI - pitch
 			# Uniform world scales preserve the source model's 1 : 1.34 : 0.62 shape.
@@ -379,11 +384,11 @@ func sync_tiles() -> void:
 				position_3d.y += factor * (1.0 - motion) * 0.38
 			if kind == "wall":
 				if wall_upper or (source.face_up and not wall_flip): position_3d.y += 0.62 * factor
-				if source == view._settlement_flip_view: position_3d.y += sin(pitch) * factor * 0.35
+				if flipping_wall: position_3d.y += sin(pitch) * factor * 0.35
 			var basis := Basis(Vector3.UP, angle) * Basis(Vector3.RIGHT, pitch)
 			node.transform = Transform3D(basis.scaled(Vector3.ONE * factor), position_3d)
 			if wall_flip and view._settlement_flip_support >= 0:
-				var travel: float = view._settlement_flip_travel if source == view._settlement_flip_view else float(face_up)
+				var travel: float = view._settlement_flip_travel if flipping_wall else float(face_up)
 				if travel > 0.0:
 					var landing := _wall_flip_landing(view._settlement_flip_support, world_unit * source.size.x, world_unit, width_fit)
 					node.transform = node.transform.interpolate_with(landing, travel)
