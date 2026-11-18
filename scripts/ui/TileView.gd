@@ -58,6 +58,7 @@ const STANDING_BACKS := [null,
 const BACK_TOP := "res://res/tiles/materials3d/back-top.png"
 const BACK_BOTTOM := "res://res/tiles/materials3d/back-bottom.png"
 const SOFT_SHADOW := preload("res://res/tiles/tile-shadow.svg")
+static var _hand_texture: Texture2D
 var _artwork: Texture2D
 
 static var _style_cache := {}
@@ -192,7 +193,9 @@ func _draw() -> void:
 		var face_y := depth if face_depth_top else 0.0
 		var row: int = FACE_ROWS.get(Tiles.suit(tile), 0)
 		var region := Rect2((Tiles.rank(tile) - 1) * 256, row * 344, 256, 344)
-		_artwork = load(HAND_FACES if face_depth_top else FLAT_FACES)
+		if face_depth_top and _hand_texture == null:
+			_hand_texture = load(HAND_FACES)
+		_artwork = _hand_texture if face_depth_top else load(FLAT_FACES)
 		draw_texture_rect_region(_artwork, Rect2(0, 0, w, h), region)
 		if score_highlight:
 			draw_rect(Rect2(0, face_y, w, h - depth), Color(0.95, 0.78, 0.22, 0.30))
