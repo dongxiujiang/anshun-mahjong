@@ -1,6 +1,7 @@
 extends SceneTree
 ## 云端每个房间一个无界面 Godot 进程，复用同一权威状态机和 RPC。
 var _status_path := ""
+var _clock_last := []
 var _tick := 0.0
 var _empty_seconds := 0.0
 var _net: NetGameNode
@@ -70,6 +71,11 @@ func _token_digest(token: String) -> String:
 	return "sha256:" + context.finish().hex_encode()
 
 func _write_status() -> void:
+	var game = _net.game
+	var stamp := [game.phase, game.pause_after_opening, _net._opening_waiters.size(), _net._members.size(), game._steps, game.awaiting, game.visual_event_id]
+	if stamp != _clock_last:
+		_clock_last = stamp
+		print("[clk-host] state ", Time.get_ticks_msec(), " phase/pause/waiters/members/steps/await/event=", stamp)
 	if _status_path == "": return
 	var file := FileAccess.open(_status_path + ".tmp", FileAccess.WRITE)
 	if file == null:

@@ -8,6 +8,7 @@ var error_text := ""
 var first_action := false
 var premature := false
 var started := 0
+var _diag_draws := 0
 var baseline := false
 
 func _initialize(): call_deferred("_run")
@@ -23,6 +24,10 @@ func _wait(predicate: Callable, seconds := 30.0) -> bool:
 	while not predicate.call() and Time.get_ticks_msec() < deadline:
 		if table != null and Time.get_ticks_msec() >= next_progress:
 			next_progress = Time.get_ticks_msec() + 10000
+			var n = root.get_node("Network").net_node
+			var a = table._new_areas
+			var ctrl = table._table_animation_controller
+			print("[clk-client] ms=%d post=%d frame=%d started=%s frozen=%s pending_packets=%d packet_active=%s joined=%s reconnect=%s same_round=%s ack_match=%s rev=%d event=%d" % [Time.get_ticks_msec(), _diag_draws, Engine.get_process_frames(), a._sort_started, a.test_frozen, ctrl._pending_test_deals.size(), ctrl._deal_animating, n._client_joined, n._reconnecting, table.round == n.game, not n.game.audio_session.is_empty() and n._opening_ack_session == n.game.audio_session, n._received_revision, n.game.visual_event_id])
 			print("[opening-clock] phase=%d dealt=%s sorting=%s" % [table.round.phase, table._table_animation_controller._dealt, table._new_areas._sort_animating])
 		await process_frame
 	return bool(predicate.call())
@@ -43,6 +48,7 @@ func _capture():
 	root.get_texture().get_image().save_png("res://build/opening-clock/" + ("before" if baseline else "after") + ".png")
 
 func _run():
+	RenderingServer.frame_post_draw.connect(func(): _diag_draws += 1)
 	var url := _arg("--directory")
 	if not url.begins_with("http://127.0.0.1:"): quit(2); return
 	baseline = OS.get_cmdline_user_args().has("--baseline")
@@ -64,6 +70,7 @@ func _run():
 	if room.is_empty(): await H.quit_cleanly(self, t.finish("online_opening_clock")); return
 	network.start_client(str(room.host), int(room.port), str(room.number), str(room.owner_token))
 	var net = network.net_node
+	net.reconnecting.connect(func(attempt, _maximum): print("[clk-client] reconnect ", Time.get_ticks_msec(), " attempt=", attempt))
 	t.expect(await _wait(func(): return not net.lobby.is_empty()), "room handshake completes")
 	net.set_ai_speed("0.00")
 	table = load("res://scenes/GameTable.tscn").instantiate()

@@ -3132,6 +3132,7 @@ func _tile_short(tile: String) -> String:
 
 func _begin_hand_sort() -> void:
 	if _sort_started: return
+	print("[clk-client] sort_start ", Time.get_ticks_msec())
 	_sort_started = true
 	_sort_animating = true
 	var time_scale: float = table._table_animation_controller.opening_deal_scale()
@@ -3179,6 +3180,7 @@ func _begin_hand_sort() -> void:
 	wait.tween_callback(_finish_hand_sort)
 
 func _finish_hand_sort() -> void:
+	print("[clk-client] sort_finish ", Time.get_ticks_msec())
 	_frozen_hands.clear()
 	for seat in 4:
 		_frozen_hands.append(TILES.sort_hand(table._table_animation_controller.dealt_cards(seat)))
