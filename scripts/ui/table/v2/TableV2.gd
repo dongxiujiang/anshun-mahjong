@@ -2290,7 +2290,8 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable, r
 		else G.ordinary_slot_center(seat, index, human_seat, _ordinary_count(seat))
 	var centered_target := target
 	var columns := G.river_columns(rel)
-	if not chicken and index % columns > 0:
+	var center_during_flight := not chicken and index % columns == columns - 1
+	if not chicken and index % columns > 0 and not center_during_flight:
 		# Land on the old row's right edge before shifting the entire row by half a tile.
 		target += [Vector2.RIGHT,Vector2.UP,Vector2.LEFT,Vector2.DOWN][rel] * (G.TILE_BASE.x * G.ORDINARY_UNIT + G.TILE_GAP) / 2.0
 	var target_size := _exposed_size(seat) if chicken else G.TILE_BASE * G.ORDINARY_UNIT
@@ -2300,7 +2301,7 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable, r
 	if node.get_parent() != _deal_layer: node.reparent(_deal_layer)
 	var target_scale := target_size / node.size
 	var duration := 0.0 if missing_source else GameConfig.tile_motion_seconds()
-	if not chicken and index % columns > 0: duration *= 0.7
+	if not chicken and index % columns > 0 and not center_during_flight: duration *= 0.7
 	_latest_discard_seat = seat
 	_latest_discard_id = discard_id
 	for layer in [_discard_layer, _red_layer]:
@@ -2312,6 +2313,7 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable, r
 	_discard_flights[flight_id] = {"node_id": node.get_instance_id(), "card": card, "seat": seat,
 		"chicken": chicken, "charge": charge, "target": target, "angle": target_angle,
 		"discard_id": discard_id, "centered_target": centered_target, "index": index, "instant": missing_source,
+		"center_during_flight": center_during_flight,
 		"landing_sound": controller != null and controller.defers_discard_sound(),
 		"tween": null, "finish": on_finish}
 	if duration <= 0.0:
@@ -2322,9 +2324,15 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable, r
 	var tw := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_discard_flights[flight_id].tween = tw
 	if chicken: _move_existing_exposed(tw, duration)
+	if center_during_flight:
+		# The full row has no spare half-slot beside the neighbouring river.
+		for move in _discard_row_moves(seat, index):
+			tw.tween_property(move[0], "position", move[1] - move[0].size / 2.0, duration)
 	if _table_3d != null:
 		node.flight_progress = 0.0
-		if rel == 0 and mesh != null:
+		if not chicken and mesh != null:
+			node.set_meta("ordinary_flight_3d", {"origin": mesh.transform, "target": target, "width": target_size.x, "angle": target_angle})
+		elif rel == 0 and mesh != null:
 			_table_3d.sync_tiles()
 			node.set_meta("flight_origin_offset_3d", origin - mesh.position)
 		tw.tween_property(node, "flight_progress", 1.0, duration).set_trans(Tween.TRANS_LINEAR)
@@ -2334,6 +2342,19 @@ func _fly_discard(node: Control, seat: int, card: String, on_finish: Callable, r
 	tw.tween_property(node, "flight_pitch", 0.0, duration)
 	if rel == 0 and _table_3d != null: _table_3d.sync_tiles()
 	tw.chain().tween_callback(Callable(self, "_finish_discard_flight").bind(flight_id))
+
+func _discard_row_moves(seat: int, row_index: int) -> Array:
+	var columns := G.river_columns(G.relative_seat(human_seat, seat))
+	var moves: Array = []
+	var index := 0
+	for i in round.players[seat].discards.size():
+		if TILES.is_chicken(str(round.players[seat].discards[i])): continue
+		if index / columns == row_index / columns:
+			var tile = _take_river_node(seat, int(round.players[seat].discard_ids[i]))
+			if tile != null:
+				moves.append([tile, G.ordinary_slot_center(seat, index, human_seat, _ordinary_count(seat))])
+		index += 1
+	return moves
 
 func _finish_discard_flight(flight_id: int) -> void:
 	var data: Dictionary = _discard_flights.get(flight_id, {})
@@ -2349,16 +2370,8 @@ func _finish_discard_flight(flight_id: int) -> void:
 		var columns:=G.river_columns(rel)
 		var target: Vector2=data.centered_target
 		data.target=target
-		var duration:=0.0 if data.instant else GameConfig.tile_motion_seconds()*0.3
-		var moves: Array=[]
-		var river: Array=round.players[seat].discards
-		var index:=0
-		for i in river.size():
-			if TILES.is_chicken(str(river[i])):continue
-			if index / columns == int(data.index) / columns:
-				var tile=_take_river_node(seat,int(round.players[seat].discard_ids[i]))
-				if tile!=null:moves.append([tile,G.ordinary_slot_center(seat,index,human_seat,_ordinary_count(seat))])
-			index+=1
+		var duration:=0.0 if data.instant or bool(data.get("center_during_flight", false)) else GameConfig.tile_motion_seconds()*0.3
+		var moves: Array = _discard_row_moves(seat, int(data.index))
 		var flying=instance_from_id(int(data.node_id))
 		if flying!=null:moves.append([flying,target])
 		if duration>0 and int(data.index)%columns>0:
@@ -2388,6 +2401,7 @@ func _place_discard_flight(data: Dictionary) -> void:
 	if node is TileView:
 		var destination: Control = _red_layer if chicken else _discard_layer
 		node.remove_meta("flight_origin_offset_3d")
+		node.remove_meta("ordinary_flight_3d")
 		node.flight_pitch = -1.0
 		node.flight_progress = -1.0
 		if node.get_parent() != destination: node.reparent(destination, false)
@@ -2419,7 +2433,14 @@ func _take_discard_source(seat: int, discard_id: int, chicken: bool) -> Control:
 		if is_instance_valid(tween): tween.kill()
 		_discard_flights.erase(flight_id)
 		if seat == human_seat and _table_3d != null: _table_3d.clear_own_exposed_flight()
-		if node != null: node.remove_meta("flight_origin_offset_3d")
+		if node != null:
+			if node.has_meta("ordinary_flight_3d") and _table_3d != null:
+				var mesh: MeshInstance3D = _table_3d.tile_nodes.get(node.get_instance_id())
+				if mesh != null:
+					node.set_meta("claimed_flight_origin_3d", mesh.transform)
+					node.flight_progress = 0.0
+			node.remove_meta("flight_origin_offset_3d")
+			node.remove_meta("ordinary_flight_3d")
 		var finish: Callable = data.finish
 		if finish.is_valid(): finish.call()
 		return node as Control
@@ -2812,6 +2833,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 		for i in nodes.size():
 			var node: TileView = nodes[i]
 			var destination: Control = _red_layer if chicken else _meld_layer
+			node.remove_meta("claimed_flight_origin_3d")
 			if node.get_parent() != destination: node.reparent(destination, false)
 			node.set_card(tile if visible_face else "", visible_face)
 			node.set_interactive(false)

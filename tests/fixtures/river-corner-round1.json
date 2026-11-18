@@ -1,0 +1,5104 @@
+{
+  "actions": [
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong2",
+        "ready": false
+      },
+      "elapsed_ms": 548,
+      "kind": "turn",
+      "seat": 1,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan1",
+        "ready": false
+      },
+      "elapsed_ms": 1107,
+      "kind": "turn",
+      "seat": 0,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan9",
+        "ready": false
+      },
+      "elapsed_ms": 1681,
+      "kind": "turn",
+      "seat": 3,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong8",
+        "ready": false
+      },
+      "elapsed_ms": 2215,
+      "kind": "turn",
+      "seat": 2,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan8",
+        "ready": false
+      },
+      "elapsed_ms": 2731,
+      "kind": "turn",
+      "seat": 1,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong1",
+        "ready": false
+      },
+      "elapsed_ms": 3248,
+      "kind": "turn",
+      "seat": 0,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong2",
+        "ready": false
+      },
+      "elapsed_ms": 3782,
+      "kind": "turn",
+      "seat": 3,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao2",
+        "ready": false
+      },
+      "elapsed_ms": 4306,
+      "kind": "turn",
+      "seat": 2,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan6",
+        "ready": false
+      },
+      "elapsed_ms": 4866,
+      "kind": "turn",
+      "seat": 1,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong1",
+        "ready": false
+      },
+      "elapsed_ms": 5415,
+      "kind": "turn",
+      "seat": 0,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao9",
+        "ready": false
+      },
+      "elapsed_ms": 5940,
+      "kind": "turn",
+      "seat": 3,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao2",
+        "ready": false
+      },
+      "elapsed_ms": 6512,
+      "kind": "turn",
+      "seat": 2,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong2",
+        "ready": false
+      },
+      "elapsed_ms": 7061,
+      "kind": "turn",
+      "seat": 1,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong6",
+        "ready": false
+      },
+      "elapsed_ms": 7595,
+      "kind": "turn",
+      "seat": 0,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan1",
+        "ready": false
+      },
+      "elapsed_ms": 8140,
+      "kind": "turn",
+      "seat": 3,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan8",
+        "ready": false
+      },
+      "elapsed_ms": 8695,
+      "kind": "turn",
+      "seat": 2,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao9",
+        "ready": false
+      },
+      "elapsed_ms": 9232,
+      "kind": "turn",
+      "seat": 1,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan2",
+        "ready": false
+      },
+      "elapsed_ms": 9746,
+      "kind": "turn",
+      "seat": 0,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong5",
+        "ready": false
+      },
+      "elapsed_ms": 10297,
+      "kind": "turn",
+      "seat": 3,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong1",
+        "ready": false
+      },
+      "elapsed_ms": 10814,
+      "kind": "turn",
+      "seat": 2,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan1",
+        "ready": false
+      },
+      "elapsed_ms": 11359,
+      "kind": "turn",
+      "seat": 1,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan1",
+        "ready": false
+      },
+      "elapsed_ms": 11928,
+      "kind": "turn",
+      "seat": 0,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong8",
+        "ready": false
+      },
+      "elapsed_ms": 12441,
+      "kind": "turn",
+      "seat": 3,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong9",
+        "ready": false
+      },
+      "elapsed_ms": 13007,
+      "kind": "turn",
+      "seat": 2,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan2",
+        "ready": false
+      },
+      "elapsed_ms": 13572,
+      "kind": "turn",
+      "seat": 1,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong7",
+        "ready": false
+      },
+      "elapsed_ms": 14148,
+      "kind": "turn",
+      "seat": 0,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong8",
+        "ready": false
+      },
+      "elapsed_ms": 14788,
+      "kind": "turn",
+      "seat": 3,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan9",
+        "ready": false
+      },
+      "elapsed_ms": 15931,
+      "kind": "turn",
+      "seat": 2,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao9",
+        "ready": false
+      },
+      "elapsed_ms": 16992,
+      "kind": "turn",
+      "seat": 1,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao1",
+        "ready": false
+      },
+      "elapsed_ms": 17971,
+      "kind": "turn",
+      "seat": 0,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan9",
+        "ready": false
+      },
+      "elapsed_ms": 19190,
+      "kind": "turn",
+      "seat": 3,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan5",
+        "ready": false
+      },
+      "elapsed_ms": 20175,
+      "kind": "turn",
+      "seat": 2,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "action": "pong"
+      },
+      "elapsed_ms": 21263,
+      "kind": "response",
+      "seat": 1,
+      "source": 2,
+      "stage": 3,
+      "tile": "wan5"
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "wan6",
+        "ready": false
+      },
+      "elapsed_ms": 22325,
+      "kind": "turn",
+      "seat": 1,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao3",
+        "ready": false
+      },
+      "elapsed_ms": 23271,
+      "kind": "turn",
+      "seat": 0,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tong9",
+        "ready": false
+      },
+      "elapsed_ms": 24371,
+      "kind": "turn",
+      "seat": 3,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao4",
+        "ready": false
+      },
+      "elapsed_ms": 25839,
+      "kind": "turn",
+      "seat": 2,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "discard": "tiao7",
+        "ready": false
+      },
+      "elapsed_ms": 27200,
+      "kind": "turn",
+      "seat": 1,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    },
+    {
+      "before": "",
+      "decision": {
+        "self_win": true
+      },
+      "elapsed_ms": 27245,
+      "kind": "turn",
+      "seat": 0,
+      "source": -1,
+      "stage": 0,
+      "tile": ""
+    }
+  ],
+  "announced_ready": [
+    false,
+    false,
+    false,
+    false
+  ],
+  "events": [
+    {
+      "dealer": 1,
+      "die_white": 4,
+      "double": true,
+      "id": 1,
+      "session": "6e018c3c9fc41ee6",
+      "type": "dice",
+      "value": 4,
+      "white": 4
+    },
+    {
+      "deals": [
+        {
+          "cards": [
+            "wan6",
+            "tiao6",
+            "tiao7",
+            "tiao3"
+          ],
+          "indices": [
+            90,
+            91,
+            92,
+            93
+          ],
+          "seat": 1
+        },
+        {
+          "cards": [
+            "wan2",
+            "wan8",
+            "wan1",
+            "wan6"
+          ],
+          "indices": [
+            94,
+            95,
+            96,
+            97
+          ],
+          "seat": 0
+        },
+        {
+          "cards": [
+            "tong5",
+            "tiao8",
+            "tong9",
+            "wan9"
+          ],
+          "indices": [
+            98,
+            99,
+            100,
+            101
+          ],
+          "seat": 3
+        },
+        {
+          "cards": [
+            "tiao8",
+            "tong4",
+            "tiao7",
+            "tong8"
+          ],
+          "indices": [
+            102,
+            103,
+            104,
+            105
+          ],
+          "seat": 2
+        }
+      ],
+      "id": 2,
+      "session": "6e018c3c9fc41ee6",
+      "type": "deal_batch"
+    },
+    {
+      "deals": [
+        {
+          "cards": [
+            "tong2",
+            "tong6",
+            "tong2",
+            "tong1"
+          ],
+          "indices": [
+            106,
+            107,
+            0,
+            1
+          ],
+          "seat": 1
+        },
+        {
+          "cards": [
+            "tiao8",
+            "tong3",
+            "wan1",
+            "wan4"
+          ],
+          "indices": [
+            2,
+            3,
+            4,
+            5
+          ],
+          "seat": 0
+        },
+        {
+          "cards": [
+            "wan7",
+            "tiao3",
+            "wan1",
+            "tong8"
+          ],
+          "indices": [
+            6,
+            7,
+            8,
+            9
+          ],
+          "seat": 3
+        },
+        {
+          "cards": [
+            "tiao2",
+            "tiao4",
+            "tong3",
+            "tong1"
+          ],
+          "indices": [
+            10,
+            11,
+            12,
+            13
+          ],
+          "seat": 2
+        }
+      ],
+      "id": 3,
+      "session": "6e018c3c9fc41ee6",
+      "type": "deal_batch"
+    },
+    {
+      "deals": [
+        {
+          "cards": [
+            "wan8",
+            "tiao9",
+            "wan2",
+            "tong3"
+          ],
+          "indices": [
+            14,
+            15,
+            16,
+            17
+          ],
+          "seat": 1
+        },
+        {
+          "cards": [
+            "wan3",
+            "tong5",
+            "tong6",
+            "tong3"
+          ],
+          "indices": [
+            18,
+            19,
+            20,
+            21
+          ],
+          "seat": 0
+        },
+        {
+          "cards": [
+            "wan4",
+            "tiao2",
+            "tong6",
+            "tong2"
+          ],
+          "indices": [
+            22,
+            23,
+            24,
+            25
+          ],
+          "seat": 3
+        },
+        {
+          "cards": [
+            "tiao5",
+            "wan8",
+            "tiao4",
+            "tong5"
+          ],
+          "indices": [
+            26,
+            27,
+            28,
+            29
+          ],
+          "seat": 2
+        }
+      ],
+      "id": 4,
+      "session": "6e018c3c9fc41ee6",
+      "type": "deal_batch"
+    },
+    {
+      "deals": [
+        {
+          "cards": [
+            "wan1"
+          ],
+          "dealer_extra": true,
+          "indices": [
+            30
+          ],
+          "seat": 1
+        }
+      ],
+      "id": 5,
+      "session": "6e018c3c9fc41ee6",
+      "type": "deal_batch"
+    },
+    {
+      "deals": [
+        {
+          "cards": [
+            "tiao7"
+          ],
+          "dealer_extra": false,
+          "indices": [
+            31
+          ],
+          "seat": 0
+        }
+      ],
+      "id": 6,
+      "session": "6e018c3c9fc41ee6",
+      "type": "deal_batch"
+    },
+    {
+      "deals": [
+        {
+          "cards": [
+            "wan7"
+          ],
+          "dealer_extra": false,
+          "indices": [
+            32
+          ],
+          "seat": 3
+        }
+      ],
+      "id": 7,
+      "session": "6e018c3c9fc41ee6",
+      "type": "deal_batch"
+    },
+    {
+      "deals": [
+        {
+          "cards": [
+            "wan4"
+          ],
+          "dealer_extra": false,
+          "indices": [
+            33
+          ],
+          "seat": 2
+        }
+      ],
+      "id": 8,
+      "session": "6e018c3c9fc41ee6",
+      "type": "deal_batch"
+    },
+    {
+      "elapsed_ms": 0,
+      "id": 9,
+      "kind": "head",
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong7",
+      "type": "draw",
+      "wall_index": 34
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 9,
+      "discard_id": 0,
+      "discard_index": 4,
+      "draw_tile": "tong7",
+      "drawn_hand_index": 12,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 548,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 2,
+        "1": 5,
+        "2": 6,
+        "3": 4,
+        "5": 11,
+        "6": 9,
+        "7": 8,
+        "8": 3,
+        "9": 7,
+        "10": 1,
+        "11": 10,
+        "12": 0,
+        "13": 12
+      },
+      "id": 10,
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong2",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 551,
+      "id": 11,
+      "kind": "head",
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong7",
+      "type": "draw",
+      "wall_index": 35
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 0,
+      "discard_id": 0,
+      "discard_index": 2,
+      "draw_tile": "tong7",
+      "drawn_hand_index": 12,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 1107,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 1,
+        "1": 5,
+        "3": 4,
+        "4": 7,
+        "5": 8,
+        "6": 0,
+        "7": 3,
+        "8": 2,
+        "9": 10,
+        "10": 11,
+        "11": 9,
+        "12": 6,
+        "13": 12
+      },
+      "id": 12,
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan1",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 1117,
+      "id": 13,
+      "kind": "head",
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao9",
+      "type": "draw",
+      "wall_index": 36
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 4,
+      "discard_id": 0,
+      "discard_index": 3,
+      "draw_tile": "tiao9",
+      "drawn_hand_index": 7,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 1681,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 9,
+        "1": 6,
+        "2": 12,
+        "4": 2,
+        "5": 5,
+        "6": 0,
+        "7": 11,
+        "8": 1,
+        "9": 4,
+        "10": 10,
+        "11": 8,
+        "12": 3,
+        "13": 7
+      },
+      "id": 14,
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan9",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 1682,
+      "id": 15,
+      "kind": "head",
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan6",
+      "type": "draw",
+      "wall_index": 37
+    },
+    {
+      "charge": true,
+      "discard_from_draw": false,
+      "discard_hand_index": 12,
+      "discard_id": 0,
+      "discard_index": 3,
+      "draw_tile": "wan6",
+      "drawn_hand_index": 1,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 2215,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 8,
+        "1": 11,
+        "2": 7,
+        "4": 3,
+        "5": 4,
+        "6": 10,
+        "7": 9,
+        "8": 6,
+        "9": 2,
+        "10": 5,
+        "11": 12,
+        "12": 0,
+        "13": 1
+      },
+      "id": 16,
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong8",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 2216,
+      "id": 17,
+      "kind": "head",
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan5",
+      "type": "draw",
+      "wall_index": 38
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 3,
+      "discard_id": 1,
+      "discard_index": 7,
+      "draw_tile": "wan5",
+      "drawn_hand_index": 2,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 2731,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 3,
+        "1": 5,
+        "2": 6,
+        "3": 4,
+        "4": 11,
+        "5": 9,
+        "6": 8,
+        "8": 7,
+        "9": 1,
+        "10": 10,
+        "11": 0,
+        "12": 12,
+        "13": 2
+      },
+      "id": 18,
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan8",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 2734,
+      "id": 19,
+      "kind": "head",
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong1",
+      "type": "draw",
+      "wall_index": 39
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 1,
+      "discard_index": 13,
+      "draw_tile": "tong1",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 3248,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 20,
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong1",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 3248,
+      "id": 21,
+      "kind": "head",
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong4",
+      "type": "draw",
+      "wall_index": 40
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 8,
+      "discard_id": 1,
+      "discard_index": 10,
+      "draw_tile": "tong4",
+      "drawn_hand_index": 8,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 3782,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 9,
+        "1": 6,
+        "2": 12,
+        "3": 2,
+        "4": 5,
+        "5": 0,
+        "6": 11,
+        "7": 1,
+        "8": 4,
+        "9": 10,
+        "11": 3,
+        "12": 7,
+        "13": 8
+      },
+      "id": 22,
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong2",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 3782,
+      "id": 23,
+      "kind": "head",
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan5",
+      "type": "draw",
+      "wall_index": 41
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 3,
+      "discard_id": 1,
+      "discard_index": 3,
+      "draw_tile": "wan5",
+      "drawn_hand_index": 1,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 4306,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 8,
+        "1": 11,
+        "2": 7,
+        "4": 4,
+        "5": 10,
+        "6": 9,
+        "7": 6,
+        "8": 3,
+        "9": 5,
+        "10": 12,
+        "11": 0,
+        "12": 2,
+        "13": 1
+      },
+      "id": 24,
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao2",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 4330,
+      "id": 25,
+      "kind": "head",
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan5",
+      "type": "draw",
+      "wall_index": 42
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 3,
+      "discard_id": 2,
+      "discard_index": 0,
+      "draw_tile": "wan5",
+      "drawn_hand_index": 3,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 4866,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "1": 5,
+        "2": 6,
+        "3": 4,
+        "4": 11,
+        "5": 9,
+        "6": 8,
+        "7": 7,
+        "8": 1,
+        "9": 10,
+        "10": 0,
+        "11": 12,
+        "12": 2,
+        "13": 3
+      },
+      "id": 26,
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan6",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 4870,
+      "id": 27,
+      "kind": "head",
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong1",
+      "type": "draw",
+      "wall_index": 43
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 2,
+      "discard_index": 13,
+      "draw_tile": "tong1",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 5415,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 28,
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong1",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 5416,
+      "id": 29,
+      "kind": "head",
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao6",
+      "type": "draw",
+      "wall_index": 44
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 7,
+      "discard_id": 2,
+      "discard_index": 11,
+      "draw_tile": "tiao6",
+      "drawn_hand_index": 6,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 5964,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 9,
+        "1": 7,
+        "2": 12,
+        "3": 2,
+        "4": 5,
+        "5": 0,
+        "6": 11,
+        "7": 1,
+        "8": 4,
+        "9": 10,
+        "10": 3,
+        "12": 8,
+        "13": 6
+      },
+      "id": 30,
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao9",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 5972,
+      "id": 31,
+      "kind": "head",
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao2",
+      "type": "draw",
+      "wall_index": 45
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 2,
+      "discard_index": 13,
+      "draw_tile": "tiao2",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 6513,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 32,
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao2",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 6513,
+      "id": 33,
+      "kind": "head",
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong2",
+      "type": "draw",
+      "wall_index": 46
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 3,
+      "discard_index": 13,
+      "draw_tile": "tong2",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 7061,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 34,
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong2",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 7066,
+      "id": 35,
+      "kind": "head",
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong6",
+      "type": "draw",
+      "wall_index": 47
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 3,
+      "discard_index": 13,
+      "draw_tile": "tong6",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 7595,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 36,
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong6",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 7596,
+      "id": 37,
+      "kind": "head",
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan3",
+      "type": "draw",
+      "wall_index": 48
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 0,
+      "discard_id": 3,
+      "discard_index": 5,
+      "draw_tile": "wan3",
+      "drawn_hand_index": 0,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 8140,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 9,
+        "1": 7,
+        "2": 12,
+        "3": 2,
+        "4": 5,
+        "6": 11,
+        "7": 1,
+        "8": 4,
+        "9": 10,
+        "10": 3,
+        "11": 8,
+        "12": 6,
+        "13": 0
+      },
+      "id": 38,
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan1",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 8163,
+      "id": 39,
+      "kind": "head",
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan5",
+      "type": "draw",
+      "wall_index": 49
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 3,
+      "discard_id": 3,
+      "discard_index": 7,
+      "draw_tile": "wan5",
+      "drawn_hand_index": 1,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 8695,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 8,
+        "1": 11,
+        "2": 7,
+        "3": 4,
+        "4": 10,
+        "5": 9,
+        "6": 6,
+        "8": 5,
+        "9": 12,
+        "10": 0,
+        "11": 3,
+        "12": 2,
+        "13": 1
+      },
+      "id": 40,
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan8",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 8696,
+      "id": 41,
+      "kind": "head",
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao8",
+      "type": "draw",
+      "wall_index": 50
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 7,
+      "discard_id": 4,
+      "discard_index": 6,
+      "draw_tile": "tiao8",
+      "drawn_hand_index": 7,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 9233,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 5,
+        "1": 6,
+        "2": 4,
+        "3": 11,
+        "4": 9,
+        "5": 8,
+        "7": 1,
+        "8": 10,
+        "9": 0,
+        "10": 12,
+        "11": 2,
+        "12": 3,
+        "13": 7
+      },
+      "id": 42,
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao9",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 9236,
+      "id": 43,
+      "kind": "head",
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan2",
+      "type": "draw",
+      "wall_index": 51
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 4,
+      "discard_index": 13,
+      "draw_tile": "wan2",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 9747,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 44,
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan2",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 9747,
+      "id": 45,
+      "kind": "head",
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong5",
+      "type": "draw",
+      "wall_index": 52
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 4,
+      "discard_index": 13,
+      "draw_tile": "tong5",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 10297,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 46,
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong5",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 10299,
+      "id": 47,
+      "kind": "head",
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao5",
+      "type": "draw",
+      "wall_index": 53
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 9,
+      "discard_id": 4,
+      "discard_index": 5,
+      "draw_tile": "tiao5",
+      "drawn_hand_index": 6,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 10814,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 9,
+        "1": 11,
+        "2": 8,
+        "3": 4,
+        "4": 10,
+        "6": 7,
+        "7": 5,
+        "8": 12,
+        "9": 0,
+        "10": 3,
+        "11": 1,
+        "12": 2,
+        "13": 6
+      },
+      "id": 48,
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong1",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 10815,
+      "id": 49,
+      "kind": "head",
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao4",
+      "type": "draw",
+      "wall_index": 54
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 0,
+      "discard_id": 5,
+      "discard_index": 8,
+      "draw_tile": "tiao4",
+      "drawn_hand_index": 4,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 11360,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 5,
+        "1": 6,
+        "2": 3,
+        "3": 11,
+        "4": 9,
+        "5": 8,
+        "6": 0,
+        "7": 10,
+        "9": 12,
+        "10": 1,
+        "11": 2,
+        "12": 7,
+        "13": 4
+      },
+      "id": 50,
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan1",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 11364,
+      "id": 51,
+      "kind": "head",
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao6",
+      "type": "draw",
+      "wall_index": 55
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 0,
+      "discard_id": 5,
+      "discard_index": 5,
+      "draw_tile": "tiao6",
+      "drawn_hand_index": 5,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 11928,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 0,
+        "1": 4,
+        "2": 3,
+        "3": 7,
+        "4": 8,
+        "6": 2,
+        "7": 1,
+        "8": 10,
+        "9": 11,
+        "10": 9,
+        "11": 6,
+        "12": 12,
+        "13": 5
+      },
+      "id": 52,
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan1",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 11929,
+      "id": 53,
+      "kind": "head",
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong8",
+      "type": "draw",
+      "wall_index": 56
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 5,
+      "discard_index": 13,
+      "draw_tile": "tong8",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 12441,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 54,
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong8",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 12460,
+      "id": 55,
+      "kind": "head",
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong9",
+      "type": "draw",
+      "wall_index": 57
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 5,
+      "discard_index": 13,
+      "draw_tile": "tong9",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 13007,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 56,
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong9",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 13030,
+      "id": 57,
+      "kind": "head",
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan6",
+      "type": "draw",
+      "wall_index": 58
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 0,
+      "discard_id": 6,
+      "discard_index": 6,
+      "draw_tile": "wan6",
+      "drawn_hand_index": 2,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 13575,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 5,
+        "1": 6,
+        "2": 3,
+        "3": 11,
+        "4": 9,
+        "5": 8,
+        "7": 10,
+        "8": 12,
+        "9": 0,
+        "10": 1,
+        "11": 7,
+        "12": 4,
+        "13": 2
+      },
+      "id": 58,
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan2",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 13613,
+      "id": 59,
+      "kind": "head",
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong7",
+      "type": "draw",
+      "wall_index": 59
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 6,
+      "discard_index": 13,
+      "draw_tile": "tong7",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 14148,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 60,
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong7",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 14149,
+      "id": 61,
+      "kind": "head",
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao4",
+      "type": "draw",
+      "wall_index": 60
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 11,
+      "discard_id": 6,
+      "discard_index": 5,
+      "draw_tile": "tiao4",
+      "drawn_hand_index": 6,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 14788,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 10,
+        "1": 8,
+        "2": 12,
+        "3": 2,
+        "4": 5,
+        "6": 1,
+        "7": 4,
+        "8": 11,
+        "9": 3,
+        "10": 9,
+        "11": 7,
+        "12": 0,
+        "13": 6
+      },
+      "id": 62,
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong8",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 14790,
+      "id": 63,
+      "kind": "head",
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan9",
+      "type": "draw",
+      "wall_index": 61
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 6,
+      "discard_index": 13,
+      "draw_tile": "wan9",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 15931,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 64,
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan9",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 15931,
+      "id": 65,
+      "kind": "head",
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao9",
+      "type": "draw",
+      "wall_index": 62
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 7,
+      "discard_index": 13,
+      "draw_tile": "tiao9",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 16992,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 66,
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao9",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 17030,
+      "id": 67,
+      "kind": "head",
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao1",
+      "type": "draw",
+      "wall_index": 63
+    },
+    {
+      "charge": true,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 7,
+      "discard_index": 13,
+      "draw_tile": "tiao1",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 17971,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 68,
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao1",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 17972,
+      "id": 69,
+      "kind": "head",
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan9",
+      "type": "draw",
+      "wall_index": 64
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 7,
+      "discard_index": 13,
+      "draw_tile": "wan9",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 19190,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 70,
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan9",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 19214,
+      "id": 71,
+      "kind": "head",
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao5",
+      "type": "draw",
+      "wall_index": 65
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 1,
+      "discard_id": 7,
+      "discard_index": 10,
+      "draw_tile": "tiao5",
+      "drawn_hand_index": 5,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 20188,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 9,
+        "1": 11,
+        "2": 8,
+        "3": 3,
+        "4": 10,
+        "5": 6,
+        "6": 4,
+        "7": 12,
+        "8": 0,
+        "9": 2,
+        "11": 1,
+        "12": 7,
+        "13": 5
+      },
+      "id": 72,
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan5",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 21263,
+      "hand_indices": [
+        8,
+        9
+      ],
+      "id": 73,
+      "index": 0,
+      "kind": "pung",
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "source": 2,
+      "source_discard_id": 7,
+      "tile": "wan5",
+      "type": "meld"
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 0,
+      "discard_id": 8,
+      "discard_index": 10,
+      "draw_tile": "",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": -1,
+      "elapsed_ms": 22348,
+      "hand_row_count": 11,
+      "hand_slot_map": {},
+      "id": 74,
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan6",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 22366,
+      "id": 75,
+      "kind": "head",
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao3",
+      "type": "draw",
+      "wall_index": 66
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 8,
+      "discard_index": 13,
+      "draw_tile": "tiao3",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 13,
+      "elapsed_ms": 23271,
+      "hand_row_count": 13,
+      "hand_slot_map": {},
+      "id": 76,
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao3",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 23290,
+      "id": 77,
+      "kind": "head",
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao5",
+      "type": "draw",
+      "wall_index": 67
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 12,
+      "discard_id": 8,
+      "discard_index": 2,
+      "draw_tile": "tiao5",
+      "drawn_hand_index": 7,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 24374,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 11,
+        "1": 9,
+        "3": 2,
+        "4": 5,
+        "5": 1,
+        "6": 4,
+        "7": 12,
+        "8": 3,
+        "9": 10,
+        "10": 8,
+        "11": 0,
+        "12": 6,
+        "13": 7
+      },
+      "id": 78,
+      "seat": 3,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tong9",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 24393,
+      "id": 79,
+      "kind": "head",
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao3",
+      "type": "draw",
+      "wall_index": 68
+    },
+    {
+      "charge": false,
+      "discard_from_draw": false,
+      "discard_hand_index": 3,
+      "discard_id": 8,
+      "discard_index": 3,
+      "draw_tile": "tiao3",
+      "drawn_hand_index": 3,
+      "drawn_index_after": 12,
+      "drawn_source_index": 13,
+      "elapsed_ms": 25840,
+      "hand_row_count": 13,
+      "hand_slot_map": {
+        "0": 9,
+        "1": 11,
+        "2": 8,
+        "4": 10,
+        "5": 5,
+        "6": 4,
+        "7": 12,
+        "8": 0,
+        "9": 2,
+        "10": 1,
+        "11": 6,
+        "12": 7,
+        "13": 3
+      },
+      "id": 80,
+      "seat": 2,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao4",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 25840,
+      "id": 81,
+      "kind": "head",
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao7",
+      "type": "draw",
+      "wall_index": 69
+    },
+    {
+      "charge": false,
+      "discard_from_draw": true,
+      "discard_hand_index": -1,
+      "discard_id": 9,
+      "discard_index": 10,
+      "draw_tile": "tiao7",
+      "drawn_hand_index": -1,
+      "drawn_index_after": -1,
+      "drawn_source_index": 10,
+      "elapsed_ms": 27200,
+      "hand_row_count": 10,
+      "hand_slot_map": {},
+      "id": 82,
+      "seat": 1,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "tiao7",
+      "type": "discard"
+    },
+    {
+      "elapsed_ms": 27205,
+      "id": 83,
+      "kind": "head",
+      "seat": 0,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan7",
+      "type": "draw",
+      "wall_index": 70
+    },
+    {
+      "elapsed_ms": 27280,
+      "id": 84,
+      "seat": 0,
+      "self_draw": true,
+      "session": "6e018c3c9fc41ee6",
+      "tile": "wan7",
+      "type": "win",
+      "winners": [
+        0
+      ]
+    },
+    {
+      "elapsed_ms": 27281,
+      "type": "settlement"
+    }
+  ],
+  "final": {
+    "fingerprint": "06fb11063be617e8ab198bcc9aa4f35453c3b885ef3cb713eb56740236538462",
+    "result": {
+      "dealer_seat": 1,
+      "deltas": [
+        56.0,
+        -32.0,
+        24.0,
+        -48.0
+      ],
+      "flip_tile": "wan4",
+      "items": [
+        [
+          {
+            "amount": 8.0,
+            "count": 1,
+            "kind": "charge",
+            "label": "冲锋鸡",
+            "note": "打出",
+            "source": "discard",
+            "tile": "tiao1",
+            "tiles": [
+              "tiao1"
+            ],
+            "unit_amount": 8.0
+          },
+          {
+            "amount": 4.0,
+            "count": 2,
+            "kind": "flip",
+            "label": "翻鸡",
+            "note": "翻牌三张",
+            "source": "hand",
+            "tile": "wan4",
+            "tiles": [
+              "wan4",
+              "wan3"
+            ],
+            "unit_amount": 2.0
+          },
+          {
+            "amount": 8.0,
+            "kind": "bonus",
+            "label": "自摸",
+            "note": "未报听玩家支付",
+            "tile": "",
+            "tiles": []
+          }
+        ],
+        [],
+        [
+          {
+            "amount": 8.0,
+            "count": 1,
+            "kind": "charge",
+            "label": "冲锋鸡",
+            "note": "打出",
+            "source": "discard",
+            "tile": "tong8",
+            "tiles": [
+              "tong8"
+            ],
+            "unit_amount": 8.0
+          },
+          {
+            "amount": 4.0,
+            "count": 2,
+            "kind": "flip",
+            "label": "翻鸡",
+            "note": "翻牌三张",
+            "source": "hand",
+            "tile": "wan4",
+            "tiles": [
+              "wan4",
+              "wan5"
+            ],
+            "unit_amount": 2.0
+          }
+        ],
+        [
+          {
+            "amount": -8.0,
+            "kind": "penalty",
+            "label": "未叫牌出牌鸡",
+            "note": "需补付给叫牌玩家",
+            "own_amount": -8.0,
+            "tile": "",
+            "tiles": []
+          }
+        ]
+      ],
+      "lines": [
+        "下家 已叫牌：鸡分 6，打出鸡 4",
+        "庄家 未叫牌：鸡分 -0，打出鸡 0",
+        "上家 已叫牌：鸡分 6，打出鸡 4",
+        "对家 未叫牌：鸡分 -4，打出鸡 4",
+        "以下项目按单倍计算；所有收付求和后统一 ×2（含杠分、报听费和额外分）",
+        "自摸基础分：未报听玩家各付 4"
+      ],
+      "next_chicken_multiplier": 1,
+      "next_dealer_seat": 0,
+      "pairwise": [
+        [
+          0.0,
+          20.0,
+          8.0,
+          28.0
+        ],
+        [
+          -20.0,
+          0.0,
+          -12.0,
+          0.0
+        ],
+        [
+          -8.0,
+          12.0,
+          0.0,
+          20.0
+        ],
+        [
+          -28.0,
+          0.0,
+          -20.0,
+          0.0
+        ]
+      ],
+      "players": [
+        {
+          "concealed": [
+            "wan2",
+            "wan8",
+            "wan6",
+            "tiao8",
+            "tong3",
+            "wan4",
+            "wan3",
+            "tong5",
+            "tong6",
+            "tong3",
+            "tiao7",
+            "tong7",
+            "tiao6",
+            "wan7"
+          ],
+          "discards": [
+            "wan1",
+            "tong1",
+            "tong1",
+            "tong6",
+            "wan2",
+            "wan1",
+            "tong7",
+            "tiao1",
+            "tiao3"
+          ],
+          "melds": [],
+          "name": "下家",
+          "ready": false,
+          "score": 256.0,
+          "seat": 0
+        },
+        {
+          "concealed": [
+            "tiao6",
+            "tiao7",
+            "tiao3",
+            "tong6",
+            "tong2",
+            "tong1",
+            "tong3",
+            "tong7",
+            "tiao8",
+            "tiao4"
+          ],
+          "discards": [
+            "tong2",
+            "wan8",
+            "wan6",
+            "tong2",
+            "tiao9",
+            "wan1",
+            "wan2",
+            "tiao9",
+            "wan6",
+            "tiao7"
+          ],
+          "melds": [
+            {
+              "after_discard": 8,
+              "formed_at": 8,
+              "from_seat": 2,
+              "kind": "pung",
+              "robbed": false,
+              "tile": "wan5"
+            }
+          ],
+          "name": "庄家",
+          "ready": false,
+          "score": 168.0,
+          "seat": 1
+        },
+        {
+          "concealed": [
+            "tiao8",
+            "tong4",
+            "tiao7",
+            "tong3",
+            "tiao5",
+            "tiao4",
+            "tong5",
+            "wan4",
+            "wan6",
+            "wan5",
+            "tiao5",
+            "tiao5",
+            "tiao3"
+          ],
+          "discards": [
+            "tong8",
+            "tiao2",
+            "tiao2",
+            "wan8",
+            "tong1",
+            "tong9",
+            "wan9",
+            "tiao4"
+          ],
+          "melds": [],
+          "name": "上家",
+          "ready": false,
+          "score": 224.0,
+          "seat": 2
+        },
+        {
+          "concealed": [
+            "tong5",
+            "tiao8",
+            "wan7",
+            "tiao3",
+            "wan4",
+            "tiao2",
+            "tong6",
+            "wan7",
+            "tong4",
+            "tiao6",
+            "wan3",
+            "tiao4",
+            "tiao5"
+          ],
+          "discards": [
+            "wan9",
+            "tong2",
+            "tiao9",
+            "wan1",
+            "tong5",
+            "tong8",
+            "tong8",
+            "wan9",
+            "tong9"
+          ],
+          "melds": [],
+          "name": "对家",
+          "ready": false,
+          "score": 152.0,
+          "seat": 3
+        }
+      ],
+      "points": [
+        12.0,
+        0.0,
+        12.0,
+        -8.0
+      ],
+      "round_meta": {
+        "all_called_draw": false,
+        "break": 90,
+        "burn_chicken_reason": "",
+        "burn_chicken_seat": -1,
+        "charge_chickens": {
+          "tiao1": {
+            "discard_id": 7,
+            "location": "discard",
+            "owner": 0
+          },
+          "tong8": {
+            "discard_id": 0,
+            "location": "discard",
+            "owner": 2
+          }
+        },
+        "chicken_multiplier": 2,
+        "dealer_seat": 1,
+        "dice_double": true,
+        "die": 4,
+        "die_white": 4,
+        "discard_seat": -1,
+        "flip_tile": "wan4",
+        "flip_wall_index": 71,
+        "kong_draw_seat": -1,
+        "last_four_self_draw_seat": -1,
+        "next_chicken_multiplier": 1,
+        "next_dealer_seat": 0,
+        "previous_draw_double": false,
+        "resolved_chicken_discards": [],
+        "robbed_kong": false,
+        "robber_seat": -1,
+        "self_draw": true,
+        "win_tile": "wan7",
+        "winner": 0,
+        "winners": [
+          0
+        ]
+      },
+      "round_points": [
+        20.0,
+        0.0,
+        12.0,
+        -8.0
+      ],
+      "scores": [
+        256.0,
+        168.0,
+        224.0,
+        152.0
+      ],
+      "status": [
+        "叫牌（自摸）",
+        "未叫牌",
+        "叫牌",
+        "未叫牌"
+      ],
+      "total_delta": 0.0,
+      "transfers": [
+        {
+          "amount": 12.0,
+          "from": 1,
+          "reason": "鸡分差额",
+          "to": 0
+        },
+        {
+          "amount": 8.0,
+          "from": 3,
+          "reason": "未叫牌出牌鸡",
+          "to": 0
+        },
+        {
+          "amount": 12.0,
+          "from": 3,
+          "reason": "鸡分差额",
+          "to": 0
+        },
+        {
+          "amount": 12.0,
+          "from": 1,
+          "reason": "鸡分差额",
+          "to": 2
+        },
+        {
+          "amount": 8.0,
+          "from": 3,
+          "reason": "未叫牌出牌鸡",
+          "to": 2
+        },
+        {
+          "amount": 12.0,
+          "from": 3,
+          "reason": "鸡分差额",
+          "to": 2
+        },
+        {
+          "amount": 8.0,
+          "from": 1,
+          "reason": "自摸基础分",
+          "to": 0
+        },
+        {
+          "amount": 8.0,
+          "from": 2,
+          "reason": "自摸基础分",
+          "to": 0
+        },
+        {
+          "amount": 8.0,
+          "from": 3,
+          "reason": "自摸基础分",
+          "to": 0
+        }
+      ]
+    },
+    "state": {
+      "audio_event_id": 39,
+      "audio_events": [
+        {
+          "action": "discard",
+          "id": 24,
+          "seat": 2,
+          "session": "ac3166e79eddb20c",
+          "tile": "tong9"
+        },
+        {
+          "action": "discard",
+          "id": 25,
+          "seat": 1,
+          "session": "ac3166e79eddb20c",
+          "tile": "wan2"
+        },
+        {
+          "action": "discard",
+          "id": 26,
+          "seat": 0,
+          "session": "ac3166e79eddb20c",
+          "tile": "tong7"
+        },
+        {
+          "action": "discard",
+          "id": 27,
+          "seat": 3,
+          "session": "ac3166e79eddb20c",
+          "tile": "tong8"
+        },
+        {
+          "action": "discard",
+          "id": 28,
+          "seat": 2,
+          "session": "ac3166e79eddb20c",
+          "tile": "wan9"
+        },
+        {
+          "action": "discard",
+          "id": 29,
+          "seat": 1,
+          "session": "ac3166e79eddb20c",
+          "tile": "tiao9"
+        },
+        {
+          "action": "discard",
+          "id": 30,
+          "seat": 0,
+          "session": "ac3166e79eddb20c",
+          "tile": "tiao1"
+        },
+        {
+          "action": "discard",
+          "id": 31,
+          "seat": 3,
+          "session": "ac3166e79eddb20c",
+          "tile": "wan9"
+        },
+        {
+          "action": "discard",
+          "id": 32,
+          "seat": 2,
+          "session": "ac3166e79eddb20c",
+          "tile": "wan5"
+        },
+        {
+          "action": "pong",
+          "id": 33,
+          "seat": 1,
+          "session": "ac3166e79eddb20c",
+          "tile": ""
+        },
+        {
+          "action": "discard",
+          "id": 34,
+          "seat": 1,
+          "session": "ac3166e79eddb20c",
+          "tile": "wan6"
+        },
+        {
+          "action": "discard",
+          "id": 35,
+          "seat": 0,
+          "session": "ac3166e79eddb20c",
+          "tile": "tiao3"
+        },
+        {
+          "action": "discard",
+          "id": 36,
+          "seat": 3,
+          "session": "ac3166e79eddb20c",
+          "tile": "tong9"
+        },
+        {
+          "action": "discard",
+          "id": 37,
+          "seat": 2,
+          "session": "ac3166e79eddb20c",
+          "tile": "tiao4"
+        },
+        {
+          "action": "discard",
+          "id": 38,
+          "seat": 1,
+          "session": "ac3166e79eddb20c",
+          "tile": "tiao7"
+        },
+        {
+          "action": "zimo",
+          "id": 39,
+          "seat": 0,
+          "session": "ac3166e79eddb20c",
+          "tile": "wan7"
+        }
+      ],
+      "audio_session": "ac3166e79eddb20c",
+      "awaiting": false,
+      "awaiting_response": {},
+      "current_turn": 0,
+      "dealer_seat": 1,
+      "last_discard": {
+        "after_kong": false,
+        "kong_kind": "",
+        "seat": 1,
+        "tile": "tiao7"
+      },
+      "last_result": {
+        "dealer_seat": 1,
+        "deltas": [
+          56.0,
+          -32.0,
+          24.0,
+          -48.0
+        ],
+        "flip_tile": "wan4",
+        "items": [
+          [
+            {
+              "amount": 8.0,
+              "count": 1,
+              "kind": "charge",
+              "label": "冲锋鸡",
+              "note": "打出",
+              "source": "discard",
+              "tile": "tiao1",
+              "tiles": [
+                "tiao1"
+              ],
+              "unit_amount": 8.0
+            },
+            {
+              "amount": 4.0,
+              "count": 2,
+              "kind": "flip",
+              "label": "翻鸡",
+              "note": "翻牌三张",
+              "source": "hand",
+              "tile": "wan4",
+              "tiles": [
+                "wan4",
+                "wan3"
+              ],
+              "unit_amount": 2.0
+            },
+            {
+              "amount": 8.0,
+              "kind": "bonus",
+              "label": "自摸",
+              "note": "未报听玩家支付",
+              "tile": "",
+              "tiles": []
+            }
+          ],
+          [],
+          [
+            {
+              "amount": 8.0,
+              "count": 1,
+              "kind": "charge",
+              "label": "冲锋鸡",
+              "note": "打出",
+              "source": "discard",
+              "tile": "tong8",
+              "tiles": [
+                "tong8"
+              ],
+              "unit_amount": 8.0
+            },
+            {
+              "amount": 4.0,
+              "count": 2,
+              "kind": "flip",
+              "label": "翻鸡",
+              "note": "翻牌三张",
+              "source": "hand",
+              "tile": "wan4",
+              "tiles": [
+                "wan4",
+                "wan5"
+              ],
+              "unit_amount": 2.0
+            }
+          ],
+          [
+            {
+              "amount": -8.0,
+              "kind": "penalty",
+              "label": "未叫牌出牌鸡",
+              "note": "需补付给叫牌玩家",
+              "own_amount": -8.0,
+              "tile": "",
+              "tiles": []
+            }
+          ]
+        ],
+        "lines": [
+          "下家 已叫牌：鸡分 6，打出鸡 4",
+          "庄家 未叫牌：鸡分 -0，打出鸡 0",
+          "上家 已叫牌：鸡分 6，打出鸡 4",
+          "对家 未叫牌：鸡分 -4，打出鸡 4",
+          "以下项目按单倍计算；所有收付求和后统一 ×2（含杠分、报听费和额外分）",
+          "自摸基础分：未报听玩家各付 4"
+        ],
+        "next_chicken_multiplier": 1,
+        "next_dealer_seat": 0,
+        "pairwise": [
+          [
+            0.0,
+            20.0,
+            8.0,
+            28.0
+          ],
+          [
+            -20.0,
+            0.0,
+            -12.0,
+            0.0
+          ],
+          [
+            -8.0,
+            12.0,
+            0.0,
+            20.0
+          ],
+          [
+            -28.0,
+            0.0,
+            -20.0,
+            0.0
+          ]
+        ],
+        "players": [
+          {
+            "concealed": [
+              "wan2",
+              "wan8",
+              "wan6",
+              "tiao8",
+              "tong3",
+              "wan4",
+              "wan3",
+              "tong5",
+              "tong6",
+              "tong3",
+              "tiao7",
+              "tong7",
+              "tiao6",
+              "wan7"
+            ],
+            "discards": [
+              "wan1",
+              "tong1",
+              "tong1",
+              "tong6",
+              "wan2",
+              "wan1",
+              "tong7",
+              "tiao1",
+              "tiao3"
+            ],
+            "melds": [],
+            "name": "下家",
+            "ready": false,
+            "score": 256.0,
+            "seat": 0
+          },
+          {
+            "concealed": [
+              "tiao6",
+              "tiao7",
+              "tiao3",
+              "tong6",
+              "tong2",
+              "tong1",
+              "tong3",
+              "tong7",
+              "tiao8",
+              "tiao4"
+            ],
+            "discards": [
+              "tong2",
+              "wan8",
+              "wan6",
+              "tong2",
+              "tiao9",
+              "wan1",
+              "wan2",
+              "tiao9",
+              "wan6",
+              "tiao7"
+            ],
+            "melds": [
+              {
+                "after_discard": 8,
+                "formed_at": 8,
+                "from_seat": 2,
+                "kind": "pung",
+                "robbed": false,
+                "tile": "wan5"
+              }
+            ],
+            "name": "庄家",
+            "ready": false,
+            "score": 168.0,
+            "seat": 1
+          },
+          {
+            "concealed": [
+              "tiao8",
+              "tong4",
+              "tiao7",
+              "tong3",
+              "tiao5",
+              "tiao4",
+              "tong5",
+              "wan4",
+              "wan6",
+              "wan5",
+              "tiao5",
+              "tiao5",
+              "tiao3"
+            ],
+            "discards": [
+              "tong8",
+              "tiao2",
+              "tiao2",
+              "wan8",
+              "tong1",
+              "tong9",
+              "wan9",
+              "tiao4"
+            ],
+            "melds": [],
+            "name": "上家",
+            "ready": false,
+            "score": 224.0,
+            "seat": 2
+          },
+          {
+            "concealed": [
+              "tong5",
+              "tiao8",
+              "wan7",
+              "tiao3",
+              "wan4",
+              "tiao2",
+              "tong6",
+              "wan7",
+              "tong4",
+              "tiao6",
+              "wan3",
+              "tiao4",
+              "tiao5"
+            ],
+            "discards": [
+              "wan9",
+              "tong2",
+              "tiao9",
+              "wan1",
+              "tong5",
+              "tong8",
+              "tong8",
+              "wan9",
+              "tong9"
+            ],
+            "melds": [],
+            "name": "对家",
+            "ready": false,
+            "score": 152.0,
+            "seat": 3
+          }
+        ],
+        "points": [
+          12.0,
+          0.0,
+          12.0,
+          -8.0
+        ],
+        "round_meta": {
+          "all_called_draw": false,
+          "break": 90,
+          "burn_chicken_reason": "",
+          "burn_chicken_seat": -1,
+          "charge_chickens": {
+            "tiao1": {
+              "discard_id": 7,
+              "location": "discard",
+              "owner": 0
+            },
+            "tong8": {
+              "discard_id": 0,
+              "location": "discard",
+              "owner": 2
+            }
+          },
+          "chicken_multiplier": 2,
+          "dealer_seat": 1,
+          "dice_double": true,
+          "die": 4,
+          "die_white": 4,
+          "discard_seat": -1,
+          "flip_tile": "wan4",
+          "flip_wall_index": 71,
+          "kong_draw_seat": -1,
+          "last_four_self_draw_seat": -1,
+          "next_chicken_multiplier": 1,
+          "next_dealer_seat": 0,
+          "previous_draw_double": false,
+          "resolved_chicken_discards": [],
+          "robbed_kong": false,
+          "robber_seat": -1,
+          "self_draw": true,
+          "win_tile": "wan7",
+          "winner": 0,
+          "winners": [
+            0
+          ]
+        },
+        "round_points": [
+          20.0,
+          0.0,
+          12.0,
+          -8.0
+        ],
+        "scores": [
+          256.0,
+          168.0,
+          224.0,
+          152.0
+        ],
+        "status": [
+          "叫牌（自摸）",
+          "未叫牌",
+          "叫牌",
+          "未叫牌"
+        ],
+        "total_delta": 0.0,
+        "transfers": [
+          {
+            "amount": 12.0,
+            "from": 1,
+            "reason": "鸡分差额",
+            "to": 0
+          },
+          {
+            "amount": 8.0,
+            "from": 3,
+            "reason": "未叫牌出牌鸡",
+            "to": 0
+          },
+          {
+            "amount": 12.0,
+            "from": 3,
+            "reason": "鸡分差额",
+            "to": 0
+          },
+          {
+            "amount": 12.0,
+            "from": 1,
+            "reason": "鸡分差额",
+            "to": 2
+          },
+          {
+            "amount": 8.0,
+            "from": 3,
+            "reason": "未叫牌出牌鸡",
+            "to": 2
+          },
+          {
+            "amount": 12.0,
+            "from": 3,
+            "reason": "鸡分差额",
+            "to": 2
+          },
+          {
+            "amount": 8.0,
+            "from": 1,
+            "reason": "自摸基础分",
+            "to": 0
+          },
+          {
+            "amount": 8.0,
+            "from": 2,
+            "reason": "自摸基础分",
+            "to": 0
+          },
+          {
+            "amount": 8.0,
+            "from": 3,
+            "reason": "自摸基础分",
+            "to": 0
+          }
+        ]
+      },
+      "next_chicken_multiplier": 1,
+      "next_dealer_seat": 0,
+      "opening_speed": "0.20",
+      "phase": "settled",
+      "players": [
+        {
+          "add_kong_locked_tiles": [],
+          "charge_chicken": true,
+          "concealed": [
+            "wan2",
+            "wan8",
+            "wan6",
+            "tiao8",
+            "tong3",
+            "wan4",
+            "wan3",
+            "tong5",
+            "tong6",
+            "tong3",
+            "tiao7",
+            "tong7",
+            "tiao6",
+            "wan7"
+          ],
+          "discard_count": 9,
+          "discard_history": [
+            "wan1",
+            "tong1",
+            "tong1",
+            "tong6",
+            "wan2",
+            "wan1",
+            "tong7",
+            "tiao1",
+            "tiao3"
+          ],
+          "discard_ids": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "discards": [
+            "wan1",
+            "tong1",
+            "tong1",
+            "tong6",
+            "wan2",
+            "wan1",
+            "tong7",
+            "tiao1",
+            "tiao3"
+          ],
+          "first_turn_done": true,
+          "forbidden_discard_tile": "",
+          "is_dealer": false,
+          "is_human": false,
+          "just_drew": "wan7",
+          "melds": [],
+          "name": "下家",
+          "passed_pong_tiles": [],
+          "passed_self_draw": false,
+          "passed_win_until_draw": false,
+          "ready": false,
+          "ready_wait_tiles": [],
+          "score": 256.0,
+          "seat": 0
+        },
+        {
+          "add_kong_locked_tiles": [],
+          "charge_chicken": false,
+          "concealed": [
+            "tiao6",
+            "tiao7",
+            "tiao3",
+            "tong6",
+            "tong2",
+            "tong1",
+            "tong3",
+            "tong7",
+            "tiao8",
+            "tiao4"
+          ],
+          "discard_count": 10,
+          "discard_history": [
+            "tong2",
+            "wan8",
+            "wan6",
+            "tong2",
+            "tiao9",
+            "wan1",
+            "wan2",
+            "tiao9",
+            "wan6",
+            "tiao7"
+          ],
+          "discard_ids": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ],
+          "discards": [
+            "tong2",
+            "wan8",
+            "wan6",
+            "tong2",
+            "tiao9",
+            "wan1",
+            "wan2",
+            "tiao9",
+            "wan6",
+            "tiao7"
+          ],
+          "first_turn_done": true,
+          "forbidden_discard_tile": "",
+          "is_dealer": true,
+          "is_human": true,
+          "just_drew": "",
+          "melds": [
+            {
+              "after_discard": 8,
+              "formed_at": 8,
+              "from_seat": 2,
+              "kind": "pung",
+              "robbed": false,
+              "tile": "wan5"
+            }
+          ],
+          "name": "庄家",
+          "passed_pong_tiles": [],
+          "passed_self_draw": false,
+          "passed_win_until_draw": false,
+          "ready": false,
+          "ready_wait_tiles": [],
+          "score": 168.0,
+          "seat": 1
+        },
+        {
+          "add_kong_locked_tiles": [],
+          "charge_chicken": true,
+          "concealed": [
+            "tiao8",
+            "tong4",
+            "tiao7",
+            "tong3",
+            "tiao5",
+            "tiao4",
+            "tong5",
+            "wan4",
+            "wan6",
+            "wan5",
+            "tiao5",
+            "tiao5",
+            "tiao3"
+          ],
+          "discard_count": 9,
+          "discard_history": [
+            "tong8",
+            "tiao2",
+            "tiao2",
+            "wan8",
+            "tong1",
+            "tong9",
+            "wan9",
+            "tiao4"
+          ],
+          "discard_ids": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            8
+          ],
+          "discards": [
+            "tong8",
+            "tiao2",
+            "tiao2",
+            "wan8",
+            "tong1",
+            "tong9",
+            "wan9",
+            "tiao4"
+          ],
+          "first_turn_done": true,
+          "forbidden_discard_tile": "",
+          "is_dealer": false,
+          "is_human": false,
+          "just_drew": "",
+          "melds": [],
+          "name": "上家",
+          "passed_pong_tiles": [],
+          "passed_self_draw": false,
+          "passed_win_until_draw": false,
+          "ready": false,
+          "ready_wait_tiles": [],
+          "score": 224.0,
+          "seat": 2
+        },
+        {
+          "add_kong_locked_tiles": [],
+          "charge_chicken": false,
+          "concealed": [
+            "tong5",
+            "tiao8",
+            "wan7",
+            "tiao3",
+            "wan4",
+            "tiao2",
+            "tong6",
+            "wan7",
+            "tong4",
+            "tiao6",
+            "wan3",
+            "tiao4",
+            "tiao5"
+          ],
+          "discard_count": 9,
+          "discard_history": [
+            "wan9",
+            "tong2",
+            "tiao9",
+            "wan1",
+            "tong5",
+            "tong8",
+            "tong8",
+            "wan9",
+            "tong9"
+          ],
+          "discard_ids": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "discards": [
+            "wan9",
+            "tong2",
+            "tiao9",
+            "wan1",
+            "tong5",
+            "tong8",
+            "tong8",
+            "wan9",
+            "tong9"
+          ],
+          "first_turn_done": true,
+          "forbidden_discard_tile": "",
+          "is_dealer": false,
+          "is_human": false,
+          "just_drew": "",
+          "melds": [],
+          "name": "对家",
+          "passed_pong_tiles": [],
+          "passed_self_draw": false,
+          "passed_win_until_draw": false,
+          "ready": false,
+          "ready_wait_tiles": [],
+          "score": 152.0,
+          "seat": 3
+        }
+      ],
+      "prompt_id": 38,
+      "round_meta": {
+        "all_called_draw": false,
+        "break": 90,
+        "burn_chicken_reason": "",
+        "burn_chicken_seat": -1,
+        "charge_chickens": {
+          "tiao1": {
+            "discard_id": 7,
+            "location": "discard",
+            "owner": 0
+          },
+          "tong8": {
+            "discard_id": 0,
+            "location": "discard",
+            "owner": 2
+          }
+        },
+        "chicken_multiplier": 2,
+        "dealer_seat": 1,
+        "dice_double": true,
+        "die": 4,
+        "die_white": 4,
+        "discard_seat": -1,
+        "flip_tile": "wan4",
+        "flip_wall_index": 71,
+        "kong_draw_seat": -1,
+        "last_four_self_draw_seat": -1,
+        "next_chicken_multiplier": 1,
+        "next_dealer_seat": 0,
+        "previous_draw_double": false,
+        "resolved_chicken_discards": [],
+        "robbed_kong": false,
+        "robber_seat": -1,
+        "self_draw": true,
+        "win_tile": "wan7",
+        "winner": 0,
+        "winners": [
+          0
+        ]
+      },
+      "visual_event_id": 84,
+      "visual_events": [
+        {
+          "id": 53,
+          "kind": "head",
+          "seat": 3,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tong8",
+          "type": "draw",
+          "wall_index": 56
+        },
+        {
+          "charge": false,
+          "discard_from_draw": true,
+          "discard_hand_index": -1,
+          "discard_id": 5,
+          "discard_index": 13,
+          "draw_tile": "tong8",
+          "drawn_hand_index": -1,
+          "drawn_index_after": -1,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {},
+          "id": 54,
+          "seat": 3,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tong8",
+          "type": "discard"
+        },
+        {
+          "id": 55,
+          "kind": "head",
+          "seat": 2,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tong9",
+          "type": "draw",
+          "wall_index": 57
+        },
+        {
+          "charge": false,
+          "discard_from_draw": true,
+          "discard_hand_index": -1,
+          "discard_id": 5,
+          "discard_index": 13,
+          "draw_tile": "tong9",
+          "drawn_hand_index": -1,
+          "drawn_index_after": -1,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {},
+          "id": 56,
+          "seat": 2,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tong9",
+          "type": "discard"
+        },
+        {
+          "id": 57,
+          "kind": "head",
+          "seat": 1,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "wan6",
+          "type": "draw",
+          "wall_index": 58
+        },
+        {
+          "charge": false,
+          "discard_from_draw": false,
+          "discard_hand_index": 0,
+          "discard_id": 6,
+          "discard_index": 6,
+          "draw_tile": "wan6",
+          "drawn_hand_index": 2,
+          "drawn_index_after": 12,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {
+            "0": 5,
+            "1": 6,
+            "2": 3,
+            "3": 11,
+            "4": 9,
+            "5": 8,
+            "7": 10,
+            "8": 12,
+            "9": 0,
+            "10": 1,
+            "11": 7,
+            "12": 4,
+            "13": 2
+          },
+          "id": 58,
+          "seat": 1,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "wan2",
+          "type": "discard"
+        },
+        {
+          "id": 59,
+          "kind": "head",
+          "seat": 0,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tong7",
+          "type": "draw",
+          "wall_index": 59
+        },
+        {
+          "charge": false,
+          "discard_from_draw": true,
+          "discard_hand_index": -1,
+          "discard_id": 6,
+          "discard_index": 13,
+          "draw_tile": "tong7",
+          "drawn_hand_index": -1,
+          "drawn_index_after": -1,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {},
+          "id": 60,
+          "seat": 0,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tong7",
+          "type": "discard"
+        },
+        {
+          "id": 61,
+          "kind": "head",
+          "seat": 3,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao4",
+          "type": "draw",
+          "wall_index": 60
+        },
+        {
+          "charge": false,
+          "discard_from_draw": false,
+          "discard_hand_index": 11,
+          "discard_id": 6,
+          "discard_index": 5,
+          "draw_tile": "tiao4",
+          "drawn_hand_index": 6,
+          "drawn_index_after": 12,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {
+            "0": 10,
+            "1": 8,
+            "2": 12,
+            "3": 2,
+            "4": 5,
+            "6": 1,
+            "7": 4,
+            "8": 11,
+            "9": 3,
+            "10": 9,
+            "11": 7,
+            "12": 0,
+            "13": 6
+          },
+          "id": 62,
+          "seat": 3,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tong8",
+          "type": "discard"
+        },
+        {
+          "id": 63,
+          "kind": "head",
+          "seat": 2,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "wan9",
+          "type": "draw",
+          "wall_index": 61
+        },
+        {
+          "charge": false,
+          "discard_from_draw": true,
+          "discard_hand_index": -1,
+          "discard_id": 6,
+          "discard_index": 13,
+          "draw_tile": "wan9",
+          "drawn_hand_index": -1,
+          "drawn_index_after": -1,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {},
+          "id": 64,
+          "seat": 2,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "wan9",
+          "type": "discard"
+        },
+        {
+          "id": 65,
+          "kind": "head",
+          "seat": 1,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao9",
+          "type": "draw",
+          "wall_index": 62
+        },
+        {
+          "charge": false,
+          "discard_from_draw": true,
+          "discard_hand_index": -1,
+          "discard_id": 7,
+          "discard_index": 13,
+          "draw_tile": "tiao9",
+          "drawn_hand_index": -1,
+          "drawn_index_after": -1,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {},
+          "id": 66,
+          "seat": 1,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao9",
+          "type": "discard"
+        },
+        {
+          "id": 67,
+          "kind": "head",
+          "seat": 0,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao1",
+          "type": "draw",
+          "wall_index": 63
+        },
+        {
+          "charge": true,
+          "discard_from_draw": true,
+          "discard_hand_index": -1,
+          "discard_id": 7,
+          "discard_index": 13,
+          "draw_tile": "tiao1",
+          "drawn_hand_index": -1,
+          "drawn_index_after": -1,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {},
+          "id": 68,
+          "seat": 0,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao1",
+          "type": "discard"
+        },
+        {
+          "id": 69,
+          "kind": "head",
+          "seat": 3,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "wan9",
+          "type": "draw",
+          "wall_index": 64
+        },
+        {
+          "charge": false,
+          "discard_from_draw": true,
+          "discard_hand_index": -1,
+          "discard_id": 7,
+          "discard_index": 13,
+          "draw_tile": "wan9",
+          "drawn_hand_index": -1,
+          "drawn_index_after": -1,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {},
+          "id": 70,
+          "seat": 3,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "wan9",
+          "type": "discard"
+        },
+        {
+          "id": 71,
+          "kind": "head",
+          "seat": 2,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao5",
+          "type": "draw",
+          "wall_index": 65
+        },
+        {
+          "charge": false,
+          "discard_from_draw": false,
+          "discard_hand_index": 1,
+          "discard_id": 7,
+          "discard_index": 10,
+          "draw_tile": "tiao5",
+          "drawn_hand_index": 5,
+          "drawn_index_after": 12,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {
+            "0": 9,
+            "1": 11,
+            "2": 8,
+            "3": 3,
+            "4": 10,
+            "5": 6,
+            "6": 4,
+            "7": 12,
+            "8": 0,
+            "9": 2,
+            "11": 1,
+            "12": 7,
+            "13": 5
+          },
+          "id": 72,
+          "seat": 2,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "wan5",
+          "type": "discard"
+        },
+        {
+          "hand_indices": [
+            8,
+            9
+          ],
+          "id": 73,
+          "index": 0,
+          "kind": "pung",
+          "seat": 1,
+          "session": "6e018c3c9fc41ee6",
+          "source": 2,
+          "source_discard_id": 7,
+          "tile": "wan5",
+          "type": "meld"
+        },
+        {
+          "charge": false,
+          "discard_from_draw": false,
+          "discard_hand_index": 0,
+          "discard_id": 8,
+          "discard_index": 10,
+          "draw_tile": "",
+          "drawn_hand_index": -1,
+          "drawn_index_after": -1,
+          "drawn_source_index": -1,
+          "hand_row_count": 11,
+          "hand_slot_map": {},
+          "id": 74,
+          "seat": 1,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "wan6",
+          "type": "discard"
+        },
+        {
+          "id": 75,
+          "kind": "head",
+          "seat": 0,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao3",
+          "type": "draw",
+          "wall_index": 66
+        },
+        {
+          "charge": false,
+          "discard_from_draw": true,
+          "discard_hand_index": -1,
+          "discard_id": 8,
+          "discard_index": 13,
+          "draw_tile": "tiao3",
+          "drawn_hand_index": -1,
+          "drawn_index_after": -1,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {},
+          "id": 76,
+          "seat": 0,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao3",
+          "type": "discard"
+        },
+        {
+          "id": 77,
+          "kind": "head",
+          "seat": 3,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao5",
+          "type": "draw",
+          "wall_index": 67
+        },
+        {
+          "charge": false,
+          "discard_from_draw": false,
+          "discard_hand_index": 12,
+          "discard_id": 8,
+          "discard_index": 2,
+          "draw_tile": "tiao5",
+          "drawn_hand_index": 7,
+          "drawn_index_after": 12,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {
+            "0": 11,
+            "1": 9,
+            "3": 2,
+            "4": 5,
+            "5": 1,
+            "6": 4,
+            "7": 12,
+            "8": 3,
+            "9": 10,
+            "10": 8,
+            "11": 0,
+            "12": 6,
+            "13": 7
+          },
+          "id": 78,
+          "seat": 3,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tong9",
+          "type": "discard"
+        },
+        {
+          "id": 79,
+          "kind": "head",
+          "seat": 2,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao3",
+          "type": "draw",
+          "wall_index": 68
+        },
+        {
+          "charge": false,
+          "discard_from_draw": false,
+          "discard_hand_index": 3,
+          "discard_id": 8,
+          "discard_index": 3,
+          "draw_tile": "tiao3",
+          "drawn_hand_index": 3,
+          "drawn_index_after": 12,
+          "drawn_source_index": 13,
+          "hand_row_count": 13,
+          "hand_slot_map": {
+            "0": 9,
+            "1": 11,
+            "2": 8,
+            "4": 10,
+            "5": 5,
+            "6": 4,
+            "7": 12,
+            "8": 0,
+            "9": 2,
+            "10": 1,
+            "11": 6,
+            "12": 7,
+            "13": 3
+          },
+          "id": 80,
+          "seat": 2,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao4",
+          "type": "discard"
+        },
+        {
+          "id": 81,
+          "kind": "head",
+          "seat": 1,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao7",
+          "type": "draw",
+          "wall_index": 69
+        },
+        {
+          "charge": false,
+          "discard_from_draw": true,
+          "discard_hand_index": -1,
+          "discard_id": 9,
+          "discard_index": 10,
+          "draw_tile": "tiao7",
+          "drawn_hand_index": -1,
+          "drawn_index_after": -1,
+          "drawn_source_index": 10,
+          "hand_row_count": 10,
+          "hand_slot_map": {},
+          "id": 82,
+          "seat": 1,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "tiao7",
+          "type": "discard"
+        },
+        {
+          "id": 83,
+          "kind": "head",
+          "seat": 0,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "wan7",
+          "type": "draw",
+          "wall_index": 70
+        },
+        {
+          "id": 84,
+          "seat": 0,
+          "self_draw": true,
+          "session": "6e018c3c9fc41ee6",
+          "tile": "wan7",
+          "type": "win",
+          "winners": [
+            0
+          ]
+        }
+      ],
+      "visual_session": "6e018c3c9fc41ee6",
+      "wall": {
+        "0": 0,
+        "1": 11,
+        "2": 8,
+        "3": 0
+      },
+      "wall_centering": {
+        "0": {
+          "indices": [
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53
+          ],
+          "taken": 59
+        },
+        "1": {
+          "indices": [
+            68,
+            69,
+            70,
+            71,
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79,
+            80,
+            81
+          ],
+          "taken": 86
+        },
+        "2": {
+          "indices": [
+            82,
+            83,
+            84,
+            85,
+            86,
+            87,
+            88,
+            89,
+            103,
+            104,
+            105,
+            106,
+            107
+          ],
+          "taken": 13
+        },
+        "3": {
+          "indices": [
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27
+          ],
+          "taken": 32
+        }
+      },
+      "wall_stacks": {
+        "0": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "1": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "2": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          2,
+          2
+        ],
+        "3": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  "finished_at": "2026-11-17T22:58:31",
+  "id": "ac3166e79eddb20c",
+  "initial": {
+    "audio_event_id": 0,
+    "audio_events": [],
+    "audio_session": "ac3166e79eddb20c",
+    "awaiting": false,
+    "awaiting_response": {},
+    "current_turn": 1,
+    "dealer_seat": 1,
+    "last_discard": {},
+    "last_result": {},
+    "next_chicken_multiplier": 1,
+    "next_dealer_seat": 1,
+    "opening_speed": "0.20",
+    "phase": "playing",
+    "players": [
+      {
+        "add_kong_locked_tiles": [],
+        "charge_chicken": false,
+        "concealed": [
+          "wan2",
+          "wan8",
+          "wan1",
+          "wan6",
+          "tiao8",
+          "tong3",
+          "wan1",
+          "wan4",
+          "wan3",
+          "tong5",
+          "tong6",
+          "tong3",
+          "tiao7"
+        ],
+        "discard_count": 0,
+        "discard_history": [],
+        "discard_ids": [],
+        "discards": [],
+        "first_turn_done": false,
+        "forbidden_discard_tile": "",
+        "is_dealer": false,
+        "is_human": false,
+        "just_drew": "",
+        "melds": [],
+        "name": "下家",
+        "passed_pong_tiles": [],
+        "passed_self_draw": false,
+        "passed_win_until_draw": false,
+        "ready": false,
+        "ready_wait_tiles": [],
+        "score": 200.0,
+        "seat": 0
+      },
+      {
+        "add_kong_locked_tiles": [],
+        "charge_chicken": false,
+        "concealed": [
+          "wan6",
+          "tiao6",
+          "tiao7",
+          "tiao3",
+          "tong2",
+          "tong6",
+          "tong2",
+          "tong1",
+          "wan8",
+          "tiao9",
+          "wan2",
+          "tong3",
+          "wan1"
+        ],
+        "discard_count": 0,
+        "discard_history": [],
+        "discard_ids": [],
+        "discards": [],
+        "first_turn_done": false,
+        "forbidden_discard_tile": "",
+        "is_dealer": true,
+        "is_human": true,
+        "just_drew": "",
+        "melds": [],
+        "name": "庄家",
+        "passed_pong_tiles": [],
+        "passed_self_draw": false,
+        "passed_win_until_draw": false,
+        "ready": false,
+        "ready_wait_tiles": [],
+        "score": 200.0,
+        "seat": 1
+      },
+      {
+        "add_kong_locked_tiles": [],
+        "charge_chicken": false,
+        "concealed": [
+          "tiao8",
+          "tong4",
+          "tiao7",
+          "tong8",
+          "tiao2",
+          "tiao4",
+          "tong3",
+          "tong1",
+          "tiao5",
+          "wan8",
+          "tiao4",
+          "tong5",
+          "wan4"
+        ],
+        "discard_count": 0,
+        "discard_history": [],
+        "discard_ids": [],
+        "discards": [],
+        "first_turn_done": false,
+        "forbidden_discard_tile": "",
+        "is_dealer": false,
+        "is_human": false,
+        "just_drew": "",
+        "melds": [],
+        "name": "上家",
+        "passed_pong_tiles": [],
+        "passed_self_draw": false,
+        "passed_win_until_draw": false,
+        "ready": false,
+        "ready_wait_tiles": [],
+        "score": 200.0,
+        "seat": 2
+      },
+      {
+        "add_kong_locked_tiles": [],
+        "charge_chicken": false,
+        "concealed": [
+          "tong5",
+          "tiao8",
+          "tong9",
+          "wan9",
+          "wan7",
+          "tiao3",
+          "wan1",
+          "tong8",
+          "wan4",
+          "tiao2",
+          "tong6",
+          "tong2",
+          "wan7"
+        ],
+        "discard_count": 0,
+        "discard_history": [],
+        "discard_ids": [],
+        "discards": [],
+        "first_turn_done": false,
+        "forbidden_discard_tile": "",
+        "is_dealer": false,
+        "is_human": false,
+        "just_drew": "",
+        "melds": [],
+        "name": "对家",
+        "passed_pong_tiles": [],
+        "passed_self_draw": false,
+        "passed_win_until_draw": false,
+        "ready": false,
+        "ready_wait_tiles": [],
+        "score": 200.0,
+        "seat": 3
+      }
+    ],
+    "prompt_id": 0,
+    "round_meta": {
+      "break": 90,
+      "burn_chicken_reason": "",
+      "burn_chicken_seat": -1,
+      "charge_chickens": {},
+      "chicken_multiplier": 2,
+      "dealer_seat": 1,
+      "dice_double": true,
+      "die": 4,
+      "die_white": 4,
+      "discard_seat": -1,
+      "flip_tile": "",
+      "kong_draw_seat": -1,
+      "last_four_self_draw_seat": -1,
+      "previous_draw_double": false,
+      "resolved_chicken_discards": [],
+      "robbed_kong": false,
+      "robber_seat": -1,
+      "self_draw": false,
+      "win_tile": "",
+      "winner": -1,
+      "winners": []
+    },
+    "visual_event_id": 8,
+    "visual_events": [
+      {
+        "dealer": 1,
+        "die_white": 4,
+        "double": true,
+        "id": 1,
+        "session": "6e018c3c9fc41ee6",
+        "type": "dice",
+        "value": 4,
+        "white": 4
+      },
+      {
+        "deals": [
+          {
+            "cards": [
+              "wan6",
+              "tiao6",
+              "tiao7",
+              "tiao3"
+            ],
+            "indices": [
+              90,
+              91,
+              92,
+              93
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "wan2",
+              "wan8",
+              "wan1",
+              "wan6"
+            ],
+            "indices": [
+              94,
+              95,
+              96,
+              97
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "tong5",
+              "tiao8",
+              "tong9",
+              "wan9"
+            ],
+            "indices": [
+              98,
+              99,
+              100,
+              101
+            ],
+            "seat": 3
+          },
+          {
+            "cards": [
+              "tiao8",
+              "tong4",
+              "tiao7",
+              "tong8"
+            ],
+            "indices": [
+              102,
+              103,
+              104,
+              105
+            ],
+            "seat": 2
+          }
+        ],
+        "id": 2,
+        "session": "6e018c3c9fc41ee6",
+        "type": "deal_batch"
+      },
+      {
+        "deals": [
+          {
+            "cards": [
+              "tong2",
+              "tong6",
+              "tong2",
+              "tong1"
+            ],
+            "indices": [
+              106,
+              107,
+              0,
+              1
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "tiao8",
+              "tong3",
+              "wan1",
+              "wan4"
+            ],
+            "indices": [
+              2,
+              3,
+              4,
+              5
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "wan7",
+              "tiao3",
+              "wan1",
+              "tong8"
+            ],
+            "indices": [
+              6,
+              7,
+              8,
+              9
+            ],
+            "seat": 3
+          },
+          {
+            "cards": [
+              "tiao2",
+              "tiao4",
+              "tong3",
+              "tong1"
+            ],
+            "indices": [
+              10,
+              11,
+              12,
+              13
+            ],
+            "seat": 2
+          }
+        ],
+        "id": 3,
+        "session": "6e018c3c9fc41ee6",
+        "type": "deal_batch"
+      },
+      {
+        "deals": [
+          {
+            "cards": [
+              "wan8",
+              "tiao9",
+              "wan2",
+              "tong3"
+            ],
+            "indices": [
+              14,
+              15,
+              16,
+              17
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "wan3",
+              "tong5",
+              "tong6",
+              "tong3"
+            ],
+            "indices": [
+              18,
+              19,
+              20,
+              21
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "wan4",
+              "tiao2",
+              "tong6",
+              "tong2"
+            ],
+            "indices": [
+              22,
+              23,
+              24,
+              25
+            ],
+            "seat": 3
+          },
+          {
+            "cards": [
+              "tiao5",
+              "wan8",
+              "tiao4",
+              "tong5"
+            ],
+            "indices": [
+              26,
+              27,
+              28,
+              29
+            ],
+            "seat": 2
+          }
+        ],
+        "id": 4,
+        "session": "6e018c3c9fc41ee6",
+        "type": "deal_batch"
+      },
+      {
+        "deals": [
+          {
+            "cards": [
+              "wan1"
+            ],
+            "dealer_extra": true,
+            "indices": [
+              30
+            ],
+            "seat": 1
+          }
+        ],
+        "id": 5,
+        "session": "6e018c3c9fc41ee6",
+        "type": "deal_batch"
+      },
+      {
+        "deals": [
+          {
+            "cards": [
+              "tiao7"
+            ],
+            "dealer_extra": false,
+            "indices": [
+              31
+            ],
+            "seat": 0
+          }
+        ],
+        "id": 6,
+        "session": "6e018c3c9fc41ee6",
+        "type": "deal_batch"
+      },
+      {
+        "deals": [
+          {
+            "cards": [
+              "wan7"
+            ],
+            "dealer_extra": false,
+            "indices": [
+              32
+            ],
+            "seat": 3
+          }
+        ],
+        "id": 7,
+        "session": "6e018c3c9fc41ee6",
+        "type": "deal_batch"
+      },
+      {
+        "deals": [
+          {
+            "cards": [
+              "wan4"
+            ],
+            "dealer_extra": false,
+            "indices": [
+              33
+            ],
+            "seat": 2
+          }
+        ],
+        "id": 8,
+        "session": "6e018c3c9fc41ee6",
+        "type": "deal_batch"
+      }
+    ],
+    "visual_session": "6e018c3c9fc41ee6",
+    "wall": {
+      "0": 20,
+      "1": 28,
+      "2": 8,
+      "3": 0
+    },
+    "wall_centering": {
+      "2": {
+        "indices": [
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          103,
+          104,
+          105,
+          106,
+          107
+        ],
+        "taken": 13
+      },
+      "3": {
+        "indices": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27
+        ],
+        "taken": 32
+      }
+    },
+    "wall_stacks": {
+      "0": [
+        0,
+        0,
+        0,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "1": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "2": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        2,
+        2,
+        2
+      ],
+      "3": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "requests": [],
+  "rng_state": "1560733453378515974",
+  "schema": 1,
+  "started_at": "2026-11-17T22:58:04",
+  "version": "1.6.30",
+  "wall": {
+    "draw_log": [
+      {
+        "index": 90,
+        "tail": false
+      },
+      {
+        "index": 91,
+        "tail": false
+      },
+      {
+        "index": 92,
+        "tail": false
+      },
+      {
+        "index": 93,
+        "tail": false
+      },
+      {
+        "index": 94,
+        "tail": false
+      },
+      {
+        "index": 95,
+        "tail": false
+      },
+      {
+        "index": 96,
+        "tail": false
+      },
+      {
+        "index": 97,
+        "tail": false
+      },
+      {
+        "index": 98,
+        "tail": false
+      },
+      {
+        "index": 99,
+        "tail": false
+      },
+      {
+        "index": 100,
+        "tail": false
+      },
+      {
+        "index": 101,
+        "tail": false
+      },
+      {
+        "index": 102,
+        "tail": false
+      },
+      {
+        "index": 103,
+        "tail": false
+      },
+      {
+        "index": 104,
+        "tail": false
+      },
+      {
+        "index": 105,
+        "tail": false
+      },
+      {
+        "index": 106,
+        "tail": false
+      },
+      {
+        "index": 107,
+        "tail": false
+      },
+      {
+        "index": 0,
+        "tail": false
+      },
+      {
+        "index": 1,
+        "tail": false
+      },
+      {
+        "index": 2,
+        "tail": false
+      },
+      {
+        "index": 3,
+        "tail": false
+      },
+      {
+        "index": 4,
+        "tail": false
+      },
+      {
+        "index": 5,
+        "tail": false
+      },
+      {
+        "index": 6,
+        "tail": false
+      },
+      {
+        "index": 7,
+        "tail": false
+      },
+      {
+        "index": 8,
+        "tail": false
+      },
+      {
+        "index": 9,
+        "tail": false
+      },
+      {
+        "index": 10,
+        "tail": false
+      },
+      {
+        "index": 11,
+        "tail": false
+      },
+      {
+        "index": 12,
+        "tail": false
+      },
+      {
+        "index": 13,
+        "tail": false
+      },
+      {
+        "index": 14,
+        "tail": false
+      },
+      {
+        "index": 15,
+        "tail": false
+      },
+      {
+        "index": 16,
+        "tail": false
+      },
+      {
+        "index": 17,
+        "tail": false
+      },
+      {
+        "index": 18,
+        "tail": false
+      },
+      {
+        "index": 19,
+        "tail": false
+      },
+      {
+        "index": 20,
+        "tail": false
+      },
+      {
+        "index": 21,
+        "tail": false
+      },
+      {
+        "index": 22,
+        "tail": false
+      },
+      {
+        "index": 23,
+        "tail": false
+      },
+      {
+        "index": 24,
+        "tail": false
+      },
+      {
+        "index": 25,
+        "tail": false
+      },
+      {
+        "index": 26,
+        "tail": false
+      },
+      {
+        "index": 27,
+        "tail": false
+      },
+      {
+        "index": 28,
+        "tail": false
+      },
+      {
+        "index": 29,
+        "tail": false
+      },
+      {
+        "index": 30,
+        "tail": false
+      },
+      {
+        "index": 31,
+        "tail": false
+      },
+      {
+        "index": 32,
+        "tail": false
+      },
+      {
+        "index": 33,
+        "tail": false
+      }
+    ],
+    "drawn": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "head": 34,
+    "remaining": 56,
+    "ring": [
+      "tong2",
+      "tong1",
+      "tiao8",
+      "tong3",
+      "wan1",
+      "wan4",
+      "wan7",
+      "tiao3",
+      "wan1",
+      "tong8",
+      "tiao2",
+      "tiao4",
+      "tong3",
+      "tong1",
+      "wan8",
+      "tiao9",
+      "wan2",
+      "tong3",
+      "wan3",
+      "tong5",
+      "tong6",
+      "tong3",
+      "wan4",
+      "tiao2",
+      "tong6",
+      "tong2",
+      "tiao5",
+      "wan8",
+      "tiao4",
+      "tong5",
+      "wan1",
+      "tiao7",
+      "wan7",
+      "wan4",
+      "tong7",
+      "tong7",
+      "tiao9",
+      "wan6",
+      "wan5",
+      "tong1",
+      "tong4",
+      "wan5",
+      "wan5",
+      "tong1",
+      "tiao6",
+      "tiao2",
+      "tong2",
+      "tong6",
+      "wan3",
+      "wan5",
+      "tiao8",
+      "wan2",
+      "tong5",
+      "tiao5",
+      "tiao4",
+      "tiao6",
+      "tong8",
+      "tong9",
+      "wan6",
+      "tong7",
+      "tiao4",
+      "wan9",
+      "tiao9",
+      "tiao1",
+      "wan9",
+      "tiao5",
+      "tiao3",
+      "tiao5",
+      "tiao3",
+      "tiao7",
+      "wan7",
+      "wan4",
+      "tong8",
+      "tong9",
+      "tiao1",
+      "tiao2",
+      "tiao1",
+      "tiao1",
+      "wan9",
+      "tong7",
+      "wan3",
+      "tong4",
+      "wan7",
+      "tiao6",
+      "wan8",
+      "tiao9",
+      "wan3",
+      "tong4",
+      "tong9",
+      "wan2",
+      "wan6",
+      "tiao6",
+      "tiao7",
+      "tiao3",
+      "wan2",
+      "wan8",
+      "wan1",
+      "wan6",
+      "tong5",
+      "tiao8",
+      "tong9",
+      "wan9",
+      "tiao8",
+      "tong4",
+      "tiao7",
+      "tong8",
+      "tong2",
+      "tong6"
+    ],
+    "tail": 106
+  },
+  "provenance": {
+    "source_commit": "0fabffdd68dd3bc04232136b5f4ab58507d27d20",
+    "source_game": "twenty-rounds-rounds-final-1630-r6/rounds/01/game.json",
+    "source_game_sha256": "b5a7b0a923192445ce45fb41c08f1d3fc0019c1a127044e72f819a6924011b86",
+    "record_id": "ac3166e79eddb20c",
+    "decision_count": 39,
+    "preserved": "Complete original replay: exact initial state, wall, RNG, readiness, all decisions, all visual events and requests, timing, terminal state/result and fingerprint.",
+    "observed_screen": [
+      1600,
+      1000
+    ],
+    "observed_sort_control_rect": [
+      1367.32885742188,
+      910.0,
+      109.52294921875,
+      90.0
+    ],
+    "geometry_variants": "Same replay state and score; viewer rotates only. NS decision37 reaches10, EW decision34 reaches8; nonfull decision28/25 reaches8/7. Android safe inset and measured90px footer repeated for screen variants.",
+    "retention": "Complete captured game.json replay, including all visual events, requests, timing and final state/result; provenance is the only added key."
+  }
+}

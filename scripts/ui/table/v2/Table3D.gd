@@ -167,6 +167,21 @@ func _pixel_scale(screen: Vector2, width: float) -> float:
 	return _at_height(screen + Vector2(width * 0.5, 0), 0).distance_to(
 		_at_height(screen - Vector2(width * 0.5, 0), 0))
 
+func _ordinary_position(center: Vector2, seat: int, factor: float, world_unit: float, width_fit: float) -> Vector3:
+	var row_offset := 0.0
+	if G.relative_seat(view.human_seat, seat) in [1, 3]:
+		row_offset = (center.y - G.CENTER.y) * world_unit * 0.95
+		center.y = G.CENTER.y
+	else:
+		var first_y := G.ordinary_slot_center(seat, 0, view.human_seat).y
+		var step_y := G.ordinary_slot_center(seat, 10, view.human_seat).y - first_y
+		# Adjacent rows touch in world space, including the flight's final pose.
+		row_offset = (center.y - first_y) / absf(step_y) * 1.34 * factor
+		center.y = first_y
+	var along_scale := lerpf(0.79, 1.09, center.y / size.y) * lerpf(0.58, 1.0, width_fit)
+	center.x = G.CENTER.x + (center.x - G.CENTER.x) * along_scale
+	return _at_height(center, 0.31 * factor + 0.03) + Vector3(0, 0, row_offset)
+
 func _fit_viewport() -> void:
 	# The Android HUD fills the safe area nonuniformly. The camera texture must
 	# instead share the phone's actual aspect ratio or circles become ovals.
@@ -233,7 +248,7 @@ func sync_tiles() -> void:
 			var signature := hash([key, source.face_up, xf, source.size, source.is_visible_in_tree(),
 				source.modulate, source.self_modulate, source.standing_back_view, kind, source.flight_pitch, source.flight_progress,
 				source.z_index, source.highlight, source.latest_highlight, source.ai_teach_highlight,
-				source.get_meta("flight_origin_offset_3d", Vector3.ZERO), source.get_meta("v2_draw_flight", false),
+				source.get_meta("flight_origin_offset_3d", Vector3.ZERO), source.get_meta("ordinary_flight_3d", {}), source.get_meta("claimed_flight_origin_3d", Transform3D.IDENTITY), source.get_meta("v2_draw_flight", false),
 				source.score_highlight, source.get_parent().get_instance_id(),
 				source.get_meta("charge_chicken", false), source.get_meta("gold_chicken", false),
 				source.get_meta("v2_charge", false), source.get_meta("kong_offset_2d", Vector2.ZERO), source.get_meta("kong_offset_3d", Vector2.ZERO), settlement_started if own_exposed else settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
@@ -255,6 +270,7 @@ func sync_tiles() -> void:
 			node.visible = source.is_visible_in_tree() and source.modulate.a > 0.01
 			if not node.visible: continue
 			var center: Vector2 = xf * (source.size / 2.0)
+			var source_center := center
 			var scale_2d := xf.get_scale().abs()
 			var angle := -xf.get_rotation()
 			var pitch := 0.0 if face_up else PI
@@ -300,7 +316,7 @@ func sync_tiles() -> void:
 			var flight := motion if source.get_parent() == view._deal_layer else -1.0
 			var draw_flight: bool = flight >= 0.0 and bool(source.get_meta("v2_draw_flight", false))
 			var hand_blend := (smoothstep(0.0, 0.75, flight) if draw_flight else 1.0 - smoothstep(0.0, 0.75, flight)) if flight >= 0.0 else 1.0
-			var side_row: bool = side_wall or (side_hand and flight < 0.0) or (kind in ["meld", "red", "ordinary"] and rel in [1, 3] and flight < 0.0)
+			var side_row: bool = side_wall or (side_hand and flight < 0.0) or (kind in ["meld", "red"] and rel in [1, 3] and flight < 0.0)
 			if rel == 0 and kind in ["meld", "red"] and center.y < G.HAND_BOTTOM - G.TILE_BASE.y * G.OWN_UNIT:
 				center.y -= 72.0 if settlement_started else 12.0
 			var near_fit := lerpf(1.0, width_fit, 0.55)
@@ -316,13 +332,6 @@ func sync_tiles() -> void:
 				var row_spacing := side_unit * 0.95 if side_hand else (0.95 if kind in ["ordinary", "red", "meld"] else 1.0)
 				row_offset = along_row * world_unit * row_spacing
 				center.y = G.CENTER.y
-			elif kind == "ordinary":
-				var seat := int(source.get_meta("v2_seat"))
-				var first_y := G.ordinary_slot_center(seat, 0, view.human_seat).y
-				var step_y := G.ordinary_slot_center(seat, 10, view.human_seat).y - first_y
-				# Adjacent rows touch in world space, so the nearer row hides the far tile's base.
-				row_offset = (center.y - first_y) / absf(step_y) * 1.34 * world_unit * source.size.x * scale_2d.x
-				center.y = first_y
 			var converge := lerpf(0.79, 1.09, center.y / size.y)
 			var along_scale := converge * lerpf(0.58, 1.0, width_fit)
 			var row_x := center.x
@@ -340,6 +349,7 @@ func sync_tiles() -> void:
 			var height := (1.34 * absf(sin(pitch)) + 0.62 * absf(cos(pitch))) * factor / 2.0 + 0.03
 			var position_3d := _at_height(center, height)
 			position_3d.z += row_offset
+			if kind == "ordinary": position_3d = _ordinary_position(source_center, int(source.get_meta("v2_seat")), factor, world_unit, width_fit)
 			position_3d += Vector3(kong_offset.x, 0, kong_offset.y) * factor
 			if flight >= 0.0:
 				position_3d.y += factor * (1.0 - pow(absf(flight * 2.0 - 1.0), 2.0)) * (1.75 if side_hand else 0.9)
@@ -350,6 +360,15 @@ func sync_tiles() -> void:
 				if source == view._settlement_flip_view: position_3d.y += sin(pitch) * factor * 0.35
 			var basis := Basis(Vector3.UP, angle) * Basis(Vector3.RIGHT, pitch)
 			node.transform = Transform3D(basis.scaled(Vector3.ONE * factor), position_3d)
+			var ordinary_flight: Dictionary = source.get_meta("ordinary_flight_3d", {})
+			if flight >= 0.0 and not ordinary_flight.is_empty():
+				var target_center: Vector2 = source_center if flight >= 1.0 else ordinary_flight.target
+				var target_factor: float = world_unit * ordinary_flight.width
+				var target_position := _ordinary_position(target_center, int(source.get_meta("v2_seat")), target_factor, world_unit, width_fit)
+				var target_basis := Basis(Vector3.UP, -float(ordinary_flight.angle)).scaled(Vector3.ONE * target_factor)
+				var travel: float = Tween.interpolate_value(0.0, 1.0, clampf(flight, 0.0, 1.0), 1.0, Tween.TRANS_CUBIC, Tween.EASE_IN_OUT)
+				node.transform = Transform3D(ordinary_flight.origin).interpolate_with(Transform3D(target_basis, target_position), travel)
+				node.position.y += node.basis.get_scale().x * (1.0 - pow(absf(flight * 2.0 - 1.0), 2.0)) * 0.9
 			if own_hand and (flight < 0.0 or draw_flight):
 				# Bottom controls can cover the base while leaving every printed face clear.
 				var extra_footer := maxf(0.0, touch_height - (104.0 if settled else 62.4))
@@ -362,7 +381,7 @@ func sync_tiles() -> void:
 				if normal_step > factor * 0.98:
 					var anchor := _at_height(Vector2(row_anchor, center.y), height).x
 					node.position.x = lerpf(node.position.x, lerpf(anchor, node.position.x, factor * 0.98 / normal_step), hand_blend)
-			if flight >= 0.0:
+			if flight >= 0.0 and ordinary_flight.is_empty():
 				node.position += Vector3(source.get_meta("flight_origin_offset_3d", Vector3.ZERO)) * (1.0 - smoothstep(0.0, 1.0, flight))
 			if side_hand or (source.get_parent() == view._deal_layer and flight < 0.0):
 				# Include flights before their destination hand metadata is assigned.
@@ -381,6 +400,9 @@ func sync_tiles() -> void:
 					node.position.y += factor * (1.0 - pow(absf(flight * 2.0 - 1.0), 2.0)) * 0.9
 				elif source.get_parent() != view._deal_layer:
 					node.transform = Transform3D(_own_exposed_previous.get(id, _own_exposed_targets[id])).interpolate_with(_own_exposed_targets[id], own_travel)
+			if flight >= 0.0 and source.has_meta("claimed_flight_origin_3d"):
+				var travel := 1.0 - pow(1.0 - clampf(flight, 0.0, 1.0), 3.0)
+				node.transform = Transform3D(source.get_meta("claimed_flight_origin_3d")).interpolate_with(node.transform, travel)
 			_rects[id] = _project_mesh(node)
 	for source in [view._dice_red, view._dice_white]:
 		if not is_instance_valid(source): continue

@@ -237,11 +237,18 @@ func _river_centering():
 				continue
 			var flight: Dictionary = deck._discard_flights.values()[0]
 			var expected := G.ordinary_slot_center(seat,count,1,count+1)
-			if count%columns>0:
+			var fills_row: bool = (count + 1) % columns == 0
+			if count%columns>0 and not fills_row:
 				expected = old_position+previous.size/2+axis*(G.TILE_BASE.x*G.ORDINARY_UNIT+G.TILE_GAP)
-			t.expect(flight.target.is_equal_approx(expected),"new discard first lands on owner's right, or at new row centre")
+			t.expect(flight.target.is_equal_approx(expected),"full row lands inside its final boundary; shorter rows first extend on the owner's right")
 			await create_timer(0.10).timeout
-			t.expect(previous.position.is_equal_approx(old_position) and done.count==0,"existing row stays still during discard flight")
+			t.expect(done.count==0,"discard completion waits for the full motion")
+			if fills_row:
+				var final_previous: Vector2 = G.ordinary_slot_center(seat,count-1,1,count+1) - previous.size / 2.0
+				t.expect(previous.position.distance_to(final_previous) < old_position.distance_to(final_previous),"full row starts making room before contact")
+				t.expect(previous.position.distance_to(old_position) <= old_position.distance_to(final_previous),"row adjustment stays within the old and final positions")
+			else:
+				t.expect(previous.position.is_equal_approx(old_position),"shorter row stays still during discard flight")
 			if seat==1 and count==1 and DisplayServer.get_name()!="headless":await _capture_motion("river-right-flight")
 			await create_timer(0.36).timeout
 			await _await_completion(func(): return done.count == 1)
