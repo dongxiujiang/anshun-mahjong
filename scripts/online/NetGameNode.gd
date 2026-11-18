@@ -73,6 +73,9 @@ var _join_token := ""
 var _resume_token := ""
 var _server_ip := ""
 var _server_port := 7500
+var _resolver = IP
+var _resolve_id := IP.RESOLVER_INVALID_ID
+static var _retired_lookups: Array[Dictionary] = []
 var _reconnect_attempt := 0
 var _reconnect_wait := -1.0
 var _reconnecting := false
@@ -149,6 +152,7 @@ func host(host_auto: bool, ai_fill: bool, port: int = 0, number: String = "0000"
 	var peer := ENetMultiplayerPeer.new()
 	_port = port if port > 0 else 7500
 	if peer.create_server(_port, 8) != OK: return false
+	_cancel_lookup()
 	# 玩家只与服务器通信，禁止引擎向其他客户端转发连接/断线通知。
 	# 同时断线时，转发可能向已关闭的 ENet 通道发包。
 	var scene_multiplayer := multiplayer as SceneMultiplayer
@@ -260,6 +264,11 @@ func _ready() -> void:
 	voice_chat.status_changed.connect(_on_microphone_status)
 
 func _process(delta: float) -> void:
+	for i in range(_retired_lookups.size() - 1, -1, -1):
+		var lookup := _retired_lookups[i]
+		if lookup.resolver.get_resolve_item_status(lookup.id) != IP.RESOLVER_STATUS_WAITING:
+			lookup.resolver.erase_resolve_item(lookup.id)
+			_retired_lookups.remove_at(i)
 	if voice_chat != null:
 		voice_chat.poll_permission()
 	if game != null:
@@ -270,6 +279,9 @@ func _process(delta: float) -> void:
 		_publish_lobby()
 		lobby_notice.emit("测试牌型投票超时，已取消")
 	if not host_mode:
+		if _resolve_id != IP.RESOLVER_INVALID_ID:
+			_poll_lookup()
+			return
 		if _reconnecting:
 			_reconnect_wait -= delta
 			if _reconnect_wait <= 0.0: _reconnect_step()
@@ -677,6 +689,7 @@ func _local_peer() -> int:
 	return 1 if host_mode else multiplayer.get_unique_id()
 
 func _exit_tree() -> void:
+	_cancel_lookup()
 	if voice_chat != null:
 		voice_chat.shutdown()
 		voice_chat = null
@@ -1497,6 +1510,7 @@ func _apply_member_names() -> void:
 	game._recorder.update_players(game)
 
 func client(ip: String, port: int = 0, number: String = "", player_name: String = "", owner_token: String = "", resume_token: String = "", resume_only: bool = false) -> bool:
+	_cancel_lookup()
 	_room_settings_reported.clear()
 	_settings_owner = -1
 	_server_ip = ip
@@ -1521,8 +1535,35 @@ func client(ip: String, port: int = 0, number: String = "", player_name: String 
 	return _open_client_peer()
 
 func _open_client_peer() -> bool:
+	if _server_ip.is_valid_ip_address(): return _connect_client_address(_server_ip)
+	_resolve_id = _resolver.resolve_hostname_queue_item(_server_ip)
+	return _resolve_id != IP.RESOLVER_INVALID_ID
+
+func _cancel_lookup() -> void:
+	if _resolve_id == IP.RESOLVER_INVALID_ID: return
+	# A running engine lookup can still write to its slot. Release it only after completion.
+	if _resolver.get_resolve_item_status(_resolve_id) == IP.RESOLVER_STATUS_WAITING:
+		_retired_lookups.append({"resolver": _resolver, "id": _resolve_id})
+	else:
+		_resolver.erase_resolve_item(_resolve_id)
+	_resolve_id = IP.RESOLVER_INVALID_ID
+
+func _poll_lookup() -> void:
+	if _server_ip.is_empty():
+		_cancel_lookup()
+		return
+	var status: int = _resolver.get_resolve_item_status(_resolve_id)
+	if status == IP.RESOLVER_STATUS_WAITING: return
+	var address: String = _resolver.get_resolve_item_address(_resolve_id) if status == IP.RESOLVER_STATUS_DONE else ""
+	_resolver.erase_resolve_item(_resolve_id)
+	_resolve_id = IP.RESOLVER_INVALID_ID
+	if _reconnecting: _reconnect_wait = 5.0
+	if address.is_empty() or not _connect_client_address(address):
+		if not _reconnecting: _on_client_failed()
+
+func _connect_client_address(address: String) -> bool:
 	var peer := ENetMultiplayerPeer.new()
-	if peer.create_client(_server_ip, _server_port) != OK: return false
+	if peer.create_client(address, _server_port) != OK: return false
 	multiplayer.multiplayer_peer = peer
 	if not multiplayer.connected_to_server.is_connected(_on_client_connected): multiplayer.connected_to_server.connect(_on_client_connected)
 	if not multiplayer.connection_failed.is_connected(_on_client_failed): multiplayer.connection_failed.connect(_on_client_failed)

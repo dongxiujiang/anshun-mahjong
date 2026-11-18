@@ -13,6 +13,87 @@ class WinningSubstitute extends Substitute:
 	func decide_response(_round, _seat, _source, _tile, _options) -> Dictionary:
 		return {"action": "win"}
 
+class HeldResolver extends RefCounted:
+	var requests: Array[String] = []
+	var status := {}
+	var erased_waiting := false
+
+	func resolve_hostname_queue_item(host: String) -> int:
+		requests.append(host)
+		var id := 0
+		while status.has(id): id += 1
+		status[id] = IP.RESOLVER_STATUS_WAITING
+		return id
+
+	func get_resolve_item_status(id: int) -> int: return status[id]
+	func get_resolve_item_address(_id: int) -> String: return "127.0.0.1"
+	func erase_resolve_item(id: int) -> void:
+		if status[id] == IP.RESOLVER_STATUS_WAITING: erased_waiting = true
+		status.erase(id)
+
+func _test_hostname_connection() -> void:
+	var net := NetGameNode.new()
+	root.add_child(net)
+	var resolver := HeldResolver.new()
+	net.set("_resolver", resolver)
+	var errors: Array = []
+	net.connection_error.connect(func(message): errors.append(message))
+	root.multiplayer.multiplayer_peer = null
+	var accepted := net.client("localhost", 7593)
+	if not t.expect(accepted and root.multiplayer.multiplayer_peer == null and resolver.requests == ["localhost"],
+			"A hostname join returns before ENet is installed while DNS is pending"):
+		root.multiplayer.multiplayer_peer = null
+		net.free()
+		return
+	net.client("second.invalid", 7593)
+	t.expect(resolver.status.size() == 2, "A replacement cannot reuse a lookup still running for a different host")
+	resolver.status[0] = IP.RESOLVER_STATUS_DONE
+	await process_frame
+	await process_frame
+	t.expect(not resolver.status.has(0) and root.multiplayer.multiplayer_peer == null, "Late result is released without opening the old room")
+	resolver.status[1] = IP.RESOLVER_STATUS_ERROR
+	await process_frame
+	await process_frame
+	t.expect(errors.size() == 1 and resolver.status.is_empty(), "Initial DNS failure reaches the existing connection error signal once")
+
+	net.client("resume.invalid", 7593, "1234", "guest", "", "test-seat", true)
+	await process_frame
+	await process_frame
+	var count := resolver.requests.size()
+	var start := Time.get_ticks_msec()
+	var frames := 0
+	while Time.get_ticks_msec() - start < 5150:
+		await process_frame
+		frames += 1
+	t.expect(frames > 2 and resolver.requests.size() == count and net._reconnect_attempt == 1,
+		"A lookup lasting longer than a retry window keeps frames moving and consumes one attempt")
+	resolver.status[0] = IP.RESOLVER_STATUS_ERROR
+	await process_frame
+	await process_frame
+	t.expect(errors.size() == 1 and net._reconnecting, "A failed reconnect lookup leaves the existing retry flow in charge")
+	net._process(5.1)
+	t.expect(net._reconnect_attempt == 2 and resolver.status.size() == 1, "Reconnect starts its next lookup after the existing delay")
+	net.free()
+	t.expect(resolver.status.size() == 1 and not resolver.erased_waiting, "Removing the room node invalidates its still-running lookup")
+	resolver.status[0] = IP.RESOLVER_STATUS_DONE
+	await process_frame
+	await process_frame
+	t.expect(resolver.status.is_empty() and root.multiplayer.multiplayer_peer == null, "A surviving room node releases the retired slot without installing a peer")
+
+	net = NetGameNode.new()
+	root.add_child(net)
+	net.set("_resolver", resolver)
+	net.client("leaving.invalid", 7593)
+	net._server_ip = ""
+	resolver.status[0] = IP.RESOLVER_STATUS_DONE
+	net._process(0.01)
+	t.expect(root.multiplayer.multiplayer_peer == null, "A cleared room address cannot install a late peer")
+	count = resolver.requests.size()
+	t.expect(net.client("127.0.0.1", 7593) and root.multiplayer.multiplayer_peer is ENetMultiplayerPeer and resolver.requests.size() == count,
+		"A numeric IP opens ENet directly without a DNS request")
+	root.multiplayer.multiplayer_peer = null
+	net.free()
+
 func _initialize() -> void: call_deferred("_run")
 
 func _fixture() -> RoundState:
@@ -27,6 +108,7 @@ func _fixture() -> RoundState:
 	return r
 
 func _run() -> void:
+	await _test_hostname_connection()
 	var turn := _fixture()
 	turn.players[0].concealed = ["wan1", "wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tong1", "tong2", "tong3", "tiao4", "tiao5", "tiao6", "tong9"]
 	turn.players[0].just_drew = "tong9"

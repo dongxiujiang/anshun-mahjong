@@ -126,7 +126,7 @@ func _client_test() -> void:
 		elif message == "discard-now":
 			t.expect(not net._resume_sync_pending and net.game.awaiting, "Client waits for a fresh snapshot before allowing input")
 			net.submit_client_turn({"discard": net.game.players[net.my_seat].just_drew}))
-	t.expect(net.client("127.0.0.1", 7593, "1234", "重连测试"), "Client connects")
+	t.expect(net.client("localhost", 7593, "1234", "重连测试"), "Client connects through a resolved hostname")
 	if not await _wait_until(func(): return finished, "Host completes restoration assertions"): return
 	t.expect(joins == 4, "Recovered in lobby, game and queued substitute turn")
 	quit(t.finish("reconnect_network_client"))
