@@ -200,6 +200,42 @@ func _ordinary_position(center: Vector2, seat: int, factor: float, world_unit: f
 	center.x = G.CENTER.x + (center.x - G.CENTER.x) * along_scale
 	return _at_height(center, 0.31 * factor + 0.03) + Vector3(0, 0, row_offset)
 
+func can_keep_north_exposed(specs: Array, obstacles: Dictionary[Rect2, Dictionary]) -> bool:
+	var width_fit := minf(1.0, G.DESIGN_SIZE.aspect() / Vector2(viewport.size).aspect())
+	var world_unit := _pixel_scale(G.CENTER, 1.0) * width_fit
+	var wall_factor := world_unit * G.TILE_BASE.x * G.WALL_UNIT
+	var river_factor := world_unit * G.TILE_BASE.x * G.ORDINARY_UNIT
+	var tile_bounds: AABB = _meshes["wan1"].get_aabb()
+	for spec in specs:
+		var prefix := "red-meld" if Tiles.is_chicken(spec.tile) else "meld"
+		var key := "%s:%d:%d:%d" % [prefix, spec.seat, spec.meld_index, spec.meld_slot] if spec.meld_index >= 0 \
+			else "red-discard:%d:%d" % [spec.seat, spec.discard_id]
+		var source: TileView = view._render_tiles.get(key)
+		if not is_instance_valid(source): return false
+		var id := source.get_instance_id()
+		var tile: MeshInstance3D = tile_nodes.get(id)
+		if not is_instance_valid(tile) or not tile.visible: return false
+		var face := _exposed_printed_bounds([id]) if source.face_up else _project_mesh(tile)
+		var volume := (tile.transform * tile.mesh.get_aabb()).grow(-0.001)
+		var footprint: Rect2 = spec.rect.grow(-0.05)
+		for area in obstacles:
+			if not footprint.intersects(area): continue
+			var block: Dictionary = obstacles[area]
+			var pose: Transform3D
+			if block.has("wall_index"):
+				# Use the stack's real pose one layer below the reveal landing.
+				pose = _wall_flip_landing(block.wall_index, wall_factor, world_unit, width_fit)
+				pose.origin.y -= 0.62 * wall_factor
+				pose.basis *= Basis(Vector3.RIGHT, PI)
+			else:
+				var center := G.ordinary_slot_center(block.seat, block.slot, view.human_seat, block.count)
+				var rel := G.relative_seat(view.human_seat, block.seat)
+				var basis := Basis(Vector3.UP, PI / 2.0 if rel == 1 else -PI / 2.0)
+				pose = Transform3D(basis.scaled(Vector3.ONE * river_factor),
+					_ordinary_position(center, block.seat, river_factor, world_unit, width_fit))
+			if volume.intersects(pose * tile_bounds) or face.intersects(_project_bounds(tile_bounds, pose)): return false
+	return true
+
 func _fit_viewport() -> void:
 	# The Android HUD fills the safe area nonuniformly. The camera texture must
 	# instead share the phone's actual aspect ratio or circles become ovals.
@@ -322,6 +358,11 @@ func sync_tiles() -> void:
 			# Uniform world scales preserve the source model's 1 : 1.34 : 0.62 shape.
 			# A single physical baseline gives near and far rows their natural parallax.
 			var rel := G.relative_seat(view.human_seat, int(source.get_meta("v2_seat", view.human_seat)))
+			var charge_outward := Vector2.ZERO
+			if kind == "red" and bool(source.get_meta("v2_charge", false)):
+				charge_outward = [Vector2.DOWN, Vector2.RIGHT, Vector2.UP, Vector2.LEFT][rel]
+				# Project through the same upright row center, then align the actual model edge.
+				center -= charge_outward * (source.size.y * scale_2d.y - source.size.x * scale_2d.x) / 2.0
 			var kong_offset := Vector2.ZERO
 			if kind in ["meld", "red"] and int(source.get_meta("meld_index", -1)) >= 0:
 				# Pack a kong in model units; sprite spacing changes with the camera and aspect.
@@ -378,6 +419,7 @@ func sync_tiles() -> void:
 			position_3d.z += row_offset
 			if kind == "ordinary": position_3d = _ordinary_position(source_center, int(source.get_meta("v2_seat")), factor, world_unit, width_fit)
 			position_3d += Vector3(kong_offset.x, 0, kong_offset.y) * factor
+			position_3d += Vector3(charge_outward.x, 0, charge_outward.y) * (0.17 * factor)
 			if flight >= 0.0:
 				position_3d.y += factor * (1.0 - pow(absf(flight * 2.0 - 1.0), 2.0)) * (1.75 if side_hand else 0.9)
 			elif motion >= 0.0:
@@ -497,6 +539,7 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 	var wall_and_hand_tiles: Array[Rect2] = []
 	var obstacles: Array[Rect2] = []
 	var left_hand := Rect2()
+	var has_charge := false
 	for id in tile_nodes:
 		var source = _sources[id].get_ref()
 		var node: MeshInstance3D = tile_nodes[id]
@@ -520,6 +563,7 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 			wall_and_hand_tiles.append(bounds)
 			hand = hand.merge(bounds) if hand.has_area() else bounds
 		if seat == view.human_seat and kind in ["meld", "red"]:
+			has_charge = has_charge or bool(source.get_meta("v2_charge", false))
 			var meld_index := int(source.get_meta("meld_index", -1))
 			var melds: Array = view.round.players[view.human_seat].melds
 			var shape = melds[meld_index].duplicate(true) if meld_index >= 0 and meld_index < melds.size() else null
@@ -611,6 +655,7 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 		for group in order:
 			var subset := {}
 			var packed := {}
+			var hand_edge := _own_exposed_hand_edge(groups[group]) if has_charge else INF
 			var blocked: Array[Rect2] = obstacles + wall_and_hand_tiles
 			for other in order:
 				for id in groups[other]:
@@ -618,7 +663,8 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 						subset[pieces.find_key(id)] = id
 						packed[id] = tile_nodes[id].transform
 					else: blocked.append(_project_mesh(tile_nodes[id]))
-			if not _restore_own_placement(subset, bottom, blocked):
+			if not _restore_own_placement(subset, bottom, blocked) \
+					or (has_charge and not is_equal_approx(_own_exposed_hand_edge(groups[group]), hand_edge)):
 				for id in packed: tile_nodes[id].transform = packed[id]
 	_own_placed_context = context
 	_own_placed_poses.clear()
@@ -648,23 +694,38 @@ func _pack_own_exposed(groups: Dictionary, order: Array, area: Rect2, obstacles:
 	if area.size.x <= 0.0 or area.size.y <= 0.0: return false
 	var cursor := Vector2(area.end.x, area.end.y if bottom_up else area.position.y)
 	var row_height := 0.0
+	var hand_edge := INF
 	for key in order:
-		var bounds := _position_own_exposed_row(groups[key], cursor, obstacles, bottom_up)
+		var ids: Array = groups[key]
+		var source: TileView = _sources[ids[0]].get_ref()
+		var charge := bool(source.get_meta("v2_charge", false))
+		var bounds := _position_own_exposed_row(ids, cursor, obstacles, bottom_up, hand_edge if charge else INF)
 		if bounds.position.x == -INF and row_height == 0.0 and not bottom_up:
 			cursor.y = maxf(cursor.y, _own_exposed_left_hand.end.y + 6.0)
-			bounds = _position_own_exposed_row(groups[key], cursor, obstacles, bottom_up)
+			bounds = _position_own_exposed_row(ids, cursor, obstacles, bottom_up)
 		if bounds.position.x < area.position.x and row_height > 0.0:
 			cursor.y += (row_height + 6.0) * (-1.0 if bottom_up else 1.0)
 			cursor.x = area.end.x
 			row_height = 0.0
-			bounds = _position_own_exposed_row(groups[key], cursor, obstacles, bottom_up)
+			hand_edge = INF
+			bounds = _position_own_exposed_row(ids, cursor, obstacles, bottom_up)
 		if bounds.position.x < area.position.x - 0.2 or bounds.position.y < area.position.y - 0.2 or bounds.end.y > area.end.y + 0.2:
 			return false
 		cursor.x = bounds.position.x - 6.0
 		row_height = maxf(row_height, bounds.size.y)
+		hand_edge = _own_exposed_hand_edge(ids)
 	return true
 
-func _position_own_exposed_row(ids: Array, cursor: Vector2, obstacles: Array[Rect2], bottom_up: bool) -> Rect2:
+func _own_exposed_hand_edge(ids: Array) -> float:
+	var edge := -INF
+	for id in ids:
+		var node: MeshInstance3D = tile_nodes[id]
+		edge = maxf(edge, (node.transform * node.mesh.get_aabb()).end.z)
+	return edge
+
+func _position_own_exposed_row(ids: Array, cursor: Vector2, obstacles: Array[Rect2], bottom_up: bool, hand_edge: float = INF) -> Rect2:
+	if is_finite(hand_edge):
+		return _position_exposed_group_clear(ids, cursor, obstacles, hand_edge)
 	var top := cursor
 	if bottom_up: top.y -= _exposed_printed_bounds(ids).size.y
 	var bounds := _position_exposed_group_clear(ids, top, obstacles)
@@ -673,26 +734,31 @@ func _position_own_exposed_row(ids: Array, cursor: Vector2, obstacles: Array[Rec
 		bounds = _position_exposed_group_clear(ids, top, obstacles)
 	return bounds
 
-func _position_exposed_group_clear(ids: Array, right_top: Vector2, obstacles: Array[Rect2]) -> Rect2:
-	var bounds := _position_exposed_group(ids, right_top)
+func _position_exposed_group_clear(ids: Array, right_top: Vector2, obstacles: Array[Rect2], hand_edge: float = INF) -> Rect2:
+	var bounds := _position_exposed_group(ids, right_top, hand_edge)
 	if bounds.intersects(_own_exposed_left_hand):
 		bounds.position.x = -INF
 		return bounds
 	for obstacle in obstacles:
 		if not bounds.intersects(obstacle): continue
 		right_top.x = obstacle.position.x - 6.0
-		bounds = _position_exposed_group(ids, right_top)
+		bounds = _position_exposed_group(ids, right_top, hand_edge)
 		if bounds.intersects(_own_exposed_left_hand):
 			bounds.position.x = -INF
 			return bounds
 	return bounds
 
-func _position_exposed_group(ids: Array, right_top: Vector2) -> Rect2:
+func _position_exposed_group(ids: Array, right_top: Vector2, hand_edge: float) -> Rect2:
+	var align_hand_edge := is_finite(hand_edge)
+	if align_hand_edge:
+		var shift_z := hand_edge - _own_exposed_hand_edge(ids)
+		for id in ids: tile_nodes[id].position.z += shift_z
 	var bounds := _exposed_printed_bounds(ids)
 	for _step in 4:
 		var anchor: MeshInstance3D = tile_nodes[ids[0]]
 		var screen := camera.unproject_position(anchor.position) / Vector2(viewport.size) * size
 		var shift := right_top - Vector2(bounds.end.x, bounds.position.y)
+		if align_hand_edge: shift.y = 0.0
 		var delta := _at_height(screen + shift, anchor.position.y) - _at_height(screen, anchor.position.y)
 		for id in ids: tile_nodes[id].position += delta
 		bounds = _exposed_printed_bounds(ids)
@@ -739,10 +805,12 @@ func _update_discard_marker(source: TileView) -> void:
 		_changed = true
 
 func _project_mesh(node: MeshInstance3D) -> Rect2:
-	var box := node.mesh.get_aabb()
+	return _project_bounds(node.mesh.get_aabb(), node.transform)
+
+func _project_bounds(box: AABB, pose: Transform3D) -> Rect2:
 	var result := Rect2()
 	for i in 8:
-		var point := camera.unproject_position(node.transform * box.get_endpoint(i)) / Vector2(viewport.size) * size
+		var point := camera.unproject_position(pose * box.get_endpoint(i)) / Vector2(viewport.size) * size
 		result = Rect2(point, Vector2.ZERO) if i == 0 else result.expand(point)
 	return result
 

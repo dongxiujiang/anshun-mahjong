@@ -21,6 +21,7 @@ func _run() -> void:
 	await _recorded_north_chicken()
 	await _recorded_added_groups()
 	for number in [5, 9]: await _recorded_side_river_opening(number)
+	await _recorded_north_pung_at_wall()
 	for passage in [[1, 2, [27,28,29]], [1, 2, [30,31,32]], [2, 2, [29,30,31]], [2, 2, [33,34,35]], [2, 3, [39,40]]]:
 		await _recorded_opponent_melds(passage[0], passage[1], passage[2])
 	for screen in [Vector2i(1920, 1080), Vector2i(1920, 864)]:
@@ -57,24 +58,69 @@ func _recorded_side_river_opening(number: int) -> void:
 	t.expect(before.size() == 3 and after == before,
 		"R20 round %d north pung stays put as a side river row opens" % number)
 	if number == 9:
-		# At 14 occupied river slots a real tile reaches the original pung clearance.
+		# The reserve touches at 14 tiles, but the rendered river still clears the pung.
 		var right = host.round.players[0]
 		for i in 5:
 			right.discards.append("wan3")
 			right.discard_ids.append(700 + i)
 			right.discard_count += 1
 		view.refresh()
-		var relocated := _north_pung_rects(view)
-		t.expect(view._ordinary_count(0) == 14 and relocated.size() == 3 and relocated != before,
-			"the north pung yields when an occupied side river slot reaches it")
+		t.expect(view._ordinary_count(0) == 14 and _north_pung_rects(view) == before,
+			"the north pung keeps its space when only the side river padding touches it")
+		var spec: Dictionary = view._exposed_specs.filter(func(piece):
+			return piece.seat == 3 and piece.meld_index == 0 and piece.meld_slot == 0)[0]
+		var source: TileView = view._red_layer.get_children().filter(func(tile):
+			return view._render_key(tile) == "red-meld:3:0:0")[0]
+		var river: TileView = view._discard_layer.get_children().filter(func(tile):
+			return tile.get_meta("v2_seat") == 0)[0]
+		var renderer = view._table_3d
+		var mesh: MeshInstance3D = renderer.tile_nodes[source.get_instance_id()]
+		view._render_tiles["red-meld:3:0:0"] = source
+		var obstacle: Dictionary[Rect2, Dictionary] = {spec.rect: {"seat": 0, "slot": 0, "count": 14}}
+		t.expect(renderer.can_keep_north_exposed([spec], obstacle),
+			"the actual side river does not block the original north tile")
+		var saved := mesh.transform
+		mesh.transform = renderer.tile_nodes[river.get_instance_id()].transform
+		t.expect(not renderer.can_keep_north_exposed([spec], obstacle),
+			"an actual mesh at the side river tile cannot keep its pose")
+		mesh.transform = saved
+		view._render_tiles.clear()
 	host.free()
 
-func _north_pung_rects(view) -> Dictionary:
+func _recorded_north_pung_at_wall() -> void:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/north-pung-r22-round16.json"))
+	var actions: Array = data.actions
+	data.actions = []
+	data.initial.visual_session = "recorded-north-pung"
+	var replayed := REPLAY.replay(data)
+	if not t.expect(replayed.ok, "R22 round 16 initial state is valid"): return
+	var view = _recorded_table()
+	var host: Host = view.table
+	host.round = replayed.round
+	view.set_round(host.round, 1)
+	view._sort_started = true
+	view.refresh()
+	await process_frame
+	for index in actions.size():
+		var check_placement := index in [37, 46]
+		var before := _north_pung_rects(view, "wan2") if check_placement else {}
+		var action: Dictionary = actions[index]
+		var accepted := host.round.submit_turn(action.seat, action.decision) if action.kind == "turn" \
+			else host.round.submit_response(action.seat, action.tile, action.decision)
+		if not t.expect(accepted, "R22 round 16 action %d is legal" % (index + 1)): break
+		view.refresh()
+		if not check_placement: continue
+		var after := _north_pung_rects(view, "wan2")
+		t.expect(before.size() == 3 and after == before,
+			"R22 round 16 north pung stays put after side discard %d" % (index + 1))
+	host.free()
+
+func _north_pung_rects(view, card: String = "tiao1") -> Dictionary:
 	var renderer = view._table_3d
 	renderer.sync_tiles()
 	var rects := {}
-	for tile in view._red_layer.get_children():
-		if tile.tile != "tiao1" or tile.get_meta("v2_seat", -1) != 3 or tile.get_meta("meld_index", -1) != 0: continue
+	for tile in view._red_layer.get_children() + view._meld_layer.get_children():
+		if tile.tile != card or tile.get_meta("v2_seat", -1) != 3 or tile.get_meta("meld_index", -1) != 0: continue
 		rects[tile.get_meta("meld_slot")] = renderer.project_tile(tile)
 		_check_recorded_face(renderer, tile, view._dealer_meld_badges[3])
 	return rects

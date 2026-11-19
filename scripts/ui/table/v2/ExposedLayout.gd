@@ -90,6 +90,7 @@ static func solve(view, context: Array = []) -> Array:
 	var obstacles:=[]
 	var own_chicken_obstacles:=[]
 	var reserved_side_rivers := []
+	var projected_obstacles: Dictionary[Rect2, Dictionary] = {}
 	for seat in 4:
 		var rel: int=G.relative_seat(view.human_seat,seat)
 		var player=view.round.players[seat]
@@ -180,7 +181,10 @@ static func solve(view, context: Array = []) -> Array:
 				reserved_side_rivers.append(river)
 				if i >= used: continue
 				river.position += G.ordinary_slot_center(seat,i,view.human_seat,used) - river_shift - center
-			obstacles.append(river)
+			if view._table_3d != null and rel in [1, 3]:
+				projected_obstacles[river] = {"seat": seat, "slot": i, "count": used}
+			else:
+				obstacles.append(river)
 	if groups.is_empty(): return []
 	var walls := []
 	for node in view._wall_layer.get_children():
@@ -190,10 +194,14 @@ static func solve(view, context: Array = []) -> Array:
 			var wall_rect := rect_for(position+dimensions/2,dimensions*node.scale,node.rotation)
 			if view._table_3d != null and absf(sin(node.rotation)) > 0.5:
 				wall_rect = wall_rect.grow_individual(0,G.TILE_BASE.x*G.WALL_UNIT,0,0)
-			walls.append(wall_rect)
+			if view._table_3d != null and is_zero_approx(node.rotation):
+				projected_obstacles[wall_rect] = {"wall_index": int(node.get_meta("wall_ring_index", -1))}
+			else:
+				walls.append(wall_rect)
 	obstacles.append_array(compact_obstacles(walls))
 	obstacles.append(view.reserved_action_rect())
-	obstacles = compact_obstacles(obstacles)
+	var fixed_obstacles := obstacles
+	obstacles = compact_obstacles(fixed_obstacles + projected_obstacles.keys())
 	var prior_groups := {}
 	if not context.is_empty():
 		var key := [context, groups, view.round.dealer_seat, view.round.players.map(func(player): return player.ready)]
@@ -219,6 +227,7 @@ static func solve(view, context: Array = []) -> Array:
 		var result:=[]
 		var failed:=false
 		if pass_index < 0:
+			var retained_obstacles := fixed_obstacles.duplicate()
 			for g in order.duplicate():
 				var prior: Array = prior_groups.get(Vector3i(g.seat, g.meld_index, g.discard_id), [])
 				if prior.size() != g.count: continue
@@ -233,9 +242,16 @@ static func solve(view, context: Array = []) -> Array:
 						piece[field] = saved[field]
 					stable.append(piece)
 				var blocked: Array = occupied + own_chicken_obstacles if g.rel == 0 and g.count == 1 else occupied
-				if not clear(stable, blocked): continue
+				if not clear(stable, blocked):
+					# Side river padding and the old stacked-sprite offsets can reach the north belt.
+					# When only those bounds touch, check the existing tiles against the actual 3D poses.
+					if g.rel != 2 or not clear(stable, retained_obstacles) \
+							or not view._table_3d.can_keep_north_exposed(stable, projected_obstacles):
+						continue
 				result.append_array(stable)
-				for piece in stable: occupied.append(piece.rect)
+				for piece in stable:
+					occupied.append(piece.rect)
+					retained_obstacles.append(piece.rect)
 				order.erase(g)
 		occupied.append_array(reserved_side_rivers)
 		for g in order:
@@ -246,9 +262,34 @@ static func solve(view, context: Array = []) -> Array:
 			if specs.is_empty():failed=true;break
 			result.append_array(specs)
 			for spec in specs:occupied.append(spec.rect)
-		if not failed:return result
+		if not failed:
+			if view._table_3d != null:
+				_align_charge_rows(result, obstacles + reserved_side_rivers, own_chicken_obstacles)
+			return result
 	push_error("碰杠区无法完整放置，禁止静默丢牌")
 	return []
+
+static func _align_charge_rows(specs: Array, obstacles: Array, own_chicken_obstacles: Array) -> void:
+	for charge in specs:
+		if not charge.charge: continue
+		var size := size_for(charge.rel)
+		var inward: Vector2 = INWARD[charge.rel]
+		var depth: float = charge.center.dot(inward) - size.x / 2.0
+		var gap := size.x / 2.0
+		var shift := Vector2.ZERO
+		for mate in specs:
+			if mate.seat != charge.seat or mate.lower != charge.lower or mate.meld_index < 0 or mate.sideways: continue
+			var delta: float = mate.center.dot(inward) - size.y / 2.0 - depth
+			if absf(delta) < gap:
+				gap = absf(delta)
+				shift = inward * delta
+		if shift.is_zero_approx(): continue
+		var blocked := obstacles + own_chicken_obstacles if charge.rel == 0 else obstacles.duplicate()
+		for other in specs:
+			if other != charge: blocked.append(other.rect)
+		if clear([charge], blocked, shift):
+			charge.center += shift
+			charge.rect.position += shift
 
 static func find_space(group: Dictionary, obstacles: Array) -> Array:
 	var rel: int=group.rel
