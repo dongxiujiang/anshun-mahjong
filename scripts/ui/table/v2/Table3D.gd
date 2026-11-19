@@ -763,14 +763,17 @@ func _position_own_exposed_row(ids: Array, cursor: Vector2, obstacles: Array[Rec
 
 func _position_exposed_group_clear(ids: Array, right_top: Vector2, obstacles: Array[Rect2], hand_edge: float = INF) -> Rect2:
 	var bounds := _position_exposed_group(ids, right_top, hand_edge)
-	if bounds.intersects(_own_exposed_left_hand):
+	# A charge continuing an existing row can use gaps outside the individual tiles.
+	# The bounding box of the entire side hand also covers empty felt near its end.
+	var starts_row := not is_finite(hand_edge)
+	if starts_row and bounds.intersects(_own_exposed_left_hand):
 		bounds.position.x = -INF
 		return bounds
 	for obstacle in obstacles:
 		if not bounds.intersects(obstacle): continue
 		right_top.x = obstacle.position.x - 6.0
 		bounds = _position_exposed_group(ids, right_top, hand_edge)
-		if bounds.intersects(_own_exposed_left_hand):
+		if starts_row and bounds.intersects(_own_exposed_left_hand):
 			bounds.position.x = -INF
 			return bounds
 	return bounds

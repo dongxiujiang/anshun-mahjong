@@ -17,6 +17,8 @@ class Host extends Control:
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
+	for screen in [Vector2i(1920, 1080), Vector2i(2400, 1080)]:
+		for card in ["tiao1", "tong8"]: await _own_charge_same_row(screen, card)
 	await _recorded_other_draws()
 	await _recorded_own_discards()
 	await _recorded_north_chicken()
@@ -285,9 +287,9 @@ func _check_chicken_placement_changes(view) -> void:
 		view.human_seat = 1
 		state.phase = RoundState.Phase.PLAYING
 
-func _recorded_table():
+func _recorded_table(screen: Vector2i = Vector2i(1600, 1000)):
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
-	root.size = Vector2i(1600, 1000)
+	root.size = screen
 	var host := Host.new()
 	host.size = G.DESIGN_SIZE
 	# Match the recorded Android table's top/side safe margins and 90 px footer.
@@ -302,6 +304,49 @@ func _recorded_table():
 	view.table = host
 	view.auto_sort_hands = false
 	return view
+
+func _own_charge_same_row(screen: Vector2i, card: String) -> void:
+	var view = _recorded_table(screen)
+	var host: Host = view.table
+	var state := RoundState.new()
+	state.build_players(host.human_seat)
+	state.phase = RoundState.Phase.PLAYING
+	state.wall = WallRing.new(TileSetFactory.create_deck())
+	for index in WallRing.N: state.wall.draw_head()
+	for player in state.players:
+		player.concealed.assign(["wan1", "wan2", "wan3", "wan4", "wan5", "wan6"])
+		if player.seat != host.human_seat: player.concealed.append_array(["wan7", "wan8", "wan9", "tong1"])
+	var own: PlayerState = state.players[host.human_seat]
+	own.melds.append({"kind": "pung", "tile": "wan6", "from_seat": 2})
+	own.discards.assign([card])
+	own.discard_ids.assign([200])
+	own.discard_count = 1
+	state.round_meta.charge_chickens = {card: {"owner": own.seat, "location": "discard", "discard_id": 200}}
+	host.round = state
+	view.set_round(state, own.seat)
+	await process_frame
+	var renderer = view._table_3d
+	renderer.sync_tiles()
+	var label := "%s own %s" % [screen, card]
+	var pung: Array = view._meld_layer.get_children()
+	var charges: Array = view._red_layer.get_children()
+	if t.expect(pung.size() == 3 and charges.size() == 1, label + " has its four exposed tiles"):
+		var charge: TileView = charges[0]
+		var mesh: MeshInstance3D = renderer.tile_nodes[charge.get_instance_id()]
+		var edge := EDGE.near_top(renderer, mesh, Vector3.BACK)
+		var reference := EDGE.nearest_meld(renderer, pung, edge, Vector3.BACK)
+		var gap := EDGE.pixel_offsets(reference, edge).abs()
+		t.expect(maxf(gap.x, gap.y) <= 1.0, "%s fits on the same row (%.2f px)" % [label, maxf(gap.x, gap.y)])
+		for tile in pung + charges:
+			_check_recorded_face(renderer, tile, view._dealer_meld_badges[own.seat])
+		var pose := mesh.transform
+		var unrelated: PlayerState = state.players[3]
+		unrelated.discards.assign(["wan2"])
+		unrelated.discard_ids.assign([201])
+		unrelated.discard_count = 1
+		view.refresh()
+		t.expect(mesh.transform.is_equal_approx(pose), label + " stays put through an unrelated discard")
+	host.free()
 
 func _recorded_other_draws() -> void:
 	# Real R10 Android round 1, recorded actions 0–33 and draw events 70/72.
