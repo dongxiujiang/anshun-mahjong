@@ -14,6 +14,10 @@ func _initialize() -> void:
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	table.human_seat = 0
 	root.add_child(table)
+	# This probe drives every seat. An independent AI could win before the
+	# driver observes one discard and voice cue from each seat.
+	table.round.cancel_ai()
+	table.round.controllers = [null, null, null, null]
 	call_deferred("_drive")
 
 func _drive() -> void:
