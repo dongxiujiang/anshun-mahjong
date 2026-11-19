@@ -532,7 +532,7 @@ func _own_badge_position(dimensions: Vector2) -> Vector2:
 	var obstacles: Array[Rect2] = []
 	for layer in _render_layers():
 		for tile in layer.get_children():
-			if tile is TileView and tile.is_visible_in_tree(): obstacles.append(_table_3d.project_tile(tile))
+			if tile is TileView and tile.is_visible_in_tree(): obstacles.append(_table_3d.tile_layout_slot(tile))
 	for seat in 4: obstacles.append(_seat_hud_rect(seat))
 	obstacles.append(action_bar_rect(Vector2(750, 112)))
 	for row in 8:
@@ -2185,6 +2185,12 @@ func animate_deal_group(seat: int, cards: Array, indices: Array, existing: int, 
 			wall_center_for_index(index), hand_unit, _wall_angle_for_index(index))
 		tile.scale = Vector2.ONE * (G.WALL_UNIT / hand_unit)
 		tile.flight_pitch = 0.0 if tile.face_up else PI
+		if seat != human_seat and _table_3d != null and _table_3d.opponent_hand_scale > 1.0:
+			tile.set_meta("new_kind", "hand")
+			tile.set_meta("v2_seat", seat)
+			tile.set_meta("v2_draw_flight", true)
+			tile.standing_back_view = rel
+			tile.flight_progress = 0.0
 		moving.append(tile)
 	# 起飞前移除对应墙牌。
 	var remove := {}
@@ -2198,6 +2204,8 @@ func animate_deal_group(seat: int, cards: Array, indices: Array, existing: int, 
 	_deal_tween = flight
 	for k in moving.size():
 		var tile: TileView = moving[k]
+		if tile.has_meta("v2_draw_flight"):
+			flight.tween_property(tile, "flight_progress", 1.0, flight_seconds).set_trans(Tween.TRANS_LINEAR)
 		flight.tween_property(tile, "position", right_targets[k] - tile.size / 2.0, flight_seconds)
 		flight.tween_property(tile, "scale", Vector2.ONE, flight_seconds)
 		flight.tween_property(tile, "rotation", UI.ROTATIONS[rel], flight_seconds)
@@ -2271,7 +2279,8 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 		start, hand_unit, _wall_angle_for_index(wall_index))
 	tile.flight_pitch = 0.0 if tile.face_up else PI
 	tile.scale = Vector2.ONE * (G.WALL_UNIT / hand_unit)
-	if _table_3d != null and seat == human_seat:
+	if _table_3d != null and (seat == human_seat or _table_3d.opponent_hand_scale > 1.0):
+		tile.standing_back_view = rel if seat != human_seat else -1
 		tile.set_meta("new_kind", "draw")
 		tile.set_meta("v2_seat", seat)
 		tile.set_meta("v2_draw_flight", true)
@@ -2301,7 +2310,7 @@ func animate_draw(seat: int, card: String, wall_index: int, done: Callable) -> v
 	var tween := _motion_tween()
 	_draw_flights[seat] = {"tween": tween, "complete": complete}
 	tween.set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	if _table_3d != null and seat == human_seat:
+	if tile.has_meta("v2_draw_flight"):
 		tween.tween_property(tile, "flight_progress", 1.0, duration).set_trans(Tween.TRANS_LINEAR)
 	tween.tween_property(tile, "position", target - tile.size / 2.0, duration)
 	tween.tween_property(tile, "scale", Vector2.ONE, duration)

@@ -13,11 +13,13 @@ var _meshes := {}
 var _sources := {}
 var _signatures := {}
 var _rects := {}
+var _opponent_hand_slots := {}
 var _dice_normals: Dictionary
 var _pressed: TileView
 var _press_at := Vector2.ZERO
 var _pointer := -1
 var _changed := true
+var opponent_hand_scale := 1.0
 var _own_hand_pitch := deg_to_rad(63)
 var discard_marker: MeshInstance3D
 var _marker_source_id := 0
@@ -246,6 +248,13 @@ func _fit_viewport() -> void:
 	var target := Vector2i((pixels * render_scale).round())
 	if viewport.size == target: return
 	viewport.size = target
+	# Full-row voice buttons and the two near-badge lane changes bound the
+	# verified aspect intervals. At 20:9 the eighth chicken limits a short hand.
+	var width_at_1080 := 1080.0 * target.x / target.y
+	var clear_rows := (width_at_1080 >= 2000 and width_at_1080 <= 2187) \
+		or (width_at_1080 >= 2209 and width_at_1080 <= 2414) \
+		or (width_at_1080 >= 2461 and width_at_1080 <= 3000)
+	opponent_hand_scale = 1.036 if clear_rows else 1.0
 	table_model.scale.x = 1.64 * aspect / G.DESIGN_SIZE.aspect()
 	_signatures.clear()
 	_changed = true
@@ -384,7 +393,7 @@ func sync_tiles() -> void:
 			var flight := motion if source.get_parent() == view._deal_layer else -1.0
 			var draw_flight: bool = flight >= 0.0 and bool(source.get_meta("v2_draw_flight", false))
 			var hand_blend := (smoothstep(0.0, 0.75, flight) if draw_flight else 1.0 - smoothstep(0.0, 0.75, flight)) if flight >= 0.0 else 1.0
-			var side_row: bool = side_wall or (side_hand and flight < 0.0) or (kind in ["meld", "red"] and rel in [1, 3] and flight < 0.0)
+			var side_row: bool = side_wall or (side_hand and (flight < 0.0 or draw_flight)) or (kind in ["meld", "red"] and rel in [1, 3] and flight < 0.0)
 			if rel == 0 and kind in ["meld", "red"] and center.y < G.HAND_BOTTOM - G.TILE_BASE.y * G.OWN_UNIT:
 				center.y -= 72.0 if settlement_started else 12.0
 			var near_fit := lerpf(1.0, width_fit, 0.55)
@@ -396,10 +405,10 @@ func sync_tiles() -> void:
 				var along_row := center.y - G.CENTER.y
 				if side_hand:
 					# Strip the old sprite's baked-in slant; projection gives this line its angle.
-					center.x -= along_row * 0.105 * (1 if source.standing_back_view == 1 else -1)
+					center.x -= along_row * 0.105 * (1 if source.standing_back_view == 1 else -1) * hand_blend
 				var row_spacing := side_unit * 0.95 if side_hand else (0.95 if kind in ["ordinary", "red", "meld"] else 1.0)
-				row_offset = along_row * world_unit * row_spacing
-				center.y = G.CENTER.y
+				row_offset = along_row * world_unit * row_spacing * (hand_blend if side_hand else 1.0)
+				center.y = lerpf(center.y, G.CENTER.y, hand_blend) if side_hand else G.CENTER.y
 			var converge := lerpf(0.79, 1.09, center.y / size.y)
 			var along_scale := converge * lerpf(0.58, 1.0, width_fit)
 			var row_x := center.x
@@ -466,6 +475,18 @@ func sync_tiles() -> void:
 					if is_zero_approx(shift): break
 					var screen := camera.unproject_position(node.position) / Vector2(viewport.size) * size
 					node.position += _at_height(screen + Vector2(shift, 0), height) - _at_height(screen, height)
+			_opponent_hand_slots.erase(id)
+			if hand and rel != 0 and opponent_hand_scale > 1.0 and ordinary_flight.is_empty():
+				_opponent_hand_slots[id] = _project_mesh(node)
+				# Keep the physical outer edge and base fixed. A shared tangent anchor
+				# scales the row spacing and the separate draw together.
+				var box: AABB = node.transform * node.mesh.get_aabb()
+				var pivot := Vector3(0, box.position.y, box.position.z)
+				if rel != 2:
+					pivot = Vector3(box.end.x if rel == 1 else box.position.x, box.position.y, 2.0)
+				var multiplier := lerpf(1.0, opponent_hand_scale, hand_blend)
+				node.position = pivot + (node.position - pivot) * multiplier
+				node.basis = node.basis.scaled(Vector3.ONE * multiplier)
 			if rel == 0 and kind in ["meld", "red"]:
 				node.set_meta("exposed_transform", node.transform)
 			if _own_exposed_targets.has(id):
@@ -515,6 +536,7 @@ func sync_tiles() -> void:
 			_sources.erase(id)
 			_signatures.erase(id)
 			_rects.erase(id)
+			_opponent_hand_slots.erase(id)
 			_changed = true
 	var own_layout_key := hash(own_layout_state)
 	if own_layout_key != _own_exposed_layout_key:
@@ -548,7 +570,7 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 		var kind := str(source.get_meta("new_kind", ""))
 		var seat := int(source.get_meta("v2_seat", -1))
 		if kind in ["ordinary", "meld", "red", "hand", "draw"] and not (seat == view.human_seat and kind != "ordinary"):
-			var obstacle := _project_mesh(node)
+			var obstacle: Rect2 = _opponent_hand_slots[id] if _opponent_hand_slots.has(id) else _project_mesh(node)
 			obstacles.append(obstacle)
 			if kind in ["hand", "draw"] and obstacle.get_center().x < size.x * 0.25:
 				left_hand = left_hand.merge(obstacle) if left_hand.has_area() else obstacle
@@ -813,6 +835,11 @@ func _project_bounds(box: AABB, pose: Transform3D) -> Rect2:
 		var point := camera.unproject_position(pose * box.get_endpoint(i)) / Vector2(viewport.size) * size
 		result = Rect2(point, Vector2.ZERO) if i == 0 else result.expand(point)
 	return result
+
+# Badges and exposed groups are anchored to the permanent layout slots. Reading
+# and picking the physical tile still uses the enlarged mesh.
+func tile_layout_slot(tile: TileView) -> Rect2:
+	return _opponent_hand_slots.get(tile.get_instance_id(), project_tile(tile))
 
 func project_tile(tile: TileView) -> Rect2:
 	return _rects.get(tile.get_instance_id(), Rect2())

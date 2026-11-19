@@ -27,6 +27,7 @@ func run() -> void:
 	root.add_child(view)
 	view.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	view.size = G.DESIGN_SIZE
+	check_opponent_hand_fit(view)
 	for pixels in [Vector2(1600, 1000), Vector2(1920, 1080), Vector2(2400, 1080)]:
 		view.scale = pixels / G.DESIGN_SIZE
 		for viewer in 4:
@@ -101,6 +102,69 @@ func run() -> void:
 	await process_frame
 	print("rendered layouts=%d badge combinations=%d" % [layouts, badge_combinations])
 	await H.quit_cleanly(self, t.finish("table_3d_river_badges"))
+
+func check_opponent_hand_fit(view) -> void:
+	var renderer = view._table_3d
+	var old_mode := root.content_scale_mode
+	var old_size := root.size
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
+	for screen in [Vector2i(1920, 1080), Vector2i(2160, 1080), Vector2i(2189, 1080), Vector2i(2400, 1080), Vector2i(2437, 1080)]:
+		root.size = screen
+		view.scale = Vector2(screen) / G.DESIGN_SIZE
+		for groups in [0, 1, 4]:
+			var round := fixture(0, groups, 2)
+			for phase in [RoundState.Phase.PLAYING, RoundState.Phase.SETTLED]:
+				round.phase = phase
+				view.set_round(round, 0)
+				renderer.sync_tiles()
+				var factor: float = renderer.opponent_hand_scale
+				t.expect(is_equal_approx(factor, 1.036 if screen.x in [2160, 2400] else 1.0), "screen space fixes one hand scale for the entire game")
+				var unit: float = renderer._pixel_scale(G.CENTER, 1.0) * minf(1.0, G.DESIGN_SIZE.aspect() / Vector2(renderer.viewport.size).aspect())
+				for seat in [1, 2, 3]:
+					for box in [view.hand_boxes[seat], view.draw_boxes[seat]]:
+						var tile: TileView = box.get_child(0)
+						var mesh: MeshInstance3D = renderer.tile_nodes[tile.get_instance_id()]
+						var relative: Transform2D = view.get_global_transform().affine_inverse() * tile.get_global_transform()
+						var weight := (1.07 if tile.face_up else 1.30) if seat in [1, 3] else 1.0
+						var physical_size: float = unit * tile.size.x * absf(relative.get_scale().x) * weight
+						t.expect(is_equal_approx(mesh.basis.get_scale().x, physical_size * factor), "full and short hands and detached tiles receive the same physical multiplier")
+			if groups != 0 or screen.x != 2400: continue
+			round.phase = RoundState.Phase.PLAYING
+			view.set_round(round, 0)
+			for seat in [1, 2, 3]:
+				view.animate_draw(seat, "tong9", 4, Callable())
+				var flight: Tween = view._draw_flights[seat].tween
+				flight.pause()
+				var duration: float = root.get_node("GameConfig").tile_motion_seconds()
+				flight.custom_step(duration - 0.00001)
+				renderer.sync_tiles()
+				var actor: TileView = view._deal_layer.get_child(0)
+				var arrived: Transform3D = renderer.tile_nodes[actor.get_instance_id()].transform
+				flight.custom_step(0.0001)
+				renderer.sync_tiles()
+				var draw: TileView = view.draw_boxes[seat].get_child(0)
+				var landed: Transform3D = renderer.tile_nodes[draw.get_instance_id()].transform
+				t.expect(arrived.origin.distance_to(landed.origin) < 0.01 and arrived.basis.is_equal_approx(landed.basis), "incoming opponent draws land at their fixed hand pose and scale")
+				var packet := ["wan2", "wan2", "wan2", "wan2"]
+				round.players[seat].concealed = packet.duplicate()
+				round.players[seat].just_drew = ""
+				view.set_round(round, 0)
+				renderer.sync_tiles()
+				var settled_packet: Array[Transform3D] = []
+				for tile in view.hand_boxes[seat].get_children():
+					settled_packet.append(renderer.tile_nodes[tile.get_instance_id()].transform)
+				view.animate_deal_group(seat, packet, [0, 1, 2, 3], 0, Callable())
+				var deal: Tween = view._deal_tween
+				deal.pause()
+				deal.custom_step(root.get_node("GameConfig").DEAL_FLIGHT_SECONDS - 0.00001)
+				renderer.sync_tiles()
+				for i in settled_packet.size():
+					var tile = view._deal_layer.get_child(i)
+					var pose: Transform3D = renderer.tile_nodes[tile.get_instance_id()].transform
+					t.expect(pose.origin.distance_to(settled_packet[i].origin) < 0.01 and pose.basis.is_equal_approx(settled_packet[i].basis), "opening packets arrive with the regular opponent hand scale and spacing")
+				deal.custom_step(0.0001)
+	root.size = old_size
+	root.content_scale_mode = old_mode
 
 func fixture(viewer: int, meld_count: int, chickens: int) -> RoundState:
 	var round := RoundState.new()
