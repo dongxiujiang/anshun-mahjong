@@ -89,8 +89,7 @@ func _test_six_pairs() -> void:
 	t.expect(scored.round_points[1] == 4 and scored.round_points[2] == 4 and scored.pairwise[1][2] == 0, "相同鸡分四分互相不补")
 
 func _test_uncalled_discard_chicken() -> void:
-	# 被胡的弃牌会离开 source.discards；独立核账器和实际结算都必须
-	# 保留这张未叫牌出牌鸡，并逐家补给所有叫牌玩家。
+	# 普通鸡被胡后仍算原出牌者的出牌鸡；首张鸡被胡后原出牌者不得分。
 	for charge in [false, true]:
 		for multiplier in [1, 2]:
 			var r := RoundState.new()
@@ -106,12 +105,12 @@ func _test_uncalled_discard_chicken() -> void:
 			if charge:
 				r.round_meta.charge_chickens["tiao1"] = {"owner": 1, "location": "discard", "discard_id": 0}
 			r._remove_from_discards(1, "tiao1", 0, "hand")
-			var expected: float = (4.0 if charge else 2.0) * multiplier
+			var expected: float = 0.0 if charge else 2.0 * multiplier
 			var result := ScoringEngine.settle(r)
 			ORACLE.check(r, result, t, "未叫牌被胡出牌鸡 charge=%s x%d" % [charge, multiplier])
-			t.expect(result.discard_points[1] == expected, "被胡幺鸡仍计入未叫牌出牌鸡")
+			t.expect(result.discard_points[1] == expected, "被胡冲锋鸡不计原出牌分，普通出牌鸡照常计分")
 			t.expect(result.pairwise[1][0] == -expected and result.pairwise[1][2] == -expected and result.pairwise[1][3] == 0.0,
-				"未叫牌出牌鸡逐家补付，点炮不加干扣，未叫牌者不收")
+				"只有普通出牌鸡逐家补付，点炮不加干扣，未叫牌者不收")
 
 func _test_uncalled_kong_chicken() -> void:
 	var r := RoundState.new()

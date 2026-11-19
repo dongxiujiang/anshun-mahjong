@@ -323,7 +323,7 @@ func sync_tiles() -> void:
 				source.modulate, source.self_modulate, source.standing_back_view, kind, source.flight_pitch, source.flight_progress,
 				source.z_index, source.highlight, source.latest_highlight, source.ai_teach_highlight,
 				source.get_meta("flight_origin_offset_3d", Vector3.ZERO), source.get_meta("ordinary_flight_3d", {}), source.get_meta("claimed_flight_origin_3d", Transform3D.IDENTITY), source.get_meta("v2_draw_flight", false),
-				source.score_highlight, source.get_parent().get_instance_id(),
+				source.get_parent().get_instance_id(),
 				source.get_meta("charge_chicken", false), source.get_meta("gold_chicken", false),
 				source.get_meta("v2_charge", false), source.get_meta("kong_offset_2d", Vector2.ZERO), source.get_meta("kong_offset_3d", Vector2.ZERO), settlement_started if own_exposed else settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
 				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0, touch_height if own_hand else 0.0,
@@ -911,7 +911,6 @@ func _draw() -> void:
 		var color := Color.TRANSPARENT
 		if source.highlight: color = Color("#f2ce72")
 		if source.ai_teach_highlight: color = Color("#5ad4ff")
-		if source.score_highlight: color = Color("#f9d66b")
 		if color.a > 0: draw_rect(project_tile(source).grow(2), color, false, 3)
 		var badge := "金" if source.get_meta("gold_chicken", false) else ""
 		if badge != "":

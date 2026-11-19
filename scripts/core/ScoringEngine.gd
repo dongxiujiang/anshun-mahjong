@@ -210,7 +210,7 @@ static func is_called(round, seat: int) -> bool:
 	var player: PlayerState = round.players[seat]
 	if _winner_seats(round.round_meta).has(seat):
 		return true
-	return RuleEngine.is_tenpai(player.concealed, player.melds)
+	return not RuleEngine.settlement_patterns(player.concealed, player.melds).is_empty()
 
 static func _nm(seat: int, dealer: int = 0) -> String:
 	return SEAT_NAMES[posmod(seat - dealer, 4)] if seat >= 0 and seat < 4 else "-"

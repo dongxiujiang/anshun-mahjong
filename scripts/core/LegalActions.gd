@@ -92,6 +92,8 @@ static func valid_turn(options: Dictionary, player: PlayerState, decision: Dicti
 	if discard_index >= 0:
 		if discard_index >= player.concealed.size() or str(player.concealed[discard_index]) != tile:
 			return false
+		if player.ready and discard_index != player.concealed.rfind(player.just_drew):
+			return false
 	return not bool(decision.get("ready", false)) or options.ready_discards.has(tile)
 
 static func response_options(round, seat: int, source: int, tile: String, stage: int) -> Dictionary:

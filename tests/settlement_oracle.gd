@@ -24,7 +24,7 @@ static func expected(round: RoundState) -> Dictionary:
 	var matrix := _empty_matrix()
 	for seat in 4:
 		var player: PlayerState = round.players[seat]
-		var is_called: bool = winners.has(seat) or RuleEngine.is_tenpai(player.concealed, player.melds)
+		var is_called: bool = winners.has(seat) or not RuleEngine.settlement_patterns(player.concealed, player.melds).is_empty()
 		called.append(is_called)
 		var profile := _chicken_values(round, seat, related)
 		if seat == burned:
@@ -157,7 +157,7 @@ static func expected(round: RoundState) -> Dictionary:
 				_credit(matrix, payer, target_seat, total - 4.0 * maxi(0, components.size() - 1), burned)
 			if not self_draw:
 				var kong_discard := not robbed_kong and _is_post_kong_discard(round.last_discard)
-				var source_called := source >= 0 and source < 4 and RuleEngine.is_tenpai(round.players[source].concealed, round.players[source].melds)
+				var source_called: bool = source >= 0 and source < 4 and called[source]
 				var base := 12.0 if robbed_kong else (17.0 if kong_discard and source_called else (21.0 if kong_discard else 0.0))
 				if source in range(4) and base > 0.0:
 					_credit(matrix, source, target_seat, base, burned)
@@ -232,8 +232,9 @@ static func _is_post_kong_discard(last_discard: Dictionary) -> bool:
 static func _draw_called_fee(round, seat: int) -> float:
 	var player: PlayerState = round.players[seat]
 	var best := 0.0
-	for tile in RuleEngine.waiting_tiles(player.concealed, player.melds):
-		var info := RuleEngine.analyze(player.concealed + [tile], player.melds, tile)
+	var patterns := RuleEngine.settlement_patterns(player.concealed, player.melds)
+	for tile in patterns:
+		var info: Dictionary = patterns[tile]
 		best = maxf(best, _pattern_fee(info))
 	return best if best > 0.0 else 4.0
 

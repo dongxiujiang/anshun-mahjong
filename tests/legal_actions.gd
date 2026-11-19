@@ -75,4 +75,42 @@ func _run() -> void:
 	t.expect(not response.can_pong and not response.can_kong, "抢杠响应阶段不显示碰杠")
 	var invalid := round.legal_response_options(-1, 0, "tiao1", RoundState.ResponseStage.MELD)
 	t.expect(not invalid.can_win and not invalid.can_pong, "非法座位返回空选项")
+	_test_ready_discards_drawn_copy()
+	_test_win_beats_deferred_claim()
 	quit(t.finish("legal_actions"))
+
+func _test_ready_discards_drawn_copy() -> void:
+	for indexed in [true, false]:
+		var r := _fixture()
+		r.players[0].ready = true
+		r.players[0].concealed = ["wan9", "wan1", "wan9"]
+		r.players[0].just_drew = "wan9"
+		var events: Array[Dictionary] = []
+		r.visual_event.connect(func(event: Dictionary): events.append(event))
+		var before := r.serialize()
+		t.expect(not r.submit_turn(0, {"discard": "wan9", "discard_index": 0}) and r.serialize() == before,
+			"报听后不能打出旧手牌中的同牌，即使牌面相同")
+		var decision := {"discard": "wan9"}
+		if indexed: decision.discard_index = 2
+		t.expect(r.submit_turn(0, decision), "报听后仍可打出刚摸到的一张（含旧客户端自动摸打）")
+		t.expect(r.players[0].concealed == ["wan9", "wan1"] and events.any(func(event):
+			return event.get("type", "") == "discard" and int(event.get("discard_index", -1)) == 2 and event.get("discard_from_draw", false)),
+			"报听摸打保留原手牌顺序，并从摸牌位置出牌")
+		r.cancel_ai()
+
+func _test_win_beats_deferred_claim() -> void:
+	for action in ["pong", "kong"]:
+		var r := _fixture()
+		r.players[0].concealed = ["wan9"]
+		var order := r._seat_order(0)
+		var claimant: int = order[0]
+		var winner: int = order[1]
+		r.players[claimant].concealed = ["wan9", "wan9", "wan1", "wan1", "wan1", "wan2", "wan2", "wan2", "wan3", "wan3", "wan3", "wan4", "wan4"] if action == "pong" else ["wan9", "wan9", "wan9", "wan7", "wan8", "wan1", "wan1", "wan1", "wan2", "wan2", "wan2", "wan4", "wan4"]
+		r.players[winner].concealed = ["wan7", "wan8", "tiao1", "tiao2", "tiao3", "tiao4", "tiao5", "tiao6", "tong1", "tong2", "tong3", "tong5", "tong5"]
+		r.players[winner].ready = true
+		t.expect(r.submit_turn(0, {"discard": "wan9"}), "以不超过四张九万开启胡牌窗口")
+		t.expect(r.submit_response(claimant, "wan9", {"action": action}), "先响应的玩家放弃胡并选择%s" % action)
+		t.expect(r.players[claimant].melds.is_empty() and r.players[0].discards == ["wan9"], "胡牌窗口未结束，碰杠不得先取牌")
+		t.expect(r.submit_response(winner, "wan9", {"action": "win"}), "后响应玩家仍可胡")
+		t.expect(r.phase == RoundState.Phase.SETTLED and r.round_meta.winners == [winner] and r.players[claimant].melds.is_empty(), "胡牌取消已登记的碰杠")
+		r.cancel_ai()

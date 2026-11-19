@@ -21,7 +21,7 @@ static func settle_winner(round, winner: int, chicken_points: Array, called_seat
 		# 非自摸胡分成三类：抢杠胡、暗/加杠后的单次放炮，以及
 		# 报听/大牌胡。普通弃牌不再产生点炮基础分。
 		var kong_discard := not robbed_kong and ACTIONS.is_post_kong_discard(round.last_discard)
-		var source_called: bool = source >= 0 and source < round.players.size() and RuleEngine.is_tenpai(round.players[source].concealed, round.players[source].melds)
+		var source_called: bool = source >= 0 and source < called_seats.size() and called_seats[source]
 		var base_amount: float = CFG.SCORE_ROB_KONG if robbed_kong else (CFG.SCORE_RON_CALLED if kong_discard and source_called else (CFG.SCORE_RON_UNCALLED if kong_discard else 0.0))
 		var base_label := "抢杠胡基础分" if robbed_kong else ("点炮基础分（叫牌）" if base_amount == CFG.SCORE_RON_CALLED else "点炮基础分（未叫牌）")
 		if source in range(4):
@@ -114,8 +114,9 @@ static func _apply_extra(winner: int, amount: float, label: String, deltas: Arra
 ## 流局补付：叫牌玩家可能听多张，取所有和牌张里最高的牌型。
 static func potential_pattern_info(concealed: Array, melds: Array) -> Dictionary:
 	var best: Dictionary = {}
-	for tile in RuleEngine.waiting_tiles(concealed, melds):
-		var info := _pattern_info(RuleEngine.analyze(concealed + [tile], melds, tile))
+	var patterns := RuleEngine.settlement_patterns(concealed, melds)
+	for tile in patterns:
+		var info := _pattern_info(patterns[tile])
 		if float(info.get("score", 0.0)) > float(best.get("score", 0.0)):
 			best = info.duplicate()
 			best["tile"] = tile

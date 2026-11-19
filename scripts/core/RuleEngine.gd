@@ -114,19 +114,22 @@ static func _is_single_wait(concealed: Array, melds: Array, winning_tile: String
 ## 综合分析手牌是否为胡、以及叠加番型标记
 ## 返回: {"win":bool, "seven_pairs":bool, "all_triplets":bool, "flush":bool}
 static func analyze(concealed: Array, melds: Array, winning_tile: String = "") -> Dictionary:
+	return _analyze(concealed, melds, winning_tile, "")
+
+static func _analyze(concealed: Array, melds: Array, winning_tile: String, settlement_tile: String) -> Dictionary:
 	var e := exposed_melds_count(melds)
 	var invalid := {"win": false, "normal": false, "seven_pairs": false, "dragon_seven_pairs": false, "all_triplets": false, "flush": false, "clean_big_triplets": false, "clean_single_wait": false, "clean_dragon_seven_pairs": false, "clean_seven_pairs": false, "big_triplet_single_wait": false}
 	if e > 4 or concealed.size() != 3 * (4 - e) + 2:
 		return invalid
 	var counts := Tiles.to_counts(concealed)
 	for tile in counts:
-		if not Tiles.all_values().has(tile) or counts[tile] > 4:
+		if not Tiles.all_values().has(tile) or counts[tile] > (5 if tile == settlement_tile else 4):
 			return invalid
 	for meld in melds:
 		if meld.get("kind", "") not in ["pung", "kong", "add_kong"] or not Tiles.all_values().has(meld.get("tile", "")):
 			return invalid
 		counts[meld.tile] = counts.get(meld.tile, 0) + (3 if meld.kind == "pung" else 4)
-		if counts[meld.tile] > 4:
+		if counts[meld.tile] > (5 if meld.tile == settlement_tile else 4):
 			return invalid
 	var arr := Tiles.hand_to_counts_array(concealed)
 	var melds_needed := 4 - e
@@ -186,6 +189,19 @@ static func waiting_tiles(concealed: Array, melds: Array) -> Array:
 ## 是否听牌
 static func is_tenpai(concealed: Array, melds: Array) -> bool:
 	return not waiting_tiles(concealed, melds).is_empty()
+
+## 结算按结构查叫，死叫也算；只允许本次假定补牌成为第五张，原始牌仍须合法。
+## 实际胡牌、报听及操作选项继续使用上面的严格判定。
+static func settlement_patterns(concealed: Array, melds: Array) -> Dictionary:
+	var patterns := {}
+	for tile in Tiles.all_values():
+		var combined := concealed + [tile]
+		if Shanten.shanten(combined, melds) > -1:
+			continue
+		var pattern := _analyze(combined, melds, tile, tile)
+		if pattern.win:
+			patterns[tile] = pattern
+	return patterns
 
 ## 计算完整手牌的番型（供结算用）
 static func hand_pattern(concealed: Array, melds: Array, winning_tile: String = "") -> Dictionary:

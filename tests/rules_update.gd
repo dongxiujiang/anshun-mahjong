@@ -36,6 +36,7 @@ func _run() -> void:
 	_test_claims()
 	_test_claimed_charge_settlement()
 	_test_uncalled_discard_chicken_payments()
+	_test_winning_charge_chicken()
 	_test_uncalled_kong_chicken_payments()
 	_test_chicken_values()
 	_test_win_payments()
@@ -184,32 +185,53 @@ func _test_claimed_charge_settlement() -> void:
 	check(kong_result.pairwise[0][2] == 12.0 and kong_result.pairwise[0][3] == 12.0, "其他未叫牌者支付基础补付4和杠中鸡8")
 
 func _test_uncalled_discard_chicken_payments() -> void:
-	# 胡牌会把最后一张弃牌从 source.discards 移走；该牌仍必须作为
-	# 原出牌者的出牌鸡，逐家补给所有叫牌玩家。
-	for charge in [false, true]:
-		for multiplier in [1, 2]:
-			var r := fixture()
-			r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
-				"discard_seat": 1, "win_tile": "tiao1", "chicken_multiplier": multiplier}, true)
-			r.players[0].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong2", "tong3", "tong4", "wan9", "wan9"]
-			r.players[2].concealed = WAIT.duplicate()
-			r.players[1].discards = ["tiao1"]
-			r.players[1].discard_ids = [0]
-			if charge:
-				r.round_meta.charge_chickens["tiao1"] = {"owner": 1, "location": "discard", "discard_id": 0}
-			r._remove_from_discards(1, "tiao1", 0, "hand")
-			var expected: float = (4.0 if charge else 2.0) * multiplier
-			check(r.players[1].discards.is_empty(), "被胡弃牌从桌面记录移除")
-			check(r.round_meta.resolved_chicken_discards.size() == 1, "被胡幺鸡保留出牌鸡结算记录")
-			var result := settle(r)
-			check(result.discard_points[1] == expected, "未叫牌被胡幺鸡出牌分为%.0f" % expected)
-			check(result.pairwise[1][0] == -expected and result.pairwise[1][2] == -expected,
-				"未叫牌出牌鸡逐家补给叫牌玩家，点炮不加干扣")
-			check(result.pairwise[1][3] == 0.0, "未叫牌之间不比较出牌鸡")
-			check(result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 0 and item.get("reason", "") == "未叫牌出牌鸡" and float(item.get("amount", 0.0)) == expected),
-				"付款流水明确记录给赢家的未叫牌出牌鸡")
-			check(result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌出牌鸡" and float(item.get("amount", 0.0)) == expected),
-				"付款流水明确记录给其他叫牌家的未叫牌出牌鸡")
+	# 不是首张打出的普通鸡仍保留原出牌鸡结算。
+	for multiplier in [1, 2]:
+		var r := fixture()
+		r.round_meta.merge({"winner": 0, "winners": [0], "self_draw": false,
+			"discard_seat": 1, "win_tile": "tiao1", "chicken_multiplier": multiplier}, true)
+		r.players[0].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong2", "tong3", "tong4", "wan9", "wan9"]
+		r.players[2].concealed = WAIT.duplicate()
+		r.players[1].discards = ["tiao1"]
+		r.players[1].discard_ids = [0]
+		r._remove_from_discards(1, "tiao1", 0, "hand")
+		var expected: float = 2.0 * multiplier
+		check(r.players[1].discards.is_empty(), "被胡弃牌从桌面记录移除")
+		check(r.round_meta.resolved_chicken_discards.size() == 1, "被胡幺鸡保留出牌鸡结算记录")
+		var result := settle(r)
+		check(result.discard_points[1] == expected, "未叫牌被胡幺鸡出牌分为%.0f" % expected)
+		check(result.pairwise[1][0] == -expected and result.pairwise[1][2] == -expected,
+			"未叫牌出牌鸡逐家补给叫牌玩家，点炮不加干扣")
+		check(result.pairwise[1][3] == 0.0, "未叫牌之间不比较出牌鸡")
+		check(result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 0 and item.get("reason", "") == "未叫牌出牌鸡" and float(item.get("amount", 0.0)) == expected),
+			"付款流水明确记录给赢家的未叫牌出牌鸡")
+		check(result.transfers.any(func(item): return item.get("from", -1) == 1 and item.get("to", -1) == 2 and item.get("reason", "") == "未叫牌出牌鸡" and float(item.get("amount", 0.0)) == expected),
+			"付款流水明确记录给其他叫牌家的未叫牌出牌鸡")
+
+func _test_winning_charge_chicken() -> void:
+	for tile in ["tiao1", "tong8"]:
+		var r := fixture()
+		r.current_turn = 0
+		r.players[0].concealed = [tile]
+		r.players[1].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao4", "tiao5", "tiao6", "wan9", "wan9"]
+		r.players[1].concealed.append_array(["tiao2", "tiao3"] if tile == "tiao1" else ["tong6", "tong7"])
+		r.players[1].ready = true
+		check(r.submit_turn(0, {"discard": tile}) and r.is_charge_discard(0, 0), "首张%s打出时是冲锋鸡" % tile)
+		check(r.submit_response(1, tile, {"action": "win"}) and r.phase == RoundState.Phase.SETTLED, "首张%s可以被胡" % tile)
+		check(r.players[0].discards.is_empty() and r.players[1].concealed.count(tile) == 1 and r.players[1].just_drew == tile,
+			"被胡的%s离开弃牌区并进入胡家手牌" % tile)
+		check(not r.players[0].charge_chicken and not r.players[1].charge_chicken and r.round_meta.resolved_chicken_discards.is_empty(),
+			"被胡的%s不为任何一家保留冲锋奖励" % tile)
+		var transfers: Array = r.last_result.get("transfers", [])
+		check(not transfers.any(func(item): return item.get("from", -1) == 0 and str(item.get("reason", "")).contains("出牌鸡")),
+			"实际结算中原出牌者不因这张%s产生出牌鸡付款" % tile)
+		for flipped in [false, true]:
+			var flip: String = tile if flipped else ""
+			var profile := ScoringEngine.chicken_profile(r, 1, flip)
+			var items: Array = profile.raw_items
+			check(items.any(func(item): return item.tile == tile and item.source == "hand" and item.kind == "chicken" and item.amount == (4.0 if flipped else 2.0)),
+				"胡家的%s只算普通手牌鸡，翻中也只有普通金鸡分" % tile)
+		r.cancel_ai()
 
 func _test_uncalled_kong_chicken_payments() -> void:
 	# 未叫牌明杠幺鸡：四张按普通鸡每张2分，杠中鸡8分逐家补给叫牌者。

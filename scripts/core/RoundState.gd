@@ -1150,16 +1150,16 @@ func _remove_from_discards(seat: int, tile: String, receiver: int = -1, location
 	var index := discards.rfind(tile)
 	if index >= 0:
 		var was_charge := is_charge_discard(seat, index)
-		# 被胡的弃牌会进入赢家的逻辑手牌，不能再从出牌鸡结算中消失。
-		# 碰/杠时鸡牌转入面子，仍由面子所有者计分，因此只记录 hand。
-		if location == "hand" and Tiles.is_chicken(tile):
+		# 被胡的首张幺鸡/八筒只由胡家按手牌计鸡分；其他出牌鸡沿用原结算。
+		if location == "hand" and Tiles.is_chicken(tile) and not was_charge:
 			var resolved: Array = round_meta.get("resolved_chicken_discards", [])
-			resolved.append({"owner": seat, "tile": tile, "charge": was_charge,
+			resolved.append({"owner": seat, "tile": tile, "charge": false,
 				"discard_id": player.discard_ids[index] if index < player.discard_ids.size() else -1})
 			round_meta["resolved_chicken_discards"] = resolved
 		if was_charge:
 			var charge: Dictionary = round_meta.charge_chickens[tile]
-			charge.owner = receiver
+			# 保留首张记录，但被胡后没有冲锋归属。
+			charge.owner = -1 if location == "hand" else receiver
 			charge.location = location
 			charge.meld_index = meld_index
 			# 冲锋鸡被碰/杠后归碰杠者所有；其首张奖励降为每张2分，

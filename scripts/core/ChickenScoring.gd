@@ -25,8 +25,7 @@ static func chicken_profile(round, seat: int, flip: String) -> Dictionary:
 		var amount: float = base * (CFG.SCORE_FLIP_DOUBLE if doubled else 1.0)
 		discarded += amount
 		list.append(_chicken_item(tile, is_charge, doubled, amount, "打出", "discard"))
-	# 胡牌时被胡的弃牌会从 player.discards 移入赢家的逻辑手牌。
-	# 这张牌仍属于原出牌者的"打出鸡"，否则未叫牌者会漏付该鸡分。
+	# 被胡的普通出牌鸡从弃牌区移走后仍保留出牌分；首张冲锋鸡被胡不写入这里。
 	for raw_record in round.round_meta.get("resolved_chicken_discards", []):
 		var record: Dictionary = raw_record
 		if int(record.get("owner", -1)) != seat:

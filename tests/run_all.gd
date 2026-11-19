@@ -32,6 +32,7 @@ const SUITES: Array[String] = [
 	"res://tests/smoke_logic.gd",
 	"res://tests/shanten_cache.gd",
 	"res://tests/smoke_scoring.gd",
+	"res://tests/settlement_dead_wait.gd",
 	"res://tests/settlement_card.gd",
 	"res://tests/settlement_animation_flow.gd",
 	"res://tests/settlement_score_details.gd",
