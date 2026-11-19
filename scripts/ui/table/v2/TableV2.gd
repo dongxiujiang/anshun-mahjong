@@ -111,6 +111,7 @@ var _latest_discard_id := -1
 var _labels: Array = []
 var _name_labels: Array = []
 const SEAT_BADGE_SIZE := 56.0
+const OWN_HUD_LINE_HEIGHT := 44.0
 
 var _voice_buttons: Dictionary = {}
 var _turn_markers: Dictionary = {}
@@ -141,6 +142,7 @@ func _ready() -> void:
 	move_child(_table_3d, 0)
 	_hand_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	AudioManager.seat_voice_pack_changed.connect(_refresh_hud, CONNECT_DEFERRED)
+	get_viewport().size_changed.connect(_refresh_hud, CONNECT_DEFERRED)
 	GameConfig.score_details_changed.connect(_sync_score_inspection)
 	GameConfig.settlement_speed_changed.connect(_native_apply_speed)
 
@@ -3267,6 +3269,8 @@ func _refresh_hud() -> void:
 		func(data): return [data.name, data.score, data.ready, data.is_dealer, data.is_human]),
 		round.phase, AudioManager.seat_voice_packs, table != null and table._net_mode() != ""])
 	if signature == _label_signature and not _labels.is_empty():
+		if _table_3d != null and _hud_bounds.has(human_seat):
+			_move_seat_hud(human_seat, _own_hud_rect())
 		return
 	_label_signature = signature
 	_clear(_label_layer)
@@ -3319,9 +3323,10 @@ func _build_labels(seats: Array, active: int) -> void:
 	var names := _seat_display_names(seats)
 	for data in seats:
 		var seat := int(data.seat)
-		var bounds := _seat_hud_rect(seat)
-		_hud_bounds[seat] = bounds
 		var own_strip := _table_3d != null and seat == human_seat
+		var bounds := _own_hud_rect() if own_strip else _seat_hud_rect(seat)
+		_hud_bounds[seat] = bounds
+		var line_y := bounds.position.y + (bounds.size.y - OWN_HUD_LINE_HEIGHT) / 2.0 if own_strip else bounds.position.y
 		var is_dealer := bool(data.is_dealer)
 		var has_voice: bool = table != null and table._net_mode() != "" and (seat == human_seat or bool(data.is_human))
 		var is_turn := active == seat
@@ -3335,7 +3340,7 @@ func _build_labels(seats: Array, active: int) -> void:
 			left = bounds.position.x + 36.0
 		var name_label := _table_text(_label_layer, caption, 24, UI.INK)
 		name_label.name = "SeatName%d" % seat
-		name_label.position = Vector2(left, bounds.position.y + (6.0 if own_strip else (4.0 if _table_3d != null else 8.0)))
+		name_label.position = Vector2(left, line_y + (6.0 if own_strip else (4.0 if _table_3d != null else 8.0)))
 		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name_label.clip_text = true
 		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -3353,7 +3358,7 @@ func _build_labels(seats: Array, active: int) -> void:
 		score.name = "SeatScore%d" % seat
 		var score_width := minf(142, bounds.size.x - 8)
 		score.position = Vector2(bounds.get_center().x - score_width / 2, bounds.position.y + (32.0 if _table_3d != null else 38.0))
-		if own_strip: score.position = Vector2(left + name_width + 12.0, bounds.position.y + 2.0)
+		if own_strip: score.position = Vector2(left + name_width + 12.0, line_y + 2.0)
 		score.size = Vector2(score_width, 38)
 		if round.phase == ROUND_STATE.Phase.SETTLED:
 			var deltas: Array = round.last_result.get("deltas", [])
@@ -3443,7 +3448,10 @@ func _set_seat_score(label: Label, value: float) -> void:
 	label.add_theme_font_size_override("font_size", font_size)
 	if delta != null:
 		var seat := int(str(label.name).trim_prefix("SeatScore"))
-		var edge := _seat_hud_rect(seat).end.x
+		var bounds := _seat_hud_rect(seat)
+		if _table_3d != null and seat == human_seat:
+			bounds = _hud_bounds.get(seat, bounds)
+		var edge := bounds.end.x
 		var text_width := _hud_text_width(caption, font_size)
 		var left := label.position.x + (text_width if label.horizontal_alignment == HORIZONTAL_ALIGNMENT_LEFT else (label.size.x + text_width) / 2.0) + 6.0
 		var available := maxf(0.0, edge - left)
@@ -3454,7 +3462,6 @@ func _set_seat_score(label: Label, value: float) -> void:
 			delta.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		else:
 			# Narrow side seats keep the round delta inside the same hand-follow panel.
-			var bounds := _seat_hud_rect(seat)
 			label.add_theme_font_size_override("font_size", mini(font_size, 22))
 			label.position.y = bounds.position.y + 32
 			label.size.y = 36
@@ -3499,7 +3506,7 @@ func _own_hand_top() -> float:
 func _seat_hud_rect(seat: int) -> Rect2:
 	var rel := G.relative_seat(human_seat, seat)
 	if _table_3d != null:
-		return [Rect2(24, G.DESIGN_SIZE.y - 44.0, 330, 44), Rect2(2112, 300, 144, 96),
+		return [Rect2(24, G.DESIGN_SIZE.y - OWN_HUD_LINE_HEIGHT, 330, OWN_HUD_LINE_HEIGHT), Rect2(2112, 300, 144, 96),
 			Rect2(1010, 8, 260, 78), Rect2(24, 300, 144, 96)][rel]
 	var along: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][rel]
 	var first := Rect2()
@@ -3545,15 +3552,71 @@ func _follow_hand_hud() -> void:
 	if _label_layer == null or _labels.size() != 4: return
 	for seat in 4:
 		if not _hud_bounds.has(seat): continue
-		var bounds := _seat_hud_rect(seat)
-		var offset: Vector2 = bounds.position - _hud_bounds[seat].position
-		if offset.is_zero_approx(): continue
-		_hud_bounds[seat] = bounds
-		var nodes: Array = [_labels[seat], _name_labels[seat],
-			_label_layer.get_node_or_null("SeatTurn%d" % seat), _voice_buttons.get(seat)]
-		if _labels[seat].has_meta("round_delta"): nodes.append(_labels[seat].get_meta("round_delta"))
-		for node in nodes:
-			if is_instance_valid(node): node.position += offset
+		if _table_3d != null and seat == human_seat: continue
+		_move_seat_hud(seat, _seat_hud_rect(seat))
+
+func _screen_safe_area() -> Rect2:
+	return Rect2(DisplayServer.get_display_safe_area())
+
+func _own_hud_rect() -> Rect2:
+	var bounds := _seat_hud_rect(human_seat)
+	var touch := minimum_touch_height()
+	if touch <= 0.0: return bounds
+	var to_screen := get_viewport().get_screen_transform() * get_global_transform_with_canvas()
+	var safe := Rect2(Vector2.ZERO, G.DESIGN_SIZE)
+	var display_safe := _screen_safe_area()
+	if display_safe.has_area():
+		var inner := safe.intersection(to_screen.affine_inverse() * display_safe)
+		if inner.has_area(): safe = inner
+	const GAP := 8.0
+	var screen_scale := to_screen.get_scale().abs()
+	bounds.size.x = maxf(bounds.size.x, touch * screen_scale.y / screen_scale.x)
+	bounds.size.y = maxf(bounds.size.y, touch)
+	var left := maxf(bounds.position.x, safe.position.x + GAP)
+	var bottom := safe.end.y - bounds.size.y - GAP
+	var last_x := minf(safe.end.x, G.CENTER.x) - bounds.size.x - GAP
+	var obstacles: Array[Rect2] = []
+	for seat in 4:
+		var hand := Rect2()
+		for box in [hand_boxes[seat], draw_boxes[seat]]:
+			for tile in box.get_children():
+				if not tile is TileView or not tile.is_visible_in_tree() or tile.is_queued_for_deletion(): continue
+				var projected: Rect2 = _table_3d.project_tile(tile)
+				if projected.has_area(): hand = hand.merge(projected) if hand.has_area() else projected
+		if hand.has_area(): obstacles.append(hand.grow(GAP))
+		if seat != human_seat: obstacles.append(_seat_hud_rect(seat).grow(GAP))
+	var columns := [left]
+	var rows := [bottom]
+	for obstacle in obstacles:
+		if obstacle.end.x > left and obstacle.end.x <= last_x: columns.append(obstacle.end.x)
+		var above := obstacle.position.y - bounds.size.y
+		if above >= safe.position.y + GAP and above < bottom: rows.append(above)
+	columns.sort()
+	rows.sort()
+	rows.reverse()
+	# Keep the nameplate in the bottom-left clear space, above the hand when the footer is shallow.
+	for y in rows:
+		for x in columns:
+			bounds.position = Vector2(x, y)
+			if safe.encloses(bounds) and not obstacles.any(func(rect): return rect.intersects(bounds)):
+				return bounds
+	bounds.position = Vector2(left, bottom)
+	return bounds
+
+func _move_seat_hud(seat: int, bounds: Rect2) -> void:
+	var previous: Rect2 = _hud_bounds[seat]
+	if previous.is_equal_approx(bounds): return
+	_hud_bounds[seat] = bounds
+	var offset := bounds.position - previous.position
+	if _table_3d != null and seat == human_seat: offset.y += (bounds.size.y - previous.size.y) / 2.0
+	var nodes: Array = [_labels[seat], _name_labels[seat], _label_layer.get_node_or_null("SeatTurn%d" % seat)]
+	if _labels[seat].has_meta("round_delta"): nodes.append(_labels[seat].get_meta("round_delta"))
+	for node in nodes:
+		if is_instance_valid(node): node.position += offset
+	var button: Button = _voice_buttons.get(seat)
+	if button != null:
+		button.position = bounds.position
+		button.size = bounds.size
 
 func _ordinary_count(seat: int) -> int:
 	if round == null: return 0
