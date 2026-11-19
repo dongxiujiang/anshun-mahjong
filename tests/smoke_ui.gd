@@ -14,15 +14,15 @@ func _initialize() -> void:
 	table = load("res://scenes/GameTable.tscn").instantiate()
 	table.human_seat = 0
 	root.add_child(table)
-	# This probe drives every seat. An independent AI could win before the
-	# driver observes one discard and voice cue from each seat.
-	table.round.cancel_ai()
-	table.round.controllers = [null, null, null, null]
 	call_deferred("_drive")
 
 func _drive() -> void:
 	_frames += 1
 	if _frames == 1:
+		# This probe drives every seat. An independent AI could win before the
+		# driver observes one discard and voice cue from each seat.
+		table.round.cancel_ai()
+		table.round.controllers = [null, null, null, null]
 		root.get_node("AudioManager").event_played.connect(_on_audio_event)
 	if _frames > 4000:
 		print("[smoke_ui] 超时结束失败")
