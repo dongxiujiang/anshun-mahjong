@@ -458,13 +458,17 @@ func _check_wall_flip_landing() -> void:
 	root.add_child(view)
 	view.table = stub
 	view.auto_sort_hands = false
-	# Four walls, each corner, a partial next stack, an isolated tile, and a supported upper tile.
+	# Four walls, each corner, partial stacks with and without a full stack ahead, and in-place flips.
 	for example in [[11, 12], [35, 36], [65, 66], [91, 92], [27, 28], [53, 54],
-			[81, 82], [107, 0], [103, 0], [105, 107], [107, -1], [64, -1]]:
+			[81, 82], [107, 0], [103, 0], [105, 0], [105, 107], [107, -1], [64, -1]]:
 		var index: int = example[0]
 		var support: int = example[1]
 		var r := _fixture("self_draw", "tong8", index)
-		if support == 107 or (support < 0 and index == 107):
+		if index == 105 and support == 0:
+			r.wall.set_head(6)
+			for i in range(6, index): r.wall.draw_head()
+			r.wall.draw_tail() # Slot 107 remains alone; the next complete stack is at 0/1.
+		elif support == 107 or (support < 0 and index == 107):
 			r.wall.set_head(0)
 			for i in index: r.wall.draw_head()
 			if support == 107: r.wall.draw_tail()
@@ -490,6 +494,7 @@ func _check_wall_flip_landing() -> void:
 			view.start_native_settlement(true)
 			renderer.sync_tiles()
 			var tag := "%d->%d remote=%s" % [index, support, synced]
+			t.expect(view._settlement_flip_support == support, tag + ": selects the expected stack")
 			t.expect(view._native_wall_flip_tile() == walls[index] and walls[index].face_up,
 				tag + ": retains the original tile identity and face")
 			t.expect(view._wall_layer.get_child_count() == count, tag + ": preserves the wall tile count")
@@ -497,6 +502,13 @@ func _check_wall_flip_landing() -> void:
 				var below: MeshInstance3D = renderer.tile_nodes[walls[support].get_instance_id()]
 				t.expect(mesh.position.is_equal_approx(below.position + Vector3.UP * mesh.basis.x.length() * 0.62)
 					and mesh.basis.x.is_equal_approx(below.basis.x), tag + ": lands flush above its next stack")
+				var top_bounds: AABB = mesh.transform * mesh.get_aabb()
+				var support_bounds: AABB = below.transform * below.get_aabb()
+				t.expect(is_equal_approx(top_bounds.position.y, support_bounds.end.y), tag + ": revealed mesh touches its support")
+				if support % 2 == 0:
+					var base: MeshInstance3D = renderer.tile_nodes[walls[support + 1].get_instance_id()]
+					var base_bounds: AABB = base.transform * base.get_aabb()
+					t.expect(is_equal_approx(support_bounds.position.y, base_bounds.end.y), tag + ": both support tiles touch")
 			else:
 				t.expect(mesh.position.is_equal_approx(before), tag + ": lands at its supported original height")
 			var landed := mesh.transform

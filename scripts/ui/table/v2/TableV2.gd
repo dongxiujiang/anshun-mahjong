@@ -1128,7 +1128,7 @@ func _native_wall_flip_tile() -> TileView:
 	return null
 
 func _next_wall_flip_support(index: int) -> int:
-	var nearest := WallRing.N
+	var nearest := WallRing.N * 2
 	var support := -1
 	for seat in 4:
 		var slots := _wall_slots(seat)
@@ -1136,7 +1136,10 @@ func _next_wall_flip_support(index: int) -> int:
 			if not slots[slot][1]: continue
 			var upper := _wall_ring_index(seat, slot, 0)
 			var distance := posmod(upper - (index - 1), WallRing.N)
-			if distance == 0 or distance >= nearest: continue
+			if distance == 0: continue
+			# Prefer a full stack so the revealed tile can land as the third layer.
+			if not slots[slot][0]: distance += WallRing.N
+			if distance >= nearest: continue
 			nearest = distance
 			support = upper if slots[slot][0] else upper + 1
 	return support
