@@ -2,6 +2,9 @@ extends Control
 ## Real meshes mirror the existing presentation timeline; RoundState stays authoritative.
 const G = preload("res://scripts/ui/table/v2/TableV2Geometry.gd")
 const MODEL_PATH := "res://res/models/mahjong3d/"
+# Flat top rim of tiles.glb, inside the beveled shell.
+const TILE_FACE_HALF := Vector2(0.4472395, 0.5665705)
+const TILE_FACE_HEIGHT := 0.31
 var view: Control
 var viewport: SubViewport
 var camera: Camera3D
@@ -428,7 +431,7 @@ func sync_tiles() -> void:
 			position_3d.z += row_offset
 			if kind == "ordinary": position_3d = _ordinary_position(source_center, int(source.get_meta("v2_seat")), factor, world_unit, width_fit)
 			position_3d += Vector3(kong_offset.x, 0, kong_offset.y) * factor
-			position_3d += Vector3(charge_outward.x, 0, charge_outward.y) * (0.17 * factor)
+			position_3d += Vector3(charge_outward.x, 0, charge_outward.y) * ((TILE_FACE_HALF.y - TILE_FACE_HALF.x) * factor)
 			if flight >= 0.0:
 				position_3d.y += factor * (1.0 - pow(absf(flight * 2.0 - 1.0), 2.0)) * (1.75 if side_hand else 0.9)
 			elif motion >= 0.0:
@@ -742,7 +745,9 @@ func _own_exposed_hand_edge(ids: Array) -> float:
 	var edge := -INF
 	for id in ids:
 		var node: MeshInstance3D = tile_nodes[id]
-		edge = maxf(edge, (node.transform * node.mesh.get_aabb()).end.z)
+		var center := node.transform * Vector3(0.0, TILE_FACE_HEIGHT, 0.0)
+		var half := absf(node.basis.x.z) * TILE_FACE_HALF.x + absf(node.basis.z.z) * TILE_FACE_HALF.y
+		edge = maxf(edge, center.z + half)
 	return edge
 
 func _position_own_exposed_row(ids: Array, cursor: Vector2, obstacles: Array[Rect2], bottom_up: bool, hand_edge: float = INF) -> Rect2:

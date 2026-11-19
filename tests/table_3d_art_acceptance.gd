@@ -1,5 +1,6 @@
 extends "res://tests/table_3d_river_badges.gd"
 ## Fixed camera and fixtures for material comparison, with real rendered evidence.
+const EDGE := preload("res://tests/fixtures/projected_tile_edge.gd")
 
 func run() -> void:
 	root.get_node("UpdateManager").auto_check = false
@@ -115,9 +116,11 @@ func check_charge_edges(view, output: String) -> Array:
 					for tile in melds:
 						var other: MeshInstance3D = renderer.tile_nodes[tile.get_instance_id()]
 						gap = maxf(gap, absf(outward_edge(other, outward[rel]) - edge))
-					t.expect(gap < 0.025, "%s outer edge lines up with its meld (gap %.4f, centers %s)" % [
-						label, gap, view._exposed_specs.filter(func(spec): return spec.seat == owner).map(
-							func(spec): return [spec.center, spec.lower, spec.sideways])])
+					var charge_edge := EDGE.near_top(renderer, mesh, outward[rel])
+					var reference := EDGE.nearest_meld(renderer, melds, charge_edge, outward[rel])
+					var offsets := EDGE.pixel_offsets(reference, charge_edge)
+					var pixel_gap := maxf(absf(offsets.x), absf(offsets.y))
+					t.expect(pixel_gap <= 1.0, "%s visible top edge aligns to the adjacent meld (%.3f px)" % [label, pixel_gap])
 					for tile in charges + melds:
 						var shown: MeshInstance3D = renderer.tile_nodes[tile.get_instance_id()]
 						for offset in [Vector3(0, 0.311, 0), Vector3(0.38, 0.311, 0.5), Vector3(-0.38, 0.311, -0.5)]:
@@ -132,7 +135,13 @@ func check_charge_edges(view, output: String) -> Array:
 						t.expect(mesh.transform.is_equal_approx(pose), label + " keeps the charge pose on an unrelated discard")
 					await RenderingServer.frame_post_draw
 					root.get_texture().get_image().save_png(output.path_join(label + ".png"))
-					results.append({"image": label + ".png", "outer_edge_error_world": gap})
+					var overlay := EDGE.add_guides(root, reference, charge_edge)
+					await RenderingServer.frame_post_draw
+					root.get_texture().get_image().save_png(output.path_join(label + "-guide.png"))
+					overlay.free()
+					results.append({"image": label + ".png", "guided": label + "-guide.png",
+						"outer_edge_error_world": gap, "top_edge_error_px": pixel_gap,
+						"signed_perpendicular_px": [offsets.x, offsets.y]})
 	return results
 
 func outward_edge(mesh: MeshInstance3D, direction: Vector3) -> float:

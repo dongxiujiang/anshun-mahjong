@@ -2,6 +2,7 @@ extends SceneTree
 const H := preload("res://tests/test_harness.gd")
 const G := preload("res://scripts/ui/table/v2/TableV2Geometry.gd")
 const REPLAY := preload("res://scripts/core/RoundReplay.gd")
+const EDGE := preload("res://tests/fixtures/projected_tile_edge.gd")
 var t := H.new()
 
 class Host extends Control:
@@ -104,6 +105,7 @@ func _recorded_north_pung_at_wall() -> void:
 	for index in actions.size():
 		var check_placement := index in [37, 46]
 		var before := _north_pung_rects(view, "wan2") if check_placement else {}
+		var west_before := _recorded_west_charge_edge(view) if index == 46 else PackedVector2Array()
 		var action: Dictionary = actions[index]
 		var accepted := host.round.submit_turn(action.seat, action.decision) if action.kind == "turn" \
 			else host.round.submit_response(action.seat, action.tile, action.decision)
@@ -113,7 +115,27 @@ func _recorded_north_pung_at_wall() -> void:
 		var after := _north_pung_rects(view, "wan2")
 		t.expect(before.size() == 3 and after == before,
 			"R22 round 16 north pung stays put after side discard %d" % (index + 1))
+		if index == 46:
+			var west_after := _recorded_west_charge_edge(view)
+			t.expect(west_before.size() == 2 and west_after == west_before,
+				"R22 round 16 west charge retains its visible placement on action 47")
 	host.free()
+
+func _recorded_west_charge_edge(view) -> PackedVector2Array:
+	var charges: Array = view._red_layer.get_children().filter(func(tile):
+		return tile.tile == "tong8" and tile.get_meta("v2_seat", -1) == 2 and tile.get_meta("v2_charge", false))
+	var neighboring_pung: Array = view._meld_layer.get_children().filter(func(tile):
+		return tile.tile == "wan8" and tile.get_meta("v2_seat", -1) == 2 and tile.get_meta("meld_index", -1) == 1)
+	if not t.expect(charges.size() == 1 and neighboring_pung.size() == 3, "the recorded charge has its adjacent eight-character pung"):
+		return PackedVector2Array()
+	var renderer = view._table_3d
+	var charge: TileView = charges[0]
+	var edge := EDGE.near_top(renderer, renderer.tile_nodes[charge.get_instance_id()], Vector3.LEFT)
+	var reference := EDGE.nearest_meld(renderer, neighboring_pung, edge, Vector3.LEFT)
+	var offsets := EDGE.pixel_offsets(reference, edge).abs()
+	t.expect(maxf(offsets.x, offsets.y) <= 1.0, "the west charge follows the visible eight-character top edge")
+	_check_recorded_face(renderer, charge, view._dealer_meld_badges[2])
+	return edge
 
 func _north_pung_rects(view, card: String = "tiao1") -> Dictionary:
 	var renderer = view._table_3d

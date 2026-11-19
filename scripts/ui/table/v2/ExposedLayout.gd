@@ -274,14 +274,16 @@ static func _align_charge_rows(specs: Array, obstacles: Array, own_chicken_obsta
 		if not charge.charge: continue
 		var size := size_for(charge.rel)
 		var inward: Vector2 = INWARD[charge.rel]
+		var along: Vector2 = AXES[charge.rel]
 		var depth: float = charge.center.dot(inward) - size.x / 2.0
-		var gap := size.x / 2.0
+		var nearest := INF
 		var shift := Vector2.ZERO
 		for mate in specs:
 			if mate.seat != charge.seat or mate.lower != charge.lower or mate.meld_index < 0 or mate.sideways: continue
 			var delta: float = mate.center.dot(inward) - size.y / 2.0 - depth
-			if absf(delta) < gap:
-				gap = absf(delta)
+			var distance: float = absf((mate.center - charge.center).dot(along))
+			if absf(delta) < size.x and distance < nearest:
+				nearest = distance
 				shift = inward * delta
 		if shift.is_zero_approx(): continue
 		var blocked := obstacles + own_chicken_obstacles if charge.rel == 0 else obstacles.duplicate()
