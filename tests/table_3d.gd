@@ -246,7 +246,7 @@ func _dense_round(action_count := -1) -> RoundState:
 	result.next_dealer_seat = int(record.dealer)
 	result.controllers = [null, null, null, null]
 	result.pause_after_opening = true
-	result.start_round(1, int(record.red), int(record.white))
+	result.start_round(1, int(record.red), int(record.white), false)
 	result.resume_after_opening()
 	var actions: Array = record.actions
 	for action in actions.slice(0, action_count if action_count >= 0 else actions.size()):

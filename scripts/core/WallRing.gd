@@ -1,11 +1,10 @@
 class_name WallRing
 extends RefCounted
-## 物理牌墙按顺时针跨墙：北(上)→东(右)→南(下)→西(左)。
-## 牌头沿索引递增取牌；杠从牌尾反向补。
-## 注意：这是墙段顺序，不是玩家出牌顺序；玩家出牌仍是逆时针。
+## 每局固定 54 列，每列用「上层、下层」两个连续索引表示。
+## 新局按庄家视角依次编号：对家、下家、庄家、上家。
 
 const N := 108
-## 固定四墙：北14列、东13列、南14列、西13列。
+## 旧录像的固定座位布局；也是新局各墙段的列数和起始编号。
 ## 每列两行，平铺成 108 个“列优先”槽位：
 ## 北 0..27，东 28..53，南 54..81，西 82..107。
 const SEG := {
@@ -19,6 +18,8 @@ var _ring: Array = []       # 108 张牌字符串，按顺时针逻辑次序
 var _drawn: Array[bool] = []
 var _head := 0
 var _tail := 0
+var _break := 0
+var _dealer_layout: bool
 var remaining := 108
 var _segments: Dictionary
 ## 记录真实取牌顺序，供牌墙显示与回放；不参与摸牌决策。
@@ -26,30 +27,38 @@ var draw_log: Array = []
 
 const PAIR := 2
 
-func _init(ring_tiles: Array, dealer_seat: int = 0):
-	# ring_tiles 为 108 张，按逻辑逆时针（与 SEG 边界一致）传入
+func _init(ring_tiles: Array, dealer_seat: int = 0, dealer_layout: bool = false):
 	assert(ring_tiles.size() == N)
 	_ring = ring_tiles.duplicate()
-	_segments = segments_for_dealer(dealer_seat)
+	_dealer_layout = dealer_layout
+	_segments = segments_for_dealer(dealer_seat, dealer_layout)
 	_drawn.resize(N)
 	_drawn.fill(false)
 
 ## 根据骰子点数 D 计算牌头索引（本子按你描述的规则）：
 ##   D∈{1,3,5} -> 对家墙；D=4 -> 上家；D∈{2,6} -> 下家。
-static func segments_for_dealer(_dealer_seat: int) -> Dictionary:
-	# 四墙长度是固定的，不随庄家改变；庄家只影响破墙方向。
-	return SEG.duplicate(true)
+static func segments_for_dealer(dealer_seat: int, dealer_layout: bool = true) -> Dictionary:
+	var segments := SEG.duplicate(true)
+	if dealer_layout:
+		for i in 4:
+			segments[i].seat = posmod(dealer_seat + i + 2, 4)
+	return segments
 
-static func compute_break(die: int, dealer_seat: int = 0) -> int:
+## 逻辑列号与绝对座位的绘制顺序互转（南/西墙反向）。
+static func physical_column(segment: Dictionary, column: int) -> int:
+	return int(segment.len) / PAIR - 1 - column if int(segment.seat) in [1, 2] else column
+
+static func compute_break(die: int, dealer_seat: int = 0, dealer_layout: bool = true) -> int:
 	# 逆时针玩家顺序下：下家=dealer-1，上家=dealer+1。
 	var offset := 2 if die in [1, 3, 5] else (1 if die == 4 else 3)
 	var target := posmod(dealer_seat + offset, 4)
-	for segment in segments_for_dealer(dealer_seat).values():
+	for segment in segments_for_dealer(dealer_seat, dealer_layout).values():
 		if int(segment.seat) == target:
 			return int(segment.start) + die * PAIR
 	return 0
 
 func set_head(break_idx: int):
+	_break = break_idx
 	_head = break_idx
 	remaining = N
 	_drawn.fill(false)
@@ -62,11 +71,14 @@ func positive_mod(v: int, m: int) -> int:
 
 func _advance(idx: int) -> int: return positive_mod(idx + 1, N)
 
-## 杠后补牌从全墙最后一列开始：先上层，再下层，再前一列。
+## 新局从开口前一列往回取；旧录像仍从固定的最后一列取。
 func _tail_index() -> int:
-	for col in range(53, -1, -1):
-		for row in 2:
-			var index := col * 2 + row
+	var columns := N / PAIR
+	var start := _break / PAIR - 1 if _dealer_layout else columns - 1
+	for step in columns:
+		var upper := posmod(start - step, columns) * PAIR
+		for row in PAIR:
+			var index := upper + row
 			if not _drawn[index]: return index
 	return -1
 
@@ -138,7 +150,7 @@ func wall_centering() -> Dictionary:
 	for i in draw_log.size():
 		var index := int(draw_log[i].index)
 		removed[index] = true
-		for segment in SEG.values():
+		for segment in _segments.values():
 			if index < int(segment.start) or index >= int(segment.start) + int(segment.len): continue
 			var seat := int(segment.seat)
 			taken[seat] += 1
@@ -170,11 +182,9 @@ func debug_stack_counts_at(seat: int, count: int) -> Array:
 
 ## 南/西墙内部按逆序拿牌，但 debug 显示仍按物理左→右、上→下。
 func _physical_slot_order(segment: Dictionary, slots: Array) -> Array:
-	if int(segment.seat) not in [1, 2]:
-		return slots
 	var ordered: Array = []
-	for index in range(slots.size() - 1, -1, -1):
-		ordered.append(slots[index])
+	for index in slots.size():
+		ordered.append(slots[physical_column(segment, index)])
 	return ordered
 
 func _wall_seg_for_seat(seat: int) -> Dictionary:

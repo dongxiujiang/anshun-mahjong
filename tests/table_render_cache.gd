@@ -24,7 +24,7 @@ func run():
 	r.next_dealer_seat = int(record.dealer)
 	r.controllers = [null,null,null,null]
 	r.pause_after_opening = true
-	r.start_round(1,int(record.red),int(record.white))
+	r.start_round(1,int(record.red),int(record.white),false)
 	r.resume_after_opening()
 	for action in record.actions:
 		var ok: bool = r.submit_turn(int(action.seat),action.decision) if action.kind=="turn" else r.submit_response(int(action.seat),str(action.tile),action.decision)

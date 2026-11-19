@@ -143,7 +143,7 @@ func _check_meld_replay(view, viewer: int, fixture: String) -> void:
 	r.set_rng_seed(int(record.seed))
 	r.next_dealer_seat = int(record.dealer)
 	r.pause_after_opening = true
-	r.start_round(1, int(record.red), int(record.white))
+	r.start_round(1, int(record.red), int(record.white), false)
 	r.resume_after_opening()
 	var events := []
 	r.visual_event.connect(func(event): events.append(event))

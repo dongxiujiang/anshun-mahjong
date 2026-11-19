@@ -88,7 +88,7 @@ func run():
 		var kind=str(event.get("type",""))
 		events[kind]=int(events.get(kind,0))+1)
 	change_stage("opening")
-	table.round.start_round(table.human_seat,int(record.red),int(record.white))
+	table.round.start_round(table.human_seat,int(record.red),int(record.white),false)
 	if not await wait_visual(): fail("opening timeout"); return
 	change_stage("idle")
 	await get_tree().create_timer(5.0).timeout

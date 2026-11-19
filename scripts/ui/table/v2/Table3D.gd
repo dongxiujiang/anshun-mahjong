@@ -328,7 +328,7 @@ func sync_tiles() -> void:
 				source.get_meta("v2_charge", false), source.get_meta("kong_offset_2d", Vector2.ZERO), source.get_meta("kong_offset_3d", Vector2.ZERO), settlement_started if own_exposed else settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
 				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0, touch_height if own_hand else 0.0,
 				own_meld_key if kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat else 0,
-				own_travel if _own_exposed_targets.has(id) else 1.0])
+				own_travel if _own_exposed_targets.has(id) else 1.0, view._wall_raise if kind == "wall" else 1.0])
 			if wall_flip:
 				signature = hash([signature, view._settlement_flip_support, view._settlement_flip_travel])
 			if source.get_parent() != view._deal_layer and (own_hand or (kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat)):
@@ -439,6 +439,7 @@ func sync_tiles() -> void:
 			if kind == "wall":
 				if wall_upper or (source.face_up and not wall_flip): position_3d.y += 0.62 * factor
 				if flipping_wall: position_3d.y += sin(pitch) * factor * 0.35
+				position_3d.y -= (1.0 - view._wall_raise) * 1.26 * factor
 			var basis := Basis(Vector3.UP, angle) * Basis(Vector3.RIGHT, pitch)
 			node.transform = Transform3D(basis.scaled(Vector3.ONE * factor), position_3d)
 			if wall_flip and view._settlement_flip_support >= 0:

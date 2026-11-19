@@ -2,7 +2,19 @@ extends SceneTree
 ## 验证四面牌墙在实际墙列上首尾相接，且南/西按环顺序从缺口端取牌。
 const H := preload("res://tests/test_harness.gd")
 const G := preload("res://scripts/ui/table/v2/TableV2Geometry.gd")
+const UI := preload("res://scripts/ui/table/TableUiConfig.gd")
 var t := H.new()
+
+class OpeningHold extends RefCounted:
+	func visual_hold_active() -> bool: return true
+	func dice_gate_active() -> bool: return true
+	func dealt_count(_seat: int) -> int: return 0
+
+class OpeningHost extends RefCounted:
+	var round: RoundState
+	var human_seat := 1
+	var _table_animation_controller := OpeningHold.new()
+	func _net_mode() -> String: return ""
 
 func _initialize() -> void: call_deferred("_run")
 
@@ -11,17 +23,17 @@ func _run() -> void:
 		root.content_scale_size = Vector2i(G.DESIGN_SIZE)
 		root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 		root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_IGNORE
-	var host = load("res://scenes/GameTable.tscn").instantiate()
-	root.add_child(host)
-	host.round.controllers = [null, null, null, null]
-	await process_frame
+	var r := RoundState.new()
+	r.pause_after_opening = true
+	r.next_dealer_seat = 1
+	r.start_round(1, 5)
 	var deck = load("res://scenes/table/TableV2.tscn").instantiate()
 	root.add_child(deck)
 	deck.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	deck.size = G.DESIGN_SIZE
-	deck.set_round(host.round, 1)
+	deck.set_round(r, 1)
 	await process_frame
-	var ring: Array = host.round.wall._ring
+	var ring: Array = r.wall._ring
 	t.expect(ring.size() == 108, "牌墙环108张")
 	# 北左端 = 环0，北右端 = 环26/27；东上端 = 环28/29。
 	t.expect(deck._wall_value(3, 0, 0) == ring[0] and deck._wall_value(3, 0, 1) == ring[1],
@@ -52,15 +64,36 @@ func _run() -> void:
 	for i in 108:
 		if str(all_pairs[i]) != str(ring[i]): connected = false
 	t.expect(connected, "2×54数组首尾相连")
-	host.hide()
+	_check_wall_rise(deck, r)
 	await _opening_matrix(deck)
 	deck.queue_free()
-	host.queue_free()
 	await process_frame
 	quit(t.finish("table_v2_wall_ring"))
 
+func _check_wall_rise(deck, r: RoundState) -> void:
+	var host := OpeningHost.new()
+	host.round = r
+	deck.set_table(host)
+	var renderer = deck._table_3d
+	var rest := {}
+	for tile in deck._wall_layer.get_children():
+		var id: int = tile.get_instance_id()
+		rest[id] = renderer.tile_nodes[id].position
+	t.expect(rest.size() == 108, "the dice gate shows all 108 original slots before any deal")
+	deck.animate_dice(5, 3)
+	deck._dice_tween.pause()
+	renderer.sync_tiles()
+	t.expect(rest.keys().all(func(id): return renderer.tile_nodes[id].position.y < rest[id].y),
+		"both layers of all four walls begin rising together")
+	deck._dice_tween.custom_step(UI.DICE_DURATION * 0.3)
+	renderer.sync_tiles()
+	t.expect(rest.keys().all(func(id): return renderer.tile_nodes[id].position.is_equal_approx(rest[id])),
+		"the rise reaches all original positions before dealing")
+	deck.clear_dice_visual()
+	deck.set_table(null)
+
 func _opening_matrix(deck) -> void:
-	const WALL_START := [28, 54, 82, 0]
+	const DIE_START := [0, 28, 0, 82, 0, 28]
 	const WALL_OFFSETS := [2, 3, 2, 1, 2, 3]
 	var visual := DisplayServer.get_name() != "headless"
 	if visual:
@@ -75,7 +108,7 @@ func _opening_matrix(deck) -> void:
 			r.start_round(dealer, die, die)
 			r.controllers = [null, null, null, null]
 			var logical_side := posmod(dealer + int(WALL_OFFSETS[die - 1]), 4)
-			var first: int = WALL_START[logical_side] + die * 2
+			var first: int = DIE_START[die - 1] + die * 2
 			var name := "dealer%d-red%d" % [dealer, die]
 			var dealt: Array = r.wall.draw_log.map(func(draw): return int(draw.index))
 			var want: Array = range(first, first + 52).map(func(i): return i % 108)

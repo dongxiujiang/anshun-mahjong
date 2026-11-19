@@ -26,9 +26,7 @@ static func flip_wall_index(round) -> int:
 				if offset < 0 or offset >= int(segment.len):
 					continue
 				var counts: Array = round.wall_stacks.get(int(segment.seat), [])
-				var slot := offset >> 1
-				if int(segment.seat) in [1, 2]:
-					slot = (int(segment.len) >> 1) - 1 - slot
+				var slot := WallRing.physical_column(segment, offset >> 1)
 				if slot in range(counts.size()) and int(counts[slot]) >= (2 if offset % 2 == 0 else 1):
 					return next
 				break
@@ -74,6 +72,8 @@ static func build(round, human_seat: int) -> Dictionary:
 		"human_seat": human_seat,
 		"dealer": int(round.dealer_seat),
 		"turn": int(round.current_turn),
+		"wall_segments": round.wall._segments if round.wall != null else WallRing.segments_for_dealer(
+			int(round.dealer_seat), bool(round.round_meta.get("dealer_wall", false))),
 		"wall_slots": wall_slots,
 		"wall_centering": round.wall.wall_centering() if round.wall != null else round.wall_centering,
 		"wall_remaining": int(round.wall.remaining) if round.wall != null else 0,

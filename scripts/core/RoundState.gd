@@ -195,7 +195,7 @@ func build_players(human_seat: int) -> void:
 		player.score = CFG.START_SCORE
 		players.append(player)
 
-func start_round(human_seat: int, die_override: int = -1, white_die_override: int = -1) -> void:
+func start_round(human_seat: int, die_override: int = -1, white_die_override: int = -1, dealer_layout: bool = true) -> void:
 	cancel_ai()
 	_opening_generation += 1
 	if _recorder.auto_save and not _recorder.record.is_empty(): _recorder.save()
@@ -225,8 +225,10 @@ func start_round(human_seat: int, die_override: int = -1, white_die_override: in
 	awaiting = false
 	_kong_draw_turn = false
 	_kong_draw_kind = KongKind.NONE
-	var built := WallBuilder.setup(_rng, dealer_seat)
-	wall = WallRing.new(built.ring, dealer_seat)
+	var built := WallBuilder.setup(_rng, dealer_seat, dealer_layout)
+	wall = WallRing.new(built.ring, dealer_seat, dealer_layout)
+	# Seed-only legacy fixtures must use their original wall layout.
+	if dealer_layout: round_meta["dealer_wall"] = true
 	var die := die_override if die_override >= 1 and die_override <= 6 else _rng.randi_range(1, 6)
 	# 红骰决定破墙；白骰只参与“同点本局翻倍”。
 	# 测试若只固定红骰，用一个不同点数的白骰保持旧结算可复现；
@@ -237,7 +239,7 @@ func start_round(human_seat: int, die_override: int = -1, white_die_override: in
 	round_meta["die"] = die
 	round_meta["die_white"] = white_die
 	round_meta["dice_double"] = die == white_die
-	round_meta["break"] = WallRing.compute_break(die, dealer_seat)
+	round_meta["break"] = WallRing.compute_break(die, dealer_seat, dealer_layout)
 	if round_meta.dice_double:
 		round_meta.chicken_multiplier = CFG.MAX_CHICKEN_MULTIPLIER
 	phase = Phase.DEALING

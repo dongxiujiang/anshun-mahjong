@@ -73,7 +73,7 @@ func _test_deck_and_wall() -> void:
 		_check(every_four, "牌局基础", "每种牌没有恰好4张", seed)
 		var built := WallBuilder.setup(local, sample % 4)
 		var ring: Array = built["ring"]
-		var wall := WallRing.new(ring, sample % 4)
+		var wall := WallRing.new(ring, sample % 4, true)
 		var dealer := sample % 4
 		for die in range(1, 7):
 			wall.set_head(WallRing.compute_break(die, dealer))

@@ -41,6 +41,7 @@ var _dice_red: Control
 var _dice_white: Control
 var _dice_shadow: Control
 var _dice_tween: Tween
+var _wall_raise := 1.0
 var _native_settlement: Control
 var _score_inspection: Control
 var _settlement_tween: Tween
@@ -548,6 +549,7 @@ func _own_badge_position(dimensions: Vector2) -> Vector2:
 	return Vector2(24.0, top)
 
 func clear_dice_visual() -> void:
+	_wall_raise = 1.0
 	if RenderingServer.frame_post_draw.is_connected(_play_rendered_dice):
 		RenderingServer.frame_post_draw.disconnect(_play_rendered_dice)
 	if _dice_tween != null and _dice_tween.is_valid(): _dice_tween.kill()
@@ -609,6 +611,9 @@ func _tick_dice(progress: float, value: int, white: int,
 		red_rest: Vector2, white_rest: Vector2) -> void:
 	if not is_instance_valid(_dice_red) or not is_instance_valid(_dice_white): return
 	if _table_3d != null:
+		if round != null and bool(round.round_meta.get("dealer_wall", false)):
+			# The entire wall rises together during the first part of the dice roll.
+			_wall_raise = smoothstep(0.0, 0.24, progress)
 		var slide := pow(1.0 - progress, 2.2)
 		_dice_red.position = red_rest + Vector2(-94.0, -56.0) * slide
 		_dice_white.position = white_rest + Vector2(101.0, -44.0) * slide
@@ -1137,8 +1142,9 @@ func _next_wall_flip_support(index: int) -> int:
 			var upper := _wall_ring_index(seat, slot, 0)
 			var distance := posmod(upper - (index - 1), WallRing.N)
 			if distance == 0: continue
-			# Prefer a full stack so the revealed tile can land as the third layer.
-			if not slots[slot][0]: distance += WallRing.N
+			# Old layouts could leave a partial stack ahead of an occupied full stack.
+			if not bool(round.round_meta.get("dealer_wall", false)) and not slots[slot][0]:
+				distance += WallRing.N
 			if distance >= nearest: continue
 			nearest = distance
 			support = upper if slots[slot][0] else upper + 1
@@ -1577,7 +1583,7 @@ func _wall_screen_seat(seat: int) -> int:
 	return posmod(seat - human_seat + 1, 4)
 
 func _wall_segment_for_index(index: int) -> Dictionary:
-	for segment in WallRing.SEG.values():
+	for segment in snapshot.get("wall_segments", WallRing.SEG).values():
 		if index >= int(segment.start) and index < int(segment.start) + int(segment.len):
 			return segment
 	return {}
@@ -2097,7 +2103,7 @@ func _build_wall_with_gray() -> void:
 	for i in mini(shown, round.wall.draw_log.size()):
 		removed[int(round.wall.draw_log[i].get("index", -1))] = true
 	for seat in 4:
-		var count := 14 if seat in [1, 3] else 13
+		var count: int = round.wall.wall_stack_slots(seat).size()
 		for slot in count:
 			for row in [1, 0]:
 				var index := _wall_ring_index(seat, slot, row)
@@ -2123,12 +2129,10 @@ func _sync_wall_tile(seat: int, slot: int, row: int, card: String, face: bool) -
 	return tile
 
 func _wall_ring_index(seat: int, physical_slot: int, row: int) -> int:
-	var starts := {3: 0, 0: 28, 1: 54, 2: 82}
-	var counts := {3: 14, 0: 13, 1: 14, 2: 13}
-	var logical := physical_slot
-	if seat in [1, 2]:
-		logical = int(counts[seat]) - 1 - physical_slot
-	return int(starts[seat]) + logical * 2 + row
+	for segment in snapshot.get("wall_segments", WallRing.SEG).values():
+		if int(segment.seat) == seat:
+			return int(segment.start) + WallRing.physical_column(segment, physical_slot) * 2 + row
+	return -1
 
 ## 测试模式：牌墙按实际墙列取真实牌面。
 func _wall_value(seat: int, physical_slot: int, row: int) -> String:

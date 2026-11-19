@@ -18,7 +18,7 @@ func _initialize() -> void: call_deferred("_run")
 func _run() -> void:
 	var tiles: Array = []
 	for i in 4: tiles.append_array(Tiles.all_values())
-	var ring := WallRing.new(tiles)
+	var ring := WallRing.new(tiles, 1, true)
 	if not t.expect(ring.has_method("wall_centering"), "牌墙提供首次过半时的固定视觉基准"):
 		await H.quit_cleanly(self, t.finish("table_v2_wall_centering"))
 		return
@@ -38,7 +38,8 @@ func _run() -> void:
 		r.pause_after_opening = true
 		r.start_round(1, 2, 3)
 		r.controllers = [null, null, null, null]
-		r.wall = WallRing.new(tiles)
+		r.wall = WallRing.new(tiles, 1, true)
+		r.dealer_seat = 1
 		r.wall.set_head(int(segment.start))
 		r.round_meta.erase("break") # 单独测试逐张取牌；正式开局的四张批次另测。
 		for i in int(segment.len) / 2 - 1: r.wall.draw_head()
@@ -79,7 +80,7 @@ func _run() -> void:
 			view.set_round(client, viewer)
 			t.expect(_same(_positions(view), _remaining(frozen[viewer], r.wall)), "晚加入也使用首次基准，不按当前余牌重新居中")
 	# 牌头与杠后牌尾同时消耗同一段墙，阈值仍只触发一次。
-	ring.set_head(82)
+	ring.set_head(94)
 	for i in 6:
 		ring.draw_head()
 		ring.draw_tail()
@@ -132,8 +133,9 @@ func _check_flight_sources(view, tiles: Array) -> void:
 			r.pause_after_opening = true
 			r.start_round(1, 2, 3)
 			r.controllers = [null, null, null, null]
-			r.wall = WallRing.new(tiles)
-			r.wall.set_head(82)
+			r.wall = WallRing.new(tiles, 1, true)
+			r.dealer_seat = 1
+			r.wall.set_head(0 if tail else 82)
 			r.round_meta.erase("break")
 			for i in 12:
 				if tail: r.wall.draw_tail()

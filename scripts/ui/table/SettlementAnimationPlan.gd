@@ -106,7 +106,8 @@ static func build(result: Dictionary, meta: Dictionary, players: Array, human_se
 		stage.scores[receiver][payer] += amount - debt
 
 	if not is_draw:
-		stages.append(flip_stage)
+		if not flip_tiles.is_empty():
+			stages.append(flip_stage)
 		stages.append(chicken_stage)
 	stages.append(kong_stage)
 	for winner in winners:

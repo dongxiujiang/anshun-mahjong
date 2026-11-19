@@ -68,13 +68,16 @@ func _assert_replay(round: RoundState, label: String) -> void:
 	var replay := REPLAY.replay(JSON.parse_string(JSON.stringify(round.replay_record())))
 	t.expect(replay.ok, "%s 重放第%d步：%s" % [label, replay.event_index, replay.error])
 
-func _fixture() -> RoundState:
+func _fixture(dealer_layout: bool = true) -> RoundState:
 	var round := RoundState.new()
 	round.build_players(0)
 	round.phase = RoundState.Phase.PLAYING
 	round.controllers = [null, null, null, null]
-	round.wall = WallRing.new(TileSetFactory.create_deck())
-	round.wall.set_head(0)
+	round.wall = WallRing.new(TileSetFactory.create_deck(), 0, dealer_layout)
+	round.wall.set_head(6 if dealer_layout else 0)
+	if dealer_layout:
+		round.round_meta.dealer_wall = true
+		round.round_meta.break = 6
 	for player in round.players:
 		player.concealed = ["wan1", "wan2", "wan4", "wan5", "wan7", "wan8", "tong1", "tong3", "tong5", "tong7", "tong9", "tiao2", "tiao4"]
 	return round
@@ -84,35 +87,42 @@ func _start_fixture(round: RoundState) -> void:
 	round._begin_turn()
 
 func _test_special_actions() -> void:
-	var dark := _fixture()
-	dark.players[0].concealed = ["tiao1", "tiao1", "tiao1", "wan1", "wan2", "wan4", "wan5", "wan7", "wan8", "tong1", "tong3", "tong5", "tong7"]
-	dark.wall._ring[0] = "tiao1"
-	_start_fixture(dark)
-	t.expect(dark.submit_turn(0, {"kong_declares": ["tiao1"]}), "记录暗杠和尾部补牌")
-	t.expect(dark.submit_turn(0, {"discard": dark.players[0].just_drew}), "暗杠后正常出牌")
-	_assert_replay(dark, "暗杠")
+	for dealer_layout in [false, true]:
+		var dark := _fixture(dealer_layout)
+		dark.players[0].concealed = ["tiao1", "tiao1", "tiao1", "wan1", "wan2", "wan4", "wan5", "wan7", "wan8", "tong1", "tong3", "tong5", "tong7"]
+		dark.wall._ring[dark.wall.peek_head_index()] = "tiao1"
+		_start_fixture(dark)
+		t.expect(dark.submit_turn(0, {"kong_declares": ["tiao1"]}), "记录暗杠和尾部补牌")
+		t.expect(dark.wall.draw_log.back() == {"index": 4 if dealer_layout else 106, "tail": true},
+			"暗杠按新旧对局各自的牌尾取牌")
+		t.expect(dark.submit_turn(0, {"discard": dark.players[0].just_drew}), "暗杠后正常出牌")
+		_assert_replay(dark, "暗杠")
 	for robbed in [false, true]:
 		var added := _fixture()
 		added.players[0].melds = [{"kind": "pung", "tile": "tiao1", "from_seat": 2}]
 		added.players[0].concealed = ["wan1", "wan2", "wan3", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
 		if robbed: added.players[1].concealed = ["tiao1", "wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tong1", "tong2", "tong3", "tong4", "tong5", "tong6"]
-		added.wall._ring[0] = "tiao1"
+		added.wall._ring[added.wall.peek_head_index()] = "tiao1"
 		_start_fixture(added)
 		t.expect(added.submit_turn(0, {"add_kong": ["tiao1"]}), "记录加杠宣告")
 		if robbed: t.expect(added.submit_response(1, "tiao1", {"action": "win"}), "记录抢杠烧鸡")
 		else: t.expect(added.players[0].melds[0].kind == "add_kong", "无抢杠时完成加杠")
+		t.expect(added.wall.draw_log.back() == ({"index": 6, "tail": false} if robbed else {"index": 4, "tail": true}),
+			"加杠成立补开口前一格；抢杠胡不补")
 		_assert_replay(added, "抢杠" if robbed else "加杠")
 	for action in ["pong", "kong"]:
 		var claimed := _fixture()
-		claimed.wall._ring[0] = "tiao1"
+		claimed.wall._ring[claimed.wall.peek_head_index()] = "tiao1"
 		claimed.players[1].concealed = (["tiao1", "tiao1"] if action == "pong" else ["tiao1", "tiao1", "tiao1"]) + ["wan1", "wan2", "wan4", "wan5", "wan7", "wan8", "tong1", "tong3", "tong5", "tong7"]
 		_start_fixture(claimed)
 		t.expect(claimed.submit_turn(0, {"discard": "tiao1"}), "记录冲锋鸡出牌")
 		t.expect(claimed.submit_response(1, "tiao1", {"action": action}), "记录碰杠转移鸡牌归属")
+		if action == "kong":
+			t.expect(claimed.wall.draw_log.back() == {"index": 4, "tail": true}, "明杠从开口前一格补牌")
 		_assert_replay(claimed, action)
 	var ready := _fixture()
 	ready.players[0].concealed = ["wan1", "wan2", "wan3", "wan4", "wan5", "wan6", "tiao2", "tiao3", "tiao4", "tong1", "tong2", "tong3", "wan9"]
-	ready.wall._ring[0] = "tiao9"
+	ready.wall._ring[ready.wall.peek_head_index()] = "tiao9"
 	_start_fixture(ready)
 	t.expect(ready.submit_turn(0, {"discard": "tiao9", "ready": true}), "记录首次出牌报听")
 	_assert_replay(ready, "报听")

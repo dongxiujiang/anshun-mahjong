@@ -150,9 +150,10 @@ func _test_deck_wall_deal() -> void:
 	eq([25, 28, 31, 34], "回合方向", CFG.TURN_DIRECTION, -1, "scripts/autoload/GameConfig.gd:57")
 	eq([26, 30], "发牌方向", CFG.DEAL_DIRECTION, -1, "scripts/autoload/GameConfig.gd:57")
 	for dealer in 4:
-		var wall := WallRing.new(deck, dealer)
+		var wall := WallRing.new(deck, dealer, true)
 		for seat in 4:
-			eq([54 if seat in [1,3] else 55], "庄%d座%d墙长度" % [dealer,seat], wall.wall_remaining(seat), 28 if seat in [1,3] else 26, "scripts/core/WallRing.gd:34; scripts/core/WallBuilder.gd:5")
+			var long_wall := posmod(seat - dealer, 2) == 0
+			eq([54 if long_wall else 55], "庄%d座%d墙长度" % [dealer,seat], wall.wall_remaining(seat), 28 if long_wall else 26, "scripts/core/WallRing.gd:34; scripts/core/WallBuilder.gd:5")
 		for die in range(1,7):
 			var idx := WallRing.compute_break(die, dealer)
 			var target := -1

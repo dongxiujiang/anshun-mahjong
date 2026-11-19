@@ -104,10 +104,10 @@ func _test_next_dealer() -> void:
 
 func _test_deal() -> void:
 	for dealer in 4:
-		var wall := WallRing.new(TileSetFactory.create_deck(), dealer)
+		var wall := WallRing.new(TileSetFactory.create_deck(), dealer, true)
 		for seat in 4:
-			var size := 28 if seat in [1, 3] else 26
-			t.expect(wall.wall_remaining(seat) == size and wall.wall_stack_counts(seat).size() == size / 2, "四墙长度固定为南北14列、东西13列")
+			var size := 28 if posmod(seat - dealer, 2) == 0 else 26
+			t.expect(wall.wall_remaining(seat) == size and wall.wall_stack_counts(seat).size() == size / 2, "庄家和对家14列、两侧13列")
 		for die in range(1, 7):
 			var target := posmod(dealer + (2 if die in [1, 3, 5] else (1 if die == 4 else 3)), 4)
 			var segment: Dictionary = wall._wall_seg_for_seat(target)

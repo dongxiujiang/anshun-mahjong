@@ -139,7 +139,8 @@ static func replay(data: Dictionary) -> Dictionary:
 	# JSON 的牌墙字典键为字符串；重新生成公开墙统计来自完整牌墙。
 	round.apply_sync(initial)
 	round.controllers = [null, null, null, null]
-	round.wall = WallRing.new(wall_data.ring, round.dealer_seat)
+	round.wall = WallRing.new(wall_data.ring, round.dealer_seat, bool(round.round_meta.get("dealer_wall", false)))
+	round.wall.set_head(int(round.round_meta.get("break", 0)))
 	for index in 108: round.wall._drawn[index] = bool(wall_data.drawn[index])
 	round.wall._head = int(wall_data.head)
 	round.wall._tail = int(wall_data.tail)

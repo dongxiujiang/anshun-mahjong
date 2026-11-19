@@ -1,6 +1,6 @@
 extends SceneTree
 ## 10局真实 AI 对局：独立核验发牌、牌头、普通摸牌、杠后补牌和翻鸡。
-## 参考模型：poker 两行54列，北14/东13/南14/西13，列优先。
+## 参考模型：poker 两行54列，按庄家视角 14/13/14/13，列优先。
 const H := preload("res://tests/test_harness.gd")
 const ROUNDS := 10
 
@@ -34,9 +34,9 @@ func _run() -> void:
 	quit(t.finish("wall_draw_ten"))
 
 func _check_layout(t, r: RoundState, game: int) -> void:
-	var sizes := {3: 14, 0: 13, 1: 14, 2: 13}
 	for seat in 4:
-		t.expect(r.wall.wall_stack_counts(seat).size() == sizes[seat], "第%d局座%d墙列数" % [game, seat])
+		var columns := 14 if posmod(seat - r.dealer_seat, 2) == 0 else 13
+		t.expect(r.wall.wall_stack_counts(seat).size() == columns, "第%d局座%d墙列数" % [game, seat])
 	t.expect(r.wall.draw_log.size() == 108 - r.wall.remaining, "第%d局取牌日志与剩余一致" % game)
 
 func _check_deal(t, r: RoundState, batches: Array, dealer: int, game: int) -> void:
@@ -69,7 +69,7 @@ func _check_draw_log(t, r: RoundState, game: int) -> void:
 		var is_tail := bool(entry.tail)
 		var expected := -1
 		if is_tail:
-			expected = _last_undrawn(removed)
+			expected = _last_undrawn(removed, break_index / 2)
 		else:
 			while removed[head]:
 				head = (head + 1) % 108
@@ -79,8 +79,9 @@ func _check_draw_log(t, r: RoundState, game: int) -> void:
 		removed[actual] = true
 	t.expect(r.wall.remaining == 108 - r.wall.draw_log.size(), "第%d局剩余张数与取牌数一致" % game)
 
-func _last_undrawn(removed: Array) -> int:
-	for col in range(53, -1, -1):
+func _last_undrawn(removed: Array, opening_col: int) -> int:
+	for offset in range(1, 55):
+		var col := posmod(opening_col - offset, 54)
 		for row in 2:
 			var index := col * 2 + row
 			if not removed[index]:

@@ -206,12 +206,12 @@ func _test_discard_win_restrictions() -> void:
 	expect(rob.can_win_on_discard(1, 0, "wan9", RoundState.ResponseStage.ROB), "Robbed added kong permits discard win")
 
 func _test_wall_and_patterns() -> void:
-	var expected := [84, 4, 88, 62, 92, 12]
+	var expected := [2, 32, 6, 90, 10, 40]
 	for die in range(1, 7):
 		expect(WallRing.compute_break(die) == expected[die - 1], "Dice break must skip specified stacks")
-	var wall := WallRing.new(TileSetFactory.create_deck())
+	var wall := WallRing.new(TileSetFactory.create_deck(), 0, true)
 	for seat in 4:
-		expect(wall.wall_remaining(seat) == (28 if seat in [1, 3] else 26), "南北14列/东西13列")
+		expect(wall.wall_remaining(seat) == (28 if seat in [0, 2] else 26), "庄家、对家14列，其余13列")
 	expect(not RuleEngine.analyze([], []).win, "Empty hand must not be seven pairs")
 	expect(not RuleEngine.analyze(["wan1", "wan1"], []).win, "Incomplete pair must not win")
 	var quad_pairs := ["wan1", "wan1", "wan1", "wan1", "wan2", "wan2", "wan3", "wan3", "tiao4", "tiao4", "tong5", "tong5", "tong6", "tong6"]

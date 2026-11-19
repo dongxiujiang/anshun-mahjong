@@ -460,11 +460,19 @@ func _check_wall_flip_landing() -> void:
 	view.auto_sort_hands = false
 	# Four walls, each corner, partial stacks with and without a full stack ahead, and in-place flips.
 	for example in [[11, 12], [35, 36], [65, 66], [91, 92], [27, 28], [53, 54],
-			[81, 82], [107, 0], [103, 0], [105, 0], [105, 107], [107, -1], [64, -1]]:
+			[81, 82], [107, 0], [103, 0], [105, 0], [105, 107], [107, -1], [64, -1],
+			[55, 56, 3], [55, 57, 2], [55, -1, 1], [54, -1, 2]]:
 		var index: int = example[0]
 		var support: int = example[1]
 		var r := _fixture("self_draw", "tong8", index)
-		if index == 105 and support == 0:
+		if example.size() == 3:
+			r.wall = WallRing.new(r.wall._ring, r.dealer_seat, true)
+			r.round_meta.dealer_wall = true
+			r.wall.set_head(54)
+			if index == 55: r.wall.draw_head()
+			while r.wall.remaining > int(example[2]): r.wall.draw_tail()
+			t.expect(r.wall.peek_head_index() == index, "new wall reads the confirmed original slot")
+		elif index == 105 and support == 0:
 			r.wall.set_head(6)
 			for i in range(6, index): r.wall.draw_head()
 			r.wall.draw_tail() # Slot 107 remains alone; the next complete stack is at 0/1.
@@ -546,6 +554,18 @@ func _check_wall_flip_landing() -> void:
 			renderer.sync_tiles()
 			t.expect(mesh.position.is_equal_approx(before) and not walls[index].face_up,
 				tag + ": reset restores the original wall pose")
+	var empty := _fixture("self_draw", "tong8")
+	empty.phase = RoundState.Phase.PLAYING
+	while empty.wall.remaining > 0: empty.wall.draw_head()
+	empty._finish()
+	t.expect(empty.round_meta.flip_tile == "" and TableV2Model.flip_wall_index(empty) == -1,
+		"a win with an empty wall has no flip source")
+	stub.round = empty
+	view.set_round(empty, stub.human_seat)
+	view.start_native_settlement(true)
+	t.expect(view._native_wall_flip_tile() == null and not _stage_keys(view._settlement_plan).has("flip")
+		and view._native_settlement.get_node_or_null("SettlementFlipTile") == null,
+		"an empty wall has no flip stage or preview")
 	view.queue_free()
 	stub.queue_free()
 	await process_frame
