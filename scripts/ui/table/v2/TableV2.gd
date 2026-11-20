@@ -3535,6 +3535,9 @@ func _seat_hud_rect(seat: int) -> Rect2:
 	var rel := G.relative_seat(human_seat, seat)
 	var bounds: Rect2 = [Rect2(224, 924, 300, 70), Rect2(2112, 84, 144, 78),
 		Rect2(1010, 8, 260, 78), Rect2(24, 84, 144, 78)][rel]
+	var pixels := size * get_global_transform_with_canvas().get_scale().abs()
+	if rel == 0 and pixels.y > 0.0 and pixels.x / pixels.y >= 2.0:
+		bounds.position.y -= 40.0
 	var touch := minimum_touch_height()
 	if touch <= 0.0: return bounds
 	var to_screen := get_viewport().get_screen_transform() * get_global_transform_with_canvas()
