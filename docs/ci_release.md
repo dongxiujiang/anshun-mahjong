@@ -1,6 +1,6 @@
 # GitHub Actions 构建与发布
 
-本次构建目标为 1.6.31，Android version/code 为 91，安装基线为 1.6.31-native1。导出预设仅包含 Android；实际已发布版本以 GitHub Release 和线上签名更新清单为准。
+已发布 [V1.6.31](https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.6.31)，Android version/code 为 91，完整包安装基线为 `1.6.31-native1`；供原版 1.6.30 使用的累计补丁基线为 `1.6.30-native1`。导出预设仅包含 Android；实际已发布版本以 GitHub Release 和线上签名更新清单为准。
 
 ## 检查与构建
 
@@ -22,12 +22,14 @@
 
 在 Build release 选择 release_kind=patch，填写高于完整安装包的版本号。
 
-- baseline_source=release 从所选完整版本的 Release 下载 baseline.zip。当前对应标签为 V1.6.25。
+- baseline_source=release 从所选完整版本的 Release 下载 baseline.zip。为原版 1.6.30 制作补丁须显式选择 `baseline_release_tag=V1.6.30`；当前工作流默认标签仍为 V1.6.28，不能直接沿用。
 - baseline_source=artifact 从完整构建的 run id 下载 baseline 构建产物。
 - 工具核对引擎、启动脚本、全局类、原生依赖、工程设置和导出配置，兼容后生成 Android PCK 与签名清单。
 - publish_release=true 通过检查后发布，false 保存构建产物供审阅。
 
-基线 artifact 保留 90 天，Release 中的 baseline.zip 用于长期保存。标签触发的发布要求标签与工程版本相同。
+本次累计补丁在隔离打包副本中保留原始 `1.6.30-native1`，版本设为 1.6.31，启动脚本恢复原始 LF 字节（逻辑与候选相同）；未修改原始基线或已测试运行源码。启动脚本、全局类、原生依赖、工程设置、导出配置五项严格门禁及未删文件检查全部通过。不能直接用当前 `1.6.31-native1` 工程给旧 APK 生成补丁，也不能更改基线清单来通过检查。原版客户端的公开下载、重启生效、实际整局和回退已验证，详情见 [1.6.31 验收记录](验收记录_1.6.31.md)。
+
+基线 artifact 保留 90 天，Release 中的 baseline.zip 用于长期保存。V1.6.31 附带的新基线仅对应完整 1.6.31 APK，旧版补丁继续保留原始 1.6.30 基线。标签触发的发布要求标签与工程版本相同。
 
 ## 服务器与自建更新源
 

@@ -11,7 +11,7 @@
 
 联机采用可靠的状态同步和权威端校验，不采用帧同步；断线保留座位并由 AI 暂代，详情见 [联机网络模型](docs/network_model.md)。当前版本 **1.6.31**，完整规则见 [游戏规则总纲](docs/游戏规则总纲.md)，新增界面规范见 [UI 风格指南](docs/ui_style_guide.md)。牌桌布局修改前先读 [牌桌布局规范](docs/牌桌布局规范.md)，其中记录用户已确认的要求、当前参数和验收状态。GitHub Actions 的 Android 构建、签名和热补丁流程见 [CI/CD 发布说明](docs/ci_release.md)。
 
-应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Android 游戏内下载补丁，重启生效；完整版本更新正式签名 APK。首次使用热更新须安装包含 PatchBoot 的完整版本。自 1.4.19 起，自建更新清单必须携带离线 RSA 签名，客户端只信任内置公钥验证通过的 `signed_payload`；发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
+应用更新使用本项目公开仓库的 GitHub Releases：兼容小版本在 Android 游戏内下载补丁，重启生效；完整版本更新正式签名 APK。已发布 [V1.6.31](https://github.com/dongxiujiang/anshun-mahjong/releases/tag/V1.6.31)，原版 1.6.30 可直接下载累计热补丁；最终验收与测试限制见 [1.6.31 验收记录](docs/验收记录_1.6.31.md)。首次使用热更新须安装包含 PatchBoot 的完整版本。自 1.4.19 起，自建更新清单必须携带离线 RSA 签名，客户端只信任内置公钥验证通过的 `signed_payload`；发布与基线保存流程见 [docs/updates.md](docs/updates.md)。
 
 ---
 
@@ -328,9 +328,9 @@ docker compose -f compose.prod.yaml up -d app --pull never
 
 ## 五、导出为可执行文件 / APK
 
-工程仅配置 Android 导出预设，正式包版本为 **1.6.28**，包名为 com.anshun.mahjong，支持 arm64-v8a 横屏。
+工程仅配置 Android 导出预设，正式包版本为 **1.6.31**（versionCode 91），包名为 com.anshun.mahjong，包含 arm64-v8a、x86_64，采用横屏。
 
-使用 Godot 4.7.2、JDK 17 和 Android SDK，在编辑器导出设置中选择 Android。正式包使用既有签名，覆盖安装保留应用数据。云端构建同时保存 1.6.28-native1 安装基线和签名更新清单。
+使用 Godot 4.7.2、JDK 17 和 Android SDK，在编辑器导出设置中选择 Android。正式包使用既有签名，覆盖安装保留应用数据。发布同时保存 `1.6.31-native1` 完整包安装基线和签名更新清单；给原版 1.6.30 的累计补丁使用独立保留的 `1.6.30-native1` 基线，两者不能混用。
 
 GitHub Actions 的完整包、热补丁、基线下载及服务器镜像流程见 [CI/CD 发布说明](docs/ci_release.md)。完整包发布产物为正式签名 APK、update-manifest.json 和 baseline.zip。
 
@@ -368,7 +368,7 @@ res/update/    Windows 更新替换脚本（只在已下载并校验后执行）
 godot --headless --script res://tests/run_all.gd
 ```
 
-推荐使用带实际时间限制、脚本错误检查和独立日志的入口，避免加载错误后一直等待；默认包含 29 套检查，AI 自战两套分别最多等待 10 分钟。把 Godot 路径替换成自己的路径：
+推荐使用带实际时间限制、脚本错误检查和独立日志的入口，避免加载错误后一直等待；默认按当前注册清单执行，AI 自战两套分别最多等待 10 分钟。把 Godot 路径替换成自己的路径：
 
 ```
 python -X utf8 tests/run_suites.py --godot "C:/path/to/Godot.exe"
