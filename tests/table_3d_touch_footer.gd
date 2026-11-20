@@ -10,6 +10,9 @@ class Host extends Control:
 	var round: RoundState
 	var human_seat := 0
 	var online := false
+	var _table_animation_controller = null
+	func _local_voice_enabled() -> bool: return false
+	func _can_toggle_voice_chat() -> bool: return false
 	var widgets := preload("res://scripts/ui/table/TableWidgets.gd").new()
 	func _net_mode() -> String: return "host" if online else ""
 	func _design_size() -> Vector2: return TableV2Geometry.DESIGN_SIZE
@@ -36,6 +39,7 @@ func _run() -> void:
 	view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	host.surface.add_child(view)
 	host._new_areas = view
+	view.table = host
 	var settlement = load("res://scripts/ui/table/v2/TableV2SettlementCard.gd").new(host)
 	settlement.build()
 	var touch_heights := [0.0, 110.0, 150.0]
@@ -55,6 +59,7 @@ func _run() -> void:
 						view.set_round(round, viewer)
 						await process_frame
 						if settled:
+							view.start_native_settlement(true)
 							view._table_3d._own_hand_pitch = 0.0
 							view._table_3d.sync_tiles()
 							settlement.refresh_layout()
@@ -62,8 +67,6 @@ func _run() -> void:
 							_check_settlement(view, settlement, touch_height, online, viewer, meld_count)
 						else:
 							view._refresh_hand_arrangement()
-							# Stress the shared layout used when every sort option is present.
-							for button in [view._sort_button, view._restore_button, view._previous_sort_button]: button.show()
 							_check_sort(view, touch_height, viewer, meld_count)
 						_check_printed_faces(view, settlement if settled else null, settled, viewer, touch_height, meld_count)
 						settlement._post_controls.hide()
@@ -100,17 +103,11 @@ func _make_round(viewer: int, meld_count: int, settled: bool, hand: Array) -> Ro
 	return round
 
 func _check_sort(view, touch_height: float, viewer: int, meld_count: int) -> void:
-	var minimum := maxf(48.0 * 1.3, touch_height)
 	var buttons: Array = [view._sort_button, view._restore_button, view._previous_sort_button]
-	var canvas := Rect2(Vector2.ZERO, G.DESIGN_SIZE)
 	var label := "playing viewer=%d melds=%d touch=%d" % [viewer, meld_count, int(touch_height)]
-	for index in buttons.size():
-		var bounds: Rect2 = buttons[index].get_rect()
-		t.expect(bounds.size.y >= minimum, "%s sort button meets touch height" % label)
-		t.expect(is_equal_approx(bounds.end.y, G.DESIGN_SIZE.y), "%s sort button aligns to bottom" % label)
-		t.expect(canvas.encloses(bounds), "%s sort button stays on canvas" % label)
-		for other in range(index):
-			t.expect(not bounds.intersects(buttons[other].get_rect()), "%s sort buttons do not overlap" % label)
+	for button: Button in buttons:
+		t.expect(not button.is_visible_in_tree() and button.disabled and button.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+			"%s removed sort button stays hidden and cannot capture input" % label)
 
 func _check_settlement(view, card, touch_height: float, online: bool, viewer: int, meld_count: int) -> void:
 	var minimum := maxf(80.0, touch_height)

@@ -41,10 +41,29 @@ func run():
 		t.expect(view._exposed_layout()==view.EXPOSED.solve(view),"wall invalidation retains collision solver output")
 		view.refresh()
 		specs=view._exposed_layout()
+		var renderer = view._table_3d
+		renderer.sync_tiles()
+		var own_poses := {}
+		for layer in [view._red_layer, view._meld_layer]:
+			for tile in layer.get_children():
+				if int(tile.get_meta("v2_seat", -1)) != viewer: continue
+				var id: int = tile.get_instance_id()
+				own_poses[id] = renderer.tile_nodes[id].transform
 		r.players[viewer].ready=not r.players[viewer].ready
 		view.refresh()
-		t.expect(not is_same(specs,view._exposed_layout()),"ready badge changes invalidate layout")
-		t.expect(view._exposed_layout()==view.EXPOSED.solve(view),"new badge space remains clear")
+		renderer.sync_tiles()
+		var ready_specs: Array = view._exposed_layout()
+		t.expect(not is_same(specs,ready_specs),"ready badge changes invalidate the layout cache key")
+		t.expect(is_same(ready_specs,view._exposed_layout()),"unchanged ready state reuses the updated layout cache")
+		var badge: Label = view._ready_meld_badges[viewer]
+		t.expect(badge.visible == r.players[viewer].ready, "ready badge visibility tracks the reported state")
+		for id in own_poses:
+			if not t.expect(renderer.tile_nodes.has(id), "a ready badge preserves each own public tile entity"): continue
+			t.expect(renderer.tile_nodes[id].transform.is_equal_approx(own_poses[id]),
+				"a ready badge preserves each unchanged own public tile's landing")
+			if badge.visible:
+				var source: TileView = renderer._sources[id].get_ref()
+				t.expect(not badge.get_rect().intersects(renderer.tile_layout_slot(source)), "the changed ready badge clears own public tiles")
 	view.queue_free()
 	await process_frame
 	await H.quit_cleanly(self,t.finish("table_render_cache"))

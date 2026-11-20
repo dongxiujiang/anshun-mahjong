@@ -127,3 +127,7 @@ tests/table_v2_wall_ring.gd
 tests/table_v2_wall_centering.gd
 tests/table_v2_settlement_scenarios.gd
 ```
+
+### 结算鸡牌得分项
+
+四家汇总逐行完整显示本人得分鸡牌，幺鸡、八筒分别列明。流局从共同鸡牌分类补齐云端旧记录漏列的碰中鸡，只读取已结算数据；原始付款、倍数与净增减不变。三家共同承担的项目置前且无括号，部分承担的项目在金额后标注相对本行玩家的上／对／下。

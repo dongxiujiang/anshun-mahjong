@@ -1,5 +1,5 @@
 extends SceneTree
-## SETTLED must retire playing controls even while the last native flight owns the tiles.
+## The removed toolbar stays hidden while settlement waits for the last native flight.
 const H := preload("res://tests/test_harness.gd")
 const G := preload("res://scripts/ui/table/v2/TableV2Geometry.gd")
 var t := H.new()
@@ -20,9 +20,10 @@ class Host extends Control:
 func _initialize() -> void: call_deferred("_run")
 
 func _hidden(view) -> bool:
-	return not view._sort_button.visible and not view._restore_button.visible \
-		and not view._previous_sort_button.visible and not view._arrangement_caption.visible \
-		and not view._hand_groups.is_visible_in_tree()
+	for button in [view._sort_button, view._restore_button, view._previous_sort_button]:
+		if button.visible or not button.disabled or button.mouse_filter != Control.MOUSE_FILTER_IGNORE: return false
+	return not view._arrangement_caption.visible and not view._hand_groups.is_visible_in_tree() \
+		and view._hand_groups.get_child_count() == 0
 
 func _run() -> void:
 	root.get_node("UpdateManager").auto_check = false
@@ -44,7 +45,7 @@ func _run() -> void:
 			host.round.wall = WallRing.new(TileSetFactory.create_deck())
 			for player in host.round.players:
 				player.concealed.assign(["wan1", "wan1", "wan1", "wan2", "wan2", "wan2", "wan3", "wan3", "wan3", "wan4", "wan4", "wan4", "wan5"])
-				player.ready = true # Keep the test independent of suggestion-search timing.
+				player.ready = true
 			var view = load("res://scenes/table/TableV2.tscn").instantiate()
 			view.set_script(load("res://tests/fixtures/table_touch_footer_view.gd"))
 			view.test_touch_height = footer
@@ -56,10 +57,8 @@ func _run() -> void:
 			view.set_round(host.round, 0)
 			view._sort_own_hand()
 			await process_frame
-			t.expect(view._sort_button.visible and view._restore_button.visible and view._previous_sort_button.visible, label + " all three playing controls start visible")
-			t.expect(view._hand_groups.get_child_count() > 0 and view._hand_groups.is_visible_in_tree(), label + " playing group annotations start visible")
-			var button_rect: Rect2 = view._sort_button.get_rect()
-			t.expect(button_rect.size.y >= footer, label + " preserves touch height")
+			t.expect(not view._local_arrangement.is_empty(), label + " fixture selects an arrangement before settlement")
+			t.expect(_hidden(view), label + " PLAYING keeps removed toolbar and annotations hidden")
 			var completed := {"draw": 0}
 			view.animate_draw(2, "tong7", 0, func(): completed.draw += 1)
 			t.expect(view.native_presentation_pending(), label + " real native draw is pending")
@@ -85,7 +84,7 @@ func _run() -> void:
 					captured = true
 			t.expect(all_hidden, label + " toolbar never flashes back during natural flip and flight")
 			t.expect(completed.draw == 1 and not view.native_presentation_pending(), label + " draw finishes exactly once without a retained lock")
-			view._refresh_hand_arrangement() # Same entry point as a late suggestion-worker completion.
+			view._refresh_hand_arrangement()
 			t.expect(_hidden(view), label + " late arrangement refresh cannot restore playing controls")
 			view.start_native_settlement(true)
 			t.expect(view._settlement_started and view._settlement_complete and host.finished and _hidden(view), label + " completed settlement keeps playing controls hidden")
@@ -93,8 +92,8 @@ func _run() -> void:
 			host.round.phase = RoundState.Phase.PLAYING
 			view.refresh()
 			view._sort_own_hand()
-			t.expect(view._sort_button.visible and view._restore_button.visible and view._previous_sort_button.visible and view._hand_groups.is_visible_in_tree(), label + " PLAYING restores all arrangement controls and groups")
-			t.expect(view._sort_button.get_rect() == button_rect, label + " restored toolbar retains its original geometry")
+			t.expect(not view._local_arrangement.is_empty() and not view.native_presentation_pending(), label + " PLAYING resumes without a retained presentation lock")
+			t.expect(_hidden(view), label + " returning to PLAYING keeps removed toolbar and annotations hidden")
 			host.queue_free()
 			await process_frame
 	var capture := OS.get_environment("SETTLEMENT_TOOLBAR_CAPTURE_DIR")

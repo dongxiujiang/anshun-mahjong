@@ -28,6 +28,7 @@ var human_seat := 1
 var table = null
 var snapshot: Dictionary = {}
 var _table_3d: Control
+var _settlement_footer_online := false
 
 var _wall_layer: Control
 var _wall_offsets := {}
@@ -179,12 +180,14 @@ func _build_layers() -> void:
 	_action_layer.z_index = 90
 	_hand_groups = Control.new()
 	_hand_groups.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hand_groups.hide()
 	_action_layer.add_child(_hand_groups)
 	_arrangement_caption = _table_text(_action_layer, "", 22, UI.GOLD)
 	_arrangement_caption.position = Vector2(520, G.HAND_BOTTOM + 12)
 	_arrangement_caption.size = Vector2(1190, 64)
 	_arrangement_caption.clip_text = true
 	_arrangement_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_arrangement_caption.hide()
 	_sort_button = _arrangement_button("排序", _sort_own_hand)
 	_restore_button = _arrangement_button("恢复", _restore_own_hand)
 	_previous_sort_button = _arrangement_button("上一种", _sort_own_hand.bind(-1))
@@ -198,7 +201,7 @@ func _build_layers() -> void:
 	_settlement_layer.z_index = 100
 	_build_ready_decorations()
 
-func _arrangement_button(caption: String, callback: Callable) -> Button:
+func _arrangement_button(caption: String, _callback: Callable) -> Button:
 	var button := Button.new()
 	button.text = caption
 	button.size = Vector2(148, 76)
@@ -206,7 +209,8 @@ func _arrangement_button(caption: String, callback: Callable) -> Button:
 	button.add_theme_font_override("font", TileView._font())
 	button.add_theme_font_size_override("font_size", 30)
 	STYLE.button(button)
-	button.pressed.connect(callback)
+	button.disabled = true
+	button.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_action_layer.add_child(button)
 	button.hide()
 	return button
@@ -267,18 +271,8 @@ func _sort_own_hand(direction: int = 1) -> void:
 	if table != null: table._update_interactivity()
 
 func _start_arrangement_search() -> void:
-	if _local_arrangement.is_empty() or _arrangement_thread != null or _arrangement_done_key == _arrangement_key: return
-	var player = round.players[human_seat]
-	var input := _arrangement_cards()
-	if input.size() != 13 - 3 * player.melds.size() or player.ready: return
-	_arrangement_job_key = _arrangement_key
-	var melds: Array = player.melds.duplicate(true)
-	var priority: bool = GameConfig.hand_sort_priority == "pattern"
-	_arrangement_thread = Thread.new()
-	_arrangement_thread.start(func():
-		var result := HAND_ARRANGEMENT.with_one_tile_changes(input, priority, melds)
-		Shanten.release_thread_cache()
-		return result)
+	# 排法工具栏已移除，保留兼容入口但不再启动无展示用途的搜索。
+	pass
 
 func _restore_own_hand() -> void:
 	if not _can_arrange_hand(): return
@@ -307,105 +301,13 @@ func _order_local_cards(cards: Array) -> Array:
 	return _local_arrangement.get("cards", cards)
 
 func _refresh_hand_arrangement() -> void:
-	var show_buttons: bool = round.phase == ROUND_STATE.Phase.PLAYING and not test_frozen
-	_hand_groups.visible = show_buttons
-	var can_arrange := _can_arrange_hand()
-	if can_arrange: _start_arrangement_search()
-	_arrangement_caption.visible = can_arrange and not _local_arrangement.is_empty()
+	for button in [_sort_button, _restore_button, _previous_sort_button]:
+		button.hide()
+		button.disabled = true
+		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_arrangement_caption.hide()
+	_hand_groups.hide()
 	_clear(_hand_groups)
-	_layout_arrangement_controls()
-	if not _local_arrangement.is_empty():
-		var at := -1
-		for i in _arrangement_choices.size():
-			if _arrangement_choices[i].key == _local_arrangement.key: at = i
-		var waits: Array = []
-		var by_pattern := {}
-		for i in _local_arrangement.waits:
-			var score := int(_local_arrangement.scores.get(i, 0))
-			var label := str(_local_arrangement.patterns.get(i, "平胡")) + ("%d分" % score if score > 0 else "")
-			if not by_pattern.has(label): by_pattern[label] = []
-			by_pattern[label].append(_tile_short(Tiles.from_index(i)))
-		for label in by_pattern:
-			var suits := {}
-			for tile in by_pattern[label]:
-				var suit: String = tile.right(1)
-				if not suits.has(suit): suits[suit] = []
-				suits[suit].append(tile.left(-1))
-			var names: Array = []
-			for suit in suits: names.append("、".join(suits[suit]) + suit)
-			waits.append(" / ".join(names) + "（" + label + "）")
-		var change := ""
-		if _local_arrangement.has("change_from"):
-			change = "若摸到%s，再打%s" % [_tile_short(_local_arrangement.change_to), _tile_short(_local_arrangement.change_from)]
-		elif _local_arrangement.has("discard"):
-			change = "打%s后" % _tile_short(_local_arrangement.discard)
-		var player = round.players[human_seat]
-		var note := ""
-		if player.ready: note = "你已报听，手牌锁定"
-		if player.passed_win_until_draw:
-			note = "报听后过了胡，本局只能自摸" if player.ready else "刚才过了胡，下次摸牌前不能接炮"
-		if player.passed_self_draw: note = "这次自摸已经放弃" + ("；报听仍锁牌" if player.ready else "")
-		var title := "%s %d/%d" % ["换牌设想" if _local_arrangement.has("change_from") else "排法", at+1, _arrangement_choices.size()]
-		if not change.is_empty(): title += " · " + change
-		if not note.is_empty(): title += " · " + note
-		elif not waits.is_empty(): title += " · 此排法听%d种" % _local_arrangement.waits.size()
-		var structure := {"顺子": 0, "刻子": 0, "对子": 0}
-		for group in _local_arrangement.groups:
-			var kind := "对子" if group.size() == 2 else ("刻子" if group[0] == group[1] else "顺子")
-			structure[kind] += 1
-		var grouped: Array = []
-		for kind in structure:
-			if structure[kind] > 0: grouped.append("%d%s" % [structure[kind], kind])
-		var detail := ("再听 " if _local_arrangement.has("change_from") else "听 ") + "；".join(waits)
-		if waits.is_empty():
-			var loose: int = _local_arrangement.cards.size() - int(_local_arrangement.grouped) - int(_local_arrangement.has("discard"))
-			detail = ("已成：" + "、".join(grouped) + " · " if not grouped.is_empty() else "") + "未成组%d张" % loose
-		if _arrangement_thread != null and _arrangement_job_key == _arrangement_key: detail += " · 正在找换牌方案…"
-		_arrangement_caption.text = title + "\n" + detail
-		# 听种数按不同牌值统计，牌型分为单倍，平胡接炮仍按通行规则。
-		_arrangement_caption.tooltip_text = _arrangement_caption.text
-		var font := TileView._font()
-		var font_size := 20 if _table_3d != null else 24
-		for line in _arrangement_caption.text.split("\n"):
-			while font_size > 20 and font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > _arrangement_caption.size.x:
-				font_size -= 1
-		_arrangement_caption.add_theme_font_size_override("font_size", font_size)
-	_sort_button.visible = show_buttons
-	_sort_button.disabled = not can_arrange
-	_sort_button.text = "排序" if _local_arrangement.is_empty() else ("下一种" if _arrangement_choices.size() > 1 else "仅此一种")
-	_restore_button.visible = show_buttons and not _local_arrangement.is_empty()
-	_restore_button.disabled = not can_arrange
-	_previous_sort_button.visible = _restore_button.visible
-	_previous_sort_button.disabled = not can_arrange or _arrangement_choices.size() <= 1
-	if round.phase != ROUND_STATE.Phase.PLAYING or _local_arrangement.is_empty() \
-			or hand_boxes[human_seat].get_child_count() != _local_arrangement.cards.size(): return
-	var count: int = _local_arrangement.cards.size()
-	var slot := 0
-	for length in _local_arrangement.lengths:
-		var first := _hand_center(human_seat, slot, count)
-		var last := _hand_center(human_seat, slot + int(length) - 1, count)
-		var half := G.hand_tile_size(human_seat, human_seat).x / 2.0
-		var line := ColorRect.new()
-		line.color = Color(UI.GOLD, 0.8)
-		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		line.position = Vector2(first.x - half + 8.0, G.HAND_BOTTOM + 4.0)
-		line.size = Vector2(last.x - first.x + 2.0 * half - 16.0, 6.0)
-		line.set_meta("arrangement_start", slot)
-		line.set_meta("arrangement_count", int(length))
-		_hand_groups.add_child(line)
-		slot += int(length)
-	if _local_arrangement.has("discard"):
-		var target := _hand_center(human_seat, count - 1, count)
-		var mark := ColorRect.new()
-		mark.name = "ArrangementDiscardMark"
-		mark.color = UI.SCORE_LOSS
-		mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		mark.position = Vector2(target.x - 38, G.HAND_BOTTOM + 4)
-		mark.size = Vector2(76, 6)
-		mark.set_meta("arrangement_start", count - 1)
-		mark.set_meta("arrangement_count", 1)
-		_hand_groups.add_child(mark)
-	_layout_arrangement_controls()
 
 func _arrangement_projected_bounds(start: int, count: int) -> Rect2:
 	var bounds := Rect2()
@@ -420,6 +322,19 @@ func minimum_touch_height() -> float:
 	if not OS.has_feature("android"): return 0.0
 	var pixels_per_unit := (get_viewport().get_screen_transform() * get_global_transform_with_canvas()).get_scale().abs().y
 	return 48.0 * DisplayServer.screen_get_dpi() / 160.0 / maxf(0.001, pixels_per_unit)
+
+func settlement_footer_height(online: bool) -> float:
+	return maxf(104.0 if online else 80.0, minimum_touch_height())
+
+func settlement_hand_bottom() -> float:
+	var online: bool = table._net_mode() != "" if table != null and table.has_method("_net_mode") else _settlement_footer_online
+	return G.DESIGN_SIZE.y - settlement_footer_height(online) - 6.0
+
+func set_settlement_footer_online(online: bool) -> void:
+	if _settlement_footer_online == online: return
+	_settlement_footer_online = online
+	if table == null and _table_3d != null and round != null and round.phase == ROUND_STATE.Phase.SETTLED:
+		_table_3d.sync_tiles()
 
 func _layout_arrangement_controls() -> void:
 	var anchor := Vector2(_draw_center(human_seat, _current_hand_count(human_seat)).x - _sort_button.size.x / 2.0,
@@ -1479,25 +1394,39 @@ func action_bar_rect(row_size: Vector2, reserve_layout: bool = false) -> Rect2:
 			if not tile is TileView or not tile.is_visible_in_tree(): continue
 			var bounds: Rect2 = _table_3d.project_tile(tile)
 			if tile.face_up and str(tile.get_meta("new_kind", "")) in ["ordinary", "red", "meld"] and _table_3d.tile_nodes.has(tile.get_instance_id()):
-				var mesh: MeshInstance3D = _table_3d.tile_nodes[tile.get_instance_id()]
-				var points: Array[Vector2] = []
-				for x in [-0.45, 0.45]:
-					for z in [-0.60, 0.60]:
-						points.append(_table_3d.camera.unproject_position(mesh.transform * Vector3(x, 0.31, z)) / Vector2(_table_3d.viewport.size) * _table_3d.size)
-				bounds = Rect2(points[0], Vector2.ZERO).expand(points[1]).expand(points[2]).expand(points[3])
-			if bounds.end.y > preferred.position.y and bounds.position.y < preferred.end.y: obstacles.append(bounds)
-	for button in [_sort_button, _restore_button, _previous_sort_button]:
-		if button.visible: obstacles.append(button.get_rect())
-	var candidates := [preferred.position.x]
+				bounds = _table_3d._exposed_printed_bounds([tile.get_instance_id()])
+			if bounds.has_area(): obstacles.append(bounds)
+	for seat in 4: obstacles.append(_seat_hud_rect(seat))
+	obstacles.sort_custom(func(a, b): return a.position.x < b.position.x)
+	var canvas := Rect2(Vector2.ZERO, G.DESIGN_SIZE).grow(-16.0)
+	var x := _action_row_left(preferred, obstacles, canvas)
+	if x != INF: return Rect2(Vector2(x, preferred.position.y), row_size)
+	# The free horizontal intervals change only when an edge of the row passes a tile.
+	var rows := [canvas.position.y, canvas.end.y - row_size.y]
 	for obstacle in obstacles:
-		candidates.append(obstacle.position.x - row_size.x - 8.0)
-		candidates.append(obstacle.end.x + 8.0)
-	candidates.sort_custom(func(a, b): return absf(a - preferred.position.x) < absf(b - preferred.position.x))
-	for x: float in candidates:
-		if x < 16.0 or x + row_size.x > G.DESIGN_SIZE.x - 16.0: continue
-		var candidate := Rect2(Vector2(x, preferred.position.y), row_size)
-		if obstacles.all(func(obstacle): return not candidate.intersects(obstacle)): return candidate
+		rows.append(obstacle.position.y - row_size.y - 4.0)
+		rows.append(obstacle.end.y + 4.0)
+	rows.sort_custom(func(a, b): return absf(a - preferred.position.y) < absf(b - preferred.position.y))
+	for y: float in rows:
+		if y < canvas.position.y or y + row_size.y > canvas.end.y: continue
+		var candidate := Rect2(Vector2(preferred.position.x, y), row_size)
+		x = _action_row_left(candidate, obstacles, canvas)
+		if x != INF: return Rect2(Vector2(x, y), row_size)
 	return preferred
+
+func _action_row_left(row: Rect2, obstacles: Array[Rect2], canvas: Rect2) -> float:
+	var left := canvas.position.x
+	var best := INF
+	# The canvas right edge closes the final interval after the last obstacle.
+	for obstacle in obstacles + [Rect2(canvas.end.x + 8.0, row.position.y, 1.0, row.size.y)]:
+		if obstacle.end.y <= row.position.y or obstacle.position.y >= row.end.y: continue
+		var right := minf(canvas.end.x, obstacle.position.x - 8.0)
+		if right - left >= row.size.x:
+			var x := clampf(row.position.x, left, right - row.size.x)
+			if absf(x - row.position.x) < absf(best - row.position.x): best = x
+		left = maxf(left, obstacle.end.x + 8.0)
+		if left + row.size.x > canvas.end.x: break
+	return best
 
 func reserved_action_rect() -> Rect2:
 	var count := 4
@@ -2192,11 +2121,11 @@ func animate_deal_group(seat: int, cards: Array, indices: Array, existing: int, 
 			wall_center_for_index(index), hand_unit, _wall_angle_for_index(index))
 		tile.scale = Vector2.ONE * (G.WALL_UNIT / hand_unit)
 		tile.flight_pitch = 0.0 if tile.face_up else PI
-		if seat != human_seat and _table_3d != null and _table_3d.opponent_hand_scale > 1.0:
+		if _table_3d != null:
 			tile.set_meta("new_kind", "hand")
 			tile.set_meta("v2_seat", seat)
 			tile.set_meta("v2_draw_flight", true)
-			tile.standing_back_view = rel
+			tile.standing_back_view = rel if seat != human_seat else -1
 			tile.flight_progress = 0.0
 		moving.append(tile)
 	# 起飞前移除对应墙牌。
@@ -2867,6 +2796,7 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			if int(node.get_meta("meld_index", -2)) != meld_index: continue
 			if not nodes.has(node): nodes.append(node)
 			if nodes.size() >= 3: break
+		nodes.sort_custom(func(a, b): return int(a.get_meta("meld_slot", -1)) < int(b.get_meta("meld_slot", -1)))
 		nodes.append_array(added_tiles)
 	# A merged/recovered snapshot may no longer have an origin entity. Rebuild
 	# from authority instead of substituting an unrelated concealed tile.
@@ -2898,6 +2828,13 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 		return int(a.index) < int(b.index) if av == bv else av < bv)
 	var held: Array = remaining_sources.map(func(source): return source.node.position + source.node.size / 2.0)
 	_held_hand_centers[seat] = held
+	var added_origins := {}
+	if kind == "add_kong" and _table_3d != null:
+		_table_3d.sync_tiles()
+		for node in nodes + _red_layer.get_children() + _meld_layer.get_children():
+			if int(node.get_meta("v2_seat", -1)) != seat: continue
+			if _table_3d.tile_nodes.has(node.get_instance_id()):
+				added_origins[node.get_instance_id()] = _table_3d.tile_nodes[node.get_instance_id()].transform
 	for node in nodes:
 		if node.flight_pitch < 0:
 			node.flight_pitch = (deg_to_rad(63) if seat == human_seat else PI / 2.0) if node.get_parent() in [hand_boxes[seat], draw_boxes[seat]] else (0.0 if node.face_up else PI)
@@ -2951,6 +2888,9 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 			hand_boxes[seat].move_child(kept, slot)
 	var duration := GameConfig.tile_motion_seconds()
 	var side_3d := _table_3d != null and rel in [1, 3]
+	if kind == "add_kong" and duration > 0.0:
+		_animate_added_kong_room(seat, action_id, nodes, remaining_sources, targets, target_angles, land, done, side_3d, added_origins)
+		return
 	var finish := done
 	if _table_3d != null and rel == 0 and duration > 0.0:
 		_preview_own_exposed_flight(nodes, remaining_sources.map(func(source): return source.node), land)
@@ -3000,6 +2940,89 @@ func animate_meld(event: Dictionary, done: Callable) -> void:
 	flight.chain().tween_callback(func():
 		land.call()
 		_center_hand_after_meld(seat, action_id, finish, side_3d))
+
+func _animate_added_kong_room(seat: int, action_id: int, nodes: Array, remaining: Array,
+		targets: Array, angles: Array, land: Callable, done: Callable, side_3d: bool, origins: Dictionary) -> void:
+	var transforms := _added_kong_transforms(seat, nodes, remaining, targets, land, origins) if _table_3d != null else {}
+	var duration := GameConfig.tile_motion_seconds()
+	var room := duration * 0.3
+	var incoming := duration - room
+	var tween := _motion_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_move_existing_exposed(tween, room)
+	for id in transforms:
+		var pose: Dictionary = transforms[id]
+		if nodes.has(pose.node): continue
+		pose.node.set_meta("meld_room_3d", {"origin": pose.origin, "target": pose.target, "progress": 0.0})
+		tween.tween_method(func(progress):
+			var frame: Dictionary = pose.node.get_meta("meld_room_3d", {})
+			frame["progress"] = progress
+			pose.node.set_meta("meld_room_3d", frame), 0.0, 1.0, room)
+	for slot in nodes.size():
+		var node: TileView = nodes[slot]
+		var delay := room if slot == 3 else 0.0
+		var seconds := incoming if slot == 3 else room
+		if transforms.has(node.get_instance_id()):
+			var poses: Dictionary = transforms[node.get_instance_id()]
+			node.set_meta("meld_room_3d", {"origin": poses.origin, "target": poses.target, "progress": 0.0,
+				"lift": Transform3D(poses.target).basis.get_scale().x * 0.9 if slot == 3 else 0.0})
+			tween.tween_method(func(progress):
+				var pose: Dictionary = node.get_meta("meld_room_3d", {})
+				pose["progress"] = progress
+				node.set_meta("meld_room_3d", pose), 0.0, 1.0, seconds).set_delay(delay)
+		tween.tween_property(node, "position", Vector2(targets[slot]) - node.size / 2.0, seconds).set_delay(delay)
+		tween.tween_property(node, "scale", _exposed_size(seat) / node.size, seconds).set_delay(delay)
+		tween.tween_property(node, "rotation", angles[slot], seconds).set_delay(delay)
+		tween.tween_property(node, "flight_pitch", 0.0 if node.face_up else PI, seconds).set_delay(delay)
+	if _table_3d != null: _table_3d.sync_tiles()
+	tween.chain().tween_callback(func():
+		for pose in transforms.values(): pose.node.remove_meta("meld_room_3d")
+		land.call()
+		_center_hand_after_meld(seat, action_id, done, side_3d))
+
+func _added_kong_transforms(seat: int, nodes: Array, remaining: Array, targets: Array, land: Callable, origins: Dictionary) -> Dictionary:
+	# Preview the same final entities, then restore their origins before either stage moves.
+	_table_3d.sync_tiles()
+	var preview: Array = nodes.duplicate()
+	for source in remaining: preview.append(source.node)
+	for source in _red_layer.get_children() + _meld_layer.get_children():
+		if int(source.get_meta("v2_seat", -1)) == seat and not preview.has(source): preview.append(source)
+	var properties := ["size", "position", "scale", "rotation", "modulate", "pivot_offset",
+		"flight_pitch", "flight_progress", "face_depth_top", "standing_back_view"]
+	var saved := []
+	var transforms := {}
+	for source in preview:
+		var state := {"node": source, "parent": source.get_parent(), "index": source.get_index(),
+			"unit": source.unit, "tile": source.tile, "face_up": source.face_up,
+			"interactive": source.interactive, "latest": source.latest_highlight, "meta": {}, "properties": {}}
+		for key in source.get_meta_list(): state.meta[key] = source.get_meta(key)
+		for key in properties: state.properties[key] = source.get(key)
+		saved.append(state)
+		if origins.has(source.get_instance_id()):
+			transforms[source.get_instance_id()] = {"node": source, "origin": origins[source.get_instance_id()]}
+	land.call()
+	for slot in remaining.size():
+		var source: TileView = remaining[slot].node
+		source.position = G.hand_slot_center(seat, slot, human_seat, remaining.size()) - source.size / 2.0
+	_invalidate_exposed_layout()
+	_place_exposed_tiles(seat, -1)
+	_table_3d.sync_tiles()
+	for slot in nodes.size():
+		var source: TileView = nodes[slot]
+		targets[slot] = source.position + source.size / 2.0
+	for id in transforms: transforms[id]["target"] = _table_3d.tile_nodes[id].transform
+	for state in saved:
+		var source: TileView = state.node
+		if source.get_parent() != state.parent: source.reparent(state.parent, false)
+		source.set_unit(state.unit)
+		source.set_card(state.tile, state.face_up)
+		source.set_interactive(state.interactive)
+		source.set_latest_highlight(state.latest)
+		for key in properties: source.set(key, state.properties[key])
+		for key in source.get_meta_list(): source.remove_meta(key)
+		for key in state.meta: source.set_meta(key, state.meta[key])
+	saved.sort_custom(func(a, b): return int(a.index) < int(b.index))
+	for state in saved: state.parent.move_child(state.node, state.index)
+	return transforms
 
 func _build_melds() -> void:
 	for data in snapshot.get("seats", []):
@@ -3285,8 +3308,7 @@ func _refresh_hud() -> void:
 		func(data): return [data.name, data.score, data.ready, data.is_dealer, data.is_human]),
 		round.phase, AudioManager.seat_voice_packs, table != null and table._net_mode() != ""])
 	if signature == _label_signature and not _labels.is_empty():
-		if _table_3d != null and _hud_bounds.has(human_seat):
-			_move_seat_hud(human_seat, _own_hud_rect())
+		_follow_hand_hud()
 		return
 	_label_signature = signature
 	_clear(_label_layer)
@@ -3339,7 +3361,7 @@ func _build_labels(seats: Array, active: int) -> void:
 	var names := _seat_display_names(seats)
 	for data in seats:
 		var seat := int(data.seat)
-		var own_strip := _table_3d != null and seat == human_seat
+		var own_strip := seat == human_seat
 		var bounds := _own_hud_rect() if own_strip else _seat_hud_rect(seat)
 		_hud_bounds[seat] = bounds
 		var line_y := bounds.position.y + (bounds.size.y - OWN_HUD_LINE_HEIGHT) / 2.0 if own_strip else bounds.position.y
@@ -3472,21 +3494,11 @@ func _set_seat_score(label: Label, value: float) -> void:
 		var left := label.position.x + (text_width if label.horizontal_alignment == HORIZONTAL_ALIGNMENT_LEFT else (label.size.x + text_width) / 2.0) + 6.0
 		var available := maxf(0.0, edge - left)
 		var delta_font := clampi(floori(24.0 * (available - 2.0) / maxf(_hud_text_width(delta.text, 24), 1.0)), 17, 24)
-		if _hud_text_width(delta.text, delta_font) <= available:
-			delta.position = Vector2(left, label.position.y)
-			delta.size = Vector2(available, label.size.y)
-			delta.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		else:
-			# Narrow side seats keep the round delta inside the same hand-follow panel.
-			label.add_theme_font_size_override("font_size", mini(font_size, 22))
-			label.position.y = bounds.position.y + 32
-			label.size.y = 36
-			delta.position = Vector2(label.position.x, bounds.position.y + 68)
-			delta.size = Vector2(label.size.x, 28)
-			delta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			delta_font = 18
+		# 增量留在总分右侧的剩余空间，不能改变固定名分位置。
+		delta.position = Vector2(left, label.position.y)
+		delta.size = Vector2(available, label.size.y)
+		delta.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		delta.add_theme_font_size_override("font_size", delta_font)
-		if delta_font == 18: delta.size.y = 28
 
 func _on_hand_tile_input(event: InputEvent, seat: int, slot: int) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -3521,41 +3533,28 @@ func _own_hand_top() -> float:
 
 func _seat_hud_rect(seat: int) -> Rect2:
 	var rel := G.relative_seat(human_seat, seat)
-	if _table_3d != null:
-		return [Rect2(24, G.DESIGN_SIZE.y - OWN_HUD_LINE_HEIGHT, 330, OWN_HUD_LINE_HEIGHT), Rect2(2112, 300, 144, 96),
-			Rect2(1010, 8, 260, 78), Rect2(24, 300, 144, 96)][rel]
-	var along: Vector2 = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN][rel]
-	var first := Rect2()
-	var first_distance := INF
-	if seat < hand_boxes.size():
-		for node in hand_boxes[seat].get_children() + draw_boxes[seat].get_children():
-			if not node is TileView or node.is_queued_for_deletion(): continue
-			if _reconciling and not _render_seen.has(node.get_instance_id()): continue
-			var rect := _visual_rect(node, true)
-			var shadow: Vector2 = (Vector2(2, 4) * node.unit * node.scale).rotated(node.rotation)
-			rect = rect.merge(Rect2(rect.position + shadow, rect.size))
-			var distance := rect.get_center().dot(along)
-			if distance < first_distance:
-				first_distance = distance
-				first = rect
-	if first_distance == INF:
-		var size := G.hand_tile_size(seat, human_seat)
-		if rel in [1, 3]: size = Vector2(size.y, size.x)
-		first = Rect2(_hand_center(seat, 0, _current_hand_count(seat)) - size / 2, size)
-	var size := Vector2(120 if rel in [1, 3] else 184, 96)
-	var at: Vector2 = [
-		Vector2(first.position.x - 16 - size.x, first.get_center().y - size.y / 2),
-		Vector2(G.DESIGN_SIZE.x - 8 - size.x, first.end.y + 16),
-		Vector2(first.end.x + 16, first.get_center().y - size.y / 2),
-		Vector2(8, first.position.y - 16 - size.y),
-	][rel]
-	at.y = clampf(at.y, G.TABLE_BOUNDS.position.y, G.TABLE_BOUNDS.end.y - size.y)
-	if rel in [0, 2]: at.x = clampf(at.x, G.TABLE_BOUNDS.position.x, G.TABLE_BOUNDS.end.x - size.x)
-	# Rotated tile bounds can differ by a float ULP after pool reuse.
-	return Rect2(at.snapped(Vector2.ONE * 0.001), size)
+	var bounds: Rect2 = [Rect2(224, 924, 300, 70), Rect2(2112, 84, 144, 78),
+		Rect2(1010, 8, 260, 78), Rect2(24, 84, 144, 78)][rel]
+	var touch := minimum_touch_height()
+	if touch <= 0.0: return bounds
+	var to_screen := get_viewport().get_screen_transform() * get_global_transform_with_canvas()
+	var safe := Rect2(Vector2.ZERO, G.DESIGN_SIZE)
+	var display_safe := _screen_safe_area()
+	if display_safe.has_area():
+		var inner := safe.intersection(to_screen.affine_inverse() * display_safe)
+		if inner.has_area(): safe = inner
+	if seat == human_seat:
+		var bottom := bounds.end.y
+		var screen_scale := to_screen.get_scale().abs()
+		bounds.size.x = maxf(bounds.size.x, touch * screen_scale.y / screen_scale.x)
+		bounds.size.y = maxf(bounds.size.y, touch)
+		bounds.position.y = bottom - bounds.size.y
+	const GAP := 8.0
+	bounds.position.x = clampf(bounds.position.x, safe.position.x + GAP, safe.end.x - bounds.size.x - GAP)
+	bounds.position.y = clampf(bounds.position.y, safe.position.y + GAP, safe.end.y - bounds.size.y - GAP)
+	return bounds
 
 func _process(_delta: float) -> void:
-	_follow_hand_hud()
 	if _arrangement_thread != null and not _arrangement_thread.is_alive():
 		var choices: Array = _arrangement_thread.wait_to_finish()
 		_arrangement_thread = null
@@ -3568,56 +3567,13 @@ func _follow_hand_hud() -> void:
 	if _label_layer == null or _labels.size() != 4: return
 	for seat in 4:
 		if not _hud_bounds.has(seat): continue
-		if _table_3d != null and seat == human_seat: continue
 		_move_seat_hud(seat, _seat_hud_rect(seat))
 
 func _screen_safe_area() -> Rect2:
 	return Rect2(DisplayServer.get_display_safe_area())
 
 func _own_hud_rect() -> Rect2:
-	var bounds := _seat_hud_rect(human_seat)
-	var touch := minimum_touch_height()
-	if touch <= 0.0: return bounds
-	var to_screen := get_viewport().get_screen_transform() * get_global_transform_with_canvas()
-	var safe := Rect2(Vector2.ZERO, G.DESIGN_SIZE)
-	var display_safe := _screen_safe_area()
-	if display_safe.has_area():
-		var inner := safe.intersection(to_screen.affine_inverse() * display_safe)
-		if inner.has_area(): safe = inner
-	const GAP := 8.0
-	var screen_scale := to_screen.get_scale().abs()
-	bounds.size.x = maxf(bounds.size.x, touch * screen_scale.y / screen_scale.x)
-	bounds.size.y = maxf(bounds.size.y, touch)
-	var left := maxf(bounds.position.x, safe.position.x + GAP)
-	var bottom := safe.end.y - bounds.size.y - GAP
-	var last_x := minf(safe.end.x, G.CENTER.x) - bounds.size.x - GAP
-	var obstacles: Array[Rect2] = []
-	for seat in 4:
-		var hand := Rect2()
-		for box in [hand_boxes[seat], draw_boxes[seat]]:
-			for tile in box.get_children():
-				if not tile is TileView or not tile.is_visible_in_tree() or tile.is_queued_for_deletion(): continue
-				var projected: Rect2 = _table_3d.project_tile(tile)
-				if projected.has_area(): hand = hand.merge(projected) if hand.has_area() else projected
-		if hand.has_area(): obstacles.append(hand.grow(GAP))
-		if seat != human_seat: obstacles.append(_seat_hud_rect(seat).grow(GAP))
-	var columns := [left]
-	var rows := [bottom]
-	for obstacle in obstacles:
-		if obstacle.end.x > left and obstacle.end.x <= last_x: columns.append(obstacle.end.x)
-		var above := obstacle.position.y - bounds.size.y
-		if above >= safe.position.y + GAP and above < bottom: rows.append(above)
-	columns.sort()
-	rows.sort()
-	rows.reverse()
-	# Keep the nameplate in the bottom-left clear space, above the hand when the footer is shallow.
-	for y in rows:
-		for x in columns:
-			bounds.position = Vector2(x, y)
-			if safe.encloses(bounds) and not obstacles.any(func(rect): return rect.intersects(bounds)):
-				return bounds
-	bounds.position = Vector2(left, bottom)
-	return bounds
+	return _seat_hud_rect(human_seat)
 
 func _move_seat_hud(seat: int, bounds: Rect2) -> void:
 	var previous: Rect2 = _hud_bounds[seat]

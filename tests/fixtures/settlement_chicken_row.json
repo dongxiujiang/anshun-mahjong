@@ -1,0 +1,347 @@
+{
+  "dealer_seat": 0,
+  "deltas": [
+    8.0,
+    32.0,
+    56.0,
+    -96.0
+  ],
+  "flip_tile": "",
+  "items": [
+    [],
+    [],
+    [
+      {
+        "amount": 8.0,
+        "count": 2,
+        "kind": "chicken",
+        "label": "普通鸡",
+        "note": "打出",
+        "source": "discard",
+        "tile": "tiao1",
+        "tiles": [
+          "tiao1",
+          "tong8"
+        ],
+        "unit_amount": 4.0
+      }
+    ],
+    [
+      {
+        "amount": -64.0,
+        "kind": "penalty",
+        "label": "荒牌补付",
+        "note": "未叫牌补给叫牌玩家（有牌型付牌型分，无牌型付4）",
+        "own_amount": -64.0,
+        "tile": "",
+        "tiles": []
+      }
+    ]
+  ],
+  "lines": [
+    "庄家 已叫牌：出牌鸡 0",
+    "上家 已叫牌：出牌鸡 0",
+    "对家 已叫牌：出牌鸡 4",
+    "下家 未叫牌：出牌鸡 0",
+    "以下项目按单倍计算；所有收付求和后统一 ×2（含杠分、报听费和额外分）",
+    "荒牌：未叫者补付后，下局鸡分仍 ×2"
+  ],
+  "next_chicken_multiplier": 2,
+  "next_dealer_seat": 3,
+  "pairwise": [
+    [
+      0.0,
+      0.0,
+      0.0,
+      8.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      32.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      56.0
+    ],
+    [
+      -8.0,
+      -32.0,
+      -56.0,
+      0.0
+    ]
+  ],
+  "players": [
+    {
+      "concealed": [
+        "tong3",
+        "tong5",
+        "tiao4",
+        "tong4",
+        "tong2",
+        "tong7",
+        "tiao5",
+        "tiao6",
+        "tong6",
+        "wan7"
+      ],
+      "discards": [
+        "tiao9",
+        "wan6",
+        "tong9",
+        "tiao3",
+        "tong5",
+        "wan9",
+        "wan2",
+        "tong7",
+        "tong6",
+        "tong6",
+        "wan2",
+        "wan6",
+        "tiao8",
+        "wan8",
+        "tiao2"
+      ],
+      "melds": [
+        {
+          "after_discard": 3,
+          "formed_at": 3,
+          "from_seat": 2,
+          "kind": "kong",
+          "robbed": false,
+          "tile": "wan1"
+        }
+      ],
+      "name": "玩家0",
+      "ready": false,
+      "score": 410.0,
+      "seat": 0
+    },
+    {
+      "concealed": [
+        "tong4",
+        "tiao4",
+        "tong3",
+        "tiao4"
+      ],
+      "discards": [
+        "wan8",
+        "tong9",
+        "tiao7",
+        "tong7",
+        "tiao2",
+        "wan2",
+        "tong9",
+        "tiao5",
+        "tong6",
+        "wan2",
+        "tiao3",
+        "wan3",
+        "tong1",
+        "tiao7"
+      ],
+      "melds": [
+        {
+          "after_discard": 0,
+          "formed_at": 0,
+          "from_seat": 2,
+          "kind": "pung",
+          "robbed": false,
+          "tile": "tiao1"
+        },
+        {
+          "after_discard": 1,
+          "formed_at": 1,
+          "from_seat": 2,
+          "kind": "pung",
+          "robbed": false,
+          "tile": "tong8"
+        },
+        {
+          "after_discard": 5,
+          "formed_at": 5,
+          "from_seat": 0,
+          "kind": "kong",
+          "robbed": false,
+          "tile": "wan4"
+        }
+      ],
+      "name": "玩家1",
+      "ready": false,
+      "score": 66.0,
+      "seat": 1
+    },
+    {
+      "concealed": [
+        "tong4",
+        "tong2",
+        "tiao6",
+        "wan5",
+        "tong1",
+        "tiao6",
+        "tong1",
+        "tiao9",
+        "wan7",
+        "tong4",
+        "tiao9",
+        "wan7",
+        "tong2"
+      ],
+      "discards": [
+        "tiao4",
+        "tiao7",
+        "tong3",
+        "tiao1",
+        "tiao9",
+        "tong2",
+        "wan3",
+        "wan3",
+        "wan9",
+        "tong8",
+        "tong5"
+      ],
+      "melds": [],
+      "name": "玩家2",
+      "ready": false,
+      "score": 214.0,
+      "seat": 2
+    },
+    {
+      "concealed": [
+        "wan5",
+        "tiao6",
+        "tiao5",
+        "wan8",
+        "wan5",
+        "tiao3",
+        "wan6",
+        "wan6",
+        "wan8",
+        "tiao5",
+        "tiao3",
+        "wan7",
+        "wan5"
+      ],
+      "discards": [
+        "tiao8",
+        "wan9",
+        "tiao8",
+        "tong9",
+        "tong7",
+        "tiao2",
+        "wan3",
+        "tiao7",
+        "tong3",
+        "tong1",
+        "tiao8",
+        "tong5",
+        "wan9",
+        "tiao2"
+      ],
+      "melds": [],
+      "name": "玩家3",
+      "ready": false,
+      "score": 110.0,
+      "seat": 3
+    }
+  ],
+  "points": [
+    0.0,
+    24.0,
+    8.0,
+    0.0
+  ],
+  "round_meta": {
+    "all_called_draw": false,
+    "break": 88,
+    "burn_chicken_reason": "",
+    "burn_chicken_seat": -1,
+    "charge_chickens": {
+      "tiao1": {
+        "discard_id": 0,
+        "location": "meld",
+        "meld_index": 0,
+        "owner": 1
+      },
+      "tong8": {
+        "discard_id": 1,
+        "location": "meld",
+        "meld_index": 1,
+        "owner": 1
+      }
+    },
+    "chicken_multiplier": 2,
+    "dealer_seat": 0,
+    "dice_double": true,
+    "die": 3,
+    "die_white": 3,
+    "discard_seat": -1,
+    "flip_tile": "",
+    "kong_draw_seat": -1,
+    "last_four_self_draw_seat": -1,
+    "next_chicken_multiplier": 2,
+    "next_dealer_seat": 3,
+    "previous_draw_double": true,
+    "resolved_chicken_discards": [],
+    "robbed_kong": false,
+    "robber_seat": -1,
+    "self_draw": false,
+    "win_tile": "",
+    "winner": -1,
+    "winners": []
+  },
+  "round_points": [
+    0.0,
+    0.0,
+    8.0,
+    -64.0
+  ],
+  "scores": [
+    410.0,
+    66.0,
+    214.0,
+    110.0
+  ],
+  "status": [
+    "叫牌",
+    "叫牌",
+    "叫牌",
+    "未叫牌"
+  ],
+  "total_delta": 0.0,
+  "transfers": [
+    {
+      "amount": 24.0,
+      "from": 3,
+      "reason": "荒牌包鸡",
+      "to": 1
+    },
+    {
+      "amount": 8.0,
+      "from": 3,
+      "reason": "荒牌包鸡",
+      "to": 2
+    },
+    {
+      "amount": 8.0,
+      "from": 3,
+      "reason": "荒牌基础补付",
+      "to": 0
+    },
+    {
+      "amount": 8.0,
+      "from": 3,
+      "reason": "荒牌基础补付",
+      "to": 1
+    },
+    {
+      "amount": 48.0,
+      "from": 3,
+      "reason": "荒牌牌型分",
+      "to": 2
+    }
+  ]
+}

@@ -153,9 +153,9 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	if not is_visible_in_tree(): return
-	var settled: bool = view != null and view.round != null and view.round.phase == RoundState.Phase.SETTLED
-	_own_hand_pitch = move_toward(_own_hand_pitch, 0.0, deg_to_rad(63) * delta / 0.28) if settled else deg_to_rad(63)
-	if settled and GameConfig.tile_motion_seconds() == 0.0: _own_hand_pitch = 0.0
+	var started: bool = view != null and view.native_settlement_started()
+	_own_hand_pitch = move_toward(_own_hand_pitch, 0.0, deg_to_rad(63) * delta / 0.28) if started else deg_to_rad(63)
+	if started and GameConfig.tile_motion_seconds() == 0.0: _own_hand_pitch = 0.0
 
 func _sync_before_draw() -> void:
 	# Tweens can recycle tile sources after _process; mirror their final state.
@@ -203,7 +203,12 @@ func _ordinary_position(center: Vector2, seat: int, factor: float, world_unit: f
 		center.y = first_y
 	var along_scale := lerpf(0.79, 1.09, center.y / size.y) * lerpf(0.58, 1.0, width_fit)
 	center.x = G.CENTER.x + (center.x - G.CENTER.x) * along_scale
-	return _at_height(center, 0.31 * factor + 0.03) + Vector3(0, 0, row_offset)
+	var position := _at_height(center, 0.31 * factor + 0.03) + Vector3(0, 0, row_offset)
+	if G.relative_seat(view.human_seat, seat) in [0, 2]:
+		# Pack horizontal rows in model units, independent of perspective and pixel gaps.
+		var slot_step := G.TILE_BASE.x * G.ORDINARY_UNIT + G.TILE_GAP
+		position.x = (center.x - G.CENTER.x) / along_scale / slot_step * factor * 0.98
+	return position
 
 func can_keep_north_exposed(specs: Array, obstacles: Dictionary[Rect2, Dictionary]) -> bool:
 	var width_fit := minf(1.0, G.DESIGN_SIZE.aspect() / Vector2(viewport.size).aspect())
@@ -275,8 +280,8 @@ func sync_tiles() -> void:
 	if view == null or viewport == null: return
 	_fit_viewport()
 	var settled: bool = view.round != null and view.round.phase == RoundState.Phase.SETTLED
-	if settled: clear_own_exposed_flight()
 	var settlement_started: bool = view.native_settlement_started()
+	if settlement_started: clear_own_exposed_flight()
 	var seen := {}
 	var moved: Array[MeshInstance3D] = []
 	var latest: TileView = null
@@ -284,8 +289,10 @@ func sync_tiles() -> void:
 	var width_fit := minf(1.0, G.DESIGN_SIZE.aspect() / Vector2(viewport.size).aspect())
 	var world_unit := _pixel_scale(G.CENTER, 1.0) * width_fit
 	var touch_height: float = view.minimum_touch_height()
+	var own_hand_bottom: float = view.settlement_hand_bottom() if settlement_started else size.y - 6.0
+	var settlement_panel: Rect2 = view._native_settlement.get_rect() if settlement_started and is_instance_valid(view._native_settlement) else Rect2()
 	var visual_session: String = view.round._presentation.session if view.round != null else ""
-	var own_layout_state := [viewport.size, settled, touch_height, view.human_seat, visual_session]
+	var own_layout_state := [viewport.size, settled, touch_height, view.human_seat, visual_session, settlement_panel]
 	var own_meld_key := hash(view.round.players[view.human_seat].melds) if view.round != null else 0
 	var own_travel := 1.0
 	for id in _own_exposed_origins:
@@ -322,11 +329,11 @@ func sync_tiles() -> void:
 			var signature := hash([key, source.face_up, xf, source.size, source.is_visible_in_tree(),
 				source.modulate, source.self_modulate, source.standing_back_view, kind, source.flight_pitch, source.flight_progress,
 				source.z_index, source.highlight, source.latest_highlight, source.ai_teach_highlight,
-				source.get_meta("flight_origin_offset_3d", Vector3.ZERO), source.get_meta("ordinary_flight_3d", {}), source.get_meta("claimed_flight_origin_3d", Transform3D.IDENTITY), source.get_meta("v2_draw_flight", false),
+				source.get_meta("flight_origin_offset_3d", Vector3.ZERO), source.get_meta("ordinary_flight_3d", {}), source.get_meta("claimed_flight_origin_3d", Transform3D.IDENTITY), source.get_meta("v2_draw_flight", false), source.get_meta("meld_room_3d", {}),
 				source.get_parent().get_instance_id(),
 				source.get_meta("charge_chicken", false), source.get_meta("gold_chicken", false),
 				source.get_meta("v2_charge", false), source.get_meta("kong_offset_2d", Vector2.ZERO), source.get_meta("kong_offset_3d", Vector2.ZERO), settlement_started if own_exposed else settled, settlement_started, _own_hand_pitch if own_hand else 0.0,
-				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0, touch_height if own_hand else 0.0,
+				source.get_meta("v2_draw_reserve", 1.0) if own_hand else 1.0, own_hand_bottom if own_hand else 0.0,
 				own_meld_key if kind in ["meld", "red"] and int(source.get_meta("v2_seat", -1)) == view.human_seat else 0,
 				own_travel if _own_exposed_targets.has(id) else 1.0, view._wall_raise if kind == "wall" else 1.0])
 			if wall_flip:
@@ -380,17 +387,6 @@ func sync_tiles() -> void:
 				# Pack a kong in model units; sprite spacing changes with the camera and aspect.
 				center -= Vector2(source.get_meta("kong_offset_2d", Vector2.ZERO))
 				kong_offset = source.get_meta("kong_offset_3d", Vector2.ZERO)
-				if rel == 0 and view.round != null and int(source.get_meta("meld_index")) < view.round.players[view.human_seat].melds.size():
-					var meld: Dictionary = view.round.players[view.human_seat].melds[int(source.get_meta("meld_index"))]
-					var from_seat := int(meld.get("from_seat", -1))
-					if meld.kind in ["kong", "add_kong"] and (meld.get("concealed", false) or meld.kind == "add_kong" or from_seat not in range(4)):
-						if int(source.get_meta("meld_slot")) == 3: kong_offset = Vector2(1, -1.34)
-					elif meld.kind == "kong" and from_seat in range(4) and posmod(from_seat - view.human_seat, 4) != 2:
-						var source_slot := G.exposed_kong_source_slot(view.human_seat, from_seat)
-						# Keep the left/right source crosswise above that end of the three-tile row.
-						if int(source.get_meta("meld_slot")) == source_slot:
-							kong_offset = Vector2(0.17 if source_slot == 0 else 1.83, -1.17)
-						elif source_slot == 0: kong_offset.x -= 1.34
 			var side_hand: bool = hand and source.standing_back_view in [1, 3]
 			var motion := float(source.flight_progress)
 			var flight := motion if source.get_parent() == view._deal_layer else -1.0
@@ -419,7 +415,7 @@ func sync_tiles() -> void:
 			if own_hand:
 				var draw_gap := 24.0 if kind == "draw" else 0.0
 				# A merged fourteen-tile row no longer reserves space for a separate draw.
-				var reserve_draw := float(source.get_meta("v2_draw_reserve", 1.0)) if not settled else 1.0
+				var reserve_draw := float(source.get_meta("v2_draw_reserve", 1.0)) if not settlement_started else 1.0
 				var own_scale := 1.13 * near_fit * 1.02
 				along_scale = lerpf(along_scale, own_scale, hand_blend)
 				row_anchor += ((-64.0 * reserve_draw + draw_gap) * own_scale - 46.0 * reserve_draw) * hand_blend
@@ -458,10 +454,9 @@ func sync_tiles() -> void:
 				node.transform = Transform3D(ordinary_flight.origin).interpolate_with(Transform3D(target_basis, target_position), travel)
 				node.position.y += node.basis.get_scale().x * (1.0 - pow(absf(flight * 2.0 - 1.0), 2.0)) * 0.9
 			if own_hand and (flight < 0.0 or draw_flight):
-				# Bottom controls can cover the base while leaving every printed face clear.
-				var extra_footer := maxf(0.0, touch_height - (104.0 if settled else 62.4))
+				# The same bottom edge is used by landed hands and their incoming flights.
 				for _step in 2:
-					center.y += (size.y - (60.0 if settled else 68.0) - extra_footer - _project_mesh(node).end.y) * hand_blend
+					center.y += (own_hand_bottom - _project_mesh(node).end.y) * hand_blend
 					node.position = _at_height(center, height)
 			if hand and not side_hand and (flight < 0.0 or draw_flight):
 				var step: float = (source.size.x + G.TILE_GAP) * along_scale
@@ -503,6 +498,11 @@ func sync_tiles() -> void:
 			if flight >= 0.0 and source.has_meta("claimed_flight_origin_3d"):
 				var travel := 1.0 - pow(1.0 - clampf(flight, 0.0, 1.0), 3.0)
 				node.transform = Transform3D(source.get_meta("claimed_flight_origin_3d")).interpolate_with(node.transform, travel)
+			var room: Dictionary = source.get_meta("meld_room_3d", {})
+			if not room.is_empty():
+				var progress := float(room.progress)
+				node.transform = Transform3D(room.origin).interpolate_with(room.target, progress)
+				node.position.y += float(room.get("lift", 0.0)) * 4.0 * progress * (1.0 - progress)
 			_rects[id] = _project_mesh(node)
 	for source in [view._dice_red, view._dice_white]:
 		if not is_instance_valid(source): continue
@@ -545,7 +545,8 @@ func sync_tiles() -> void:
 	var own_layout_key := hash(own_layout_state)
 	if own_layout_key != _own_exposed_layout_key:
 		_own_exposed_layout_key = own_layout_key
-		if not settled and _own_exposed_targets.is_empty(): _clear_own_exposed_faces(moved)
+		if _own_exposed_targets.is_empty():
+			_clear_own_exposed_faces(moved, own_hand_bottom if settlement_started else INF, settlement_panel)
 	_update_discard_marker(latest)
 	if _changed:
 		geometry_revision += 1
@@ -557,7 +558,7 @@ func sync_tiles() -> void:
 		queue_redraw()
 		_changed = false
 
-func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
+func _clear_own_exposed_faces(moved: Array[MeshInstance3D], settlement_bottom: float = INF, settlement_panel: Rect2 = Rect2()) -> void:
 	var groups := {}
 	var pieces := {}
 	var hand := Rect2()
@@ -565,12 +566,12 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 	var wall_and_hand_tiles: Array[Rect2] = []
 	var obstacles: Array[Rect2] = []
 	var left_hand := Rect2()
-	var has_charge := false
 	for id in tile_nodes:
 		var source = _sources[id].get_ref()
 		var node: MeshInstance3D = tile_nodes[id]
 		if not is_instance_valid(source) or not node.visible: continue
 		if source.get_parent() == view._deal_layer: continue
+		if source.has_meta("meld_room_3d"): return
 		var kind := str(source.get_meta("new_kind", ""))
 		var seat := int(source.get_meta("v2_seat", -1))
 		if kind in ["ordinary", "meld", "red", "hand", "draw"] and not (seat == view.human_seat and kind != "ordinary"):
@@ -589,7 +590,6 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 			wall_and_hand_tiles.append(bounds)
 			hand = hand.merge(bounds) if hand.has_area() else bounds
 		if seat == view.human_seat and kind in ["meld", "red"]:
-			has_charge = has_charge or bool(source.get_meta("v2_charge", false))
 			var meld_index := int(source.get_meta("meld_index", -1))
 			var melds: Array = view.round.players[view.human_seat].melds
 			var shape = melds[meld_index].duplicate(true) if meld_index >= 0 and meld_index < melds.size() else null
@@ -604,9 +604,9 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 		_own_placed_poses.clear()
 		return
 	_own_exposed_left_hand = left_hand
-	# Own exposed tiles stay together beside the hand, on the near side of its wall.
+	# Use the owner's event order, independent of node pooling and card values.
 	var order: Array = groups.keys()
-	order.sort_custom(func(a, b): return a < b)
+	order.sort_custom(func(a, b): return _own_group_order(groups[a]) > _own_group_order(groups[b]))
 	# Missing walls leave real free space beside the hand. The old sprite wall
 	# rectangles are not projected geometry and must not act as phantom obstacles.
 	var group_height := 0.0
@@ -614,19 +614,31 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 	var free_top := maxf(size.y * 0.6, hand.position.y - group_height * 2.0 - 24.0)
 	var near_wall: Rect2 = walls.get(1, Rect2(Vector2(G.CENTER.x, free_top), Vector2.ZERO))
 	var side_wall: Rect2 = walls.get(2, Rect2(Vector2(left_hand.end.x, free_top), Vector2.ZERO))
-	var bottom := minf(G.TABLE_BOUNDS.end.y, size.y - view.minimum_touch_height() - 6.0)
+	var bottom := minf(minf(G.TABLE_BOUNDS.end.y, size.y - view.minimum_touch_height() - 6.0), settlement_bottom)
 	var beside := Rect2(Vector2(2.0, maxf(near_wall.end.y, side_wall.end.y) + 6.0), Vector2.ZERO)
 	beside.size = Vector2(hand.position.x - 2.0 - beside.position.x, bottom - beside.position.y)
 	var corner := Rect2(Vector2(side_wall.end.x + 6.0, near_wall.position.y + 2.0), Vector2.ZERO)
 	corner.size = Vector2(near_wall.position.x - 6.0 - corner.position.x, hand.position.y - 2.0 - corner.position.y)
 	var context := [view.round._presentation.session, view.human_seat, viewport.size,
 		camera.global_transform, camera.get_camera_projection(), bottom]
+	for seat in 4: obstacles.append(view._seat_hud_rect(seat))
+	if settlement_panel.has_area(): obstacles.append(settlement_panel)
 	var placed := false
 	if context == _own_placed_context and pieces.size() == _own_placed_poses.size():
-		placed = _restore_own_placement(pieces, bottom, obstacles + wall_and_hand_tiles)
-	var restored := placed
-	obstacles.sort_custom(func(a, b): return a.position.x > b.position.x)
+		var blockers: Array[Rect2] = obstacles + wall_and_hand_tiles
+		# Keep the last landing through the final flight. New public pieces still get packed.
+		if view.round.phase == RoundState.Phase.SETTLED and not view.native_settlement_started(): blockers.clear()
+		placed = _restore_own_placement(pieces, bottom, blockers)
+	if not placed:
+		placed = _pack_centered_own_exposed(groups, order, hand.position.y - 8.0, obstacles + wall_and_hand_tiles)
 	var areas := [beside, corner]
+	if settlement_bottom != INF:
+		# The flat revealed hand occupies the near center. The right-hand end of
+		# the same strip can hold the public groups when the side wall fills the left.
+		var right := maxf(G.CENTER.x, hand.end.x + 6.0)
+		areas.append(Rect2(right, beside.position.y, size.x - right - 8.0, beside.size.y))
+		obstacles.append_array(wall_and_hand_tiles)
+	obstacles.sort_custom(func(a, b): return a.position.x > b.position.x)
 	# Where the left player's hand spans the entire strip, anchor below it to
 	# our hand instead of following the wall or the opponent's separate draw.
 	if beside.end.x <= left_hand.end.x:
@@ -640,58 +652,21 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
 		placed = _pack_own_exposed(groups, order, area, obstacles)
 	if not placed:
+		# The open ends of the near wall can fit a complete row just above the hand.
+		var above := Rect2(2.0, near_wall.position.y, size.x - 10.0, hand.position.y - 6.0 - near_wall.position.y)
+		for key in order:
+			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
+		var above_obstacles: Array = obstacles if settlement_bottom != INF else obstacles + wall_and_hand_tiles
+		above_obstacles.sort_custom(func(a, b): return a.position.x > b.position.x)
+		placed = _pack_own_exposed(groups, order, above, above_obstacles, true)
+	if not placed:
 		for key in order:
 			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
 		placed = _pack_own_exposed(groups, order, beside, obstacles, true)
 	if not placed:
 		for key in order:
 			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
-		var long_groups: Array = order.filter(func(key): return groups[key].size() == 4)
-		var short_groups: Array = order.filter(func(key): return groups[key].size() != 4)
-		if not long_groups.is_empty() and not short_groups.is_empty():
-			placed = _pack_own_exposed(groups, long_groups, beside, obstacles, true)
-			if placed:
-				var occupied: Array[Rect2] = obstacles.duplicate()
-				var upper := corner
-				var short_width := 0.0
-				for key in short_groups: short_width += _exposed_printed_bounds(groups[key]).size.x + 6.0
-				upper.size.x = minf(upper.end.x, beside.end.x + short_width) - upper.position.x
-				for key in long_groups:
-					var bounds := _exposed_printed_bounds(groups[key])
-					occupied.append(bounds)
-				occupied.sort_custom(func(a, b): return a.position.x > b.position.x)
-				placed = _pack_own_exposed(groups, short_groups, upper, occupied, true)
-				if placed:
-					var upper_bottom := 0.0
-					var lower_top := bottom
-					for key in short_groups: upper_bottom = maxf(upper_bottom, _exposed_printed_bounds(groups[key]).end.y)
-					for key in long_groups: lower_top = minf(lower_top, _exposed_printed_bounds(groups[key]).position.y)
-					var gap := lower_top - upper_bottom - 6.0
-					if gap > 0.0:
-						var compact := beside
-						compact.position.y = upper_bottom + 6.0
-						compact.size.y = beside.end.y - compact.position.y
-						placed = _pack_own_exposed(groups, long_groups, compact, obstacles)
-	if not placed:
-		for key in order:
-			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
 		push_error("自己碰杠和鸡牌近侧空间不足，禁止移到桌心: %s / %s" % [beside, corner])
-	# New groups have legal landings now. Keep each old group if its full face is still clear.
-	if placed and not restored and context == _own_placed_context and not _own_placed_poses.is_empty():
-		for group in order:
-			var subset := {}
-			var packed := {}
-			var hand_edge := _own_exposed_hand_edge(groups[group]) if has_charge else INF
-			var blocked: Array[Rect2] = obstacles + wall_and_hand_tiles
-			for other in order:
-				for id in groups[other]:
-					if other == group:
-						subset[pieces.find_key(id)] = id
-						packed[id] = tile_nodes[id].transform
-					else: blocked.append(_project_mesh(tile_nodes[id]))
-			if not _restore_own_placement(subset, bottom, blocked) \
-					or (has_charge and not is_equal_approx(_own_exposed_hand_edge(groups[group]), hand_edge)):
-				for id in packed: tile_nodes[id].transform = packed[id]
 	_own_placed_context = context
 	_own_placed_poses.clear()
 	if placed:
@@ -701,6 +676,63 @@ func _clear_own_exposed_faces(moved: Array[MeshInstance3D]) -> void:
 		for id in groups[key]:
 			_rects[id] = _project_mesh(tile_nodes[id])
 			if not moved.has(tile_nodes[id]): moved.append(tile_nodes[id])
+
+func _own_group_order(ids: Array) -> float:
+	var source: TileView = _sources[ids[0]].get_ref()
+	var index := int(source.get_meta("meld_index", -1))
+	if index >= 0:
+		var meld: Dictionary = view.round.players[view.human_seat].melds[index]
+		return float(meld.get("formed_at", meld.get("after_discard", 0))) * 2.0 + index * 0.001
+	return float(source.get_meta("discard_id", 0)) * 2.0 + 1.0
+
+func _pack_centered_own_exposed(groups: Dictionary, reverse_order: Array, bottom: float, obstacles: Array[Rect2], row_width: float = 0.0) -> bool:
+	if row_width == 0.0: row_width = size.x - 540.0
+	for ids in groups.values():
+		for id in ids: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
+	var rows: Array = [[]]
+	var spans: Array[float] = [0.0]
+	var heights: Array[float] = [0.0]
+	var order := reverse_order.duplicate()
+	order.reverse()
+	for key in order:
+		var bounds := _exposed_printed_bounds(groups[key])
+		var row := rows.size() - 1
+		if spans[row] + bounds.size.x > row_width and not rows[row].is_empty():
+			rows.append([])
+			spans.append(0.0)
+			heights.append(0.0)
+			row += 1
+		rows[row].append(key)
+		spans[row] += bounds.size.x + 6.0
+		heights[row] = maxf(heights[row], bounds.size.y + 8.0)
+	var total_height := 0.0
+	for height in heights: total_height += height
+	for shift in [0.0, 24.0, 48.0, 72.0]:
+		for key in order:
+			for id in groups[key]: tile_nodes[id].transform = tile_nodes[id].get_meta("exposed_transform")
+		var top: float = bottom - total_height - float(shift)
+		var fits := true
+		for row in rows.size():
+			var cursor := Vector2(G.CENTER.x + (spans[row] - 6.0) / 2.0, top)
+			var deepest = rows[row][0]
+			for key in rows[row]:
+				if _exposed_printed_bounds(groups[key]).size.y > _exposed_printed_bounds(groups[deepest]).size.y:
+					deepest = key
+			_position_exposed_group(groups[deepest], cursor, INF)
+			var hand_edge := _own_exposed_hand_edge(groups[deepest])
+			for i in range(rows[row].size() - 1, -1, -1):
+				var ids: Array = groups[rows[row][i]]
+				var bounds := _position_exposed_group(ids, cursor, hand_edge)
+				for obstacle in obstacles:
+					if bounds.grow(-0.5).intersects(obstacle): fits = false
+				cursor.x = bounds.position.x - 6.0
+			top += heights[row]
+		if fits: return true
+	var hud: Rect2 = view._seat_hud_rect(view.human_seat)
+	var clear_width := (G.CENTER.x - hud.end.x - 12.0) * 2.0
+	if clear_width > 0.0 and clear_width < row_width - 1.0:
+		return _pack_centered_own_exposed(groups, reverse_order, bottom, obstacles, clear_width)
+	return false
 
 func _restore_own_placement(pieces: Dictionary, bottom: float, obstacles: Array[Rect2]) -> bool:
 	# Keep the last legal landing when an ordinary draw/discard frees space.
@@ -718,14 +750,12 @@ func _restore_own_placement(pieces: Dictionary, bottom: float, obstacles: Array[
 
 func _pack_own_exposed(groups: Dictionary, order: Array, area: Rect2, obstacles: Array[Rect2], bottom_up: bool = false) -> bool:
 	if area.size.x <= 0.0 or area.size.y <= 0.0: return false
-	var cursor := Vector2(area.end.x, area.end.y if bottom_up else area.position.y)
+	var cursor := Vector2(area.end.x, area.end.y - 6.0 if bottom_up else area.position.y)
 	var row_height := 0.0
 	var hand_edge := INF
 	for key in order:
 		var ids: Array = groups[key]
-		var source: TileView = _sources[ids[0]].get_ref()
-		var charge := bool(source.get_meta("v2_charge", false))
-		var bounds := _position_own_exposed_row(ids, cursor, obstacles, bottom_up, hand_edge if charge else INF)
+		var bounds := _position_own_exposed_row(ids, cursor, obstacles, bottom_up, hand_edge)
 		if bounds.position.x == -INF and row_height == 0.0 and not bottom_up:
 			cursor.y = maxf(cursor.y, _own_exposed_left_hand.end.y + 6.0)
 			bounds = _position_own_exposed_row(ids, cursor, obstacles, bottom_up)

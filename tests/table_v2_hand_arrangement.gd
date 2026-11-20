@@ -42,30 +42,24 @@ func _run() -> void:
 	player.concealed.assign(hand)
 	player.just_drew = ""
 	table._refresh()
-	t.expect(view._sort_button.visible and not view._restore_button.visible, "13 tiles show Sort below the draw slot")
-	_check_sort_clear(view)
+	t.expect(view._local_arrangement.is_empty(), "13 tiles initially use the default order")
 	view._sort_own_hand()
 	var first: Array = view._local_arrangement.cards
 	t.expect(view.hand_boxes[table.human_seat].get_children().all(func(tile): return not tile.interactive), "off-turn sorting never enables hand input")
 	view._sort_own_hand()
-	t.expect(first != view._local_arrangement.cards and view._restore_button.visible, "second tap cycles layouts and shows Restore")
-	var deadline := Time.get_ticks_msec()+5000
-	while view._arrangement_thread != null and Time.get_ticks_msec()<deadline:
-		await process_frame
-	t.expect(view._arrangement_thread == null and view._arrangement_choices.any(func(choice):return choice.has("change_from")), "background search adds the complete one-tile upgrade choices")
+	t.expect(first != view._local_arrangement.cards, "a second arrangement selects a different split")
+	t.expect(view._arrangement_thread == null, "selecting a split does not start a background search")
 	var seen := {}
 	for i in view._arrangement_choices.size():
 		view._sort_own_hand()
 		seen[view._local_arrangement.key] = true
-	t.expect(seen.size()==view._arrangement_choices.size(), "repeated taps visit every distinct arrangement instead of stopping after one")
+	t.expect(seen.size()==view._arrangement_choices.size(), "cycling visits every distinct current-hand arrangement")
 	t.expect(player.concealed == hand, "view sort leaves authoritative indices unchanged")
-	view._local_arrangement = view._arrangement_choices.filter(func(choice): return choice.has("change_from"))[0]
-	table._refresh()
 	var arranged: Array = view._local_arrangement.cards
 	player.concealed.append("wan9")
 	player.just_drew = "wan9"
 	table._refresh()
-	t.expect(view._sort_button.visible and not view._sort_button.disabled and view._local_arrangement.cards == arranged, "Sort stays available with a separate draw")
+	t.expect(view._local_arrangement.cards == arranged, "a separate draw preserves the existing arrangement")
 	view._sort_own_hand()
 	t.expect(view.draw_boxes[table.human_seat].get_child_count() == 0
 		and view._local_arrangement.cards.size() == 14 and view.hand_boxes[table.human_seat].get_child_count() == 14, "sorting merges the drawn tile without changing the authoritative hand")
@@ -73,7 +67,8 @@ func _run() -> void:
 		table._ai_assist_enabled = true
 		table._apply_proxy_teach({"discard": "wan9", "recommendations": [
 			{"tile": "wan9", "distance": 0, "outs": 12}, {"tile": "wan1"}, {"tile": "wan5"}]})
-		t.expect(not table.status_label.get_global_rect().intersects(view._arrangement_caption.get_global_rect()), "teaching and sorting keep separate readable text areas")
+		t.expect(table.status_label.is_visible_in_tree() and not view._arrangement_caption.visible,
+			"AI teaching stays visible without an arrangement caption")
 		await _capture("teaching-and-sorting")
 		table._ai_assist_enabled = false
 		table._clear_ai_teach()
@@ -89,9 +84,9 @@ func _run() -> void:
 	t.expect(merged_finished.value, "merged draw discard animation finishes")
 	table._refresh()
 	t.expect(Tiles.sort_hand(view._local_arrangement.cards) == hand, "discard after merging retains exactly the remaining thirteen tiles")
-	deadline = Time.get_ticks_msec() + 5000
-	while view._arrangement_thread != null and Time.get_ticks_msec() < deadline: await process_frame
-	t.expect(view._arrangement_choices.any(func(choice): return choice.has("change_from")), "unchanged thirteen tiles regain all exchange plans after merging and discarding a draw")
+	t.expect(not view._arrangement_choices.is_empty()
+		and view._arrangement_choices.all(func(choice): return Tiles.sort_hand(choice.cards) == hand),
+		"discarding a merged draw restores the original thirteen-tile choices")
 	var before_insert: Dictionary = view._local_arrangement
 	player.concealed.append("wan6")
 	player.just_drew = "wan6"
@@ -129,18 +124,16 @@ func _run() -> void:
 	view._restore_own_hand()
 	player.concealed.assign(hand)
 	table._refresh()
-	t.expect(not view._restore_button.visible and view._local_arrangement.is_empty(), "Restore returns to default sorting")
+	t.expect(view._local_arrangement.is_empty(), "resetting the arrangement returns to default sorting")
 	t.expect(view.hand_boxes[table.human_seat].get_children().all(func(tile): return not tile.interactive), "off-turn Restore never enables hand input")
 	# Reported-ready players may inspect splits, never hypothetical exchanges.
 	player.ready = true
 	player.passed_win_until_draw = true
 	table._refresh()
 	view._sort_own_hand()
-	deadline = Time.get_ticks_msec()+5000
-	while view._arrangement_thread != null and Time.get_ticks_msec()<deadline:
-		await process_frame
-	t.expect(view._arrangement_choices.all(func(choice): return not choice.has("change_from")), "ready locks reject even an old background exchange result")
-	t.expect(view._arrangement_caption.text.contains("本局只能自摸"), "ready pass-win restriction is visible")
+	t.expect(not view._arrangement_choices.is_empty() and view._arrangement_choices.all(func(choice): return not choice.has("change_from")),
+		"ready arrangement choices contain only current tiles")
+	t.expect(player.passed_win_until_draw and not view._arrangement_caption.visible, "sorting preserves the ready pass-win lock after caption removal")
 	await _capture("sorting-ready-passed-win")
 	view._restore_own_hand()
 	player.ready = false
@@ -163,24 +156,22 @@ func _run() -> void:
 			view._local_arrangement = {}
 			view.refresh()
 			view._sort_own_hand()
-			t.expect(view._sort_button.visible and not view._sort_button.disabled and not view._local_arrangement.is_empty(), "every seat can sort 10/7/4/1 concealed tiles")
-			_check_sort_clear(view)
+			t.expect(not view._local_arrangement.is_empty(), "every seat can arrange 10/7/4/1 concealed tiles")
 			for tile in view.hand_boxes[viewer].get_children():
 				t.expect(tile.tile == current.concealed[int(tile.get_meta("concealed_index"))], "melded sorting retains authoritative touch indices")
 			current.concealed.append("tong9")
 			current.just_drew = "tong9"
 			view.refresh()
 			view._sort_own_hand()
-			t.expect(view._sort_button.visible and view.draw_boxes[viewer].get_child_count() == 0
+			t.expect(view.draw_boxes[viewer].get_child_count() == 0
 				and view.hand_boxes[viewer].get_child_count() == current.concealed.size(), "draw after a meld can merge into the arranged hand")
 			t.expect(view.hand_boxes[viewer].get_children().filter(func(tile): return tile.get_meta("drawn", false)).size() == 1, "merged ready hand still identifies only the new tile as discardable")
 			if viewer == original_seat:
 				table._ai_assist_enabled = true
 				table._apply_proxy_teach({"discard": current.just_drew, "recommendations": [{"tile": current.just_drew, "distance": 0, "outs": 3}]})
 				view._refresh_hand_arrangement()
-				t.expect(not table.status_label.get_global_rect().intersects(view._arrangement_caption.get_global_rect()), "short hand teaching and arrangement text have separate areas")
-				t.expect(not view._arrangement_caption.get_global_rect().intersects(view._restore_button.get_global_rect())
-					and not view._arrangement_caption.get_global_rect().intersects(view._sort_button.get_global_rect()), "short hand captions never cover Sort or Restore")
+				t.expect(table.status_label.is_visible_in_tree() and not view._arrangement_caption.visible,
+					"AI teaching stays visible without an arrangement caption for a short hand")
 				await _capture("sorting-%d-melds-with-draw" % count)
 				table._ai_assist_enabled = false
 				table._clear_ai_teach()
@@ -194,8 +185,8 @@ func _run() -> void:
 	player.concealed.assign(hand)
 	table._refresh()
 	var action_id: int = view._begin_visual_action()
-	view._refresh_hand_arrangement()
-	t.expect(view._sort_button.visible and view._sort_button.disabled, "animation disables Sort without hiding it")
+	view._sort_own_hand()
+	t.expect(view._local_arrangement.is_empty(), "animation locks local arrangement changes")
 	view._complete_visual_action(action_id, Callable())
 	table._refresh()
 	for ready in [false, true]:
@@ -230,19 +221,7 @@ func _run() -> void:
 	t.expect(is_instance_valid(view._dice_red), "dealer has all dealt tiles and dice remain visible")
 
 	if DisplayServer.get_name() != "headless":
-		view._sort_own_hand()
-		await RenderingServer.frame_post_draw
 		DirAccess.make_dir_recursive_absolute("res://build/feedback-next")
-		t.expect(root.get_texture().get_image().save_png("res://build/feedback-next/hand-arrangement.png") == OK, "capture sort and restore controls")
-		deadline = Time.get_ticks_msec()+5000
-		while view._arrangement_thread != null and Time.get_ticks_msec()<deadline:
-			await process_frame
-		for i in view._arrangement_choices.size():
-			view._sort_own_hand()
-			if view._local_arrangement.has("change_from"):break
-		t.expect(view._arrangement_caption.text.contains("若摸到") and view._arrangement_caption.text.contains("再打"), "hypothetical upgrade clearly distinguishes a future draw from the current hand")
-		await RenderingServer.frame_post_draw
-		t.expect(root.get_texture().get_image().save_png("res://build/feedback-next/hand-upgrade.png")==OK,"capture one-tile upgrade without changing real hand")
 		table._sound_settings.open()
 		await create_timer(0.3).timeout
 		await RenderingServer.frame_post_draw
@@ -263,19 +242,3 @@ func _capture(label: String) -> void:
 	await RenderingServer.frame_post_draw
 	DirAccess.make_dir_recursive_absolute("res://build/feedback-next")
 	t.expect(root.get_texture().get_image().save_png("res://build/feedback-next/%s.png" % label) == OK, "capture arrangement " + label)
-
-func _check_sort_clear(view) -> void:
-	if view._table_3d == null:
-		t.expect(view._sort_button.position.y >= TableV2Geometry.HAND_BOTTOM, "Sort does not cover the hand")
-		return
-	view._table_3d.sync_tiles()
-	var rect: Rect2 = view._sort_button.get_rect()
-	t.expect(Rect2(Vector2.ZERO, TableV2Geometry.DESIGN_SIZE).encloses(rect), "3D Sort stays on screen")
-	for tile in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
-		var renderer = view._table_3d
-		var mesh: MeshInstance3D = renderer.tile_nodes[tile.get_instance_id()]
-		var face := PackedVector2Array()
-		for corner in [Vector2(-0.5,-0.67), Vector2(-0.5,0.67), Vector2(0.5,0.67), Vector2(0.5,-0.67)]:
-			face.append(renderer.camera.unproject_position(mesh.transform * Vector3(corner.x,0.31,corner.y)) / Vector2(renderer.viewport.size) * renderer.size)
-		var button := PackedVector2Array([rect.position,Vector2(rect.position.x,rect.end.y),rect.end,Vector2(rect.end.x,rect.position.y)])
-		t.expect(Geometry2D.intersect_polygons(face,button).is_empty(), "Sort leaves the entire printed face clear while allowing base overlap")

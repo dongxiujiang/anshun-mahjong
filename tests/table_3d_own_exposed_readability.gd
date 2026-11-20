@@ -69,8 +69,11 @@ func _run() -> void:
 								if melds == 1:
 									host.round.phase = RoundState.Phase.SETTLED
 									view.set_round(host.round, 1)
+									_check_source_semantics(view, label + " pending")
+									view.start_native_settlement(true)
 									view._table_3d._own_hand_pitch = 0.0
 									view._table_3d.sync_tiles()
+									_check(view, label + " settled")
 									_check_source_semantics(view, label + " settled")
 	host.queue_free()
 	await process_frame
@@ -126,18 +129,30 @@ func _check_source_semantics(view, label: String) -> void:
 		if not t.expect(tiles.size() == 4, label + " kong preserves all four meshes"): continue
 		var sideways: Array = tiles.filter(func(tile): return int(tile.get_meta("meld_sideways", -1)) >= 0)
 		var has_source: bool = meld.kind == "kong" and not meld.get("concealed", false)
-		t.expect(sideways.size() == (1 if has_source else 0), label + " concealed/add kong never invents a sideways source")
-		var extra = sideways[0] if has_source else tiles[3]
-		var main: Array = tiles.filter(func(tile): return tile != extra)
+		if not t.expect(sideways.size() == (1 if has_source else 0), label + " only open kongs have a sideways source"): continue
+		var main: Array = tiles.filter(func(tile): return not sideways.has(tile))
 		var first: MeshInstance3D = renderer.tile_nodes[main[0].get_instance_id()]
-		var fourth: MeshInstance3D = renderer.tile_nodes[extra.get_instance_id()]
 		var factor := first.basis.get_scale().x
+		for slot in range(1, main.size()):
+			var piece: MeshInstance3D = renderer.tile_nodes[main[slot].get_instance_id()]
+			t.expect(absf(piece.position.z - first.position.z) < 0.001
+				and absf((piece.position.x - first.position.x) / factor - slot) < 0.001,
+				label + " all main kong tiles are consecutive in one row")
+		if not has_source: continue
+		var source: TileView = sideways[0]
+		var fourth: MeshInstance3D = renderer.tile_nodes[source.get_instance_id()]
 		var along := (fourth.position.x - first.position.x) / factor
 		var inward := (fourth.position.z - first.position.z) / factor
 		var direction := posmod(int(meld.from_seat) - 1, 4)
-		var expected := (0.17 if direction == 1 else (1.0 if direction == 2 else 1.83)) if has_source else 1.0
-		t.expect(absf(along - expected) < 0.001, label + " own fourth tile identifies left / opposite / right source, or centered without source")
-		t.expect(absf(inward - (-1.17 if has_source else -1.34)) < 0.001, label + " fourth tile touches above the three-tile row")
+		t.expect(int(source.get_meta("meld_slot")) == G.exposed_kong_source_slot(1, int(meld.from_seat)),
+			label + " sideways slot identifies the actual supplier")
+		if direction == 2:
+			t.expect(absf(along - 1.0) < 0.001, label + " opposite source is centered over the three-tile row")
+			t.expect(absf(inward + 1.17) < 0.001, label + " opposite source touches above the three-tile row")
+		else:
+			var expected := -1.17 if direction == 1 else 3.17
+			t.expect(absf(along - expected) < 0.001, label + " side source touches the corresponding end of the row")
+			t.expect(absf(inward - 0.17) < 0.001, label + " side source shares the near edge of the three-tile row")
 
 func _check(view, label: String) -> void:
 	var renderer = view._table_3d
@@ -151,8 +166,19 @@ func _check(view, label: String) -> void:
 			if mesh == null or not mesh.visible: continue
 			var meld := int(source.get_meta("meld_index", -1))
 			var key := "meld%d" % meld if meld >= 0 else "red%d" % source.get_instance_id()
-			var face := _printed_rect(renderer, mesh)
-			groups[key] = groups[key].merge(face) if groups.has(key) else face
+			if not groups.has(key):
+				var event := float(source.get_meta("discard_id", 0)) * 2.0 + 1.0
+				if meld >= 0:
+					var data: Dictionary = view.round.players[1].melds[meld]
+					event = float(data.get("formed_at", data.get("after_discard", 0))) * 2.0 + meld * 0.001
+				groups[key] = {"event": event, "left": INF, "right": -INF, "hand_edge": -INF}
+			var group: Dictionary = groups[key]
+			for x in [-renderer.TILE_FACE_HALF.x, renderer.TILE_FACE_HALF.x]:
+				for z in [-renderer.TILE_FACE_HALF.y, renderer.TILE_FACE_HALF.y]:
+					var corner := mesh.transform * Vector3(x, renderer.TILE_FACE_HEIGHT, z)
+					group.left = minf(group.left, corner.x)
+					group.right = maxf(group.right, corner.x)
+					group.hand_edge = maxf(group.hand_edge, corner.z)
 			var sideways: bool = int(source.get_meta("meld_sideways", -1)) >= 0
 			for x in ([-0.45, 0.0, 0.45] if sideways else [-0.38, 0.0, 0.38]):
 				for z in ([-0.60, 0.0, 0.60] if sideways else [-0.50, 0.0, 0.50]):
@@ -162,13 +188,17 @@ func _check(view, label: String) -> void:
 					t.expect(Rect2(Vector2.ZERO, G.DESIGN_SIZE).has_point(point), label + " exposed artwork stays on screen")
 			checked += 1
 	t.expect(checked >= 1, label + " has real exposed meshes")
-	var order: Array = groups.keys()
-	var connected: Array = [order[0]] if not order.is_empty() else []
-	for _pass in order.size():
-		for key in order:
-			if key in connected: continue
-			if connected.any(func(other): return groups[key].grow(8.0).intersects(groups[other])): connected.append(key)
-	t.expect(connected.size() == order.size(), label + " own chickens and melds remain one nearby cluster")
+	var order: Array = groups.values()
+	order.sort_custom(func(a, b): return a.event < b.event)
+	var rows: Array[Vector2] = []
+	for group in order:
+		var row := rows.find_custom(func(edge): return absf(edge.y - group.hand_edge) < 0.002)
+		if row < 0:
+			rows.append(Vector2(group.right, group.hand_edge))
+		else:
+			t.expect(row == rows.size() - 1 and group.left >= rows[row].x - 0.002,
+				label + " public events progress left to right and wrap without returning to earlier rows")
+			rows[row].x = group.right
 	var revision: int = renderer.geometry_revision
 	renderer.sync_tiles()
 	t.expect(renderer.geometry_revision == revision, label + " unchanged geometry does not redraw")

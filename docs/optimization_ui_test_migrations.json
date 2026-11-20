@@ -1,0 +1,86 @@
+{
+  "date": "2026-11-20",
+  "authorization": "Explicit removal of toolbar and changed layout requirements L01-L11; gameplay expectations remain frozen.",
+  "files": {
+    "tests/hand_arrangement_lifecycle.gd": {
+      "baseline_sha256": "74f68de17903aa16c385c4c038ef88032f6d2f0599a6541947d05343cab0f6a7",
+      "current_sha256": "60f811999d9d13ad6b952753d5cccfec25a1b8d639af7971d8cccdbf8f6be453",
+      "reason": "L06 stops background searches; retain stale-thread cleanup and merged-discard identity checks."
+    },
+    "tests/NetTableUiSmoke.gd": {
+      "baseline_sha256": "7fb3f8181386a06527cc779d92124ca34cc3b8609290c2efa9d07bd560ada6e6",
+      "current_sha256": "b88913c3fcdce201a9b583f98c85b2d7334e1892753f8d06e955c61d8e532efb",
+      "reason": "L06 hides LAN table arrangement controls; retain authority, private hand and action-index assertions."
+    },
+    "tests/run_all.gd": {
+      "baseline_sha256": "67c0d66f5480778308ca6697c3dcf47cc552f03da9c977f056305e3b5bc9204b",
+      "current_sha256": "f4db9d016ecedab82fc58941d0cb51b282bf68ddc0e34337e43e365e43f99ac3",
+      "reason": "Register the new layout coverage while keeping existing gameplay suites."
+    },
+    "tests/settlement_arrangement_toolbar.gd": {
+      "baseline_sha256": "355176470eb06bea7d8bc1f50a49275dd2e13b779a1bb27493ad15e17019f505",
+      "current_sha256": "dde75902ec64de33c918320bee4f6f73b33eb9f0705455e9e7e15eb0f6441545",
+      "reason": "L06 removes playing toolbar; retain pending settlement, entity and unlock checks."
+    },
+    "tests/sort_annotations_layout.gd": {
+      "baseline_sha256": "ce23fc1c6bec51ddf05db00c43ff11710f4579308b209b39dadad36367f354e5",
+      "current_sha256": "1e0af935b496518d7df80bf35df425e03ef6e63a3ba894a3b15223f693422650",
+      "reason": "L06 removes annotations; retain existing size/touch/card identity matrix and assert no visible annotation."
+    },
+    "tests/sort_usability.gd": {
+      "baseline_sha256": "e30008a9e3e950d70f6adf046f66150b9775d85e63f3ea49be5f3c34b06b9716",
+      "current_sha256": "2f130f25c572862aa870b62a6ca8ea91fef836095807dfb9a83f376dc78357be",
+      "reason": "L06 replaces the visible toolbar with hidden, disabled controls; retain legal card identity coverage."
+    },
+    "tests/table_3d.gd": {
+      "baseline_sha256": "66838d4db50568c645a7b2f613a0acdf04740d7bbeb063fc538d4fd0bddb6e8a",
+      "current_sha256": "1611956379b39060c5455c56e63a0d178818bbc970ca904d88812fb288c0fbe8",
+      "reason": "L06/L07 replace removed toolbar and old 68px playing margin; retain picking, hidden-hand privacy, dice and discard marker coverage."
+    },
+    "tests/table_3d_bottom_controls.gd": {
+      "baseline_sha256": "5e327bdca20f4246f9fe77243af5973e875de5dabd4766e172cba6898a2f0a6d",
+      "current_sha256": "298529be0c180d95cb5f755699106b1b14175c9b935274419b1f15b865dab12e",
+      "reason": "L07 reserves actual settlement footer; expand real next/ready/return clicks and printed-face visibility checks."
+    },
+    "tests/table_3d_own_exposed_flight.gd": {
+      "baseline_sha256": "f2c6876c100abab14fea62193315b6cf86169c41fdc16bc87df20009d1ee3012",
+      "current_sha256": "e4aae3a33d05c093cf46ba5964539e130cb658a97e55f68ecde970b224a5ea9d",
+      "reason": "L02/L03 replace left-side anchoring; replay step39 is a new chicken and may recenter, while all real ordinary discards retain existing mesh poses."
+    },
+    "tests/table_3d_own_exposed_readability.gd": {
+      "baseline_sha256": "a3d5f8d2918eddffaf8fbbe00ca0f7fc8db82ce7c02aed979306baa0963a45ca",
+      "current_sha256": "a06cf3195732ee1c1a7d29db28ffe786c915a8388fcb6e1d7a641a2f093578ea",
+      "reason": "L02/L03/L11 use centered ordered rows, four-tile concealed/add-kong rows and side-inline/opposite-above source positions; retain printed-face visibility."
+    },
+    "tests/table_3d_touch_footer.gd": {
+      "baseline_sha256": "3b4dc1c3822c019e171fe9288ea688c18d4bd9df9def5d0ab4502b74f133130c",
+      "current_sha256": "22b4eac0c3611b95137dce7b46d9d68834a35a2f433cac3dabc12ff4bcfff302",
+      "reason": "L06 removes toolbar; L07 uses actual shown settlement footer with real GUI and printed-face clearance."
+    },
+    "tests/table_render_cache.gd": {
+      "baseline_sha256": "ad63eaef516ec584acf1b4a787c8cb551d1e55ca33735a957ede3055bc34f074",
+      "current_sha256": "1bc6fba444d04434448cff96e0addd624190945fa898e75adde53dd4a3b5e15c",
+      "reason": "L04 retains unchanged local public layout across unrelated state changes instead of a fresh global solve."
+    },
+    "tests/table_v2_hand_arrangement.gd": {
+      "baseline_sha256": "f37f4a804d11b8d9a1331e7d3ebb3764a7119b9ca6a2521cce2a45a74214f73d",
+      "current_sha256": "ab33f1c1066fa72bef37e5be5a72b59d357a6e9c747ebf2d330a1c50a3324e90",
+      "reason": "L06 hides controls and description; retain arrangement algorithms and physical tile/discard identity checks."
+    },
+    "tests/table_v2_layout_guards.gd": {
+      "baseline_sha256": "932fa72f1884d62bf674e0c70643416b6ca774eae3d23bccf04337ed5e179e76",
+      "current_sha256": "66c144960179447b7e11099ba19c7aaf322fe7acf8d04f0767d1190a381f1fa1",
+      "reason": "Use approximate vector comparison for a 0.000061 design-pixel roundoff; preserve all stability checks."
+    },
+    "tests/table_v2_red_spacing.gd": {
+      "baseline_sha256": "703459bc747642c4b943620ea2a9e01570f98751e4455c3ebdb87b08a12375a4",
+      "current_sha256": "34d65273a6ac078f50436b9beed5db712381d676e9ddbc872dee1994f2d960c5",
+      "reason": "Recompute the action rectangle after changing the fixture; retain real replay and printed-face clearance checks."
+    },
+    "tests/table_3d_river_badges.gd": {
+      "baseline_sha256": "b325bb873438be2a6be8e800cf5ef70a0d6f7c2d32b702dc8eb81add2736575c",
+      "reason": "Add cross-frame checks that pending SETTLED presentation preserves the hand and public poses until native settlement starts.",
+      "current_sha256": "bbff921fbbd778617cb18ed9e5655c51e9b3d4763d1daa9d35a27c3eac20b729"
+    }
+  }
+}

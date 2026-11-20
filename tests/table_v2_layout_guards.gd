@@ -112,8 +112,10 @@ func _test_short_hand_anchor(deck) -> void:
 				_first_position(deck._red_layer, seat), _first_position(deck._meld_layer, seat)])
 		deck.refresh()
 		for seat in 4:
-			t.expect(positions[seat] == [deck._labels[seat].position, deck._name_labels[seat].position,
-				_first_position(deck._red_layer, seat), _first_position(deck._meld_layer, seat)],
+			var after := [deck._labels[seat].position, deck._name_labels[seat].position,
+				_first_position(deck._red_layer, seat), _first_position(deck._meld_layer, seat)]
+			t.expect(positions[seat][0] == after[0] and positions[seat][1] == after[1] and positions[seat][2] == after[2]
+				and positions[seat][3].is_equal_approx(after[3]),
 				"same legal state keeps names, scores, chickens and melds stable for every viewer")
 
 func _test_meld_clearance(deck) -> void:

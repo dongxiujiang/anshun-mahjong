@@ -30,6 +30,7 @@ static func caption(label: String) -> String:
 static func entries(result: Dictionary, meta: Dictionary, players: Array, plan: Dictionary, seat: int) -> Array:
 	var multiplier := maxi(1, int(meta.get("chicken_multiplier", 1)))
 	var called := bool(plan.called[seat])
+	var is_draw := bool(plan.get("is_draw", int(meta.get("winner", -1)) < 0))
 	var out: Array = []
 	var all_items: Array = result.get("items", [])
 	for original in all_items[seat] if seat < all_items.size() else []:
@@ -38,6 +39,10 @@ static func entries(result: Dictionary, meta: Dictionary, players: Array, plan: 
 		var label := str(item.get("label", ""))
 		if label == "荒牌补付": continue # 合计多家支出，改为下面逐家金额。
 		if not called and kind in ["chicken", "charge", "flip"]: continue
+		if is_draw and kind in ["chicken", "charge"]: continue
+		if kind in ["chicken", "charge"]:
+			out.append_array(_chicken_entries([item], multiplier, ""))
+			continue
 		var cards: Array = item.get("tiles", []).duplicate()
 		if cards.is_empty() and str(item.get("tile", "")) != "": cards.append(item.tile)
 		var parts: Array = []
@@ -68,10 +73,52 @@ static func entries(result: Dictionary, meta: Dictionary, players: Array, plan: 
 		var other := int(transfer.from) if amount > 0 else int(transfer.to)
 		var key := str(transfer.reason) + ":" + str(amount)
 		if not fees.has(key): fees[key] = {"label": str(transfer.reason), "amount": amount, "opponents": []}
-		fees[key].opponents.append(["", "上", "对", "下"][posmod(other - seat, 4)])
+		if not fees[key].opponents.has(other): fees[key].opponents.append(other)
 	for fee in fees.values():
-		out.append({"tiles": [], "parts": [{"label": caption(fee.label), "amount": fee.amount, "suffix": "（" + "/".join(fee.opponents) + "）"}]})
-	return out
+		out.append({"tiles": [], "parts": [{"label": caption(fee.label), "amount": fee.amount, "suffix": _opponent_suffix(fee.opponents, seat)}]})
+	if is_draw and called:
+		var payers: Array = []
+		for transfer in result.get("transfers", []):
+			if str(transfer.reason) == "荒牌包鸡" and int(transfer.to) == seat and not payers.has(int(transfer.from)):
+				payers.append(int(transfer.from))
+		if not payers.is_empty():
+			# Older cloud records omit the called player's pung chickens from items.
+			# Read their unit values from the shared chicken classifier; never settle again.
+			var snapshot := RoundState.new()
+			snapshot.players.assign(players)
+			snapshot.round_meta = meta
+			var profile := ScoringEngine.chicken_profile(snapshot, seat, "")
+			var chickens: Array = profile.raw_items.filter(func(item): return str(item.get("source", "")) in ["discard", "meld"])
+			out.append_array(_chicken_entries(chickens, 1, _opponent_suffix(payers, seat)))
+	return out.filter(func(entry): return _has_opponents(entry) == 0) + out.filter(func(entry): return _has_opponents(entry) != 0)
+
+static func _has_opponents(entry: Dictionary) -> int:
+	return int(entry.parts.any(func(part): return str(part.get("suffix", "")) != ""))
+
+static func _opponent_suffix(opponents: Array, seat: int) -> String:
+	var names: Array[String] = []
+	for offset in [1, 2, 3]:
+		if opponents.has(posmod(seat + offset, 4)): names.append(["", "上", "对", "下"][offset])
+	return "" if names.size() == 3 else "（" + "/".join(names) + "）"
+
+static func _chicken_entries(items: Array, multiplier: int, suffix: String) -> Array:
+	var groups := {}
+	for item in items:
+		var cards: Array = item.get("tiles", []).duplicate()
+		if cards.is_empty() and str(item.get("tile", "")) != "": cards.append(item.tile)
+		if cards.is_empty(): continue
+		var unit := float(item.amount) / multiplier / cards.size()
+		var charge := str(item.get("kind", "")) == "charge"
+		for card in cards:
+			var label := ("冲锋" if charge else "") + ("幺鸡" if card == "tiao1" else "八筒")
+			if "金" in str(item.get("label", "")): label = str(item.label) + "·" + ("幺鸡" if card == "tiao1" else "八筒")
+			var key := label + str(unit)
+			if not groups.has(key): groups[key] = {"tiles": [], "sideways": [], "parts": [{"label": label, "amount": 0.0, "suffix": suffix}]}
+			var group: Dictionary = groups[key]
+			if charge: group.sideways.append(group.tiles.size())
+			group.tiles.append(card)
+			group.parts[0].amount += unit
+	return groups.values()
 
 static func _paid_kong_debt(result: Dictionary, item: Dictionary, seat: int, reason: String) -> bool:
 	var exposed := str(item.get("label", "")) == "明杠" and reason == "未叫牌杠分"

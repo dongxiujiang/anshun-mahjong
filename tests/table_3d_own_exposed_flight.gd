@@ -163,6 +163,7 @@ func _recorded_added_groups() -> void:
 	view.refresh()
 	await process_frame
 	var previous := {}
+	var pung_poses := {}
 	for i in range(14, actions.size()):
 		var action: Dictionary = actions[i]
 		var ok := host.round.submit_turn(action.seat, action.decision) if action.kind == "turn" else host.round.submit_response(action.seat, action.tile, action.decision)
@@ -180,6 +181,14 @@ func _recorded_added_groups() -> void:
 		view.refresh()
 		var renderer = view._table_3d
 		renderer.sync_tiles()
+		var current_poses := {}
+		for tile in view._meld_layer.get_children():
+			if tile.get_meta("v2_seat") == 1 and tile.get_meta("meld_index") == 0:
+				current_poses[view._render_key(tile)] = renderer.tile_nodes[tile.get_instance_id()].transform
+		if action.kind == "turn" and not Tiles.is_chicken(str(action.decision.discard)):
+			t.expect(current_poses.size() == 3 and current_poses == pung_poses,
+				"R15 ordinary discard at action %d preserves all three own pung mesh poses" % (i + 1))
+		pung_poses = current_poses
 		if i not in [37, 38, 48, 49]: continue
 		var keys := ["meld:1:0:0", "meld:1:0:1", "meld:1:0:2"] if i <= 38 else ["red-discard:2:4"]
 		var current := {}
@@ -189,7 +198,13 @@ func _recorded_added_groups() -> void:
 			if i in [38, 49] and source.face_up:
 				_check_recorded_face(renderer, source, view._dealer_meld_badges[int(source.get_meta("v2_seat"))])
 		t.expect(current.size() == keys.size(), "R15 old group is drawn in full")
-		if i in [38, 49]:
+		if i == 38:
+			var chicken: TileView = view._red_layer.get_children().filter(func(tile): return view._render_key(tile) == "red-discard:1:7")[0]
+			var row: Rect2 = current[keys[0]].merge(current[keys[2]])
+			var tail: Rect2 = renderer.project_tile(chicken)
+			t.expect(chicken.tile == "tiao1" and tail.get_center().x > row.end.x and absf(row.merge(tail).get_center().x - G.CENTER.x) <= 3.0,
+				"R15 action 39 adds a chicken on the right and centers the expanded public row")
+		if i == 49:
 			for key in keys:
 				t.expect(current.has(key) and previous.has(key) and current[key].is_equal_approx(previous[key]),
 					"R15 stable %s through added group at action %d" % [key, i + 1])
@@ -241,7 +256,7 @@ func _north_chicken_face(view) -> Rect2:
 func _check_chicken_placement_changes(view) -> void:
 	var original: Array = view._exposed_specs.duplicate(true)
 	var placement: Array = view._exposed_placement_key.duplicate(true)
-	t.expect(view.EXPOSED.solve(view) != original, "the saved layout differs from first-free in this snapshot")
+	t.expect(not original.is_empty() and view._exposed_layout() == original, "an unchanged board retains the saved landing")
 	var north_chicken := func(piece): return piece.seat == 3 and piece.tile == "tong8"
 	var original_center: Vector2 = original.filter(north_chicken)[0].center
 	var wall = view._wall_layer.get_child(0)
@@ -261,7 +276,7 @@ func _check_chicken_placement_changes(view) -> void:
 	var reveal_before: bool = view.test_reveal_all_hands
 	var formal_before: bool = view.formal_mode
 	for changed in ["session", "viewport transform", "face reveal", "pung source", "kong upgrade", "human seat", "settled"]:
-		# Each change starts with the same proven, legal placement, distinct from a fresh solve.
+		# Each change starts with the same proven, legal placement.
 		view._exposed_specs = original.duplicate(true)
 		view._exposed_placement_key = placement.duplicate(true)
 		match changed:
@@ -276,7 +291,13 @@ func _check_chicken_placement_changes(view) -> void:
 			"settled": state.phase = RoundState.Phase.SETTLED
 		view._invalidate_exposed_layout()
 		var actual: Array = view._exposed_layout()
-		t.expect(actual == view.EXPOSED.solve(view), "a change in %s yields current geometry and metadata" % changed)
+		if changed in ["pung source", "kong upgrade"]:
+			var group := actual.filter(func(piece): return piece.seat == 0 and piece.meld_index == 0)
+			var meld: Dictionary = state.players[0].melds[0]
+			t.expect(group.size() == (4 if changed == "kong upgrade" else 3) and group.all(func(piece): return piece.source_seat == meld.from_seat and piece.kind == meld.kind), "revised meld geometry uses its current tile count and source")
+			t.expect(actual.filter(north_chicken)[0].center == original_center, "changes to another owner's meld keep the north chicken stationary")
+		else:
+			t.expect(actual == view.EXPOSED.solve(view), "a change in %s yields current geometry and metadata" % changed)
 		t.expect(view._exposed_placement_key != placement, "previous placement identity expires after a change in " + changed)
 		state._presentation.session = session
 		host.scale = scale_before
@@ -430,7 +451,11 @@ func _recorded_own_discards() -> void:
 	side.position = renderer._at_height(second_rect.get_center() + Vector2.DOWN * second_rect.size.y * 2.0, side.position.y)
 	var moved: Array[MeshInstance3D] = []
 	renderer._clear_own_exposed_faces(moved)
-	t.expect(renderer._own_exposed_left_hand.intersects(second_rect) and not renderer._project_mesh(side).intersects(second_rect), "the separated hand spans an empty gap over the second pung")
+	var side_bounds: Rect2 = renderer._project_mesh(side)
+	var hand_span := side_bounds
+	for tile in view.hand_boxes[2].get_children():
+		hand_span = hand_span.merge(renderer._project_mesh(renderer.tile_nodes[tile.get_instance_id()]))
+	t.expect(hand_span.intersects(second_rect) and not side_bounds.intersects(second_rect), "the separated hand spans an empty gap over the centered second pung")
 	t.expect(renderer.project_tile(second).is_equal_approx(second_rect), "empty space inside a hand's bounding box preserves the landing")
 	side.transform = side_pose
 	# An actual landed river tile across the artwork must invalidate the cache.
@@ -481,16 +506,16 @@ func _recorded_exposed_positions(view) -> Dictionary:
 	var dealer: Label = view._dealer_meld_badges[1]
 	t.expect(dealer.visible, "the dealer badge is visible in the recorded round")
 	var result := {"dealer": dealer.get_rect()}
-	var hand_left := INF
-	for tile in view.hand_boxes[1].get_children():
-		hand_left = minf(hand_left, renderer.project_tile(tile).position.x)
+	var ids := []
 	for source in view._meld_layer.get_children() + view._red_layer.get_children():
 		if int(source.get_meta("v2_seat", -1)) != 1: continue
 		var tile_rect: Rect2 = renderer.project_tile(source)
-		t.expect(tile_rect.get_center().x < hand_left, "the exposed group stays on the hand's left")
+		ids.append(source.get_instance_id())
 		result["%s_%d" % [source.tile, source.get_meta("meld_slot", -1)]] = tile_rect
 		_check_recorded_face(renderer, source, dealer)
 	t.expect(result.size() == 5 and result.has("wan7_0") and result.has("tong8_-1"), "all three pung tiles and the chicken are present")
+	var faces: Rect2 = renderer._exposed_printed_bounds(ids)
+	t.expect(absf(faces.get_center().x - G.CENTER.x) <= 3.0, "the pung and chicken remain centered in front of the hand")
 	return result
 
 func _check_recorded_face(renderer, source: TileView, dealer: Label) -> void:

@@ -149,8 +149,11 @@ func _run() -> void:
 					view._sort_own_hand()
 					view._sort_own_hand(-1)
 					_expect(view._local_arrangement.key == selected and player.concealed == original, "Network Previous reverses Next without submitting or changing a card")
-					_expect(view._previous_sort_button.visible and view._arrangement_caption.get_theme_font_size("font_size") >= 20, "Network sorting uses the same readable navigation and caption")
-					_expect(view._sort_button.visible and view.hand_boxes[seat].get_child_count() == original.size(), "Network Sort merges the draw and remains visible")
+					var toolbar_hidden: bool = not view._arrangement_caption.visible
+					for button in [view._sort_button, view._previous_sort_button, view._restore_button]:
+						toolbar_hidden = toolbar_hidden and not button.visible and button.disabled and button.mouse_filter == Control.MOUSE_FILTER_IGNORE
+					_expect(toolbar_hidden, "Network play keeps the removed arrangement toolbar hidden and non-interactive")
+					_expect(view.hand_boxes[seat].get_child_count() == original.size(), "Network arrangement merges the draw without changing the hand count")
 					for tile in view.hand_boxes[seat].get_children():
 						_expect(tile.tile == player.concealed[int(tile.get_meta("concealed_index"))], "Network sorted touch indices identify the real tiles")
 				await _capture("first-turn")

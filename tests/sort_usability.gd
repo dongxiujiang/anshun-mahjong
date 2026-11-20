@@ -1,5 +1,6 @@
 extends SceneTree
 const H := preload("res://tests/test_harness.gd")
+const ARRANGE := preload("res://scripts/ui/table/v2/HandArrangement.gd")
 var t := H.new()
 
 func _initialize() -> void: call_deferred("_run")
@@ -21,29 +22,26 @@ func _run() -> void:
 	player.just_drew = ""
 	table._refresh()
 	view._sort_own_hand()
-	await _finish_search(view)
+	t.expect(view._arrangement_thread == null, "cycling arrangements does not start a worker")
 	var original: Array = player.concealed.duplicate()
 	var choices: Array = view._arrangement_choices
 	for i in choices.size():
 		var before: String = view._local_arrangement.key
 		view._sort_own_hand()
 		view._sort_own_hand(-1)
-		t.expect(view._local_arrangement.key == before, "Previous reverses Next including cycle boundaries and future exchanges")
-		_check_controls(view, table)
+		t.expect(view._local_arrangement.key == before, "moving backward reverses moving forward across current-hand cycle boundaries")
+		t.expect(_toolbar_hidden(view), "cycling keeps the removed toolbar and caption hidden")
 		view._sort_own_hand()
 	t.expect(player.concealed == original, "browsing in both directions never changes authoritative cards")
-	var upgrade: Array = choices.filter(func(choice): return choice.has("change_from"))
+	var upgrade := ARRANGE.with_one_tile_changes(original, false).filter(func(choice): return choice.has("change_from"))
 	t.expect(not upgrade.is_empty(), "all one-tile big-hand suggestions remain available")
-	view._local_arrangement = upgrade[0]
-	table._refresh()
-	t.expect(view._arrangement_caption.text.begins_with("换牌设想") and view._arrangement_caption.text.contains("再听"), "future exchange is explicitly distinguished from the current wait")
-	_check_controls(view, table)
+	t.expect(upgrade.all(func(choice): return choice.has("change_to") and Tiles.sort_hand(choice.cards) == original),
+		"hypothetical exchanges describe a future draw without altering current cards")
 	view._restore_own_hand()
 	player.concealed.assign(["wan1", "wan1", "wan1", "wan1", "tiao2", "tiao2", "tiao2", "tiao5", "tiao5", "tiao5", "tong8", "tong8", "tong8"])
 	table._refresh()
 	view._sort_own_hand()
-	t.expect(not view._arrangement_caption.text.contains("还差") and not view._arrangement_caption.text.contains("未叫牌"),
-		"sorting describes groups rather than inventing a called/uncalled verdict from a display estimate")
+	t.expect(_toolbar_hidden(view), "grouping a hand does not display arrangement captions")
 	for fixed_count in range(5):
 		view._restore_own_hand()
 		player.melds.clear()
@@ -55,13 +53,17 @@ func _run() -> void:
 		table._ai_teach_message = "先打9万。\n也可以考虑1万、5万。"
 		table._refresh()
 		view._sort_own_hand()
-		_check_controls(view, table)
+		t.expect(table.status_label.is_visible_in_tree() and _toolbar_hidden(view), "teaching remains visible without the arrangement toolbar")
 		var action_id: int = view._begin_visual_action()
-		t.expect(view._sort_button.visible and view._previous_sort_button.disabled and view._restore_button.disabled, "sorting controls remain visible but lock together during animation")
+		var before: String = view._local_arrangement.key
+		view._sort_own_hand()
+		view._restore_own_hand()
+		t.expect(view._local_arrangement.get("key", "") == before and _toolbar_hidden(view),
+			"arrangement changes stay locked during tile animation")
 		view._complete_visual_action(action_id, Callable())
 		table._refresh()
 		if fixed_count == 4:
-			t.expect(view._sort_button.text == "仅此一种" and view._previous_sort_button.disabled, "single remaining tile clearly indicates one arrangement")
+			t.expect(view._arrangement_choices.size() == 1, "single remaining tile has exactly one arrangement")
 	view._restore_own_hand()
 	player.ready = false
 	player.melds.clear()
@@ -74,44 +76,15 @@ func _run() -> void:
 	table._refresh()
 	view._sort_own_hand()
 	t.expect(player.passed_self_draw, "sorting keeps the explicitly requested pass-self-win behavior")
-	var mark = view._hand_groups.get_node_or_null("ArrangementDiscardMark")
-	t.expect(mark != null and view._local_arrangement.cards.back() == view._local_arrangement.discard, "discard hint marks an actual rightmost card rather than an imaginary tile")
-	if mark != null:
-		t.expect(mark.mouse_filter == Control.MOUSE_FILTER_IGNORE, "discard underline never intercepts a tile tap")
+	t.expect(view._local_arrangement.cards.back() == view._local_arrangement.discard, "the calculated discard is the actual rightmost card")
+	t.expect(not view._hand_groups.visible and view._hand_groups.get_child_count() == 0, "the removed underline cannot intercept a tile tap")
 	table.queue_free()
 	await H.quit_cleanly(self, t.finish("sort_usability"))
 
-func _check_controls(view, table) -> void:
-	var controls: Array = [view._sort_button, view._restore_button, view._previous_sort_button]
-	var renderer = view._table_3d
-	for i in controls.size():
-		var minimum_height := 48.0 if renderer != null else 76.0
-		t.expect(controls[i].visible and controls[i].size.y >= minimum_height, "each sorting control has the intended touch height")
-		if renderer != null:
-			t.expect(is_equal_approx(controls[i].get_rect().end.y, renderer.size.y), "all sorting controls sit on the lower edge")
-			for source in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
-				var mesh: MeshInstance3D = renderer.tile_nodes.get(source.get_instance_id())
-				if mesh == null or not mesh.visible: continue
-				var face_bottom := 0.0
-				for x in [-0.45, 0.45]:
-					for z in [-0.60, 0.60]:
-						var pixel: Vector2 = renderer.camera.unproject_position(mesh.transform * Vector3(x, 0.31, z))
-						face_bottom = maxf(face_bottom, pixel.y / renderer.viewport.size.y * renderer.size.y)
-				t.expect(controls[i].position.y >= face_bottom, "sorting controls may overlap the base but not the printed face")
-		for j in range(i):
-			t.expect(not controls[i].get_global_rect().intersects(controls[j].get_global_rect()), "sorting controls do not overlap")
-		t.expect(not controls[i].get_global_rect().intersects(view._arrangement_caption.get_global_rect()), "caption never covers a sorting control")
-	t.expect(not table.status_label.get_global_rect().intersects(view._arrangement_caption.get_global_rect()), "AI teaching has a separate text area")
-	var font: Font = view._arrangement_caption.get_theme_font("font")
-	var size: int = view._arrangement_caption.get_theme_font_size("font_size")
-	t.expect(size >= 20 and view._arrangement_caption.text.split("\n").size() <= 2, "caption stays at least20 design pixels in at most two lines")
-	for line in view._arrangement_caption.text.split("\n"):
-		t.expect(font.get_string_size(line,HORIZONTAL_ALIGNMENT_LEFT,-1,size).x <= view._arrangement_caption.size.x, "every caption line fits without clipping")
-
-func _finish_search(view) -> void:
-	var deadline := Time.get_ticks_msec()+10000
-	while view._arrangement_thread != null and Time.get_ticks_msec()<deadline: await process_frame
-	t.expect(view._arrangement_thread == null, "exchange search finishes")
+func _toolbar_hidden(view) -> bool:
+	for button in [view._sort_button, view._restore_button, view._previous_sort_button]:
+		if button.visible or not button.disabled or button.mouse_filter != Control.MOUSE_FILTER_IGNORE: return false
+	return not view._arrangement_caption.visible
 
 func _wan(digits: String) -> Array:
 	var cards: Array = []

@@ -179,13 +179,9 @@ func _mouse(renderer, point: Vector2, pressed: bool) -> void:
 
 func _check_own_input(view, renderer) -> void:
 	var indices := {}
-	t.expect(Rect2(Vector2.ZERO, renderer.size).encloses(view._sort_button.get_rect())
-		and view._sort_button.position.x > renderer.size.x * 0.75
-		and is_equal_approx(view._sort_button.get_rect().end.y, renderer.size.y),
-		"sorting stays on screen at the lower right")
 	for source in view.hand_boxes[view.human_seat].get_children() + view.draw_boxes[view.human_seat].get_children():
 		var bounds: Rect2 = renderer.project_tile(source)
-		t.expect(absf(bounds.end.y - (renderer.size.y - 68.0)) < 2.0, "the local hand leaves room for the taller bottom controls: %s" % bounds)
+		t.expect(absf(bounds.end.y - (renderer.size.y - 6.0)) < 2.0, "the playing hand and draw align with the table edge: %s" % bounds)
 		t.expect(bounds.has_area() and Rect2(Vector2.ZERO, renderer.size).encloses(bounds),
 			"the complete local tile remains in the viewport")
 		var hit = renderer.pick_tile(bounds.get_center())
@@ -204,7 +200,7 @@ func _check_own_input(view, renderer) -> void:
 		t.expect(_events.size() == 2 and _events.all(func(e): return e.source == source and e.inside),
 			"real GUI input forwards one press and release for seat %d tile %d at %s" % [view.human_seat, index, root.size])
 		source.gui_input.disconnect(_record.bind(source))
-	_check_arrangement_buttons(view, renderer)
+	_check_arrangement_buttons(view)
 	t.expect(indices.size() == 14, "all thirteen hand tiles and the separate draw remain selectable")
 	var first: TileView = view.hand_boxes[view.human_seat].get_child(0)
 	first.gui_input.connect(_record.bind(first))
@@ -254,28 +250,10 @@ func _dense_round(action_count := -1) -> RoundState:
 		t.expect(accepted, "public tile visibility is checked against a legal replay")
 	return result
 
-func _check_arrangement_buttons(view, renderer) -> void:
-	var buttons := [view._sort_button, view._restore_button, view._previous_sort_button]
-	var shown: Array = buttons.map(func(button): return button.visible)
-	for button in buttons: button.show()
-	view._layout_arrangement_controls()
-	for button in buttons:
-		t.expect(Rect2(Vector2.ZERO, renderer.size).encloses(button.get_rect()), "expanded sorting stays on screen")
-		t.expect(is_equal_approx(button.get_rect().end.y, renderer.size.y), "sorting controls share the bottom baseline")
-		for source in _sources(view):
-			var bounds: Rect2 = renderer.project_tile(source)
-			if str(source.get_meta("new_kind", "")) in ["hand", "draw"] and int(source.get_meta("v2_seat", -1)) == view.human_seat:
-				var mesh: MeshInstance3D = renderer.tile_nodes[source.get_instance_id()]
-				var points: Array[Vector2] = []
-				for x in [-0.45, 0.45]:
-					for z in [-0.60, 0.60]: points.append(renderer.camera.unproject_position(mesh.transform * Vector3(x, 0.31, z)) / Vector2(renderer.viewport.size) * renderer.size)
-				bounds = Rect2(points[0], Vector2.ZERO).expand(points[1]).expand(points[2]).expand(points[3]).grow(4.0)
-			t.expect(not button.get_rect().intersects(bounds),
-				"sorting %s avoids %s %s for viewer %d" % [button.text, source.get_meta("new_kind", ""), source.tile, view.human_seat])
-	t.expect(is_equal_approx(buttons[1].position.x - buttons[2].get_rect().end.x, 12.0)
-		and is_equal_approx(buttons[0].position.x - buttons[1].get_rect().end.x, 12.0), "sorting controls stay in one horizontal row")
-	for index in buttons.size(): buttons[index].visible = shown[index]
-	view._layout_arrangement_controls()
+func _check_arrangement_buttons(view) -> void:
+	for button: Button in [view._sort_button, view._restore_button, view._previous_sort_button]:
+		t.expect(not button.is_visible_in_tree() and button.disabled and button.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+			"the removed sorting toolbar stays hidden and cannot consume hand clicks")
 
 func _capture(filename: String) -> void:
 	await process_frame
@@ -448,6 +426,9 @@ func run() -> void:
 	audio.end_table(view)
 	round.phase = RoundState.Phase.SETTLED
 	view.refresh()
+	renderer._process(0.3)
+	t.expect(is_equal_approx(renderer._own_hand_pitch, deg_to_rad(63)), "the local hand stays upright until settlement is shown")
+	view._settlement_started = true
 	renderer.sync_tiles()
 	var flat_deadline := Time.get_ticks_msec() + 10000
 	while renderer._own_hand_pitch > 0.0001 and Time.get_ticks_msec() < flat_deadline:
@@ -470,7 +451,7 @@ func run() -> void:
 		renderer.sync_tiles()
 		await create_timer(0.35).timeout
 		_check_entities(view, renderer)
-		_check_arrangement_buttons(view, renderer)
+		_check_arrangement_buttons(view)
 		await _capture("public-seat-%d.png" % viewer)
 	await create_timer(0.1).timeout
 	t.expect(RenderingServer.viewport_get_update_mode(renderer.viewport.get_viewport_rid()) == RenderingServer.VIEWPORT_UPDATE_DISABLED,

@@ -49,7 +49,7 @@ func _run() -> void:
 					hand.append("wan5")
 					player.just_drew = "wan5"
 				player.concealed.assign(hand.slice(melds * 3))
-				player.ready = true # Geometry check does not need the asynchronous suggestion search.
+				player.ready = true
 				for i in melds: player.melds.append({"kind": "pung", "tile": "tiao%d" % (i + 1), "from_seat": 1})
 				host.round = round
 				view.set_round(round, 0)
@@ -63,61 +63,43 @@ func _run() -> void:
 					view._sort_own_hand()
 				cases += 1
 				view._restore_own_hand()
-				t.expect(view._hand_groups.get_child_count() == 0 and not view._arrangement_caption.visible, "restore clears both annotation layers")
+				t.expect(view._local_arrangement.is_empty() and view._hand_groups.get_child_count() == 0
+					and not view._arrangement_caption.visible, "restore clears the local arrangement without showing annotations")
 	host.queue_free()
 	await process_frame
 	print("[sort_annotations_layout] cases=", cases)
 	await H.quit_cleanly(self, t.finish("sort_annotations_layout"))
 
-func _mesh_bounds(renderer, source) -> Rect2:
-	var mesh: MeshInstance3D = renderer.tile_nodes.get(source.get_instance_id())
-	if mesh == null: return Rect2()
-	var bounds := Rect2()
-	for corner in 8:
-		var point: Vector2 = renderer.camera.unproject_position(mesh.transform * mesh.mesh.get_aabb().get_endpoint(corner)) / Vector2(renderer.viewport.size) * renderer.size
-		bounds = Rect2(point, Vector2.ZERO) if corner == 0 else bounds.expand(point)
-	return bounds
-
 func _check(view, host, case: String) -> void:
 	var renderer = view._table_3d
 	var tiles: Array = view.hand_boxes[0].get_children()
-	var hand := Rect2()
-	for tile in tiles:
-		var bounds := _mesh_bounds(renderer, tile)
-		hand = bounds if not hand.has_area() else hand.merge(bounds)
-	var caption: Label = view._arrangement_caption
-	var font := caption.get_theme_font("font")
-	var font_size := caption.get_theme_font_size("font_size")
-	var text_lines := caption.text.split("\n")
-	t.expect(hand.has_area() and caption.visible and text_lines.size() == 2, case + " has projected hand and both information lines")
-	t.expect(caption.size.y >= font.get_height(font_size) * 2 and caption.get_theme_constant("line_spacing") >= 0, case + " reserves two complete CJK lines")
-	t.expect(Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(caption.get_rect()), case + " caption stays fully on canvas")
-	t.expect(caption.position.y >= hand.end.y + 5.0 and caption.position.y - hand.end.y <= 6.2, case + " caption follows the actual hand bottom")
-	t.expect(not caption.get_rect().intersects(view._seat_hud_rect(0)), case + " caption clears the player name")
-	t.expect(not caption.get_global_rect().intersects(host.status_label.get_global_rect()), case + " caption clears teaching text")
-	for text_line in text_lines:
-		t.expect(font.get_string_size(text_line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x <= caption.size.x, case + " caption line fits its width")
+	t.expect(not view._arrangement_caption.is_visible_in_tree(), case + " the arrangement caption stays hidden")
+	t.expect(not view._hand_groups.is_visible_in_tree() and view._hand_groups.get_child_count() == 0,
+		case + " gold lines and discard annotations are absent")
+	t.expect(host.status_label.is_visible_in_tree(), case + " teaching text stays visible")
 	for button in [view._sort_button, view._restore_button, view._previous_sort_button]:
-		t.expect(not caption.get_global_rect().intersects(button.get_global_rect()), case + " caption clears every sorting button")
-	var slot := 0
-	var groups: Array = view._local_arrangement.lengths
-	var has_discard: bool = view._local_arrangement.has("discard")
-	t.expect(view._hand_groups.get_child_count() == groups.size() + int(has_discard), case + " preserves every group and discard annotation")
+		t.expect(not button.is_visible_in_tree() and button.disabled and button.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+			case + " the removed buttons cannot intercept input")
+	var player: PlayerState = view.round.players[0]
+	var arrangement: Dictionary = view._local_arrangement
+	var cards: Array = arrangement.get("cards", [])
+	t.expect(not tiles.is_empty() and tiles.size() == cards.size() and cards.size() == player.concealed.size(),
+		case + " the visual arrangement shows every card in the authoritative hand")
+	var indices := {}
+	for slot in tiles.size():
+		var tile: TileView = tiles[slot]
+		var bounds: Rect2 = renderer.project_tile(tile)
+		t.expect(bounds.has_area() and absf(bounds.end.y - (G.DESIGN_SIZE.y - 6.0)) <= 1.5,
+			case + " every projected tile reaches the active hand baseline")
+		var index: int = tile.get_meta("concealed_index", -1)
+		t.expect(slot < cards.size() and index >= 0 and index < player.concealed.size()
+			and not indices.has(index) and tile.tile == cards[slot] and tile.tile == player.concealed[index],
+			case + " displayed order uses each real hand index once")
+		indices[index] = true
 	if tiles.size() == 14:
-		t.expect(has_discard and view._hand_groups.get_node_or_null("ArrangementDiscardMark") != null, case + " retains the actual discard hint")
-	for index in view._hand_groups.get_child_count():
-		var length: int = groups[index] if index < groups.size() else 1
-		var start := slot if index < groups.size() else tiles.size() - 1
-		var group := Rect2()
-		for offset in length:
-			var bounds := _mesh_bounds(renderer, tiles[start + offset])
-			group = bounds if not group.has_area() else group.merge(bounds)
-		var line: Control = view._hand_groups.get_child(index)
-		t.expect(absf(line.position.y - group.end.y - 2.0) < 0.2 and line.size.y == 3.0, case + " gold rule follows its projected group")
-		t.expect(absf(line.position.x - group.position.x - 8.0) < 0.2 and absf(line.size.x - group.size.x + 16.0) < 0.2, case + " gold rule spans the actual group")
-		t.expect(line.get_rect().end.y < caption.position.y, case + " gold rule clears the information text")
-		t.expect(not line.get_rect().intersects(hand), case + " gold rule clears the hand and printed faces")
-		slot += length
+		t.expect(arrangement.has("discard") and tiles.back().tile == arrangement.discard
+			and arrangement.discard in view.round.legal_turn_options(0).discards,
+			case + " the calculated discard belongs to the real hand and is legal")
 
 func _capture(screen: Vector2i, touch_height: float) -> void:
 	var destination := OS.get_environment("SORT_ANNOTATIONS_CAPTURE")

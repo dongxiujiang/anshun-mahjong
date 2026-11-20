@@ -51,8 +51,9 @@ func refresh_layout() -> void:
 	_post_controls.position = Vector2(centered, table._design_size().y - _post_controls.size.y)
 	var view = table._new_areas
 	if view != null and view._table_3d != null:
-		_post_controls.size.y = maxf(80.0 * (1.3 if online else 1.0), view.minimum_touch_height())
+		_post_controls.size.y = view.settlement_footer_height(online)
 		_post_controls.position.y = table._design_size().y - _post_controls.size.y
+		view.set_settlement_footer_online(online)
 	# The readiness/countdown text lives inside the button now; keep the old
 	# labels as hidden compatibility fields for regression probes.
 	_next_round_status.visible = false

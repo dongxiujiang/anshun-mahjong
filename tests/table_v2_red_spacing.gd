@@ -21,6 +21,7 @@ func _run() -> void:
 	view.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	view.size = G.DESIGN_SIZE
 	_check_shapes(view)
+	_check_action_row_fallback(view)
 	for viewer in 4:
 		await _check_upstream_chain(view, viewer)
 		await _check_meld_replay(view, viewer, "opposite_kong_held_hand")
@@ -29,6 +30,22 @@ func _run() -> void:
 	view.queue_free()
 	await process_frame
 	quit(t.finish("table_v2_red_spacing"))
+
+func _check_action_row_fallback(view) -> void:
+	var source := TileView.new()
+	view._discard_layer.add_child(source)
+	var width := Vector2(750.0, 112.0)
+	var preferred: Rect2 = view.action_bar_rect(width, true)
+	# Synthetic pressure fixture: force the preferred band to have no horizontal gap.
+	var obstacle := Rect2(0.0, preferred.position.y, G.DESIGN_SIZE.x, preferred.size.y)
+	var id := source.get_instance_id()
+	view._table_3d._rects[id] = obstacle
+	var placed: Rect2 = view.action_bar_rect(width)
+	t.expect(not placed.intersects(obstacle) and Rect2(Vector2.ZERO, G.DESIGN_SIZE).encloses(placed),
+		"when the entire preferred band is occupied, the action row moves to a clear band on screen")
+	t.expect(placed.size == preferred.size, "moving the action row preserves the original touch targets")
+	view._table_3d._rects.erase(id)
+	source.free()
 
 func _check_shapes(view) -> void:
 	for rel in 4:
@@ -294,7 +311,7 @@ func _check_full_table(view, viewer: int) -> void:
 			"viewer %d: seat %d keeps eight chickens and four melds within its own area: %s" % [viewer, chicken_owner, conflicts])
 		t.expect(_public_faces_visible(view), "eight chickens and four melds keep their printed faces visible")
 		t.expect(view.EXPOSED.clear(view._exposed_layout(), obstacles), "exposed tiles and shadows stay in their owner's bounded area")
-		t.expect(_clear_of(action, occupied), "eight chickens never enter the action buttons")
+		t.expect(_clear_of(view.action_bar_rect(Vector2(546, 112)), occupied), "eight chickens never enter the action buttons")
 		await _capture("viewer%d-seat%d-eight-chickens-and-melds" % [viewer, chicken_owner])
 
 func _table_positions(view) -> Dictionary:

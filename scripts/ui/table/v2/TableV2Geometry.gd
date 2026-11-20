@@ -34,7 +34,7 @@ const WALL_BOUNDS := [
 ]
 
 const HAND_TOP := 100.0
-const HAND_BOTTOM := 1196.0
+const HAND_BOTTOM := 1268.0
 const HAND_LEFT := 44.0
 const HAND_RIGHT := 2236.0
 const DRAW_GAP_TILES := 0.5

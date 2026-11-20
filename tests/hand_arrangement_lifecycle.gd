@@ -21,8 +21,9 @@ func _run() -> void:
 	t.expect(view.reserved_action_rect() == reserved, "sorting group decorations do not enlarge the claim-button exclusion area")
 	var before := Shanten._thread_caches.size()
 	view._sort_own_hand()
+	view._start_arrangement_search()
+	t.expect(view._arrangement_thread == null and view._arrangement_done_key.is_empty(), "local sorting does not start a background search")
 	await _finish_search(view)
-	t.expect(view._arrangement_done_key == view._arrangement_key, "first click completes its own background search")
 	t.expect(Shanten._thread_caches.size() <= before, "finished sorting workers release their private Shanten caches")
 	view._restore_own_hand()
 	# Hold the previous job until the user has already restored and sorted again.
@@ -34,8 +35,9 @@ func _run() -> void:
 	var key: String = view._arrangement_key
 	gate.post()
 	await _finish_search(view)
-	t.expect(view._arrangement_done_key == key, "a new sorted hand automatically gets its search after an obsolete job exits")
-	t.expect(view._arrangement_choices.all(func(choice): return Tiles.sort_hand(choice.cards) == Tiles.sort_hand(r.players[1].concealed)), "obsolete work never replaces the current hand")
+	t.expect(view._arrangement_key == key and view._arrangement_done_key.is_empty(), "an obsolete job does not start a new arrangement search")
+	t.expect(not view._arrangement_choices.is_empty()
+		and view._arrangement_choices.all(func(choice): return Tiles.sort_hand(choice.cards) == Tiles.sort_hand(r.players[1].concealed)), "obsolete work never replaces the current hand")
 	await _merged_discard(view, true)
 	await _merged_discard(view, false)
 	view.queue_free()

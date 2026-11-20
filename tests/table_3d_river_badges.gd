@@ -81,6 +81,8 @@ func run() -> void:
 			if int(tile.get_meta("v2_seat")) == 0:
 				live_poses[tile.get_instance_id()] = view._table_3d.tile_nodes[tile.get_instance_id()].transform
 		pending.phase = RoundState.Phase.SETTLED
+		view._table_3d._process(0.3)
+		t.expect(is_equal_approx(view._table_3d._own_hand_pitch, deg_to_rad(63)), "the local hand remains upright during the last flight")
 		view._table_3d.sync_tiles()
 		t.expect(view._table_3d.tile_nodes[exposed.get_instance_id()].position.is_equal_approx(live_position), "exposed tiles stay clear of the river while settlement is pending")
 		for id in live_poses:

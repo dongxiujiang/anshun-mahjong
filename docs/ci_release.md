@@ -1,6 +1,6 @@
 # GitHub Actions 构建与发布
 
-本次构建目标为 1.6.25，Android version/code 为 85，安装基线为 1.6.25-native1。导出预设仅包含 Android；实际已发布版本以 GitHub Release 和线上签名更新清单为准。
+本次构建目标为 1.6.31，Android version/code 为 91，安装基线为 1.6.31-native1。导出预设仅包含 Android；实际已发布版本以 GitHub Release 和线上签名更新清单为准。
 
 ## 检查与构建
 
