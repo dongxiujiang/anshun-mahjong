@@ -1,0 +1,7 @@
+The bundled NotoSansSC-Regular.otf comes from res/fonts/NotoSansSC-Regular.otf in the same project.
+
+Both files have SHA-256 FAA6C9DF652116DDE789D351359F3D7E5D2285A2B2A1F04A2D7244DF706D5EA9.
+
+The embedded name record identifies Noto Sans SC Version 2.004, © 2014–2021 Adobe, licensed under the SIL Open Font License 1.1. The license text is included in OFL-NotoSansSC.txt.
+
+The three Android launcher graphics are unchanged copies of res/icons/android_icon.png, res/icons/android_foreground.png, and res/icons/android_background.png in the same project.

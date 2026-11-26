@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>东秀麻将 · 安顺捉鸡官方门户</title>
+  <meta name="description" content="东秀麻将（安顺捉鸡）新中式 2.5D 麻将官方门户：最新版安卓安装包下载、实时在线茶馆房间、网页建房与权威后端接口联调。">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="#top">
+        <img src="/favicon.svg" alt="东秀麻将">
+        <div>
+          <span class="brand-title">东秀麻将</span>
+          <span class="brand-sub">安顺捉鸡 · 新中式 2.5D 实感牌桌</span>
+        </div>
+      </a>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="#download">客户端下载</a>
+        <a href="#hall">在线茶馆</a>
+        <a href="#gallery">实机画面</a>
+        <a href="#rules">捉鸡规则</a>
+        <a href="#api">后端接口</a>
+      </nav>
+      <div class="status-pill" id="header-status">
+        <span class="dot" id="header-dot"></span>
+        <span id="header-status-text">正在连接服务…</span>
+      </div>
+    </div>
+  </header>
+
+  <main id="top" class="container">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <div class="eyebrow">
+            <span>协议 4 权威服务端</span>
+            <span>·</span>
+            <span id="hero-version-tag">v2.4.0 正式发布</span>
+          </div>
+          <h1>原汁原味安顺捉鸡<br>一桌新中式实感雀局</h1>
+          <p class="lead">
+            完整保留地道安顺捉鸡、冲锋鸡/冲锋金鸡、报听硬规则与真实碰杠摆放；支持单机智能 AI、同 Wi-Fi 局域网零延迟开桌，以及公网实时联机与语音对讲。
+          </p>
+          <div class="cta-row">
+            <a id="primary-download-btn" class="btn btn-primary" href="#download">
+              <span>⬇ 下载安卓客户端</span>
+              <span id="primary-download-size"></span>
+            </a>
+            <a class="btn" href="#hall">进入在线茶馆</a>
+            <a class="btn" href="#api">调用后端接口</a>
+          </div>
+          <div class="release-meta" id="hero-release-meta">
+            <span>版本：<strong id="meta-version">读取中…</strong></span>
+            <span>系统：<strong>Android 7.0+ (arm64 / x86_64)</strong></span>
+            <span>累计下载：<strong id="meta-downloads">-</strong></span>
+          </div>
+          <div class="hash-box" id="hero-hash-box" style="display:none">
+            <span>SHA-256</span>
+            <code id="meta-sha256"></code>
+            <button type="button" class="btn btn-sm" id="copy-hash-btn">复制</button>
+          </div>
+        </div>
+
+        <div class="hero-showcase">
+          <img src="/screenshots/gameplay-ting.jpg" alt="东秀麻将 2.4.0 牌桌实景：常驻报听、抬牌已出计数与大号手牌">
+          <div class="hero-caption">
+            <span><b>v2.4.0 实景画面</b> · 摸牌常驻听牌 · 抬牌已出计数 · 右上角 FPS/延迟</span>
+            <span>1.96s 冷启动</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Metrics Strip -->
+      <div class="stats-strip" aria-label="服务器实时数据">
+        <div class="stat-card">
+          <div class="stat-label">服务状态</div>
+          <div class="stat-value" id="stat-health">检测中</div>
+          <div class="stat-sub" id="stat-host">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">在线房间</div>
+          <div class="stat-value" id="stat-rooms">-</div>
+          <div class="stat-sub" id="stat-rooms-sub">协议 4 · 安顺捉鸡</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">当前在桌玩家</div>
+          <div class="stat-value" id="stat-players">-</div>
+          <div class="stat-sub" id="stat-voice">语音状态检测中</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">权威校验牌谱</div>
+          <div class="stat-value" id="stat-records">-</div>
+          <div class="stat-sub" id="stat-records-sub">服务端规则重演归档</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">客户端下载</div>
+          <div class="stat-value" id="stat-downloads">-</div>
+          <div class="stat-sub" id="stat-uptime">运行时长：-</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Live Online Tea Hall & Room Creator -->
+    <section id="hall">
+      <div class="section-head">
+        <div>
+          <h2>在线茶馆 · 实时房间与网页开桌</h2>
+          <p class="section-desc">直连游戏目录后端接口（<code>GET /v1/rooms</code>、<code>GET /v1/rooms/{号}</code>、<code>POST /v1/rooms</code>），可实时查房或在网页直接创建联机房间邀请亲友加入。</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button type="button" class="btn btn-sm" id="refresh-rooms-btn">刷新房间</button>
+          <span class="status-pill" id="rooms-updated-at">自动每 8 秒刷新</span>
+        </div>
+      </div>
+
+      <div class="hall-layout">
+        <!-- Left: Live Rooms List & Lookup -->
+        <div class="card">
+          <div class="toolbar">
+            <input id="lookup-room-input" class="input" type="text" maxlength="8" inputmode="numeric" placeholder="输入 4–8 位房间号精准查房…">
+            <button type="button" class="btn btn-sm" id="lookup-room-btn">查询房间</button>
+            <button type="button" class="btn btn-sm" id="clear-lookup-btn" style="display:none">显示全部</button>
+          </div>
+          <div id="lookup-result" class="form-result" style="margin-top:0;margin-bottom:14px"></div>
+          <div id="rooms-container" class="rooms-grid">
+            <div class="empty-state">正在读取在线茶馆实时房间…</div>
+          </div>
+        </div>
+
+        <!-- Right: Create Online Room -->
+        <div class="card card-gold">
+          <h3 style="margin:0 0 6px;color:var(--gold-bright)">网页一键开桌</h3>
+          <p style="margin:0 0 14px;font-size:0.86rem;color:var(--muted)">调用 <code>POST /v1/rooms</code> 在线拉起独立权威牌桌进程，生成房号后在手机端「加入房间」即可入座。</p>
+          <form id="create-room-form" class="form-stack">
+            <div class="field">
+              <label for="room-name-input">房间名称（1–24 字符）</label>
+              <input id="room-name-input" class="input" type="text" maxlength="24" required value="东秀茶馆亲友局" placeholder="例如：周末安顺捉鸡局">
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="room-number-input">指定房号（留空随机）</label>
+                <input id="room-number-input" class="input" type="text" maxlength="8" inputmode="numeric" placeholder="4–8 位数字">
+              </div>
+              <div class="field">
+                <label for="room-difficulty">人机补位难度</label>
+                <select id="room-difficulty">
+                  <option value="low">轻松</option>
+                  <option value="medium" selected>标准</option>
+                  <option value="high">高手</option>
+                </select>
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="room-discard-sec">出牌时限（秒）</label>
+                <input id="room-discard-sec" class="input" type="number" min="5" max="120" value="15">
+              </div>
+              <div class="field">
+                <label for="room-response-sec">碰杠胡时限（秒）</label>
+                <input id="room-response-sec" class="input" type="number" min="3" max="120" value="10">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-crimson" id="create-room-submit">立即创建在线房间</button>
+          </form>
+          <div id="create-room-result" class="form-result"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Screenshots Gallery -->
+    <section id="gallery">
+      <div class="section-head">
+        <div>
+          <h2>v2.4.0 实机画面一览</h2>
+          <p class="section-desc">点击任意实景图放大查看细节：全链路优化后冷启动提速至 1.96 秒，安装包瘦身至 85.84 MB。</p>
+        </div>
+      </div>
+      <div class="gallery-grid">
+        <article class="shot-card" data-full="/screenshots/gameplay-ting.jpg" data-caption="摸牌常驻报听胶囊 + 抬牌仅显已出张数 + 1.82× 放大手牌">
+          <img src="/screenshots/gameplay-ting.jpg" loading="lazy" alt="听牌常驻与抬牌计数">
+          <div class="shot-body">
+            <h3>常驻叫牌胶囊 · 抬牌已出计数</h3>
+            <p>听牌状态稳稳贴合名片上方，摸牌换听实时刷新；抬牌仅提示场上已出张数，绝不遮挡牌桌视野。</p>
+          </div>
+        </article>
+        <article class="shot-card" data-full="/screenshots/settlement-chicken.jpg" data-caption="结算页冲锋鸡横置金边摆放（鸟头朝向与 3D 牌桌 100% 一致）+ 庄家名片印章">
+          <img src="/screenshots/settlement-chicken.jpg" loading="lazy" alt="结算冲锋鸡横置">
+          <div class="shot-body">
+            <h3>冲锋鸡横置对齐 · 清晰结算账单</h3>
+            <p>结算明细中的冲锋鸡与冲锋金鸡严格横置并与牌桌实体朝向一致，一眼分清冲锋鸡、普通鸡与翻鸡得分。</p>
+          </div>
+        </article>
+        <article class="shot-card" data-full="/screenshots/multiplayer-voice.jpg" data-caption="联机房麦克风开关/静音明确标签 + 右上角实时 FPS 与服务器延迟">
+          <img src="/screenshots/multiplayer-voice.jpg" loading="lazy" alt="联机语音与延迟显示">
+          <div class="shot-body">
+            <h3>清晰语音状态 · 实时 FPS 与延迟</h3>
+            <p>本家固定区分「麦开 / 麦关」，他家真人明确标识「发言中 / 收听中 / 已静音」，右上角实时展示 FPS 与 ENet 毫秒延迟。</p>
+          </div>
+        </article>
+        <article class="shot-card" data-full="/screenshots/portraits-lobby.jpg" data-caption="15 位专属角色立绘与自定义昵称（视网膜级 384×512 显存直降 87%）">
+          <img src="/screenshots/portraits-lobby.jpg" loading="lazy" alt="角色形象与资料设置">
+          <div class="shot-body">
+            <h3>15 位专属角色 · 87% 显存优化</h3>
+            <p>15 套特色人物形象与方言音色自由切换，立绘采用 Lanczos 视网膜级压缩，清晰锐利且大幅降低手机内存占用。</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Rules -->
+    <section id="rules">
+      <div class="section-head">
+        <div>
+          <h2>地道安顺捉鸡核心规则</h2>
+          <p class="section-desc">客户端与服务端共用同一套权威规则与计分引擎，所有牌谱均可通过无头引擎 100% 重演校验。</p>
+        </div>
+      </div>
+      <div class="rules-grid">
+        <div class="rule-card">
+          <span class="rule-badge">冲锋鸡 / 冲锋金鸡</span>
+          <h3>首位打幺鸡 · 横置醒目摆放</h3>
+          <p>牌局中首张打出的幺鸡即为冲锋鸡（牌桌与结算页统一横置展示）；若翻鸡恰为九条连带幺鸡，更升级为双倍冲锋金鸡。</p>
+        </div>
+        <div class="rule-card">
+          <span class="rule-badge">翻鸡与叫牌</span>
+          <h3>有叫才有鸡 · 荒牌严格包鸡</h3>
+          <p>胡牌后翻开牌墙下一张定翻鸡，叫牌者按鸡分差额结算，未叫牌者不仅无鸡且需向叫牌者赔付包鸡与牌型罚分。</p>
+        </div>
+        <div class="rule-card">
+          <span class="rule-badge">报听 · 碰杠摆放</span>
+          <h3>硬报听与真实牌桌分区</h3>
+          <p>起手天听可报听加倍；明杠、暗杠、加杠及碰牌严格按牌桌物理区域摆放，支持抢杠胡、热炮与杠上花完整结算。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Downloads & Releases -->
+    <section id="download">
+      <div class="section-head">
+        <div>
+          <h2>客户端下载与版本历史</h2>
+          <p class="section-desc">所有安装包均由服务端 <code>GET /v1/releases</code> 动态提供，附带完整 SHA-256 校验值。</p>
+        </div>
+      </div>
+      <div id="releases-container" class="release-list">
+        <div class="empty-state">正在读取最新版本清单…</div>
+      </div>
+    </section>
+
+    <!-- Backend API Interactive Explorer -->
+    <section id="api">
+      <div class="section-head">
+        <div>
+          <h2>后端接口联调台</h2>
+          <p class="section-desc">直接从浏览器调用当前在线服务器的真实 REST 接口，实时查看返回的协议 4 JSON 响应。</p>
+        </div>
+      </div>
+      <div class="api-grid">
+        <div class="card">
+          <div class="endpoint-list">
+            <button type="button" class="endpoint-btn" data-api="/v1/status">
+              <span><span class="method">GET</span><code>/v1/status</code></span>
+              <span style="color:var(--muted);font-size:0.8rem">服务健康与统计</span>
+            </button>
+            <button type="button" class="endpoint-btn" data-api="/v1/rooms">
+              <span><span class="method">GET</span><code>/v1/rooms</code></span>
+              <span style="color:var(--muted);font-size:0.8rem">在线房间目录</span>
+            </button>
+            <button type="button" class="endpoint-btn" data-api="/v1/releases">
+              <span><span class="method">GET</span><code>/v1/releases</code></span>
+              <span style="color:var(--muted);font-size:0.8rem">安装包发布列表</span>
+            </button>
+            <button type="button" class="endpoint-btn" data-api="/v1/releases/latest">
+              <span><span class="method">GET</span><code>/v1/releases/latest</code></span>
+              <span style="color:var(--muted);font-size:0.8rem">最新版下载信息</span>
+            </button>
+          </div>
+          <hr style="border:none;border-top:1px solid rgba(158,183,172,0.18);margin:16px 0">
+          <div class="field">
+            <label for="records-token-input">受保护接口：<code>GET /v1/records?limit=10</code>（需管理员 Bearer 密钥）</label>
+            <div style="display:flex;gap:8px">
+              <input id="records-token-input" class="input" type="password" placeholder="输入 RECORDS_API_KEY（仅内存使用，不保存）" autocomplete="off">
+              <button type="button" class="btn btn-sm" id="query-records-btn">查询牌谱</button>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <strong id="api-result-title" style="color:var(--gold-bright);font-size:0.9rem">点击左侧任意接口实时联调</strong>
+            <span class="tag" id="api-status-badge">待命</span>
+          </div>
+          <pre id="api-json-output" class="json-viewer">{ "hint": "选择左侧接口，立即请求当前后端服务并展示原始 JSON 响应。" }</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-inner">
+      <div>东秀麻将 · 安顺捉鸡（Protocol 4） · 权威无头 Godot 房间服务端 + Python 目录接口</div>
+      <div>
+        <a href="https://github.com/dongxiujiang/anshun-mahjong" target="_blank" rel="noopener">GitHub 仓库</a>
+        &nbsp;·&nbsp;
+        <a href="/v1/status" target="_blank" rel="noopener">/v1/status</a>
+        &nbsp;·&nbsp;
+        <a href="/v1/rooms" target="_blank" rel="noopener">/v1/rooms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="游戏画面大图预览">
+    <div class="lightbox-inner">
+      <img id="lightbox-img" src="" alt="">
+      <div class="lightbox-caption" id="lightbox-caption"></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

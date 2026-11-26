@@ -1,0 +1,7 @@
+# 牌桌声音
+
+牌名、碰、杠、报听、胡与自摸沿用仓库 `res/audio/voice_packs/` 中的 15 套已有音色，每套 32 段。对应目录与 WAV 内容保留原样。
+
+掷骰与落桌声音沿用仓库 `res/audio/effects/dice_roll.wav` 与 `discard.wav`。倒计时的短铃声由重制版生成。
+
+背景音乐为 Kevin MacLeod 的《Ripples》，ISRC USUAN1100691。旧版来源表列出同曲，本目录的 `music/table.mp3` 使用作者提供的 MP3。播放器控制音量与循环。[作者曲目页](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100691) · [原始录音](https://incompetech.com/music/royalty-free/mp3-royaltyfree/Ripples.mp3) · [CC BY 4.0 许可](https://creativecommons.org/licenses/by/4.0/)

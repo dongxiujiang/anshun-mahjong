@@ -1,0 +1,26 @@
+; 东秀麻将重制工作工程，正式安装升级仍沿现有应用。
+config_version=5
+
+[application]
+config/name="东秀麻将"
+config/icon="res://src/app/assets/android_icon.png"
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[dongxiu]
+online_directory_url="https://mj.dongxiu.fun"
+
+[audio]
+driver/enable_input=true
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=0
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true

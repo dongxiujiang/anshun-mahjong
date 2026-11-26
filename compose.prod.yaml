@@ -11,12 +11,12 @@ services:
       PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST in .env}
       MAX_ROOMS: ${MAX_ROOMS:-16}
       FIRST_PORT: ${FIRST_PORT:-7600}
-      APP_VERSION: ${APP_VERSION:-unknown}
-      BUILD_SHA: ${BUILD_SHA:-unknown}
+      DONGXIU_RECORD_URL: ${DONGXIU_RECORD_URL:-https://${DOMAIN:?set DOMAIN in .env}/v1/records}
     ports:
-      # Host-local HTTP for an existing Nginx reverse proxy. Caddy mode can
-      # leave this unused; it never exposes port 8080 publicly.
-      - "127.0.0.1:18080:8080"
+      - "80:80"
+      - "443:443"
+      # Host-local Caddy listener for an existing reverse proxy.
+      - "127.0.0.1:18080:8081"
       # Keep this range in sync with MAX_ROOMS and the cloud firewall.
       - "7600-7631:7600-7631/udp"
     volumes:
@@ -26,7 +26,7 @@ services:
         - CMD
         - python3
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/rooms', timeout=2)"
       interval: 30s
       timeout: 5s
       retries: 3
@@ -38,12 +38,11 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    network_mode: "service:app"
     depends_on:
       app:
         condition: service_healthy
-    ports:
-      - "80:80"
-      - "443:443"
+        restart: true
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
     volumes:

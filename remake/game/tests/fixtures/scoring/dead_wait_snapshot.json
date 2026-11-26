@@ -1,0 +1,233 @@
+{
+  "players": [
+    {
+      "concealed": [
+        "tong9",
+        "tiao4",
+        "tiao4",
+        "tong7",
+        "tiao2",
+        "tong8",
+        "tiao4"
+      ],
+      "melds": [
+        {
+          "after_discard": 1,
+          "formed_at": 1,
+          "from_seat": 2,
+          "kind": "pung",
+          "robbed": false,
+          "tile": "tiao5"
+        },
+        {
+          "after_discard": 8,
+          "formed_at": 8,
+          "from_seat": 3,
+          "kind": "pung",
+          "robbed": false,
+          "tile": "tong5"
+        }
+      ],
+      "discards": [
+        "wan9",
+        "wan2",
+        "wan9",
+        "tong1",
+        "wan1",
+        "tiao9",
+        "wan5",
+        "tiao8",
+        "wan7",
+        "tiao6",
+        "tong2",
+        "tiao1"
+      ],
+      "discard_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        7,
+        8,
+        9,
+        10,
+        12,
+        13
+      ]
+    },
+    {
+      "concealed": [
+        "tiao1",
+        "tong4",
+        "tiao9",
+        "wan2",
+        "tiao3",
+        "tiao2",
+        "tong5",
+        "tiao8",
+        "wan2",
+        "tong6"
+      ],
+      "melds": [
+        {
+          "after_discard": 10,
+          "formed_at": 10,
+          "from_seat": 0,
+          "kind": "kong",
+          "robbed": false,
+          "tile": "tiao7"
+        }
+      ],
+      "discards": [
+        "tong1",
+        "tong9",
+        "tong7",
+        "wan7",
+        "wan5",
+        "tiao2",
+        "wan3",
+        "wan6",
+        "wan1",
+        "wan4",
+        "tiao6",
+        "tong9"
+      ],
+      "discard_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "concealed": [
+        "tong4",
+        "tong3",
+        "tong6",
+        "wan7",
+        "tong3",
+        "wan6",
+        "tong6",
+        "tong2",
+        "wan6",
+        "tong4",
+        "wan4",
+        "wan8",
+        "tong6"
+      ],
+      "melds": [],
+      "discards": [
+        "tiao1",
+        "tong8",
+        "tong9",
+        "wan9",
+        "tiao6",
+        "tiao6",
+        "tong7",
+        "tong3",
+        "tong8",
+        "tiao8",
+        "wan8"
+      ],
+      "discard_ids": [
+        0,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "concealed": [
+        "wan5",
+        "tiao4",
+        "tong3",
+        "tong2",
+        "tiao3",
+        "tiao5",
+        "tiao3",
+        "tong1",
+        "tiao2",
+        "wan5",
+        "tiao1"
+      ],
+      "melds": [
+        {
+          "after_discard": 7,
+          "formed_at": 7,
+          "from_seat": 0,
+          "kind": "pung",
+          "robbed": false,
+          "tile": "wan3"
+        }
+      ],
+      "discards": [
+        "tiao8",
+        "wan9",
+        "wan8",
+        "tong8",
+        "wan2",
+        "tong1",
+        "tong7",
+        "tiao9",
+        "wan1",
+        "wan6",
+        "wan8",
+        "wan7"
+      ],
+      "discard_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        9,
+        10,
+        11,
+        12
+      ]
+    }
+  ],
+  "round_meta": {
+    "winner": 3,
+    "winners": [
+      3
+    ],
+    "self_draw": true,
+    "win_tile": "tiao1",
+    "flip_tile": "tong2",
+    "dealer_seat": 3,
+    "chicken_multiplier": 1,
+    "charge_chickens": {
+      "tiao1": {
+        "discard_id": 0,
+        "location": "discard",
+        "owner": 2
+      },
+      "tong8": {
+        "discard_id": 2,
+        "location": "discard",
+        "owner": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "selection": "User selected existing project tile faces from codex-clipboard-6e4bd7b5-9d00-41cc-a1ed-3417fda71e49.png on 2026-11-22. Use exact original meshes, artwork and engraving without redrawing.",
+  "license_metadata": "No author or license metadata was present in the supplied archives.",
+  "files": [
+    {
+      "file": "tiles.glb",
+      "source": "res\\models\\mahjong3d\\tiles.glb",
+      "sha256": "16dd592d4548524264022cd1e6d0f94a2c9e98e8b41e6e61c284c6fcbc6ff7d7"
+    },
+    {
+      "file": "mahJong.png",
+      "source": "res\\models\\mahjong3d\\mahJong.png",
+      "sha256": "d9f963ae33b7ba1f7f670a96d6909df132bc78106616452d3235d84f3eacdef3"
+    },
+    {
+      "file": "mahJong_NORM.png",
+      "source": "res\\models\\mahjong3d\\mahJong_NORM.png",
+      "sha256": "45e13310075bb34347ada9b0c94ceac9d9953557c85d06fcaea2ff0ccd20cb58"
+    },
+    {
+      "file": "models.json",
+      "source": "res\\models\\mahjong3d\\models.json",
+      "sha256": "ee26db248c35a80c3346eb9e91a828f7a43d8551eea91bcb2e6fd980bfa54ba1"
+    }
+  ]
+}

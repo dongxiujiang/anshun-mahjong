@@ -10,7 +10,10 @@ services:
       PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST in .env}
       MAX_ROOMS: ${MAX_ROOMS:-16}
       FIRST_PORT: ${FIRST_PORT:-7600}
+      DONGXIU_RECORD_URL: ${DONGXIU_RECORD_URL:-https://${DOMAIN:?set DOMAIN in .env}/v1/records}
     ports:
+      - "80:80"
+      - "443:443"
       # Keep this range in sync with MAX_ROOMS and the cloud firewall.
       - "7600-7631:7600-7631/udp"
     volumes:
@@ -20,7 +23,7 @@ services:
         - CMD
         - python3
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/rooms', timeout=2)"
       interval: 30s
       timeout: 5s
       retries: 3
@@ -32,12 +35,11 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    network_mode: "service:app"
     depends_on:
       app:
         condition: service_healthy
-    ports:
-      - "80:80"
-      - "443:443"
+        restart: true
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
     volumes:

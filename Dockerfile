@@ -1,8 +1,9 @@
 # Mahjong online room server: Python directory + one headless Godot per room.
-# Build context is the repository root. See server/docker.md.
+# Build context is the repository root.
 FROM ubuntu:24.04
 
 ARG GODOT_VERSION=4.7.2
+ARG GODOT_DOWNLOAD_URL=""
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -42,8 +43,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libmpg123-0t64 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL -o /tmp/godot.zip \
-        "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
+RUN --mount=type=secret,id=github_token \
+    if [ -n "$GODOT_DOWNLOAD_URL" ] && [ -f /run/secrets/github_token ]; then \
+        curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 \
+            -H "Authorization: Bearer $(cat /run/secrets/github_token)" \
+            -H "Accept: application/octet-stream" -o /tmp/godot.zip "$GODOT_DOWNLOAD_URL"; \
+    else \
+        curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"; \
+    fi \
     && unzip -q /tmp/godot.zip -d /opt/godot \
     && mv "/opt/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" /opt/godot/godot \
     && chmod 0755 /opt/godot/godot \
@@ -52,23 +60,16 @@ RUN curl -fsSL -o /tmp/godot.zip \
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin mahjong
 
 WORKDIR /app
-COPY . /app
-# The development MCP runtime autoload is only for the editor tooling. It must
-# not open a listener inside production room processes.
-RUN sed -i '/^MCPRuntimeServer=/d' /app/project.godot
+COPY --chown=mahjong:mahjong remake/game/ /app/remake/game/
+COPY --chown=mahjong:mahjong remake/server/ /app/remake/server/
+COPY --chown=mahjong:mahjong remake/web/ /app/remake/web/
 # Room servers have no microphone and run headless; do not open an input device.
-RUN sed -i '/^driver\/enable_input=/d' /app/project.godot
-# LiveKit is no longer used. Remove any legacy checkout copy before importing;
-# the GME Android AAR is only used by client exports and is harmless here.
-RUN rm -rf /app/addons/godot-livekit
-# Bake the import cache into the image so room startup does not race imports.
-RUN /opt/godot/godot --headless --editor --path /app --import \
-    && chown -R mahjong:mahjong /app
+RUN sed -i '/^driver\/enable_input=/d' /app/remake/game/project.godot \
+    && gosu mahjong /opt/godot/godot --headless --editor --path /app/remake/game --import
 
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod 0755 /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod 0755 /entrypoint.sh
 
-EXPOSE 8080/tcp
 EXPOSE 7600-7631/udp
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]

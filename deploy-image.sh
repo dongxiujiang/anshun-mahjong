@@ -36,4 +36,4 @@ docker compose -f compose.prod.yaml ps
 echo
 echo "镜像: ${IMAGE_VALUE}"
 echo "HTTPS: https://${DOMAIN_VALUE}"
-echo "健康检查: curl -fsS https://${DOMAIN_VALUE}/healthz"
+echo "健康检查: curl -fsS https://${DOMAIN_VALUE}/v1/rooms"

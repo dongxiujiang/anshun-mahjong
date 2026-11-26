@@ -25,4 +25,4 @@ docker compose up -d --build
 docker compose ps
 echo
 echo "HTTPS: https://${DOMAIN_VALUE}"
-echo "健康检查: curl -fsS https://${DOMAIN_VALUE}/healthz"
+echo "健康检查: curl -fsS https://${DOMAIN_VALUE}/v1/rooms"

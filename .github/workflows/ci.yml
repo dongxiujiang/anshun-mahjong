@@ -6,26 +6,22 @@ on:
       - main
       - master
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  GODOT_VERSION: "4.7.2"
   GODOT_RELEASE: "4.7.2-stable"
 
 jobs:
-  quick-check:
-    name: Quick rules, scoring, audio and reconnect checks
+  remake-checks:
+    name: Remake game and server checks
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Remove legacy LiveKit addon
-        shell: bash
-        run: rm -rf addons/godot-livekit
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,41 +30,41 @@ jobs:
 
       - name: Install Godot
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          for attempt in 1 2 3 4 5; do
+            if gh release download "$GODOT_RELEASE" --repo godotengine/godot --pattern "Godot_v${GODOT_RELEASE}_linux.x86_64.zip" --output /tmp/godot.zip --clobber; then break; fi
+            test "$attempt" -lt 5
+            sleep 3
+          done
           unzip -q /tmp/godot.zip -d /tmp/godot
           sudo install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
 
-      - name: Install LiveKit Linux runtime dependency
+      - name: Install Godot Linux runtime dependency
         shell: bash
         run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-0t64
 
       - name: Import project
         shell: bash
-        run: godot --headless --path . --editor --import
+        run: godot --headless --path remake/game --editor --import
 
-      - name: Run quick test suites
+      - name: Run game checks
         shell: bash
-        env:
-          AI_ROUNDS: "4"
-          AI_MIN_ROUNDS: "1"
+        run: python -X utf8 remake/game/tools/run_checks.py --godot "$(command -v godot)"
+
+      - name: Run room directory and record storage checks
+        shell: bash
         run: |
-          set -euo pipefail
-          python -X utf8 tests/run_suites.py --godot "$(command -v godot)" \
-            --suite rules_complete rules_update smoke_scoring settlement_card scoring_audit scoring_pairwise \
-              legal_actions round_sync smoke_audio reconnect_control table_components ui_presentation table_interaction center_dashboard smoke_ai \
-            --simulation-timeout 180
+          python -X utf8 remake/server/test_room_directory.py --godot "$(command -v godot)"
+          python -X utf8 remake/server/test_record_store.py --godot "$(command -v godot)"
 
-      - name: Run Python CI checks
-        shell: bash
-        run: python -m unittest discover -s tests -p 'test_*.py'
-
-      - name: Upload quick-check logs
+      - name: Upload game check logs
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: quick-check-logs-${{ github.run_id }}
+          name: remake-check-logs-${{ github.run_id }}
           retention-days: 14
           if-no-files-found: ignore
-          path: build/test_results/**
+          path: build/remake-acceptance/

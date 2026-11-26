@@ -1,0 +1,171 @@
+{
+  "sources": {
+    "MahJong.zip": "f552bf190de04317f98407cc52058f1101049c6d95bec424626b638cf5c62bd3",
+    "Hong Kong Mahjong.zip": "3c9fe5b8294928b336b7cf545cd9f847048f4e803e4ca570304628541bc72bff"
+  },
+  "license": "No author or license metadata was present in the supplied archives.",
+  "coordinates": "Godot Y-up, centers at origin; tile face +Y, printed top -Z.",
+  "tile_dimensions": [
+    1,
+    0.62,
+    1.34
+  ],
+  "dice_dimensions": [
+    0.8,
+    0.8,
+    0.8
+  ],
+  "tile_nodes": [
+    "tiao1",
+    "tiao2",
+    "tiao3",
+    "tiao4",
+    "tiao5",
+    "tiao6",
+    "tiao7",
+    "tiao8",
+    "tiao9",
+    "tong1",
+    "tong2",
+    "tong3",
+    "tong4",
+    "tong5",
+    "tong6",
+    "tong7",
+    "tong8",
+    "tong9",
+    "wan1",
+    "wan2",
+    "wan3",
+    "wan4",
+    "wan5",
+    "wan6",
+    "wan7",
+    "wan8",
+    "wan9"
+  ],
+  "dice_nodes": [
+    "red",
+    "black"
+  ],
+  "dice_face_normals": {
+    "red": {
+      "2": [
+        -1.0,
+        -0.0,
+        -0.0
+      ],
+      "5": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "6": [
+        -0.0,
+        -1.0,
+        -0.0
+      ],
+      "1": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "3": [
+        -0.0,
+        -0.0,
+        -1.0
+      ],
+      "4": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "black": {
+      "5": [
+        -1.0,
+        -0.0,
+        -0.0
+      ],
+      "2": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "3": [
+        -0.0,
+        -1.0,
+        -0.0
+      ],
+      "4": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "6": [
+        -0.0,
+        -0.0,
+        -1.0
+      ],
+      "1": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "table_surface_y": 0,
+  "table_felt_min": [
+    -13.900830656836888,
+    0.0,
+    -13.900830656836888
+  ],
+  "table_felt_max": [
+    13.900830656836888,
+    0.0,
+    13.900830656836888
+  ],
+  "table_outer_min": [
+    -15.00000058027023,
+    -4.274879811528228,
+    -15.00000058027023
+  ],
+  "table_outer_max": [
+    14.999999419729766,
+    0.5115244569395967,
+    14.999999419729766
+  ],
+  "triangles": {
+    "tiao9": 92,
+    "wan1": 92,
+    "tiao8": 92,
+    "tiao6": 92,
+    "tong2": 92,
+    "tong3": 92,
+    "wan2": 92,
+    "wan3": 92,
+    "wan4": 92,
+    "wan5": 92,
+    "wan6": 92,
+    "wan7": 92,
+    "wan8": 92,
+    "tong1": 92,
+    "tong4": 92,
+    "tong5": 92,
+    "tong6": 92,
+    "tong7": 92,
+    "tong8": 92,
+    "tiao1": 92,
+    "tiao2": 92,
+    "tiao3": 92,
+    "tiao4": 92,
+    "tiao5": 92,
+    "tiao7": 92,
+    "wan9": 92,
+    "tong9": 92,
+    "red": 108,
+    "black": 108,
+    "felt": 98,
+    "frame": 370
+  }
+}

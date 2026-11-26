@@ -1,0 +1,17 @@
+{
+  "selection": "The ten existing character concepts were approved by Q103 in the source H retained in docs/项目统一文档.md. This shared UI atlas preserves that approved image without redrawing the characters.",
+  "file": "roster-approved.png",
+  "source": "build/remake-requirements/docs/design/previews/character-roster-v1.png",
+  "source_prompt": "build/remake-requirements/docs/design/previews/character-roster-v1.prompt.txt",
+  "generation_tool": "Built-in image_gen, as recorded by the existing source prompt; no new generation for this copy.",
+  "license_metadata": "Existing project AI-generated concept art. No separate third-party license declaration was supplied; no public-domain or CC0 claim is made.",
+  "sha256": "ea9fca72d01fc54cd4a89e297beeab712f74af152ae5070fd856a46ff407d552",
+  "size": [1672, 941],
+  "source_mode": "RGB",
+  "transparency": "Opaque green background intentionally retained for character selection cards.",
+  "runtime_use": "CharacterArt.gd creates cached AtlasTexture portraits from one source texture; the atlas is not a seated 3D model.",
+  "crop_size": [250, 285],
+  "crop_columns": [80, 405, 730, 1055, 1380],
+  "crop_rows": [60, 475],
+  "acceptance_boundary": "Selection portraits reuse the approved appearance. This does not certify the ten seated models, entrance camera, lobby character states, or physical-phone performance."
+}
