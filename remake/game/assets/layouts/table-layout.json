@@ -82,8 +82,8 @@
 	"presentation": {
 		"camera_pitch": 45.4,
 		"hand_pitch": 90.0,
-		"self_hand_pitch": 66.0,
-		"self_hand_scale": 1.82
+		"self_hand_pitch": 68.0,
+		"self_hand_scale": 2.06
 	},
 	"product": "dongxiu-table-layout",
 	"regions": {

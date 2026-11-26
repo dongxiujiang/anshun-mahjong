@@ -225,10 +225,16 @@ func _add_item(flow: HFlowContainer, item: Dictionary, owner: int) -> void:
 			if item.opponents.has(posmod(owner - offset, 4)):
 				opponents.append(POSITIONS[offset])
 	var suffix := "（%s）" % "／".join(opponents) if not opponents.is_empty() else ""
-	var label:String=item.label.replace("自摸基础分","自摸")
-	var caption:=UI.label((delta_text(int(item.amount)) if not item.get("tiles",[]).is_empty() else label+delta_text(int(item.amount))) if _table_overlay else "%s%+d%s" % [item.label,int(item.amount),suffix],15 if _table_overlay else 15)
-	group.tooltip_text="%s%+d%s"%[item.label,int(item.amount),suffix]
-	if _table_overlay:caption.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	var kind := str(item.get("kind", ""))
+	var is_pattern := kind == "pattern"
+	var label: String = str(item.get("label", "")).replace("自摸基础分", "自摸")
+	if kind == "penalty" and not str(item.get("pattern_label", "")).is_empty():
+		label = "荒牌" + str(item.get("pattern_label", ""))
+	var overlay_text: String = (label + delta_text(int(item.amount))) if (is_pattern or item.get("tiles", []).is_empty()) else delta_text(int(item.amount))
+	var caption := UI.label(overlay_text if _table_overlay else "%s%+d%s" % [label, int(item.amount), suffix], 15, Color("#ffe39b") if is_pattern else UI.INK)
+	caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	group.tooltip_text = "%s%+d%s" % [label, int(item.amount), suffix]
+	if _table_overlay: caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	group.add_child(caption)
 	flow.add_child(group)
 

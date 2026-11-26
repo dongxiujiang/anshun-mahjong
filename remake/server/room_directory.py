@@ -308,13 +308,13 @@ class HttpServer(ThreadingHTTPServer):
     daemon_threads = False
 
     def __init__(self, address, directory, trusted_proxies=(), record_limit=100,
-                 web_dir=None, downloads_dir=None, download_redirect_prefix="", game_version="2.4.0"):
+                 web_dir=None, downloads_dir=None, download_redirect_prefix="", game_version="2.4.1"):
         self.directory = directory
         self.records = None
         self.portal = None
         self.started_monotonic = time.monotonic()
         self.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        self.game_version = game_version or os.getenv("DONGXIU_GAME_VERSION", "2.4.0")
+        self.game_version = game_version or os.getenv("DONGXIU_GAME_VERSION", "2.4.1")
         self.web_assets = WebAssets(web_dir if web_dir is not None else (Path(__file__).resolve().parents[1] / "web"))
         resolved_dl = downloads_dir if downloads_dir is not None else os.getenv("DONGXIU_DOWNLOADS_DIR", "")
         resolved_prefix = download_redirect_prefix if download_redirect_prefix else os.getenv("DONGXIU_DOWNLOAD_REDIRECT_PREFIX", "")
@@ -656,7 +656,7 @@ def main():
         web_dir=args.web_dir,
         downloads_dir=args.downloads_dir,
         download_redirect_prefix=args.download_redirect_prefix,
-        game_version=args.game_version or os.getenv("DONGXIU_GAME_VERSION", "2.4.0"),
+        game_version=args.game_version or os.getenv("DONGXIU_GAME_VERSION", "2.4.1"),
     )
     if args.certfile:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

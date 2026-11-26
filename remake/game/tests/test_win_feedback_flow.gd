@@ -56,8 +56,15 @@ func _case(self_draw:bool)->void:
 		check(host._session.submit_ai(job,"win",-1,host._now()),"ordinary win is accepted through the normal session AI entry")
 		host._refresh()
 	await process_frame;await process_frame
-	check(app._round_projection.phase=="settled" and app._screen=="settlement","final result and score screen appear without waiting for feedback")
-	check(app._win_feedback.visible and app._win_feedback._title.text==("自摸" if self_draw else "胡"),"real finish event triggers the matching reference-style presentation")
+	var flip_tile := str(app._round_projection.get("result", {}).get("flip_tile", ""))
+	if not flip_tile.is_empty():
+		check(app._round_projection.phase=="settled" and app._flip_reveal.visible and app._flip_reveal.flip_tile_value==flip_tile and app._screen=="play","flip chicken reveal appears clearly before settlement panel covers the board")
+		check(app._win_feedback.visible and app._win_feedback._title.text==("自摸" if self_draw else "胡"),"real finish event triggers the matching reference-style presentation")
+		app._flip_reveal.finish_now()
+		await process_frame
+	check(app._round_projection.phase=="settled" and app._screen=="settlement" and not app._flip_reveal.visible,"settlement screen appears cleanly right after flip chicken reveal completes")
+	if flip_tile.is_empty():
+		check(app._win_feedback.visible and app._win_feedback._title.text==("自摸" if self_draw else "胡"),"real finish event triggers the matching reference-style presentation")
 	var facts:=JSON.stringify(game.export_authority())
 	var tween:Tween=app._win_feedback._motion
 	app._show_win_feedback(app._round_projection.result,app._win_feedback.last_key)

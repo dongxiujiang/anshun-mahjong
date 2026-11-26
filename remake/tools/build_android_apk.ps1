@@ -92,7 +92,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($OutputApk)
 try {
     $names = @($zip.Entries | ForEach-Object { $_.FullName })
-    $mustHave = @("TableTheme", "CareerPanel", "TingAssistantOverlay", "StatusTelemetryBar", "table-layout.json", "tile_select")
+    $mustHave = @("TableTheme", "CareerPanel", "TingAssistantOverlay", "StatusTelemetryBar", "MahjongNames", "FlipChickenReveal", "table-layout.json", "tile_select")
     $mustNotHave = @("LayoutDesigner", "SeatedCharacter", "character_01_seated", "assets/tests/")
     foreach ($token in $mustHave) {
         if (-not ($names | Where-Object { $_ -like "*$token*" } | Select-Object -First 1)) {

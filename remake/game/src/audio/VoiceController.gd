@@ -89,18 +89,10 @@ func _view(state: Dictionary) -> void:
 		_key = key
 		_mode = mode
 		_seat = seat
-		if mode == "online" and (not OS.has_feature("android") or _directory.is_empty()):
-			_status(false, "在线语音需要安卓版" if not OS.has_feature("android") else "请先连接语音所在的房间服务")
+		if mode == "online" and OS.has_feature("android") and not _directory.is_empty():
+			_mount_backend(Gme.new(), mode)
 		else:
-			_backend = Pcm.new() if mode == "lan" else Gme.new()
-			add_child(_backend)
-			_backend.status_changed.connect(_backend_status.bind(_backend.get_instance_id()))
-			_backend.speaker_changed.connect(func(s: int, v: bool): speaker_changed.emit(s, v))
-			_backend.setup(self, true)
-			set_gains(_mic_gain, _remote_gain)
-			if mode == "online":
-				_backend.directory_url = _directory
-			_status(false, "麦克风已关闭")
+			_mount_backend(Pcm.new(), mode)
 	var previous := _people
 	_people = []
 	_remote_active = []
@@ -116,10 +108,44 @@ func _view(state: Dictionary) -> void:
 		if i >= previous.size() or _people[i] != previous[i]:
 			_reset_stream(i)
 			_backend.set_speaker_enabled(i, not _mute_by_id.has(_people[i]))
-	if mode == "online" and not suspended and _client.ticket.get("room_instance_id") == room.room_instance_id:
+	if mode == "online" and _backend is Gme and not suspended and _client.ticket.get("room_instance_id") == room.room_instance_id:
 		_backend.connect_room(room.room_number, seat, room.room_instance_id, _client.ticket.get("member_token", ""))
 	if not suspended and _restore_mic_for == _identity:
 		_restore_mic_for = []
+		_backend.set_enabled(true)
+
+
+func _mount_backend(instance: Node, mode: String) -> void:
+	_backend = instance
+	add_child(_backend)
+	_backend.status_changed.connect(_backend_status.bind(_backend.get_instance_id()))
+	_backend.speaker_changed.connect(func(s: int, v: bool): speaker_changed.emit(s, v))
+	_backend.setup(self, true)
+	set_gains(_mic_gain, _remote_gain)
+	if mode == "online" and _backend is Gme:
+		_backend.directory_url = _directory
+	_status(false, "麦克风已关闭")
+
+
+func _should_fallback_to_pcm(text: String) -> bool:
+	for token in ["尚未开启在线语音", "GME SDK", "GME Init", "GME 回调", "GME AndroidRuntime", "GME GetAudioCtrl", "GME EnterRoom", "GME 无法获取"]:
+		if text.contains(token):
+			return true
+	return false
+
+
+func _switch_to_pcm_fallback(want_mic: bool) -> void:
+	var old = _backend
+	_backend = null
+	if is_instance_valid(old):
+		old.shutdown()
+		old.queue_free()
+	_mount_backend(Pcm.new(), _mode)
+	var suspended: bool = _paused or (_client != null and _client.waiting_for_foreground_view())
+	_backend.set_suspended(suspended)
+	for i in _people.size():
+		_backend.set_speaker_enabled(i, not _mute_by_id.has(_people[i]))
+	if want_mic and not suspended:
 		_backend.set_enabled(true)
 
 static func remote_player_id(member: Dictionary) -> String:
@@ -133,6 +159,10 @@ func _status(value: bool, text: String) -> void:
 
 func _backend_status(active: bool, text: String, source: int) -> void:
 	if is_instance_valid(_backend) and _backend.get_instance_id() == source:
+		if not active and _mode == "online" and _backend is Gme and _should_fallback_to_pcm(text):
+			var want_mic: bool = _backend.microphone_requested()
+			_switch_to_pcm_fallback.call_deferred(want_mic)
+			return
 		_status(active and voice_chat_allowed(), text)
 
 func _set_recording(value: bool) -> void:
@@ -221,15 +251,15 @@ func speech_active() -> bool:
 	return _backend != null and _backend.speech_active()
 
 func send_local_voice(packet: PackedByteArray) -> void:
-	if _mode == "lan" and recording and not _paused:
+	if _mode in ["lan", "online"] and _backend is Pcm and recording and not _paused:
 		_client.send_local_voice(packet)
 
 func _packet(packet: PackedByteArray) -> void:
-	if _backend != null and _mode == "lan" and not _paused and Pcm.packet_seat(packet) != _seat:
+	if _backend is Pcm and _mode in ["lan", "online"] and not _paused and Pcm.packet_seat(packet) != _seat:
 		_backend.play_packet(packet)
 
 func _reset_stream(seat: int) -> void:
-	if _mode == "lan" and _backend != null:
+	if _mode in ["lan", "online"] and _backend is Pcm:
 		_backend.reset_seat(seat)
 
 func _notification(what: int) -> void:

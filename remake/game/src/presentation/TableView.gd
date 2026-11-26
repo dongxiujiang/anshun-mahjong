@@ -19,12 +19,13 @@ const MOVE_SECONDS := Pace.ACTION_SECONDS
 const ADDED_KONG_SECONDS := Pace.ACTION_SECONDS
 const OpeningDeal = preload("res://src/presentation/OpeningDeal.gd")
 # Candidate input timing and tolerance are presentation parameters.
-const HOLD_SECONDS := 0.16
+const HOLD_SECONDS := 0.22
 const SELECT_SECONDS := 0.09
 const DRAG_SHIFT_SECONDS := 0.11
 const DRAG_SETTLE_SECONDS := 0.12
 const HAND_TOLERANCE := 1.5
-const TAP_SLOP := 12.0
+const TAP_SLOP := 14.0
+const OWN_HAND_FORWARD_SHIFT := 3.65
 
 signal tile_clicked(tile_id: int)
 signal blank_tapped()
@@ -425,7 +426,7 @@ func _frame_saved_table(facing: Basis, viewport_size: Vector2, aspect: float) ->
 							if own: points.append(_magnify_own_hand(Transform3D(Basis.IDENTITY,point),seat,false).origin)
 							if own:point=_magnify_own_hand(Transform3D(Basis.IDENTITY,point),seat,true).origin
 							points.append(point)
-							if own: points.append(point + Vector3.UP * 0.42)
+							if own: points.append(point + Vector3.UP * 0.56)
 		var extension := _hand_extension(seat,13)
 		if not extension.is_empty():
 			for pitch in [0.0,float(custom_profile.data.presentation.get("self_hand_pitch",custom_profile.data.presentation.hand_pitch) if seat==viewer else custom_profile.data.presentation.hand_pitch)]:
@@ -802,7 +803,7 @@ func _hand(p: Dictionary, animate: bool) -> void:
 			elif flat:pose=_pitch_hand(pose,0.0)
 			elif seat==viewer:pose=_tilt_own_hand(pose,false)
 			if seat==viewer:pose=_magnify_own_hand(pose,seat,not flat)
-			if selected: pose.origin.y += 0.42
+			if selected: pose.origin.y += 0.56
 		var value: String = faces.get(id, "")
 		if flat and value.is_empty():
 			pose.basis *= Basis(Vector3.RIGHT, PI)
@@ -929,7 +930,7 @@ func _hand_extension(seat: int, base_count: int, gap: float = Layout.GAP) -> Dic
 func _magnify_own_hand(pose: Transform3D, seat: int, standing: bool = true) -> Transform3D:
 	var scale: float=custom_profile.data.presentation.self_hand_scale
 	pose = _magnify_hand(pose,seat,scale)
-	if seat == viewer and standing: pose.origin += Layout.facing(seat) * Vector3(0,0,2.8)
+	if seat == viewer and standing: pose.origin += Layout.facing(seat) * Vector3(0,0,OWN_HAND_FORWARD_SHIFT)
 	return pose
 
 func _settlement_hand(pose: Transform3D, seat: int) -> Transform3D:
@@ -1292,7 +1293,7 @@ func _blank_at(point: Vector2) -> bool:
 
 func _tap_slop() -> float:
 	var vp := get_viewport().get_visible_rect().size
-	return clampf(minf(vp.x, vp.y) * 0.018, TAP_SLOP, 26.0)
+	return clampf(minf(vp.x, vp.y) * 0.022, TAP_SLOP, 28.0)
 
 func _screen_bounds(t: Transform3D) -> Rect2:
 	var bounds := Rect2()
@@ -1305,13 +1306,19 @@ func tile_at(point: Vector2) -> int:
 	var hit := _pick(point, false)
 	if hit >= 0: return hit
 	var nearest := INF
+	var slop := _tap_slop()
 	for id in _selectable:
 		if not tiles.has(id): continue
 		var bounds := _screen_bounds(tiles[id].transform)
-		var distance := bounds.get_center().distance_squared_to(point)
-		if bounds.grow(_tap_slop()).has_point(point) and distance < nearest:
+		var expanded := bounds.grow_individual(slop * 0.45, slop * 1.1, slop * 0.45, slop * 1.1)
+		if not expanded.has_point(point): continue
+		# 水平中心距权重更高，避免手指点在牌底边缘时误选相邻牌或已抬起的邻牌
+		var dx := absf(bounds.get_center().x - point.x)
+		var dy := absf(bounds.get_center().y - point.y)
+		var score := dx * dx + dy * dy * 0.25
+		if score < nearest:
 			hit = int(id)
-			nearest = distance
+			nearest = score
 	return hit
 
 func _world_point(point: Vector2, y: float):

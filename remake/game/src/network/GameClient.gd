@@ -258,7 +258,7 @@ func request_record_submission() -> bool:
 	return _command({"kind": "submit_record", "instance": view.room.room_instance_id, "round": view.room.round_number})
 
 func voice_chat_allowed() -> bool:
-	return mode == "lan" and not waiting_for_foreground_view() and _peer != null and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
+	return mode in ["lan", "online"] and not waiting_for_foreground_view() and _peer != null and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
 func set_application_away(away: bool) -> void:
 	if _application_away == away: return
@@ -290,7 +290,7 @@ static func _valid_voice(packet: PackedByteArray) -> bool:
 
 @rpc("any_peer", "call_remote", "unreliable", 2)
 func client_voice(packet: PackedByteArray) -> void:
-	if not _server or mode != "lan" or _host == null or not _valid_voice(packet): return
+	if not _server or mode not in ["lan", "online"] or _host == null or not _valid_voice(packet): return
 	var sender := _api.get_remote_sender_id()
 	if not _can_send_to(sender): return
 	var connection: String = _peer_connections[sender]

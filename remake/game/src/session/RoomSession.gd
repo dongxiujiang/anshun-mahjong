@@ -4,11 +4,11 @@ enum Phase { FIRST_PREPARATION, IN_ROUND, BETWEEN_ROUNDS }
 
 const Packs := preload("res://src/audio/VoicePacks.gd")
 const Catalog := preload("res://src/domain/TileCatalog.gd")
+const MahjongNames := preload("res://src/domain/MahjongNames.gd")
 const ROOM_GRACE_MS: int = 5 * 60 * 1000
 const INITIAL_SCORE: int = 200
 const SEAT_ORDER: Array[int] = [1, 0, 3, 2] # South, east, north, west.
 const _TOKEN_BYTES: int = 32
-const _AI_NAMES := ["七筒", "三条", "幺鸡", "九万"]
 
 var _room_number: String
 var _room_instance_id: String
@@ -30,15 +30,17 @@ func _init(room_number: String) -> void:
 	_room_number = room_number
 	_room_instance_id = _crypto.generate_random_bytes(_TOKEN_BYTES).hex_encode()
 	_closed = _room_instance_id.is_empty()
+	var ai_names := MahjongNames.pick_unique(4)
 	for seat in 4:
-		_seats.append(_ai_seat(seat))
+		_seats.append(_ai_seat(seat, INITIAL_SCORE, ai_names[seat]))
 
 
-static func _ai_seat(seat: int, score: int = INITIAL_SCORE) -> Dictionary:
+static func _ai_seat(seat: int, score: int = INITIAL_SCORE, nickname: String = "") -> Dictionary:
+	var chosen := nickname if not nickname.is_empty() else MahjongNames.pick_one()
 	return {
 			"ai_id": seat,
 			"player_id": "",
-			"nickname": _AI_NAMES[seat],
+			"nickname": chosen,
 			"avatar": 1,
 			"voice_pack": Packs.ORDER[seat],
 			"suit_order": Catalog.SUITS,
@@ -49,6 +51,33 @@ static func _ai_seat(seat: int, score: int = INITIAL_SCORE) -> Dictionary:
 			"connection_id": "",
 			"token_hash": PackedByteArray(),
 		}
+
+
+func _seat_nicknames(skip_seat: int = -1) -> Array:
+	var used := []
+	for idx in _seats.size():
+		if idx == skip_seat:
+			continue
+		var nick := str(_seats[idx].get("nickname", ""))
+		if not nick.is_empty():
+			used.append(nick)
+	return used
+
+
+func _dedupe_ai_nicknames() -> void:
+	var seen := {}
+	for occupant in _seats:
+		if int(occupant.get("ai_id", -1)) < 0:
+			var human_nick := str(occupant.get("nickname", ""))
+			if not human_nick.is_empty():
+				seen[human_nick] = true
+	for occupant in _seats:
+		if int(occupant.get("ai_id", -1)) >= 0:
+			var nick := str(occupant.get("nickname", ""))
+			if nick.is_empty() or seen.has(nick):
+				nick = MahjongNames.pick_one(seen.keys())
+				occupant.nickname = nick
+			seen[nick] = true
 
 
 static func is_valid_nickname(nickname: String) -> bool:
@@ -110,6 +139,7 @@ func join(player_id: String, nickname: String, connection_id: String, now_ms: in
 		occupant.merge(profile, true)
 		occupant.connection_id = connection_id
 		occupant.token_hash = token.sha256_buffer()
+		_dedupe_ai_nicknames()
 		if claiming:
 			_owner_token_hash.clear()
 			_owner_player_id = player_id
@@ -161,7 +191,7 @@ func leave_human(connection_id: String, now_ms: int) -> bool:
 	if seat < 0 or not disconnect_human(connection_id, now_ms):
 		return false
 	var score: int = _seats[seat].score
-	_seats[seat] = _ai_seat(seat, score)
+	_seats[seat] = _ai_seat(seat, score, MahjongNames.pick_one(_seat_nicknames(seat)))
 	if _seats.all(func(occupant): return occupant.player_id.is_empty()):
 		_closed = true
 	return true

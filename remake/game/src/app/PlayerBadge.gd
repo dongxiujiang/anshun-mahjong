@@ -158,14 +158,14 @@ func set_mic_active(active: bool, muted: bool = false) -> void:
 	mic_dot.tooltip_text = "麦克风已开启 · 已取消收听" if muted else "麦克风已开启"
 
 
-func set_voice_indicator(show_tag: bool, is_local: bool, mic_on: bool, speaker_muted: bool) -> void:
+func set_voice_indicator(show_tag: bool, is_local: bool, mic_on: bool, speaker_muted: bool, pending: bool = false) -> void:
 	if not show_tag:
 		if voice_badge.visible:
 			voice_badge.hide()
 			_voice_state_key = ""
 			_fit_minimum()
 		return
-	var key := "%s|%s|%s" % [str(is_local), str(mic_on), str(speaker_muted)]
+	var key := "%s|%s|%s|%s" % [str(is_local), str(mic_on), str(speaker_muted), str(pending)]
 	if key == _voice_state_key and voice_badge.visible:
 		return
 	_voice_state_key = key
@@ -179,6 +179,11 @@ func set_voice_indicator(show_tag: bool, is_local: bool, mic_on: bool, speaker_m
 			fill = Color("#185c42")
 			border = ACTIVE
 			ink = Color("#eafff4")
+		elif pending:
+			text = "开启中"
+			fill = Color("#3b3015")
+			border = Color("#e5bc63")
+			ink = Color("#fff0c2")
 		else:
 			text = "麦关"
 			fill = Color("#2e1e21")

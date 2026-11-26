@@ -145,7 +145,7 @@ func _draw_spacing() -> void:
 								var note := "owner %d viewer %d count %d %s flat %s scale %s yaw %s" % [owner, viewer, count, phase, flat, magnification, rotation]
 								if count == 0:
 									if owner == viewer:
-										if not flat and phase == "turn": drawn.origin -= Layout.facing(owner) * Vector3(0, 0, 2.8)
+										if not flat and phase == "turn": drawn.origin -= Layout.facing(owner) * Vector3(0, 0, Table.OWN_HAND_FORWARD_SHIFT)
 										drawn = board._magnify_hand(drawn, owner, 1.0 / magnification)
 									elif phase != "turn":
 										drawn = board._magnify_hand(drawn, owner, 1.0 / 1.24)

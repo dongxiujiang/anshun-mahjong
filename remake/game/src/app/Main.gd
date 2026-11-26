@@ -10,6 +10,7 @@ const ProfileSetup := preload("res://src/app/ProfileSetup.gd")
 const PlayerBadge := preload("res://src/app/PlayerBadge.gd")
 const TableActionButton := preload("res://src/app/TableActionButton.gd")
 const WinFeedback := preload("res://src/app/WinFeedback.gd")
+const FlipChickenReveal := preload("res://src/app/FlipChickenReveal.gd")
 const ActionEffectsStage := preload("res://src/app/ActionEffectsStage.gd")
 const TingAssistantOverlay := preload("res://src/app/TingAssistantOverlay.gd")
 const StatusTelemetryBar := preload("res://src/app/StatusTelemetryBar.gd")
@@ -146,9 +147,12 @@ var _teaching_button: Button
 var _auto_play_button: Button
 var _teaching_status: Label
 var _voice_status_text := ""
+var _last_voice_toast := ""
 var _speaker_error := ""
 var _buttons: HBoxContainer
 var _win_feedback: WinFeedback
+var _flip_reveal: FlipChickenReveal
+var _pending_settlement_key := ""
 var _fx_stage: ActionEffectsStage
 var _ting_overlay: TingAssistantOverlay
 var _telemetry_bar: StatusTelemetryBar
@@ -219,6 +223,10 @@ func _ready() -> void:
 	_win_feedback = WinFeedback.new()
 	_safe.add_child(_win_feedback)
 	_win_feedback.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_flip_reveal = FlipChickenReveal.new()
+	_safe.add_child(_flip_reveal)
+	_flip_reveal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_flip_reveal.finished.connect(_flip_reveal_finished)
 	_fx_stage = ActionEffectsStage.new()
 	_safe.add_child(_fx_stage)
 	_fx_stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -304,6 +312,7 @@ func _setup_table() -> void:
 	_table.swipe_discard.connect(_swipe_discard)
 	_dice = Dice.new()
 	_dice.authoritative = false
+	_dice.scale = Vector3.ONE * 2.25
 	_board_world.add_child(_dice)
 	_dice.hide()
 
@@ -318,7 +327,7 @@ func _setup_sound() -> void:
 	_voice.speaker_changed.connect(func(_seat: int, _audible: bool):
 		_speaker_error = ""
 		_refresh_voice_status())
-	_voice.set_directory_url(_settings.profile().directory_url)
+	_voice.set_directory_url(_online_url())
 	_sound = SoundStage.new()
 	add_child(_sound)
 	_sound.bind_client(_client, _voice)
@@ -407,6 +416,7 @@ func _show(screen: String) -> void:
 	_page_panel = null
 	_page_content = null
 	if is_instance_valid(_win_feedback) and screen not in ["play","settlement"]: _win_feedback.cancel()
+	if screen != "play": _cancel_flip_reveal()
 	if is_instance_valid(_fx_stage) and screen != "play":
 		_fx_stage.clear_all()
 		if screen != "settlement":
@@ -1410,7 +1420,8 @@ func _sync_foreground_controls() -> void:
 	if waiting:_register_modal(_foreground_shade,"reconnect")
 	elif _page_key=="reconnect":_restore_modal_page()
 	_safe.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED if waiting else Control.FOCUS_BEHAVIOR_INHERITED
-	var table_input := _screen=="play" and not waiting and not is_instance_valid(_leave_overlay) and not _transition.active
+	var flip_active := is_instance_valid(_flip_reveal) and _flip_reveal.visible
+	var table_input := _screen=="play" and not waiting and not is_instance_valid(_leave_overlay) and not _transition.active and not flip_active
 	_table.set_process_input(table_input)
 	_table.set_process_unhandled_input(table_input)
 	if _screen == "play": _refresh_actions()
@@ -1429,6 +1440,9 @@ func _go_back() -> void:
 		return
 	if is_instance_valid(_leave_overlay):
 		_dismiss_leave()
+		return
+	if is_instance_valid(_flip_reveal) and _flip_reveal.visible:
+		_flip_reveal.finish_now()
 		return
 	match _screen:
 		"play": _request_leave()
@@ -1866,7 +1880,17 @@ func _view_changed(view: Dictionary) -> void:
 		if not was_waiting and not prev_round.is_empty():
 			_trigger_action_fx(prev_round, round_view)
 		if won_now:
-			_show_win_feedback.call_deferred(round_view.get("result", {}), str(view.room.room_instance_id) + "/" + str(view.room.round_number))
+			var finish_key := str(view.room.room_instance_id) + "/" + str(view.room.round_number)
+			var round_result: Dictionary = round_view.get("result", {})
+			if not _view.get("settlement", {}).is_empty() and is_instance_valid(_flip_reveal) and _flip_reveal.present(finish_key, round_result, _view.room.seats):
+				_pending_settlement_key = finish_key
+				_cancel_table_input()
+				if is_instance_valid(_hud):
+					_hud.hide()
+				if is_instance_valid(_ting_overlay):
+					_ting_overlay.clear_all()
+				_sync_foreground_controls()
+			_show_win_feedback.call_deferred(round_result, finish_key)
 	_update_screen()
 	if _sort_wait_ack and not _choices().get("actions",[]).has("self_win"):
 		_sort_wait_ack = false
@@ -1909,11 +1933,19 @@ func _update_screen() -> void:
 	var room: Dictionary = _view.room
 	var result: Dictionary = _view.get("settlement", {})
 	if room.get("rolling", false) or int(room.phase) == Room.Phase.IN_ROUND:
+		_cancel_flip_reveal()
 		if _screen != "play":
 			_show("play")
 		_refresh_hud()
 	elif not result.is_empty():
 		var key := "%s/%d" % [room.room_instance_id, int(result.round_number)]
+		if _pending_settlement_key == key and is_instance_valid(_flip_reveal) and _flip_reveal.is_active_for(key):
+			if _screen != "play":
+				_show("play")
+			if is_instance_valid(_hud):
+				_hud.hide()
+			return
+		_cancel_flip_reveal()
 		if _result_seen != key or _screen in ["home", "connect"]:
 			_result_seen = key
 			_show("settlement")
@@ -1922,8 +1954,10 @@ func _update_screen() -> void:
 		elif _screen == "settlement":
 			_refresh_settlement_names()
 	elif _screen != "room":
+		_cancel_flip_reveal()
 		_show("room")
 	else:
+		_cancel_flip_reveal()
 		_refresh_room()
 
 
@@ -2037,16 +2071,24 @@ func _toggle_microphone() -> void:
 	if _screen != "play" or is_instance_valid(_leave_overlay) or _waiting_for_foreground() or not is_instance_valid(_voice) or _mode == "solo":
 		return
 	_speaker_error = ""
+	if _mode == "online":
+		_voice.set_directory_url(_online_url())
 	var want_on: bool = not _voice.microphone_requested()
 	_voice.set_microphone(want_on)
 	_refresh_voice_status()
 	if is_instance_valid(_ting_overlay):
-		_ting_overlay.show_toast("麦克风已开启" if want_on else "麦克风已关闭", 1.4)
+		var msg := _voice.message if not _voice.message.is_empty() else ("麦克风已开启" if want_on else "麦克风已关闭")
+		_last_voice_toast = msg
+		_ting_overlay.show_toast(msg, 1.8)
 
 
-func _voice_status(_recording: bool, _message: String) -> void:
+func _voice_status(_recording: bool, message: String) -> void:
 	_refresh_voice_status()
 	_refresh_identity_voice()
+	if _screen == "play" and is_instance_valid(_ting_overlay) and not message.is_empty() and message != _last_voice_toast:
+		if message != "麦克风已关闭" or _last_voice_toast == "麦克风已开启":
+			_last_voice_toast = message
+			_ting_overlay.show_toast(message, 1.8)
 
 
 func _speaker_preference_failed(message: String) -> void:
@@ -2091,9 +2133,10 @@ func _refresh_identity_voice() -> void:
 		var pid := str(badge.context.get("player_id", ""))
 		var has_human := multiplayer_active and seat in range(seats.size()) and not VoiceController.remote_player_id(seats[seat]).is_empty()
 		var mic_on: bool = _voice.name_mic_active(seat)
+		var mic_pending: bool = local and not mic_on and _voice.microphone_requested()
 		var muted: bool = not local and not _voice.speaker_enabled_for(pid)
 		badge.set_mic_active(mic_on, muted)
-		badge.set_voice_indicator(has_human, local, mic_on or (local and _voice.microphone_requested()), muted)
+		badge.set_voice_indicator(has_human, local, mic_on, muted, mic_pending)
 		if local:
 			badge.tooltip_text = ("麦克风已开启（点击关闭）\n" if mic_on else "麦克风已关闭（点击开启）\n") + _voice_status_text
 		elif has_human:
@@ -2480,6 +2523,19 @@ func _play_cue(clip: String, pitch: float = 1.0) -> void:
 	if is_instance_valid(_sound):
 		_sound.play_cue(clip, pitch)
 
+func _cancel_flip_reveal() -> void:
+	_pending_settlement_key = ""
+	if is_instance_valid(_flip_reveal):
+		_flip_reveal.cancel()
+
+
+func _flip_reveal_finished(key: String) -> void:
+	if _pending_settlement_key == key:
+		_pending_settlement_key = ""
+	if not _view.is_empty():
+		_update_screen()
+
+
 func _cancel_chicken_reveal() -> void:
 	if _chicken_reveal_tween != null and _chicken_reveal_tween.is_valid():
 		_chicken_reveal_tween.kill()
@@ -2528,9 +2584,13 @@ func _start_chicken_reveal(settlement: Dictionary) -> void:
 					seen_ids[id] = true
 					hit_ids.append(id)
 					counts[label] = int(counts.get(label, 0)) + 1
+	var flip_idx := int(_round_projection.get("result", {}).get("flip_wall_index", -1))
+	if flip_idx >= 0 and not seen_ids.has(flip_idx) and _table.tiles.has(flip_idx):
+		seen_ids[flip_idx] = true
+		hit_ids.append(flip_idx)
 	if hit_ids.is_empty():
 		return
-	# 结算静默金光标亮所有计分鸡牌，不再播放连续嘀嘀声与数币噪音
+	# 结算静默金光标亮翻出鸡牌与所有计分鸡牌，不再播放连续嘀嘀声与数币噪音
 	_table.set_chicken_highlights(hit_ids)
 
 func _show_win_feedback(result: Dictionary, key: String) -> void:
@@ -3002,6 +3062,7 @@ func _back_home(destination: String = "home") -> void:
 	_completed_presentation.clear()
 	_tile_action = ""
 	_result_seen = ""
+	_cancel_flip_reveal()
 	_live_ticket.clear()
 	_set_status("")
 	if was_seated and destination=="home":
@@ -3169,6 +3230,7 @@ func _session_ended(reason: String) -> void:
 			_recovery_ticket.clear()
 		return
 	if _screen not in ["home", "connect"]:
+		_cancel_flip_reveal()
 		_table.apply_view({})
 		_view.clear()
 		_round_projection.clear()
