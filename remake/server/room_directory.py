@@ -404,6 +404,13 @@ class Handler(BaseHTTPRequestHandler):
         if status == 413:
             try:
                 self.connection.shutdown(socket.SHUT_WR)
+                self.connection.settimeout(0.5)
+                drained = 0
+                while drained < 3 * 1024 * 1024:
+                    chunk = self.connection.recv(65536)
+                    if not chunk:
+                        break
+                    drained += len(chunk)
             except OSError:
                 pass
 
