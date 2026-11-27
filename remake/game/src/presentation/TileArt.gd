@@ -2,6 +2,7 @@ extends RefCounted
 ## The approved existing artwork and its original UVs are shared by the table and settlement icons.
 const ROOT := "res://assets/tiles/classic/"
 const RESIN = preload("res://src/presentation/TileResin.gdshader")
+const RESIN_SMOOTH = preload("res://src/presentation/TileResinSmooth.gdshader")
 const Themes = preload("res://src/presentation/TableTheme.gd")
 
 static var _meshes := {}
@@ -15,6 +16,7 @@ static var _match_highlight_material: ShaderMaterial
 static var _chicken_glow_material: ShaderMaterial
 static var _hint_glow_material: ShaderMaterial
 static var _tile_back_id := "jade"
+static var _quality := "detail"
 
 
 static func _load_library() -> void:
@@ -41,9 +43,26 @@ static func _load_library() -> void:
 	_hint_glow_material.set_shader_parameter("glow_amount", 0.42)
 	_hint_glow_material.set_shader_parameter("glow_color", Color("#7ef0bd"))
 	apply_back_theme(_tile_back_id)
+	apply_quality(_quality)
 	for item in library.get_item_list():
 		var value := library.get_item_name(item)
 		_meshes[value] = library.get_item_mesh(item)
+
+
+static func apply_quality(value: String) -> void:
+	_quality = "detail" if value == "detail" else "smooth"
+	for mat in [_visible_material, _hidden_material, _match_highlight_material, _chicken_glow_material, _hint_glow_material]:
+		if mat == null:
+			continue
+		var params := {}
+		for key in ["artwork", "printed", "ivory", "green", "glow_amount", "glow_color"]:
+			params[key] = mat.get_shader_parameter(key)
+		mat.shader = RESIN if _quality == "detail" else RESIN_SMOOTH
+		for key in params:
+			if params[key] != null:
+				mat.set_shader_parameter(key, params[key])
+		if _quality == "detail":
+			mat.set_shader_parameter("engraving", load(ROOT + "mahJong_NORM.png"))
 
 
 static func apply_back_theme(id: String) -> void:

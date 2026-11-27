@@ -71,6 +71,7 @@ func build(profile: Dictionary, can_edit_profile: bool) -> void:
 	var look_fields := _section_card(match_cols, "牌桌外观与辅助")
 	var theme_opt := _option_with_swatch(look_fields, "牌桌主题", "table_theme", TableTheme.table_labels(), TableTheme.TABLE_ORDER, profile.get("table_theme", "jade_classic"), true)
 	_option_with_swatch(look_fields, "牌背样式", "tile_back", TableTheme.tile_back_labels(), TableTheme.TILE_BACK_ORDER, profile.get("tile_back", "jade"), false)
+	_toggle(look_fields, "省电帧率 (30 FPS)", "power_save", profile.get("power_save", false))
 	_option(look_fields, "画质", "quality", ["流畅", "精致"], ["smooth", "detail"], profile.quality)
 	_toggle(look_fields, "听牌与同牌提示", "smart_hints", profile.get("smart_hints", true))
 	_toggle(look_fields, "AI出牌参谋", "teaching_enabled", profile.get("teaching_enabled", false))

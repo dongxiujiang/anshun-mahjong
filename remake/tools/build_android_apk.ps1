@@ -74,6 +74,8 @@ if ($godotExit -ne 0 -or -not (Test-Path $OutputApk)) {
 }
 
 Write-Host "[4/4] Verifying APK signature and metadata..." -ForegroundColor Cyan
+$Version = Get-Content (Join-Path $RepoRoot "remake\version.json") -Raw | ConvertFrom-Json
+Write-Host "  Expected version: $($Version.version) (code $($Version.version_code))"
 $BuildToolsDir = Get-ChildItem (Join-Path $AndroidHome "build-tools") -Directory | Sort-Object Name -Descending | Select-Object -First 1
 if ($BuildToolsDir) {
     $ApkSigner = Join-Path $BuildToolsDir.FullName "apksigner.bat"
@@ -92,7 +94,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($OutputApk)
 try {
     $names = @($zip.Entries | ForEach-Object { $_.FullName })
-    $mustHave = @("TableTheme", "CareerPanel", "TingAssistantOverlay", "StatusTelemetryBar", "MahjongNames", "FlipChickenReveal", "table-layout.json", "tile_select")
+    $mustHave = @("TileResinSmooth", "MainLobbyBuilder", "LeaveConfirmOverlay", "TableTheme", "CareerPanel", "TingAssistantOverlay", "StatusTelemetryBar", "MahjongNames", "FlipChickenReveal", "table-layout.json", "tile_select")
     $mustNotHave = @("LayoutDesigner", "SeatedCharacter", "character_01_seated", "assets/tests/")
     foreach ($token in $mustHave) {
         if (-not ($names | Where-Object { $_ -like "*$token*" } | Select-Object -First 1)) {

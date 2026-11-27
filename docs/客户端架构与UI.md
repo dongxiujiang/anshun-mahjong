@@ -35,7 +35,8 @@
 
 ## 三、全链路性能优化
 
-1. **角色立绘显存与体积优化**：15 张立绘由 `1086×1448`（23.69 MB，~94 MB 显存）经 Lanczos 重采样至视网膜级 `384×512`（3.05 MB，~11 MB 显存），APK 体积瘦身至 **85.86 MB**，Android 冷启动实测 **1.88 秒**。
-2. **冷启动按需加载**：`TileArt.gd` 改为按需懒提取单张牌面 UV 并缓存横置牌面；`SoundStage.gd` 优先加载 Godot 预导入二进制音频并在静默期自动关闭 `_process`。
-3. **零无效 3D 渲染**：菜单/大厅界面关闭牌桌 3D `SubViewport`（`UPDATE_DISABLED`）；`RoomBrowser` 空房间时关闭 3D 视口、有房按需 `UPDATE_ONCE`；牌桌 `ReflectionProbe` 改为 `UPDATE_ONCE`。
-4. **消除逐帧分配与冗余网格**：复用落牌涟漪网格、缓存手牌基准锚点、`WinFeedback` 预缓存 `StyleBoxFlat`、`DiceRoll` 静态缓存轻量化骰子网格、`StatusTelemetryBar` 数值不变零重绘。
+1. **显存专项优化（-84% ~ -88% GPU VRAM）**：移除 GL Compatibility 下单节点永久占用 257 MB 显存的 `ReflectionProbe`（精致档保留零显存开销的 `REFLECTION_SOURCE_BG` 柔光反射），使单机精致档显存由 `310.48 MB` 降至 **`49.37 MB`**、流畅档降至 **`35.31 MB`**（纹理显存仅 `28.81 MB`）。
+2. **阴影与着色器分档**：方向光阴影范围收紧至 `42.0`、移动端阴影图 `1024`，平躺的牌墙与弃牌关闭投射阴影；流畅档切换至零法线采样的 `TileResinSmooth.gdshader`；`mahJong.png` 开启 mipmap、`mahJong_NORM.png` 开启 VRAM 压缩与 mipmap；新增移动端低帧自动降档与「省电帧率 (30 FPS)」开关。
+3. **角色立绘显存与体积优化**：15 张立绘由 `1086×1448`（23.69 MB，~94 MB 显存）经 Lanczos 重采样至视网膜级 `384×512`（3.05 MB，~11 MB 显存），QA 安装包 85.86 MB，Android 冷启动实测 **1.88 秒**；另新增纯 `arm64-v8a` 的 `Android Release` 导出预设用于正式包瘦身。
+4. **冷启动按需加载与模块解耦**：`TileArt.gd` 按需懒提取单张牌面 UV 并缓存横置牌面；`SoundStage.gd` 优先加载预导入二进制音频并在静默期关闭 `_process`；虚拟键盘轮询改为输入框聚焦触发；`Main.gd` 拆出 `MainLobbyBuilder.gd` 与 `LeaveConfirmOverlay.gd`（瘦身 748 行）。
+5. **零无效 3D 渲染与池化**：菜单/大厅关闭牌桌 3D `SubViewport`（`UPDATE_DISABLED`）；`RoomBrowser` 空房停用视口、有房 `UPDATE_ONCE`；复用落牌涟漪、缓存手牌锚点、预缓存 `StyleBoxFlat` 与骰子网格。

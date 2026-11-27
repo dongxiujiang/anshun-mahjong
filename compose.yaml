@@ -2,6 +2,9 @@ name: mahjong-online
 
 services:
   app:
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 512
     build: .
     image: mahjong-online:local
     restart: unless-stopped
@@ -33,6 +36,9 @@ services:
       - no-new-privileges:true
 
   caddy:
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
     image: caddy:2-alpine
     restart: unless-stopped
     network_mode: "service:app"

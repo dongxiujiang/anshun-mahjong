@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - "remake/**"
   pull_request:
   workflow_dispatch:
 
@@ -52,13 +53,14 @@ jobs:
 
       - name: Run game checks
         shell: bash
-        run: python -X utf8 remake/game/tools/run_checks.py --godot "$(command -v godot)"
+        run: python -X utf8 remake/game/tools/run_checks.py --godot "$(command -v godot)" --timeout 300
 
       - name: Run room directory and record storage checks
         shell: bash
         run: |
           python -X utf8 remake/server/test_room_directory.py --godot "$(command -v godot)"
           python -X utf8 remake/server/test_record_store.py --godot "$(command -v godot)"
+          python -X utf8 remake/server/test_portal_api.py --godot "$(command -v godot)"
 
       - name: Upload game check logs
         if: ${{ always() }}

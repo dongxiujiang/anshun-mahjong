@@ -27,6 +27,8 @@ const DEFAULTS := {
 	"speaker_gain": 0.8,
 	"difficulty": "low",
 	"quality": "detail",
+	"power_save": false,
+	"quality_manual": false,
 	"directory_url": "",
 	"update_manifest_url": "",
 	"discard_seconds": 10,
@@ -142,7 +144,7 @@ static func _valid(key: String, value) -> bool:
 			return value is Array and value.size() == 3 and Catalog.SUITS.all(func(suit): return value.has(suit))
 		"hand_priority":
 			return value in ["multiple", "pattern"]
-		"novice", "music", "microphone", "voice_enabled", "effects_enabled", "teaching_enabled", "smart_hints":
+		"novice", "music", "microphone", "voice_enabled", "effects_enabled", "teaching_enabled", "smart_hints", "power_save", "quality_manual":
 			return value is bool
 		"table_theme":
 			return value is String and TableTheme.TABLE_THEMES.has(value)

@@ -177,16 +177,9 @@ func _build_table() -> void:
 	key.light_energy = 0.52
 	key.shadow_opacity = 0.35
 	key.shadow_enabled = true
-	key.directional_shadow_max_distance = 85.0
+	key.directional_shadow_max_distance = 42.0
 	add_child(key)
 	_key_light = key
-	_reflection_probe = ReflectionProbe.new()
-	_reflection_probe.update_mode = ReflectionProbe.UPDATE_ONCE
-	_reflection_probe.position = Vector3(0, 2.5, 0)
-	_reflection_probe.size = Vector3(table_edge() * 2.4, 12, table_edge() * 2.4)
-	_reflection_probe.max_distance = table_edge() * 3
-	_reflection_probe.intensity = 0.35
-	add_child(_reflection_probe)
 	apply_quality(quality)
 	apply_theme(_table_theme_id, _tile_back_id)
 	var pointer_mesh := CylinderMesh.new()
@@ -368,7 +361,7 @@ func set_safe_insets(insets: Vector4) -> void:
 func apply_quality(value: String) -> void:
 	quality = "detail" if value == "detail" else "smooth"
 	if is_instance_valid(_key_light): _key_light.shadow_enabled = quality == "detail"
-	if is_instance_valid(_reflection_probe): _reflection_probe.visible = quality == "detail"
+	TileArt.apply_quality(quality)
 	if camera.environment:
 		camera.environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED if quality == "smooth" else Environment.REFLECTION_SOURCE_BG
 
@@ -1151,6 +1144,7 @@ func _place(key, value: String, target: Transform3D, zone: String, animate: bool
 		node.mesh = TileArt.mesh(value)
 		node.material_override = _material(value)
 		node.set_meta("value", value)
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if zone in ["wall", "discard"] else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	node.set_meta("zone", zone)
 	if _deal_start.has(key) or (_opening and _opening.keys.has(key)):
 		_destinations[key] = target

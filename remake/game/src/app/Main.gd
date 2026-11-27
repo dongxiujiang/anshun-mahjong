@@ -1,5 +1,7 @@
 extends Control
 
+const MainLobbyBuilder := preload("res://src/app/MainLobbyBuilder.gd")
+const LeaveConfirmOverlay := preload("res://src/app/LeaveConfirmOverlay.gd")
 const UI := preload("res://src/app/AppTheme.gd")
 const AppBackdrop := preload("res://src/app/AppBackdrop.gd")
 const CharacterArt := preload("res://src/app/CharacterArt.gd")
@@ -86,6 +88,9 @@ var _sort_wait_ack := false
 var _sort_decline_prompt := -1
 var _sort_decline_ready := false
 var _restore_scope := {}
+var _auto_quality_done := false
+var _auto_quality_samples: Array[float] = []
+var _auto_quality_timer: Timer
 var _screen := "home"
 var table_layout_review:=OS.get_cmdline_user_args().has("--table-layout-review")
 var table_play_only:bool=OS.has_feature("mobile") or OS.get_cmdline_user_args().has("--table-play")
@@ -198,6 +203,12 @@ func _ready() -> void:
 	_setup_services()
 	_setup_sound()
 	_apply_quality(_settings.profile().quality)
+	_apply_power_save(_settings.profile().power_save)
+	get_viewport().gui_focus_changed.connect(_keyboard_focus_changed)
+	_auto_quality_timer = Timer.new()
+	_auto_quality_timer.wait_time = 0.5
+	_auto_quality_timer.timeout.connect(_sample_auto_quality)
+	add_child(_auto_quality_timer)
 	_apply_table_theme(_settings.profile())
 	_backdrop = AppBackdrop.new()
 	add_child(_backdrop)
@@ -348,6 +359,34 @@ func _apply_quality(value: String) -> void:
 		if is_instance_valid(browser): browser.apply_quality(value)
 
 
+func _apply_power_save(enabled: bool) -> void:
+	Engine.max_fps = 30 if enabled else 0
+
+
+func _sample_auto_quality() -> void:
+	_auto_quality_samples.append(float(Engine.get_frames_per_second()))
+	if _auto_quality_samples.size() >= 6:
+		_auto_quality_timer.stop()
+		_evaluate_auto_quality(_auto_quality_samples, OS.has_feature("mobile"))
+		_auto_quality_done = true
+
+
+func _evaluate_auto_quality(samples: Array, is_mobile: bool) -> bool:
+	var profile := _settings.profile()
+	if not is_mobile or samples.is_empty() or profile.quality != "detail" or profile.quality_manual or profile.power_save:
+		return false
+	var total := 0.0
+	for sample in samples:
+		total += float(sample)
+	if total / samples.size() >= 34.0 or not _settings.update({"quality": "smooth"}):
+		return false
+	_apply_quality("smooth")
+	_auto_quality_done = true
+	if is_instance_valid(_ting_overlay):
+		_ting_overlay.show_toast("帧率偏低，已自动切换至流畅画质（可在设置中调回）", 3.0)
+	return true
+
+
 func _apply_table_theme(profile: Dictionary) -> void:
 	if is_instance_valid(_table):
 		_table.apply_theme(str(profile.get("table_theme", "jade_classic")), str(profile.get("tile_back", "jade")))
@@ -429,8 +468,12 @@ func _show(screen: String) -> void:
 	if screen == "play":
 		_cancel_chicken_reveal()
 	_profile_setup = null
-	_keyboard_height = 0
-	set_process(OS.has_feature("mobile") and screen not in ["play","settlement"])
+	_keyboard_focus_changed(get_viewport().gui_get_focus_owner())
+	if is_instance_valid(_auto_quality_timer):
+		_auto_quality_timer.stop()
+		if screen == "play" and OS.has_feature("mobile") and not _auto_quality_done and _settings.profile().quality == "detail" and not _settings.profile().quality_manual and not _settings.profile().power_save:
+			_auto_quality_samples.clear()
+			_auto_quality_timer.start()
 	if OS.has_feature("mobile"):
 		get_tree().quit_on_go_back = false
 	if is_instance_valid(_directory) and screen != "connect":
@@ -568,45 +611,19 @@ func _online_url() -> String:
 	return configured.strip_edges().trim_suffix("/")
 
 func _fit_play_badges(badges:Array) -> void:
-	if badges.size()!=4:return
-	for badge in badges:badge.set_compact()
-	badges[0].set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	badges[0].offset_left=8;badges[0].offset_right=128;badges[0].offset_top=-56;badges[0].offset_bottom=-6
-	badges[1].set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
-	badges[1].offset_left=-126;badges[1].offset_right=-6;badges[1].offset_top=-25;badges[1].offset_bottom=25
-	badges[2].set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	badges[2].anchor_left=0.775;badges[2].anchor_right=0.775;badges[2].offset_left=-60;badges[2].offset_right=60;badges[2].offset_top=6;badges[2].offset_bottom=54
-	badges[3].set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
-	badges[3].offset_left=6;badges[3].offset_right=126;badges[3].offset_top=-25;badges[3].offset_bottom=25
+	MainLobbyBuilder.fit_play_badges(self, badges)
 
 
 func _build_profile_setup(first: bool) -> void:
-	var editor := ProfileSetup.new()
-	editor.theme=UI.menu_theme()
-	_frame.add_child(editor)
-	editor.resized.connect(_queue_hud_layout)
-	editor.build(_settings.profile(), first)
-	_profile_setup = editor
-	editor.cancelled.connect(func(): _show(_before_profile))
-	editor.saved.connect(func(nickname, avatar):
-		if _profile_setup != editor:
-			return
-		if not first and not _can_edit_profile():
-			_show(_before_profile)
-			return
-		if not _settings.save_profile(nickname, avatar):
-			editor.show_error("资料未能保存，请重试。")
-			return
-		if first:
-			_enter_home()
-		else:
-			_show(_before_profile)
-	)
-
+	MainLobbyBuilder.build_profile_setup(self, first)
 
 func _fit_profile_setup() -> void:
 	if is_instance_valid(_profile_setup):
 		_profile_setup.fit(_safe.size, _keyboard_height > 0)
+
+
+func _keyboard_focus_changed(control: Control) -> void:
+	set_process(OS.has_feature("mobile") and (control is LineEdit or control is TextEdit or _keyboard_height > 0))
 
 
 func _process(_delta: float) -> void:
@@ -614,43 +631,12 @@ func _process(_delta: float) -> void:
 	if height != _keyboard_height:
 		_keyboard_height = height
 		_fit_safe_area()
+	if height == 0:
+		_keyboard_focus_changed(get_viewport().gui_get_focus_owner())
 
 
 func _build_home() -> void:
-	var content := _panel(860)
-	var hero := HBoxContainer.new()
-	hero.alignment = BoxContainer.ALIGNMENT_CENTER
-	hero.add_theme_constant_override("separation", 18)
-	content.add_child(hero)
-	var left_tile := TitleTile.new(); left_tile.value = "tiao1"; hero.add_child(left_tile)
-	var title_col := VBoxContainer.new()
-	title_col.alignment = BoxContainer.ALIGNMENT_CENTER
-	title_col.add_theme_constant_override("separation", 4)
-	var h1 := UI.label("东秀麻将", 46, UI.GOLD_BRIGHT)
-	h1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var h2 := UI.label("安顺捉鸡 · 新中式 2.5D 实感牌桌", 20, UI.MUTED)
-	h2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_col.add_child(h1)
-	title_col.add_child(h2)
-	hero.add_child(title_col)
-	var right_tile := TitleTile.new(); right_tile.value = "tong8"; hero.add_child(right_tile)
-	var modes := HBoxContainer.new()
-	content.add_child(modes)
-	for mode in ["solo", "lan", "online"]:
-		var button := UI.button(MODE_NAMES[mode], _choose_mode.bind(mode), mode == "solo")
-		button.custom_minimum_size.y = 82
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		modes.add_child(button)
-	UI.focus_later(modes.get_child(0))
-	var bottom := HBoxContainer.new()
-	content.add_child(bottom)
-	var streak_note := " · 🔥%d连胜" % int(_progress.stats.streak) if int(_progress.stats.streak) >= 2 else ""
-	var nickname := UI.label("%s · %s%s" % [_settings.profile().nickname, _progress.rank_title(), streak_note], 18, UI.GOLD)
-	nickname.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom.add_child(nickname)
-	bottom.add_child(UI.button("战绩", _open_career))
-	bottom.add_child(UI.button("设置", _open_settings))
-	_add_status(content)
+	MainLobbyBuilder.build_home(self)
 
 func _open_career() -> void:
 	_before_career = _screen if _screen in ["home", "connect"] else "connect"
@@ -661,12 +647,7 @@ func _open_profile_from_lobby() -> void:
 	_show("profile_edit")
 
 func _build_career() -> void:
-	var content := _panel(960)
-	var career := CareerPanel.new()
-	content.add_child(career)
-	career.build(_progress, _settings.profile().nickname)
-	career.closed.connect(func(): _show(_before_career))
-
+	MainLobbyBuilder.build_career(self)
 
 func _choose_mode(mode: String) -> void:
 	_entry_origin = {}
@@ -689,315 +670,10 @@ func _choose_mode(mode: String) -> void:
 
 
 func _build_connection() -> void:
-	if _mode == "lan":
-		_build_lan_lobby()
-		return
-	var content := _panel(1500)
-	var profile := _settings.profile()
-	var title := HBoxContainer.new()
-	title.set_meta("page_id", "lobby_navigation")
-	title.add_theme_constant_override("separation", 12)
-	content.add_child(title)
-
-	# 左侧玩家身份铭牌（2D 头像 + 昵称 + 段位连胜）
-	var id_card := PanelContainer.new()
-	id_card.add_theme_stylebox_override("panel", UI.card(Color("#0c201be8"), 12, 8, Color("#4c7462"), 1))
-	title.add_child(id_card)
-	var id_row := HBoxContainer.new()
-	id_row.add_theme_constant_override("separation", 10)
-	id_card.add_child(id_row)
-	var avatar_frame := PanelContainer.new()
-	avatar_frame.custom_minimum_size = Vector2(42, 42)
-	avatar_frame.add_theme_stylebox_override("panel", UI.card(Color("#122a22"), 9, 2, UI.GOLD_BORDER, 1))
-	id_row.add_child(avatar_frame)
-	var avatar_rect := TextureRect.new()
-	avatar_rect.texture = CharacterArt.avatar(int(profile.avatar))
-	avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	avatar_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	avatar_frame.add_child(avatar_rect)
-	var id_col := VBoxContainer.new()
-	id_col.alignment = BoxContainer.ALIGNMENT_CENTER
-	id_col.add_theme_constant_override("separation", 1)
-	id_row.add_child(id_col)
-	var nick_label := UI.label(str(profile.nickname), 17, UI.INK)
-	id_col.add_child(nick_label)
-	var streak_note := " · %d连胜" % int(_progress.stats.streak) if int(_progress.stats.streak) >= 2 else ""
-	var rank_label := UI.label("%s%s" % [_progress.rank_title(), streak_note], 13, UI.GOLD)
-	id_col.add_child(rank_label)
-
-	# 中央茶馆匾额标题
-	var brand := HBoxContainer.new()
-	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	brand.alignment = BoxContainer.ALIGNMENT_CENTER
-	brand.add_theme_constant_override("separation", 10)
-	title.add_child(brand)
-	brand.add_child(UI.label("东秀麻将", 28, UI.GOLD_BRIGHT))
-	brand.add_child(UI.label("·  安顺捉鸡茶馆", 16, UI.MUTED))
-
-	# 右侧三个精简功能入口
-	var nav_right := HBoxContainer.new()
-	nav_right.add_theme_constant_override("separation", 8)
-	title.add_child(nav_right)
-	for pair in [["战绩", _open_career], ["资料", _open_profile_from_lobby], ["设置", _open_settings]]:
-		var btn := UI.button(pair[0], pair[1])
-		btn.custom_minimum_size = Vector2(74, 42)
-		nav_right.add_child(btn)
-
-	var divider := ColorRect.new()
-	divider.custom_minimum_size.y = 1
-	divider.color = Color("#b9954c44")
-	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_child(divider)
-
-	# 主体双栏：左侧模式与开桌操作卡片 + 右侧实时 3D 茶馆桌台
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 16)
-	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	content.add_child(body)
-
-	var left_deck := VBoxContainer.new()
-	left_deck.custom_minimum_size.x = 256
-	left_deck.add_theme_constant_override("separation", 12)
-	body.add_child(left_deck)
-
-	# 卡片 1：单机主打入口
-	var solo_card := PanelContainer.new()
-	solo_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#18372cf2"), 14, 14, UI.GOLD_BORDER, 1, 6))
-	left_deck.add_child(solo_card)
-	var solo_col := VBoxContainer.new()
-	solo_col.add_theme_constant_override("separation", 6)
-	solo_card.add_child(solo_col)
-	var solo_head := HBoxContainer.new()
-	solo_col.add_child(solo_head)
-	var solo_title := UI.label("单机开局", 20, UI.GOLD_BRIGHT)
-	solo_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	solo_head.add_child(solo_title)
-	solo_head.add_child(UI.label("随时开搓", 12, UI.GOLD))
-	var solo_desc := UI.label("智能 AI 对局 · 完整安顺捉鸡与冲锋鸡规则", 13, UI.MUTED)
-	solo_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	solo_col.add_child(solo_desc)
-	var solo_btn := UI.button("单机", _choose_mode.bind("solo"), true)
-	solo_btn.custom_minimum_size.y = 48
-	solo_col.add_child(solo_btn)
-
-	# 卡片 2：局域网约局入口
-	var lan_card := PanelContainer.new()
-	lan_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#122a23eb"), 14, 14, Color("#49705e"), 1, 4))
-	left_deck.add_child(lan_card)
-	var lan_col := VBoxContainer.new()
-	lan_col.add_theme_constant_override("separation", 6)
-	lan_card.add_child(lan_col)
-	lan_col.add_child(UI.label("局域网约局", 18, UI.INK))
-	var lan_desc := UI.label("同 Wi-Fi 自动发现 · 亲友面对面零延迟", 13, UI.MUTED)
-	lan_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lan_col.add_child(lan_desc)
-	var lan_btn := UI.button("局域网", _choose_mode.bind("lan"))
-	lan_btn.custom_minimum_size.y = 44
-	lan_col.add_child(lan_btn)
-
-	# 卡片 3：在线茶馆房间工具箱（2×2）
-	var room_card := PanelContainer.new()
-	room_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#10251fe6"), 14, 12, Color("#3f6454"), 1, 4))
-	left_deck.add_child(room_card)
-	var room_col := VBoxContainer.new()
-	room_col.add_theme_constant_override("separation", 8)
-	room_card.add_child(room_col)
-	room_col.add_child(UI.label("在线开桌", 15, UI.GOLD))
-	var actions := GridContainer.new()
-	actions.columns = 2
-	actions.add_theme_constant_override("h_separation", 8)
-	actions.add_theme_constant_override("v_separation", 8)
-	actions.set_meta("page_id", "lobby_actions")
-	room_col.add_child(actions)
-
-	# 右侧：折叠选项区 + 3D 茶馆房间台面
-	var right_hall := VBoxContainer.new()
-	right_hall.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_hall.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right_hall.add_theme_constant_override("separation", 10)
-	body.add_child(right_hall)
-
-	var options_card := PanelContainer.new()
-	options_card.add_theme_stylebox_override("panel", UI.card(Color("#0c1f1ae8"), 12, 12, Color("#567e6a"), 1))
-	options_card.set_meta("page_id", "lobby_options")
-	options_card.visible = false
-	right_hall.add_child(options_card)
-	_online_options = options_card
-	var fields := GridContainer.new()
-	fields.columns = 4
-	fields.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	fields.add_theme_constant_override("h_separation", 10)
-	fields.add_theme_constant_override("v_separation", 8)
-	options_card.add_child(fields)
-	_directory_url = _entry(fields, "服务地址", "HTTPS 在线房间服务")
-	_directory_url.text = _online_url()
-	_room_number = _entry(fields, "房间号", "4–8 位数字")
-	_online_name = _entry(fields, "新房间名称", "")
-	_online_name.text = profile.nickname + "麻将局"
-	_online_name.max_length = 24
-	_online_filter = _entry(fields, "筛选房间", "房间号或名称")
-	_online_filter.text_changed.connect(func(_text): _draw_online_rooms())
-	_add_host_clocks(fields)
-
-	for spec in [
-		["创建房间", _create_online, true],
-		["加入房间", _find_online, false],
-		["刷新房间", _search_online, false],
-		["房间选项", func(): options_card.visible = not options_card.visible; _fit_menu_panel(), false],
-	]:
-		var b := UI.button(spec[0], spec[1], spec[2])
-		b.custom_minimum_size.y = 42
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		actions.add_child(b)
-
-	var stage_card := PanelContainer.new()
-	stage_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stage_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	stage_card.add_theme_stylebox_override("panel", UI.card(Color("#0a1c17d8"), 14, 8, Color("#3a5d4f"), 1))
-	right_hall.add_child(stage_card)
-	_online_results = RoomBrowser.new()
-	_online_results.set_meta("page_id", "room_browser")
-	_online_results.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_online_results.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_online_results.set_meta("page_label", "房间列表")
-	_online_results.seat_selected.connect(_select_room_seat)
-	_online_results.inspection_requested.connect(_inspect_endpoint)
-	stage_card.add_child(_online_results)
-	_online_results.apply_quality(profile.quality)
-	_add_status(right_hall)
-	_refresh_online(_online_rooms)
-	if not _directory_url.text.is_empty():
-		_search_online()
-	UI.focus_later(solo_btn)
-
+	MainLobbyBuilder.build_connection(self)
 
 func _build_lan_lobby() -> void:
-	var content := _panel(1500)
-	var profile := _settings.profile()
-	var title := HBoxContainer.new()
-	title.add_theme_constant_override("separation", 12)
-	content.add_child(title)
-	var back_btn := UI.button("返回", _choose_mode.bind("online"))
-	back_btn.custom_minimum_size = Vector2(82, 42)
-	title.add_child(back_btn)
-	var head_col := VBoxContainer.new()
-	head_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head_col.add_theme_constant_override("separation", 2)
-	title.add_child(head_col)
-	head_col.add_child(UI.label("局域网约局", 26, UI.GOLD_BRIGHT))
-	head_col.add_child(UI.label("连接同一 Wi-Fi 自动发现附近牌桌，点击空座即可入桌", 14, UI.MUTED))
-	var set_btn := UI.button("设置", _open_settings)
-	set_btn.custom_minimum_size = Vector2(74, 42)
-	title.add_child(set_btn)
-
-	var divider := ColorRect.new()
-	divider.custom_minimum_size.y = 1
-	divider.color = Color("#b9954c44")
-	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_child(divider)
-
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 16)
-	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	content.add_child(body)
-
-	var left_deck := VBoxContainer.new()
-	left_deck.custom_minimum_size.x = 256
-	left_deck.add_theme_constant_override("separation", 12)
-	body.add_child(left_deck)
-
-	var host_card := PanelContainer.new()
-	host_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#18372cf2"), 14, 14, UI.GOLD_BORDER, 1, 6))
-	left_deck.add_child(host_card)
-	var host_col := VBoxContainer.new()
-	host_col.add_theme_constant_override("separation", 6)
-	host_card.add_child(host_col)
-	host_col.add_child(UI.label("做房主开桌", 20, UI.GOLD_BRIGHT))
-	var host_desc := UI.label("在本机开启局域网牌桌，同网亲友可免输地址直接加入", 13, UI.MUTED)
-	host_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	host_col.add_child(host_desc)
-	var create_btn := UI.button("创建房间", _host_lan, true)
-	create_btn.custom_minimum_size.y = 48
-	host_col.add_child(create_btn)
-
-	var tools_card := PanelContainer.new()
-	tools_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#10251fe6"), 14, 14, Color("#49705e"), 1, 4))
-	left_deck.add_child(tools_card)
-	var tools_col := VBoxContainer.new()
-	tools_col.add_theme_constant_override("separation", 8)
-	tools_card.add_child(tools_col)
-	tools_col.add_child(UI.label("搜索与直连", 15, UI.GOLD))
-	var refresh_btn := UI.button("刷新房间", _search_lan)
-	refresh_btn.custom_minimum_size.y = 44
-	tools_col.add_child(refresh_btn)
-	var find_btn := UI.button("查找地址", _inspect_lan_address)
-	find_btn.custom_minimum_size.y = 44
-	tools_col.add_child(find_btn)
-
-	var right_hall := VBoxContainer.new()
-	right_hall.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_hall.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right_hall.add_theme_constant_override("separation", 10)
-	body.add_child(right_hall)
-
-	var options_card := PanelContainer.new()
-	options_card.add_theme_stylebox_override("panel", UI.card(Color("#0c1f1ae8"), 12, 12, Color("#567e6a"), 1))
-	options_card.visible = false
-	right_hall.add_child(options_card)
-	_lan_options = options_card
-	var options := VBoxContainer.new()
-	options.add_theme_constant_override("separation", 8)
-	options_card.add_child(options)
-
-	var opt_btn := UI.button("房间选项", func(): options_card.visible = not options_card.visible; _fit_menu_panel())
-	opt_btn.custom_minimum_size.y = 42
-	tools_col.add_child(opt_btn)
-
-	var filter_row := GridContainer.new()
-	filter_row.columns = 2
-	filter_row.add_theme_constant_override("h_separation", 10)
-	options.add_child(filter_row)
-	_lan_filter = _entry(filter_row, "查找房间", "房间号或名称")
-	_lan_filter.text_changed.connect(func(_text): _refresh_lan())
-	var fields := GridContainer.new()
-	fields.columns = 4
-	fields.add_theme_constant_override("h_separation", 10)
-	fields.add_theme_constant_override("v_separation", 8)
-	options.add_child(fields)
-	_room_number = _entry(fields, "新房间号", "4–8 位数字")
-	_lan_name = _entry(fields, "房间名称", "")
-	_lan_name.text = profile.nickname + "麻将局"
-	_lan_name.max_length = 24
-	_add_host_clocks(fields)
-	var manual := GridContainer.new()
-	manual.columns = 2
-	manual.add_theme_constant_override("h_separation", 10)
-	options.add_child(manual)
-	_lan_address = _entry(manual, "房间地址", "例如 192.168.1.8:7499")
-	options.add_child(UI.label("需连接同一局域网；输入房主显示的地址，查到房间后选择空座。", 14, UI.MUTED))
-
-	var stage_card := PanelContainer.new()
-	stage_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stage_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	stage_card.add_theme_stylebox_override("panel", UI.card(Color("#0a1c17d8"), 14, 8, Color("#3a5d4f"), 1))
-	right_hall.add_child(stage_card)
-	_lan_results = RoomBrowser.new()
-	_lan_results.empty_hint = "点击左侧「创建房间」做房主开桌\n或点击「刷新房间」搜索同网牌桌"
-	_lan_results.set_meta("page_id", "room_browser")
-	_lan_results.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_lan_results.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_lan_results.set_meta("page_label", "房间列表")
-	_lan_results.seat_selected.connect(_select_room_seat)
-	_lan_results.inspection_requested.connect(_inspect_endpoint)
-	stage_card.add_child(_lan_results)
-	_lan_results.apply_quality(profile.quality)
-	_add_status(right_hall)
-	_search_lan()
-	UI.focus_later(create_btn)
-
+	MainLobbyBuilder.build_lan_lobby(self)
 
 func _search_lan() -> void:
 	if is_instance_valid(_discovery):
@@ -1018,35 +694,13 @@ func _join_lan(discovered: Dictionary) -> void:
 
 
 func _entry(fields: GridContainer, label: String, hint: String) -> LineEdit:
-	fields.add_child(UI.label(label))
-	var field := LineEdit.new()
-	field.custom_minimum_size.y = 48
-	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	field.placeholder_text = hint
-	field.accessibility_name = label
-	fields.add_child(field)
-	return field
-
+	return MainLobbyBuilder.entry(self, fields, label, hint)
 
 func _add_host_clocks(fields: GridContainer) -> void:
-	var profile := _settings.profile()
-	_discard_seconds = _seconds_field(fields, "主出牌时限（秒）", profile.discard_seconds)
-	_response_seconds = _seconds_field(fields, "响应时限（秒）", profile.response_seconds)
-
+	MainLobbyBuilder.add_host_clocks(self, fields)
 
 func _seconds_field(fields: GridContainer, title: String, seconds: int) -> SpinBox:
-	fields.add_child(UI.label(title))
-	var field := SpinBox.new()
-	field.min_value = 1
-	field.max_value = 120
-	field.step = 1
-	field.value = seconds
-	field.accessibility_name = title
-	field.custom_minimum_size.y = 48
-	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	fields.add_child(field)
-	return field
-
+	return MainLobbyBuilder.seconds_field(self, fields, title, seconds)
 
 func _room_clocks() -> Dictionary:
 	var values := {"discard_seconds": int(_discard_seconds.value), "response_seconds": int(_response_seconds.value)}
@@ -1281,59 +935,7 @@ func _can_edit_profile() -> bool:
 
 
 func _build_settings() -> void:
-	var content := _panel(960)
-	var settings_view := SettingsPanel.new()
-	_room_settings_panel = settings_view
-	content.add_child(settings_view)
-	var profile := _settings.profile()
-	profile.merge(_settings_draft, true)
-	_settings_draft.clear()
-	settings_view.build(profile, _can_edit_profile())
-	_sync_room_settings()
-	settings_view.edit_profile_requested.connect(func():
-		if _screen != "settings":
-			return
-		_settings_draft = settings_view.values()
-		_before_profile = "settings"
-		_show("profile_edit" if _can_edit_profile() else "settings")
-	)
-	settings_view.cancelled.connect(_close_settings)
-	settings_view.table_requested.connect(_close_settings)
-	settings_view.saved.connect(func(values):
-		var personal: Dictionary = values.duplicate(true)
-		if not _view.is_empty():
-			personal.erase("difficulty")
-			if _can_edit_room_settings() and not _client.set_difficulty(values.difficulty):
-				settings_view.show_error("房间设置未能发送，请确认连接后重试。")
-				return
-		if not _settings.update(personal):
-			settings_view.show_error("保存失败，请重试。")
-			return
-		_cancel_sort()
-		_restore_scope = {}
-		_order.set_suit_order(values.suit_order)
-		_teaching_enabled=values.get("teaching_enabled",false)
-		_teaching_button.text="关闭教打" if _teaching_enabled else "开启教打"
-		if not _teaching_enabled:
-			if is_instance_valid(_teaching):_teaching.cancel()
-			_teaching_status.text=""
-		_apply_sound(_settings.profile())
-		_apply_quality(values.quality)
-		_apply_table_theme(_settings.profile())
-		if is_instance_valid(_client) and not _view.is_empty():
-			_client.set_draw_style(values.draw_style)
-			_client.set_player_profile(values)
-		if not _round_projection.is_empty():
-			_arrange_hand(_round_projection)
-			_apply_order()
-		_refresh_smart_assist()
-		_close_settings()
-		_request_teaching()
-	)
-	if not _view.is_empty() and int(_view.room.round_number) > 0:
-		settings_view.content.add_child(_record_controls())
-	_add_status(settings_view.content)
-	_sync_settings_operation()
+	MainLobbyBuilder.build_settings(self)
 
 func _sync_settings_operation()->void:
 	if _screen=="settings" and is_instance_valid(_room_settings_panel):
@@ -1511,42 +1113,7 @@ func _request_leave() -> void:
 	_build_leave_overlay()
 
 func _build_leave_overlay()->void:
-	_leave_overlay = Control.new()
-	add_child(_leave_overlay)
-	_leave_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var shade := ColorRect.new()
-	shade.color = Color(0, 0, 0, 0.55)
-	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_leave_overlay.add_child(shade)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var center := CenterContainer.new()
-	_leave_overlay.add_child(center)
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var panel := PanelContainer.new()
-	center.add_child(panel)
-	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 20)
-	panel.add_child(content)
-	var title := UI.label("要离开本局吗？", 27)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	content.add_child(title)
-	var actions := HBoxContainer.new()
-	content.add_child(actions)
-	var stay := UI.button("继续打牌", _dismiss_leave)
-	var leave := UI.button("离开", _back_home, true)
-	for button in [stay, leave]:
-		button.custom_minimum_size = Vector2(164, 54)
-		actions.add_child(button)
-		button.focus_neighbor_top = button.get_path()
-		button.focus_neighbor_bottom = button.get_path()
-	for pair in [[stay, leave], [leave, stay]]:
-		pair[0].focus_next = pair[1].get_path()
-		pair[0].focus_previous = pair[1].get_path()
-		pair[0].focus_neighbor_left = pair[1].get_path()
-		pair[0].focus_neighbor_right = pair[1].get_path()
-	UI.focus_later(stay)
-	_register_modal(_leave_overlay,"leave")
-
+	LeaveConfirmOverlay.build(self)
 
 func _dismiss_leave() -> void:
 	if not is_instance_valid(_leave_overlay):
@@ -1568,125 +1135,10 @@ func _dismiss_leave() -> void:
 
 
 func _build_room() -> void:
-	var content := _panel(780)
-	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 12)
-	content.add_child(header)
-	_room_name = UI.label("", 26, UI.GOLD_BRIGHT)
-	_room_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(_room_name)
-	var set_btn := UI.button("设置", _open_settings)
-	set_btn.custom_minimum_size = Vector2(82, 42)
-	set_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	header.add_child(set_btn)
-
-	var divider := ColorRect.new()
-	divider.custom_minimum_size.y = 1
-	divider.color = Color("#b9954c44")
-	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_child(divider)
-
-	var positions := GridContainer.new()
-	positions.columns = 3
-	positions.add_theme_constant_override("h_separation", 12)
-	positions.add_theme_constant_override("v_separation", 12)
-	content.add_child(positions)
-	_seat_choices.resize(4)
-	for slot in [-1, 3, -1, 2, -2, 0, -1, 1, -1]:
-		if slot == -1:
-			var space := Control.new()
-			space.mouse_filter = MOUSE_FILTER_IGNORE
-			positions.add_child(space)
-			continue
-		if slot == -2:
-			var center_card := PanelContainer.new()
-			center_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			center_card.add_theme_stylebox_override("panel", UI.card(Color("#0c1f1ae0"), 12, 10, Color("#496e5d"), 1))
-			var center_col := VBoxContainer.new()
-			center_col.alignment = BoxContainer.ALIGNMENT_CENTER
-			center_col.add_theme_constant_override("separation", 2)
-			center_card.add_child(center_col)
-			var c_title := UI.label("东秀牌桌", 17, UI.GOLD)
-			c_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			center_col.add_child(c_title)
-			var c_sub := UI.label("人齐准备即开局", 13, UI.MUTED)
-			c_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			center_col.add_child(c_sub)
-			positions.add_child(center_card)
-			continue
-		var target := UI.button("", _move_seat.bind(slot))
-		target.custom_minimum_size = Vector2(216, 76)
-		target.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		target.expand_icon = true
-		target.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		target.add_theme_font_size_override("font_size", 16)
-		target.add_theme_color_override("font_disabled_color", UI.INK)
-		positions.add_child(target)
-		_seat_choices[slot] = target
-	var controls := HBoxContainer.new()
-	controls.add_theme_constant_override("separation", 12)
-	content.add_child(controls)
-	var leave_btn := UI.button("离开房间", _request_leave)
-	leave_btn.custom_minimum_size = Vector2(128, 46)
-	controls.add_child(leave_btn)
-	var filler := Control.new()
-	filler.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	controls.add_child(filler)
-	_ready_button = UI.button("准备", _toggle_ready, true)
-	_ready_button.custom_minimum_size = Vector2(160, 48)
-	controls.add_child(_ready_button)
-	UI.focus_later(_ready_button)
-	_add_status(content)
-	_refresh_room()
-
+	MainLobbyBuilder.build_room(self)
 
 func _refresh_room() -> void:
-	var room: Dictionary = _view.get("room", {})
-	if room.is_empty() or not is_instance_valid(_room_name):
-		return
-	var mine := int(_view.seat)
-	var subtitle := "%s · 房间 %s" % [MODE_NAMES.get(_mode, ""), room.room_number]
-	if _mode == "lan":
-		var addresses: Array = []
-		if _client._address == "127.0.0.1":
-			for address in LanDiscovery._interface_addresses(IP.get_local_interfaces()):
-				addresses.append(address + ":" + str(_client._port))
-		else:
-			addresses.append(_client._address + ":" + str(_client._port))
-		if not addresses.is_empty():
-			subtitle += "\n连接地址：" + " / ".join(addresses)
-	_room_name.text = subtitle
-	var dealer := int(room.get("next_dealer_seat", -1))
-	for seat in 4:
-		var member: Dictionary = room.seats[seat]
-		var occupied := int(member.ai_id) < 0
-		var badge := "可换入" if not occupied else ("暂离" if member.get("away", not member.connected) else ("已准备" if member.ready else "未准备"))
-		if seat == mine:
-			badge = "我 · " + badge
-		var owner: String = member.nickname if occupied else "人机"
-		var dealer_text := " · 庄" if seat == dealer else ""
-		var button := _seat_choices[seat]
-		button.text = "%s家  %s%s\n%d 分 · %s" % [WINDS[seat], owner, dealer_text, int(member.score), badge]
-		button.icon = CharacterArt.avatar(int(member.get("avatar", 1))) if occupied else null
-		button.disabled = occupied
-		if seat == mine:
-			button.add_theme_stylebox_override("disabled", UI.elevated_card(Color("#193b30"), 12, 10, UI.GOLD_BORDER, 2, 4))
-		elif occupied and member.ready:
-			button.add_theme_stylebox_override("disabled", UI.card(Color("#16352b"), 12, 10, Color("#6e9e84"), 1))
-		elif occupied:
-			button.add_theme_stylebox_override("disabled", UI.card(Color("#132a23"), 12, 10, Color("#496e5e"), 1))
-		else:
-			button.remove_theme_stylebox_override("disabled")
-	var countdown := int(room.get("preparation_remaining_ms", -1))
-	if room.get("requires_start", false):
-		_ready_button.text = "开始" if room.seats[mine].player_id == room.owner_player_id else "等待房主开始"
-		_ready_button.disabled = room.seats[mine].player_id != room.owner_player_id
-	else:
-		_ready_button.disabled = false
-		_ready_button.text = "取消准备" if room.seats[mine].ready else "准备"
-	if countdown > 0:
-		_ready_button.text = "即将开局…"
-
+	MainLobbyBuilder.refresh_room(self)
 
 func _move_seat(seat: int) -> void:
 	if not _client.move_to_empty_seat(seat):
@@ -1703,121 +1155,7 @@ func _toggle_ready() -> void:
 
 
 func _build_hud() -> void:
-	_hud = Control.new()
-	_hud.mouse_filter = MOUSE_FILTER_IGNORE
-	_safe.add_child(_hud)
-	_hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var nav := HBoxContainer.new()
-	_navigation=nav
-	nav.mouse_filter = MOUSE_FILTER_IGNORE
-	nav.add_theme_constant_override("separation", 6)
-	_hud.add_child(nav)
-	nav.add_child(UI.button("设置", _open_settings))
-	nav.add_child(UI.button("离开", _request_leave))
-	_auto_play_button = UI.button("AI代打", _toggle_auto_play)
-	nav.add_child(_auto_play_button)
-	_wall_pill = PanelContainer.new()
-	_wall_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_wall_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_wall_pill.add_theme_stylebox_override("panel", UI.card(Color("#0c241ee8"), 10, 6, Color("#b9954c"), 1))
-	_wall_count_label = UI.label("余 108 张", 14, Color("#f4e5bc"))
-	_wall_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_wall_pill.add_child(_wall_count_label)
-	_wall_pill.hide()
-	nav.add_child(_wall_pill)
-	_teaching_button = UI.button("关闭教打" if _teaching_enabled else "开启教打", _toggle_teaching)
-	_teaching_button.visible = is_instance_valid(_teaching)
-	nav.add_child(_teaching_button)
-	for control in nav.get_children():
-		control.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	nav.resized.connect(_queue_hud_layout);nav.minimum_size_changed.connect(_queue_hud_layout)
-
-	# 排序 / 恢复排序独立放置于右下角拇指舒适区，不再挤在左上导航或左下窄角
-	_sort_button = UI.button("排序", _sort_hand)
-	_sort_button.custom_minimum_size = Vector2(88, 38)
-	_sort_button.tooltip_text = "循环查看有效排法；可以自摸时点击会放弃本次自摸"
-	_hud.add_child(_sort_button)
-	_sort_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_sort_button.offset_left = -96; _sort_button.offset_right = -8; _sort_button.offset_top = -94; _sort_button.offset_bottom = -56
-
-	_restore_button = UI.button("恢复排序", _restore_hand_order)
-	_restore_button.custom_minimum_size = Vector2(88, 38)
-	_restore_button.tooltip_text = "恢复默认牌序"
-	_hud.add_child(_restore_button)
-	_restore_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_restore_button.offset_left = -96; _restore_button.offset_right = -8; _restore_button.offset_top = -48; _restore_button.offset_bottom = -10
-	_restore_button.hide()
-
-	# 倒计时钟彻底脱离动态文本容器，独立锚定固定位置，绝不随提示文字显隐跳动
-	_clock_face = TurnClockView.new()
-	_hud.add_child(_clock_face)
-	_clock_face.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
-	_clock_face.offset_left = -82; _clock_face.offset_right = -14; _clock_face.offset_top = -34; _clock_face.offset_bottom = 34
-	_clock_face.hide()
-
-	var notice := VBoxContainer.new()
-	notice.mouse_filter = MOUSE_FILTER_IGNORE
-	_hud.add_child(notice)
-	notice.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	notice.offset_left = -242
-	notice.offset_top = 7
-	_timer = UI.label("", 32)
-	_timer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	notice.add_child(_timer)
-	_timer.hide()
-	_table_message = UI.label("", 16)
-	_table_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	notice.add_child(_table_message)
-	_teaching_status = UI.label("", 17, UI.INK)
-	_teaching_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_teaching_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	notice.add_child(_teaching_status)
-	_sort_status = UI.label("", 16, UI.INK)
-	_sort_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_sort_status.max_lines_visible = 2
-	_sort_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	notice.add_child(_sort_status)
-	_sort_status.hide()
-	for anchor in [Control.PRESET_BOTTOM_LEFT, Control.PRESET_CENTER_RIGHT, Control.PRESET_CENTER_TOP, Control.PRESET_CENTER_LEFT]:
-		var badge := PlayerBadge.new()
-		_hud.add_child(badge)
-		badge.set_anchors_and_offsets_preset(anchor)
-		if anchor == Control.PRESET_CENTER_TOP:
-			badge.grow_horizontal = Control.GROW_DIRECTION_BOTH
-			badge.offset_left = -80
-			badge.offset_right = 80
-		elif anchor == Control.PRESET_BOTTOM_LEFT:
-			badge.offset_top = -68
-			badge.offset_right = 170
-		elif anchor == Control.PRESET_CENTER_RIGHT:
-			badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-			badge.offset_left = -130
-			badge.offset_top = -31
-			badge.offset_bottom = 31
-		else:
-			badge.offset_right = 130
-			badge.offset_top = -31
-			badge.offset_bottom = 31
-		badge.player_pressed.connect(_identity_pressed)
-		badge.resized.connect(_queue_hud_layout)
-		_identities.append(badge)
-	_buttons = HBoxContainer.new()
-	_buttons.mouse_filter = MOUSE_FILTER_IGNORE
-	_buttons.alignment = BoxContainer.ALIGNMENT_END
-	_hud.add_child(_buttons)
-	_buttons.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_buttons.offset_left = -780
-	_buttons.offset_top = -57
-	_buttons.add_theme_constant_override("separation",12)
-	_buttons.resized.connect(_queue_hud_layout)
-	_buttons.minimum_size_changed.connect(_queue_hud_layout)
-	_hud_controls = {"settings": nav.get_child(0), "leave": nav.get_child(1), "auto_play": _auto_play_button,
-		"teaching": _teaching_button, "restore": _restore_button,
-		"clock": _clock_face, "notice": _table_message, "advice": _teaching_status, "actions": _buttons,
-		"sorting":_sort_button,"arrangement":_sort_status}
-	for index in 4: _hud_controls["player/" + str(index)] = _identities[index]
-	_hud.resized.connect(_queue_hud_layout)
-
+	MainLobbyBuilder.build_hud(self)
 
 func _view_changed(view: Dictionary) -> void:
 	if view.is_empty() or not view.has("room"):
@@ -2799,42 +2137,7 @@ func _presentation_finished(prompt_id: int) -> void:
 
 
 func _build_settlement() -> void:
-	var result: Dictionary = _view.get("settlement", {})
-	if result.is_empty():
-		return
-	_settlement_peeking = false
-	_retire_next_round()
-	var final_view := SettlementView.new()
-	_frame.add_child(final_view)
-	var record := _record_controls() if not table_play_only and int(result.get("viewer_seat", -1)) >= 0 else null
-	final_view.show_result(result, _mode, _request_leave, _prepare_next_round, record, table_play_only, _toggle_settlement_peek)
-	_next_round_button = final_view.next_button
-	if table_play_only:
-		final_view.minimum_size_changed.connect(_queue_hud_layout)
-		final_view.resized.connect(_queue_hud_layout)
-		_peek_return_button = UI.button("返回结算", _toggle_settlement_peek, true)
-		_peek_return_button.custom_minimum_size = Vector2(124, 42)
-		_safe.add_child(_peek_return_button)
-		_peek_return_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-		_peek_return_button.offset_left = -62; _peek_return_button.offset_right = 62
-		_peek_return_button.offset_top = -54; _peek_return_button.offset_bottom = -12
-		_peek_return_button.hide()
-	_fit_settlement()
-	_refresh_settlement_names()
-	if is_instance_valid(_progress) and not _view.get("room", {}).is_empty():
-		var rkey := "%s/%d" % [str(_view.room.get("room_instance_id", "")), int(result.get("round_number", 0))]
-		var milestone := _progress.record_settlement(rkey, result, _settlement_viewer())
-		if not milestone.is_empty() and is_instance_valid(_ting_overlay):
-			var notes := PackedStringArray()
-			if int(milestone.get("streak", 0)) >= 2:
-				notes.append("%d 连胜" % int(milestone.streak))
-			if bool(milestone.get("new_record", false)):
-				notes.append("刷新最高单局 +%d 分" % int(milestone.delta))
-			for badge_name in milestone.get("new_badges", []):
-				notes.append("解锁图鉴「%s」" % str(badge_name))
-			if not notes.is_empty():
-				_ting_overlay.show_toast("✦ " + " · ".join(notes), 3.0)
-
+	MainLobbyBuilder.build_settlement(self)
 
 func _toggle_settlement_peek() -> void:
 	if _screen != "settlement" or _frame.get_child_count() != 1:
