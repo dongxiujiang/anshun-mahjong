@@ -101,9 +101,10 @@ func _run() -> void:
 	full.version = "2.4.2"
 	var incompatible := patch.duplicate(); incompatible.base_id = "wrong"
 	check(manager.select_update({"hotpatches": [incompatible], "latest_release": full}, origin).get("kind") == "full", "incompatible patch falls back to full")
-	full.version = "2.4.1"; full.version_code = 9
+	var current_code := manager.current_version_code()
+	full.version = "2.4.1"; full.version_code = current_code + 1
 	check(manager.select_update({"release": full}, origin).get("kind") == "full", "legacy release response and version code bump")
-	full.version_code = 8
+	full.version_code = current_code
 	check(manager.select_update({"latest_release": full}, origin).is_empty(), "same version and code up to date")
 	boot.effective_version = "2.4.2"
 	check(manager.select_update({"release": full}, origin).is_empty(), "base package cannot replace newer patched version")

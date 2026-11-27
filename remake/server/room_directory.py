@@ -36,9 +36,9 @@ HEARTBEAT_TTL = 15
 def _default_game_version():
     try:
         version = json.loads((Path(__file__).resolve().parents[1] / "version.json").read_text(encoding="utf-8"))["version"]
-        return version if isinstance(version, str) and version else "2.4.1"
+        return version if isinstance(version, str) and version else "2.4.2"
     except (OSError, ValueError, KeyError, TypeError):
-        return "2.4.1"
+        return "2.4.2"
 
 
 class DirectoryError(Exception):

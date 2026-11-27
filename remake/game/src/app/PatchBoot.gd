@@ -23,7 +23,7 @@ var _verified_pack_signature := ""
 var _watchdog_timer: Timer
 
 func _init(auto_boot: bool = true) -> void:
-	base_version = str(ProjectSettings.get_setting("application/config/version", "2.4.1"))
+	base_version = str(ProjectSettings.get_setting("application/config/version", "2.4.2"))
 	base_id = str(ProjectSettings.get_setting("updates/base_id", ""))
 	base_version_code = int(ProjectSettings.get_setting("updates/version_code", 0))
 	effective_version = base_version
