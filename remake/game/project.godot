@@ -2,10 +2,20 @@
 config_version=5
 
 [application]
+config/version="2.4.1"
 config/name="东秀麻将"
 config/icon="res://src/app/assets/android_icon.png"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[autoload]
+PatchBoot="*res://src/app/PatchBoot.gd"
+
+[updates]
+base_id="2.4.1-r1"
+version_code=8
+auto_check=true
+manifest_path="/v1/updates/manifest"
 
 [dongxiu]
 online_directory_url="https://mj.dongxiu.fun"

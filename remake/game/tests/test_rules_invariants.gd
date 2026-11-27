@@ -109,6 +109,7 @@ func check_documents() -> void:
 	var loaded := presets.load("res://export_presets.cfg") == OK
 	check(version is Dictionary and loaded, "version metadata could not be read")
 	if version is Dictionary and loaded:
+		check(str(ProjectSettings.get_setting("application/config/version", "")) == str(version.get("version", "")), "project version differs from version metadata")
 		for section in ["preset.0.options", "preset.1.options"]:
 			check(presets.get_value(section, "version/name") == version.get("version"), "%s version name mismatch" % section)
 			check(presets.get_value(section, "version/code") == version.get("version_code"), "%s version code mismatch" % section)

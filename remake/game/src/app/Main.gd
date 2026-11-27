@@ -2,6 +2,8 @@ extends Control
 
 const MainLobbyBuilder := preload("res://src/app/MainLobbyBuilder.gd")
 const LeaveConfirmOverlay := preload("res://src/app/LeaveConfirmOverlay.gd")
+const UpdateManager := preload("res://src/app/UpdateManager.gd")
+const UpdateDialog := preload("res://src/app/UpdateDialog.gd")
 const UI := preload("res://src/app/AppTheme.gd")
 const AppBackdrop := preload("res://src/app/AppBackdrop.gd")
 const CharacterArt := preload("res://src/app/CharacterArt.gd")
@@ -54,6 +56,10 @@ const HIDDEN_HUD := ["teaching","notice","advice","arrangement"]
 var _client: GameClient
 var _discovery: LanDiscovery
 var _directory: RoomDirectory
+var _update_manager: UpdateManager
+var _update_dialog: UpdateDialog
+var _lobby_update_button: Button
+var _startup_update_prompted := false
 var _voice: VoiceController
 var _sound: SoundStage
 var _teaching: TeachingController
@@ -251,6 +257,15 @@ func _ready() -> void:
 	_foreground_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_foreground_shade.retry_requested.connect(_retry_table)
 	_foreground_shade.return_requested.connect(_back_home.bind("connect"))
+	_update_dialog = UpdateDialog.new()
+	add_child(_update_dialog)
+	_update_dialog.closed.connect(_close_update_dialog)
+	_update_dialog.check_requested.connect(_update_manager.check_updates)
+	_update_dialog.download_requested.connect(_update_manager.start_download)
+	_update_dialog.cancel_download_requested.connect(_update_manager.cancel_download)
+	_update_dialog.apply_requested.connect(_update_manager.apply_and_restart)
+	_update_dialog.rollback_requested.connect(_update_manager.rollback_and_restart)
+	_confirm_patch_boot.call_deferred()
 	resized.connect(_fit_safe_area)
 	_safe.resized.connect(_fit_profile_setup)
 	_fit_safe_area()
@@ -261,6 +276,12 @@ func _ready() -> void:
 
 
 func _setup_services() -> void:
+	_update_manager = UpdateManager.new()
+	add_child(_update_manager)
+	_update_manager.configure(_online_url(), str(_settings.profile().get("update_manifest_url", "")))
+	_update_manager.can_restart_callback = func(): return _view.is_empty() and _screen in ["home", "connect", "settings"]
+	_update_manager.state_changed.connect(_update_state_changed)
+	_update_manager.check_finished.connect(_update_check_finished)
 	_setup_client()
 	_discovery = LanDiscovery.new()
 	add_child(_discovery)
@@ -603,6 +624,44 @@ func _enter_home() -> void:
 	_mode = "online"
 	_show("connect")
 	_restore_recent_room.call_deferred()
+	_update_manager.maybe_auto_check()
+
+func _confirm_patch_boot() -> void:
+	var boot := get_node_or_null("/root/PatchBoot")
+	if boot == null: return
+	boot.confirm_boot()
+	if not str(boot.boot_message).is_empty():
+		_ting_overlay.show_toast(str(boot.boot_message))
+		if _screen in ["home", "connect"]:
+			_set_status(str(boot.boot_message))
+
+func _open_update_dialog(check_now: bool = false) -> void:
+	_update_manager.configure(_online_url(), str(_settings.profile().get("update_manifest_url", "")))
+	_update_dialog.open_dialog(_update_manager.snapshot())
+	_frame.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
+	_register_modal(_update_dialog, "update")
+	if check_now and _update_manager.state not in ["available", "downloading", "ready"]:
+		_update_manager.check_updates()
+
+func _close_update_dialog() -> void:
+	if _update_dialog.visible:
+		_update_dialog.close_dialog()
+		return
+	_frame.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
+	if _page_key == "update": _restore_modal_page()
+
+func _update_state_changed(snap: Dictionary) -> void:
+	if is_instance_valid(_update_dialog): _update_dialog.apply_snapshot(snap)
+	if is_instance_valid(_lobby_update_button):
+		var available: bool = snap.state in ["available", "ready"]
+		_lobby_update_button.text = "有新版" if available else "更新"
+		_lobby_update_button.theme_type_variation = "PrimaryButton" if available else ""
+
+func _update_check_finished(has_update: bool, snap: Dictionary) -> void:
+	_update_state_changed(snap)
+	if has_update and snap.automatic and not _startup_update_prompted and _screen in ["home", "connect"] and _view.is_empty() and DisplayServer.get_name() != "headless":
+		_startup_update_prompted = true
+		_open_update_dialog()
 
 func _online_url() -> String:
 	var configured:String=_settings.profile().directory_url
@@ -1038,6 +1097,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _go_back() -> void:
+	if is_instance_valid(_update_dialog) and _update_dialog.visible:
+		_close_update_dialog()
+		return
 	if _table_recovery != TableRecovery.NONE:
 		return
 	if is_instance_valid(_leave_overlay):

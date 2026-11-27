@@ -107,7 +107,7 @@ static func build_connection(app) -> void:
 	brand.add_child(UI.label("东秀麻将", 28, UI.GOLD_BRIGHT))
 	brand.add_child(UI.label("·  安顺捉鸡茶馆", 16, UI.MUTED))
 
-	# 右侧三个精简功能入口
+	# 右侧精简功能入口
 	var nav_right = HBoxContainer.new()
 	nav_right.add_theme_constant_override("separation", 8)
 	title.add_child(nav_right)
@@ -115,6 +115,10 @@ static func build_connection(app) -> void:
 		var btn = UI.button(pair[0], pair[1])
 		btn.custom_minimum_size = Vector2(74, 42)
 		nav_right.add_child(btn)
+	app._lobby_update_button = UI.button("更新", app._open_update_dialog.bind(true))
+	app._lobby_update_button.custom_minimum_size = Vector2(74, 42)
+	nav_right.add_child(app._lobby_update_button)
+	app._update_state_changed(app._update_manager.snapshot())
 
 	var divider = ColorRect.new()
 	divider.custom_minimum_size.y = 1
@@ -564,6 +568,7 @@ static func build_settings(app) -> void:
 	profile.merge(app._settings_draft, true)
 	app._settings_draft.clear()
 	settings_view.build(profile, app._can_edit_profile())
+	settings_view.check_update_requested.connect(app._open_update_dialog.bind(true))
 	app._sync_room_settings()
 	settings_view.edit_profile_requested.connect(func():
 		if app._screen != "settings":

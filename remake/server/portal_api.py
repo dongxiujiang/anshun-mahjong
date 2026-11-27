@@ -168,6 +168,76 @@ class ReleaseCatalog:
         items = self.list_releases()
         return items[0] if items else None
 
+    def list_hotpatches(self) -> list[dict]:
+        if not self.downloads_dir:
+            return []
+        items = []
+        for name in ("hotpatches.json", "releases.json"):
+            try:
+                raw = json.loads((self.downloads_dir / name).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            entries = raw.get("hotpatches", []) if isinstance(raw, dict) else raw if name == "hotpatches.json" else []
+            if isinstance(entries, list):
+                items.extend(item for item in entries if isinstance(item, dict))
+        patches = {}
+        for item in items:
+            filename = item.get("filename", "")
+            if not isinstance(filename, str) or not SAFE_DOWNLOAD.fullmatch(filename) or not filename.lower().endswith(".pck"):
+                continue
+            if any(not isinstance(item.get(key), str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", item[key])
+                   for key in ("version", "base_version")):
+                continue
+            if any(not isinstance(item.get(key), str) or not item[key].strip() for key in ("base_id", "engine")):
+                continue
+            platform = item.get("platform", "android")
+            if not isinstance(platform, str) or platform.lower() not in {"android", "windows", "linux", "all"}:
+                continue
+            try:
+                file_path = (self.downloads_dir / filename).resolve()
+                if not file_path.is_relative_to(self.downloads_dir) or not file_path.is_file():
+                    continue
+                with file_path.open("rb") as fh:
+                    if fh.read(4) != b"GDPC":
+                        continue
+                stat = file_path.stat()
+                sha256 = self._file_sha256(file_path)
+            except (OSError, RuntimeError):
+                continue
+            expected = item.get("sha256", "")
+            if expected not in ("", None):
+                if not isinstance(expected, str) or not re.fullmatch(r"[a-fA-F0-9]{64}", expected) or expected.lower() != sha256:
+                    continue
+            notes = item.get("notes", [])
+            if isinstance(notes, str):
+                notes = notes.splitlines()
+            notes = [line for line in notes if isinstance(line, str)] if isinstance(notes, list) else []
+            patches.setdefault(filename, {
+                "version": item["version"], "base_version": item["base_version"],
+                "base_id": item["base_id"].strip(), "engine": item["engine"].strip(),
+                "platform": platform.lower(), "filename": filename,
+                "size_bytes": stat.st_size, "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                "sha256": sha256,
+                "published_at": str(item.get("published_at") or datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()),
+                "download_url": f"/v1/downloads/{filename}",
+                "direct_url": self.redirect_prefix + filename if self.redirect_prefix else f"/v1/downloads/{filename}",
+                "notes": notes, "mandatory": item.get("mandatory") is True, "available": True,
+            })
+        return sorted(patches.values(), key=lambda patch: tuple(map(int, patch["version"].split("."))), reverse=True)
+
+    def update_manifest(self) -> dict:
+        def version_key(release):
+            version = release["version"]
+            return tuple(map(int, version.split("."))) if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) else (0, 0, 0)
+
+        releases = sorted(self.list_releases(), key=version_key, reverse=True)
+        latest = releases[0] if releases else None
+        packages = {}
+        for release in releases:
+            packages.setdefault(release["platform"].lower(), release)
+        return {"schema": 1, "game_version": latest["version"] if latest else self.game_version,
+                "latest_release": latest, "packages": packages, "hotpatches": self.list_hotpatches()}
+
     def resolve_download(self, filename: str) -> tuple[Path | None, str | None]:
         if not self.downloads_dir or not SAFE_DOWNLOAD.fullmatch(filename):
             return None, None

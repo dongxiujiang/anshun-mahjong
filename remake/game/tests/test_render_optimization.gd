@@ -4,6 +4,7 @@ const Table = preload("res://src/presentation/TableView.gd")
 const Settings = preload("res://src/app/AppSettings.gd")
 const SettingsPanel = preload("res://src/app/SettingsPanel.gd")
 const Main = preload("res://scenes/Main.tscn")
+const AudioRetirement = preload("res://tests/AudioRetirement.gd")
 var checks := 0
 var failures := 0
 func check(ok: bool, message: String) -> void:
@@ -39,6 +40,7 @@ func _run() -> void:
 		var expected = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if zone in ["wall", "discard"] else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		check(table.tiles[999].cast_shadow == expected, "shadow for " + zone)
 	table.queue_free()
+	await process_frame
 	var path = "user://render-optimization-%d.cfg" % Time.get_ticks_usec()
 	var settings = Settings.new(path)
 	check(settings.update({"power_save": true, "quality_manual": true}), "save boolean settings")
@@ -50,6 +52,7 @@ func _run() -> void:
 	panel.build(loaded.profile(), true)
 	check(panel.values().power_save and panel._fields.power_save is CheckButton, "power save toggle")
 	panel.queue_free()
+	await process_frame
 	var app = Main.instantiate()
 	app._settings = loaded
 	root.add_child(app)
@@ -72,7 +75,7 @@ func _run() -> void:
 	check(Engine.max_fps == 30, "power saving limits fps")
 	app._apply_power_save(false)
 	check(Engine.max_fps == 0, "normal fps is unlimited")
-	app.queue_free()
+	await AudioRetirement.release_app(app, self)
 	Engine.max_fps = 0
 	DirAccess.remove_absolute(path)
 	print("Render optimization: %d checks, %d failures" % [checks, failures])

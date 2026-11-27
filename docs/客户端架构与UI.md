@@ -9,7 +9,7 @@
 全局统一采用**深黛墨玉底色 + 古铜描金边框 + 宣纸象牙牌面**的新中式茶馆风格（`AppTheme.gd`、`AppBackdrop.gd`、`TableTheme.gd`）：
 
 1. **首次入局资料页（`ProfileSetup.gd`、`MahjongNames.gd`）**：15 位原创立绘人物两行横向滑动选择；内置 **100 个纯麻将/安顺捉鸡主题昵称库**（无牌名、无重复），支持「挑昵称」5 列滚动面板直选、随机换名与自定义输入；支持手机端返回键失焦与防误退二次确认。
-2. **茶馆主大厅（`Main.gd`、`RoomBrowser.gd`）**：双栏布局——左侧聚合单机开局、局域网约局与在线开桌 2×2 工具箱；右侧展示实时 3D 房间台面，顶部提供战绩、资料、设置入口。
+2. **茶馆主大厅（`Main.gd`、`MainLobbyBuilder.gd`、`RoomBrowser.gd`）**：双栏布局——左侧聚合单机开局、局域网约局与在线开桌 2×2 工具箱；右侧展示实时 3D 房间台面，顶部提供战绩、资料、设置、更新入口（检测到新版本/热补丁时自动高亮提示「有新版」）。
 3. **等待房间（`Main.gd`）**：东西南北四向罗盘选座，展示玩家头像、准备状态与局域网连接地址，人齐准备后无需多余倒计时直接开局。
 4. **2.5D 实感牌桌（`TableView.gd`、`DiceFaces.gdshader`）**：
    - `camera_pitch = 45.4°`，本家手牌放大 `2.06×`（`self_hand_pitch = 68°`，前移 `OWN_HAND_FORWARD_SHIFT = 3.65`，选牌抬高 `0.56`），配合增强防误触容差与水平加权拾取，支持双击/上滑出牌、拖拽理牌与一键智能排序/恢复排序。
@@ -30,6 +30,7 @@
 | **双路语音与名片印章** | `src/audio/VoiceController.gd`、`src/network/GameClient.gd`、`src/app/PlayerBadge.gd` | Android 在线房优先使用腾讯 GME 实时语音（自动读取 `_online_url()` 鉴权），GME 不可用或局域网环境自动无缝回退至 ENet PCM 语音中继；名片旁显示红金 `[庄]`、翠玉 `[听]`，真人分数旁固定展示 `开启中 / 麦开 / 麦关` 与 `发言中 / 收听中 / 已静音`。 |
 | **实时 FPS 与网络延迟** | `src/app/StatusTelemetryBar.gd`、`src/network/GameClient.gd` | 常驻安全区右上角空白区（宽屏单行、窄屏双行，零遮挡），2 Hz 平滑刷新 FPS；局域网/在线服务器基于 ENet 传输层 `PEER_LAST_ROUND_TRIP_TIME` 实时显示连接状态点与毫秒延迟（<60ms 绿 / 60–149ms 金 / ≥150ms 红，以及连接中/重连中/已断开）。 |
 | **战绩与图鉴** | `src/app/CareerPanel.gd`、`PlayerProgress.gd` | 本地统计胜率、连胜、段位与冲锋鸡/大牌图鉴解锁。 |
+| **在线更新与 `.pck` 热补丁** | `src/app/PatchBoot.gd`、`UpdateManager.gd`、`UpdateDialog.gd` | 首顺位 autoload `PatchBoot` 在 `_init()` 预挂载通过 `base_id`/`engine`/`platform`、`GDPC` 魔数与 SHA-256 校验的 `.pck` 热补丁，配备原子状态文件与 20 秒启动失败自动回退看门狗；`UpdateManager` 请求 `/v1/updates/manifest` 自动区分免重装 `.pck` 热补丁与完整安装包（支持安全 302 分流校验、局中禁止重启、headless 静默）；设置页顶部与大厅右上角均提供手动「检查更新」与版本回退弹窗。 |
 
 ---
 

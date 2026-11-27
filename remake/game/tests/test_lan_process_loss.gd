@@ -38,7 +38,7 @@ func _run() -> void:
 	var project := ProjectSettings.globalize_path("res://")
 	host_pid = OS.create_process(OS.get_executable_path(), ["--headless", "--path", project,
 		"--script", "res://tests/test_lan_process_loss.gd", "--", rendezvous])
-	check(host_pid > 0 and await until(func(): return FileAccess.file_exists(rendezvous)), "independent authority opened its port")
+	check(host_pid > 0 and await until(func(): return FileAccess.file_exists(rendezvous) and FileAccess.get_file_as_string(rendezvous).strip_edges().to_int() > 0), "independent authority opened its port")
 	if failures:
 		await finish()
 		return
@@ -82,9 +82,11 @@ func _host(path: String) -> void:
 		return
 	network.set_ready(true)
 	network.start_first_round()
-	var marker := FileAccess.open(path, FileAccess.WRITE)
+	var marker := FileAccess.open(path + ".tmp", FileAccess.WRITE)
 	marker.store_string(str(network.local_port))
+	marker.flush()
 	marker.close()
+	DirAccess.rename_absolute(path + ".tmp", path)
 	if not await until(func(): return not network.view.get("round", {}).get("choices", {}).get("discard_ids", []).is_empty()):
 		quit(1)
 		return
@@ -95,6 +97,7 @@ func _host(path: String) -> void:
 func finish() -> void:
 	if host_pid > 0 and OS.is_process_running(host_pid): OS.kill(host_pid)
 	if FileAccess.file_exists(rendezvous): DirAccess.remove_absolute(rendezvous)
+	if FileAccess.file_exists(rendezvous + ".tmp"): DirAccess.remove_absolute(rendezvous + ".tmp")
 	network.leave()
 	var service = promoted_service()
 	if service != null: service.queue_free()

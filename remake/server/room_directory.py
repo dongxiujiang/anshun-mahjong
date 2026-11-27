@@ -505,6 +505,7 @@ class Handler(BaseHTTPRequestHandler):
             "records_archived": records_summary["total"],
             "records_by_mode": records_summary["by_mode"],
             "downloads_total": total_downloads,
+            "hotpatches_available": len(self.server.portal.list_hotpatches()) if self.server.portal else 0,
             "latest_release": latest,
         }
 
@@ -520,6 +521,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/v1/status":
                 self._reply(200, self._status_payload())
+            elif path == "/v1/updates/manifest":
+                manifest = self.server.portal.update_manifest() if self.server.portal else {
+                    "schema": 1, "game_version": self.server.game_version,
+                    "latest_release": None, "packages": {}, "hotpatches": [],
+                }
+                self._reply(200, manifest)
             elif path == "/v1/releases":
                 releases = self.server.portal.list_releases() if self.server.portal else []
                 self._reply(200, {"releases": releases, "downloads_total": self.server.portal.total_downloads() if self.server.portal else 0})

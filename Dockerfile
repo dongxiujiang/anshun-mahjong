@@ -60,6 +60,7 @@ RUN --mount=type=secret,id=github_token \
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin mahjong
 
 WORKDIR /app
+COPY --chown=mahjong:mahjong remake/version.json /app/remake/version.json
 COPY --chown=mahjong:mahjong remake/game/ /app/remake/game/
 COPY --chown=mahjong:mahjong remake/server/ /app/remake/server/
 COPY --chown=mahjong:mahjong remake/web/ /app/remake/web/

@@ -69,6 +69,10 @@ def main():
         records.append({"suite": suite.stem, "passed": passed, "exit_code": code, "timed_out": timed_out,
                         "pass_marker": marker, "engine_error": engine_error, "seconds": round(time.monotonic() - begin, 3), "command": command})
         print(("PASS " if passed else "FAIL ") + suite.stem, flush=True)
+        if not passed:
+            print(f"  exit_code={code} timed_out={timed_out} pass_marker={marker} engine_error={engine_error}", flush=True)
+            print("  Last 40 non-empty log lines:", flush=True)
+            print("\n".join([line for line in log.splitlines() if line.strip()][-40:]), flush=True)
     hashes_after = source_hashes()
     stable = hashes_before == hashes_after
     passed = bool(records) and stable and all(record["passed"] for record in records)

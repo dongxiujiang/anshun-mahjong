@@ -61,6 +61,7 @@ jobs:
           python -X utf8 remake/server/test_room_directory.py --godot "$(command -v godot)"
           python -X utf8 remake/server/test_record_store.py --godot "$(command -v godot)"
           python -X utf8 remake/server/test_portal_api.py --godot "$(command -v godot)"
+          python -X utf8 remake/tools/test_prepare_hot_patch.py
 
       - name: Upload game check logs
         if: ${{ always() }}

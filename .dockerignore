@@ -1,9 +1,12 @@
 *
 !remake/
+!remake/version.json
 !remake/game/
 !remake/game/**
 !remake/server/
 !remake/server/*.py
+!remake/web/
+!remake/web/**
 !docker/
 !docker/entrypoint.sh
 remake/game/.godot

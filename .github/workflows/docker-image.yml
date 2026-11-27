@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "V[0-9]*"
+      - "v[0-9]*"
   workflow_dispatch:
 
 permissions:
@@ -21,7 +22,7 @@ env:
 jobs:
   image:
     name: Build and push server image
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - name: Checkout

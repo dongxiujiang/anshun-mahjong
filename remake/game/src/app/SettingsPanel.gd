@@ -11,6 +11,7 @@ const SUIT_ORDERS := [
 signal saved(changes: Dictionary)
 signal cancelled
 signal edit_profile_requested
+signal check_update_requested
 signal table_requested
 
 var _fields := {}
@@ -34,7 +35,12 @@ func build(profile: Dictionary, can_edit_profile: bool) -> void:
 	title_col.add_theme_constant_override("separation", 2)
 	header.add_child(title_col)
 	title_col.add_child(UI.label("设置", 28, UI.GOLD_BRIGHT))
-	title_col.add_child(UI.label("牌桌外观、理牌偏好与语音音效", 14, UI.MUTED))
+	var boot := get_node_or_null("/root/PatchBoot")
+	var version := str(boot.effective_version) if boot != null else str(ProjectSettings.get_setting("application/config/version", "2.4.1"))
+	title_col.add_child(UI.label("牌桌外观、理牌偏好与语音音效 · v" + version, 14, UI.MUTED))
+	var update_button := UI.button("检查更新", func(): check_update_requested.emit())
+	update_button.custom_minimum_size = Vector2(116, 42)
+	header.add_child(update_button)
 	var profile_button: Button
 	if can_edit_profile:
 		profile_button = UI.button("个人资料", func(): edit_profile_requested.emit())
