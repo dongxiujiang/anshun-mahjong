@@ -125,12 +125,12 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _anchor_for_seat(rel_seat: int) -> Vector2:
-	# 精准置于各家手牌内侧的宽敞绿呢带，既紧靠对应玩家又绝不压住手牌或中央弃牌河
+	# 收进对应弃牌河附近的绿呢空带，避开外围牌墙与手牌。
 	match rel_seat:
-		0: return Vector2(size.x * 0.50, size.y * 0.72)
-		1: return Vector2(size.x * 0.72, size.y * 0.44)
-		2: return Vector2(size.x * 0.50, size.y * 0.21)
-		_: return Vector2(size.x * 0.28, size.y * 0.44)
+		0: return Vector2(size.x * 0.50, size.y * 0.60)
+		1: return Vector2(size.x * 0.60, size.y * 0.46)
+		2: return Vector2(size.x * 0.50, size.y * 0.27)
+		_: return Vector2(size.x * 0.40, size.y * 0.46)
 
 func _slide_dir_for_seat(rel_seat: int) -> Vector2:
 	match rel_seat:
@@ -155,18 +155,23 @@ func _draw_callout(font: Font, item: Dictionary) -> void:
 	var alpha := clampf(t * 10.0, 0.0, 1.0) * clampf((1.0 - t) * 4.5, 0.0, 1.0)
 	var rel_seat := int(item.rel_seat)
 	var center := _anchor_for_seat(rel_seat) + _slide_dir_for_seat(rel_seat) * (1.0 - ease_in)
+	var pop_t := clampf(t / 0.14, 0.0, 1.0)
+	var pop_scale := lerpf(1.03, 1.0, smoothstep(0.65, 1.0, pop_t))
+	if pop_t < 0.65:
+		pop_scale = lerpf(0.86, 1.03, 1.0 - pow(1.0 - pop_t / 0.65, 3.0))
+	draw_set_transform(center, 0.0, Vector2.ONE * pop_scale)
 	var title: String = str(item.title)
 	var sub: String = str(item.sub)
-	var title_size := 25
-	var sub_size := 16
+	var title_size := 22
+	var sub_size := 15
 	var title_w := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, title_size).x
 	var sub_w := font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, sub_size).x if not sub.is_empty() else 0.0
-	var pad_x := 18.0
+	var pad_x := 14.0
 	var gap := 10.0 if not sub.is_empty() else 0.0
 	var bar_w := 4.0
 	var total_w := maxf(86.0, pad_x * 2.0 + bar_w + 10.0 + title_w + gap + sub_w)
-	var total_h := 44.0
-	var rect := Rect2(center - Vector2(total_w * 0.5, total_h * 0.5), Vector2(total_w, total_h))
+	var total_h := 38.0
+	var rect := Rect2(-Vector2(total_w * 0.5, total_h * 0.5), Vector2(total_w, total_h))
 	var fill: Color = style.fill
 	var accent: Color = style.accent
 	var ink: Color = style.ink
@@ -174,18 +179,20 @@ func _draw_callout(font: Font, item: Dictionary) -> void:
 	# 柔和投影 + 雅致墨玉牌匾（无刺眼放射线与粗糙圆章）
 	draw_style_box(UI.card(Color(0, 0, 0, 0.28 * alpha), 12, 0, Color(0, 0, 0, 0), 0), Rect2(rect.position + Vector2(0, 3), rect.size))
 	draw_style_box(UI.card(Color(fill.r, fill.g, fill.b, fill.a * alpha), 12, 0, Color(accent.r, accent.g, accent.b, 0.78 * alpha), 1), rect)
+	draw_line(rect.position + Vector2(13.0, 1.5), Vector2(rect.end.x - 13.0, rect.position.y + 1.5), Color(1.0, 0.88, 0.57, 0.30 * alpha), 1.0, true)
 	# 左侧竖向色标条（一眼区分碰/杠/暗杠/报听/冲锋鸡）
-	var stripe := Rect2(rect.position + Vector2(10.0, 9.0), Vector2(bar_w, total_h - 18.0))
+	var stripe := Rect2(rect.position + Vector2(9.0, 8.0), Vector2(bar_w, total_h - 16.0))
 	draw_style_box(UI.card(Color(accent.r, accent.g, accent.b, 0.96 * alpha), 2, 0, Color(0, 0, 0, 0), 0), stripe)
 	var text_x := stripe.end.x + 10.0
-	var title_y := rect.position.y + 30.0
+	var title_y := rect.position.y + (total_h - font.get_height(title_size)) * 0.5 + font.get_ascent(title_size)
 	draw_string_outline(font, Vector2(text_x, title_y), title, HORIZONTAL_ALIGNMENT_LEFT, -1, title_size, 3, Color(0.04, 0.08, 0.07, 0.85 * alpha))
 	draw_string(font, Vector2(text_x, title_y), title, HORIZONTAL_ALIGNMENT_LEFT, -1, title_size, Color(ink.r, ink.g, ink.b, alpha))
 	if not sub.is_empty():
 		var sep_x := text_x + title_w + 5.0
-		draw_line(Vector2(sep_x, rect.position.y + 13.0), Vector2(sep_x, rect.end.y - 13.0), Color(accent.r, accent.g, accent.b, 0.35 * alpha), 1.0, true)
-		var sub_y := rect.position.y + 28.0
+		draw_line(Vector2(sep_x, rect.position.y + 11.0), Vector2(sep_x, rect.end.y - 11.0), Color(accent.r, accent.g, accent.b, 0.35 * alpha), 1.0, true)
+		var sub_y := rect.position.y + (total_h - font.get_height(sub_size)) * 0.5 + font.get_ascent(sub_size)
 		draw_string(font, Vector2(sep_x + 6.0, sub_y), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, sub_size, Color(sub_col.r, sub_col.g, sub_col.b, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _draw_banner(font: Font, banner: Dictionary) -> void:
 	var t := clampf(float(banner.elapsed) / maxf(0.01, float(banner.duration)), 0.0, 1.0)

@@ -156,6 +156,8 @@ var _wall_count_label: Label
 var _navigation: HBoxContainer
 var _teaching_button: Button
 var _auto_play_button: Button
+var _auto_play_banner: Button
+var _auto_play_style_active := false
 var _teaching_status: Label
 var _voice_status_text := ""
 var _last_voice_toast := ""
@@ -342,6 +344,7 @@ func _setup_table() -> void:
 	_table.drag_finished.connect(_drag_finished)
 	_table.hand_drag_position.connect(_drag_moved)
 	_table.swipe_discard.connect(_swipe_discard)
+	_table.discard_drag_state_changed.connect(_on_discard_drag_state_changed)
 	_dice = Dice.new()
 	_dice.authoritative = false
 	_dice.scale = Vector3.ONE * 2.25
@@ -471,6 +474,11 @@ func _show(screen: String) -> void:
 	_cancel_identity_presses()
 	_dismiss_leave()
 	_screen = screen
+	if screen != "play":
+		_clear_tile_action()
+		_on_discard_drag_state_changed(false, false)
+		if is_instance_valid(_auto_play_banner):
+			_auto_play_banner.hide()
 	_page_key = ""
 	_page_controls.clear()
 	_page_panel = null
@@ -1063,7 +1071,7 @@ func _waiting_for_foreground() -> bool:
 func _cancel_table_input() -> void:
 	_cancel_identity_presses()
 	_table._cancel_press()
-	_tile_action = ""
+	_clear_tile_action()
 	_order.cancel_drag()
 	_order.clear_selection()
 	_drag_position = []
@@ -1250,7 +1258,7 @@ func _view_changed(view: Dictionary) -> void:
 		if hot or _round_projection != view.get("round", {}):
 			_table.apply_view({})
 	if _auto_play_active():
-		_tile_action = ""
+		_clear_tile_action()
 	if _restoring:
 		_restore_display_next = true
 		_recovery_timer.stop()
@@ -1271,11 +1279,17 @@ func _view_changed(view: Dictionary) -> void:
 		_round_projection = round_view.duplicate(true)
 		if not _sort_scope_cache.is_empty() and _sort_scope_cache != _sort_scope(): _cancel_sort()
 		if new_prompt:
-			_tile_action = ""
 			_teaching_status.text = ""
-			if is_instance_valid(_table):
+			if _tile_action.is_empty() and is_instance_valid(_table):
 				_table.set_hint_tile(-1)
 		_render_table(round_view)
+		if not _tile_action.is_empty():
+			var choices: Dictionary = round_view.get("choices", {})
+			var ids: Array = choices.get(_tile_action + "_ids", [])
+			if not choices.get("actions", []).has(_tile_action) or ids.is_empty():
+				_clear_tile_action()
+			else:
+				_table.set_hint_tiles(ids)
 		_refresh_smart_assist()
 		if not was_waiting and not prev_round.is_empty():
 			_trigger_action_fx(prev_round, round_view)
@@ -1420,8 +1434,22 @@ func _refresh_hud() -> void:
 	var turn := int(round_view.get("turn", -1))
 	var mine := int(_view.seat)
 	var phase: String = str(round_view.get("phase", ""))
-	_auto_play_button.text = "取消代打" if _auto_play_active() else "AI代打"
-	_auto_play_button.disabled = phase not in ["dealt", "turn", "response", "ready_draw"]
+	var auto_play := _auto_play_active()
+	var active_round := phase in ["dealt", "turn", "response", "ready_draw"]
+	var auto_on := auto_play and active_round
+	_auto_play_button.text = "取消代打" if auto_play else "AI代打"
+	_auto_play_button.disabled = not active_round
+	if is_instance_valid(_auto_play_banner):
+		_auto_play_banner.visible = auto_on and _screen == "play"
+	if _auto_play_style_active != auto_play:
+		_auto_play_style_active = auto_play
+		if auto_play:
+			_auto_play_button.add_theme_stylebox_override("normal", UI.card(Color("#59421e"), 11, 12, Color("#e6b85b"), 2))
+			_auto_play_button.add_theme_stylebox_override("hover", UI.card(Color("#705022"), 11, 12, Color("#ffe195"), 2))
+			_auto_play_button.add_theme_stylebox_override("pressed", UI.card(Color("#463216"), 11, 12, Color("#d9aa54"), 2))
+		else:
+			for state in ["normal", "hover", "pressed"]:
+				_auto_play_button.remove_theme_stylebox_override(state)
 	if is_instance_valid(_wall_pill) and is_instance_valid(_wall_count_label):
 		var show_wall := phase in ["dealt", "turn", "response", "ready_draw"]
 		_wall_pill.visible = show_wall
@@ -1576,7 +1604,7 @@ func _request_teaching() -> void:
 
 
 func _receive_teaching(result: Dictionary) -> void:
-	if not is_instance_valid(_teaching_status):
+	if not is_instance_valid(_teaching_status) or not _tile_action.is_empty():
 		return
 	if not _teaching_enabled or _screen != "play" or result.is_empty():
 		_teaching_status.text = ""
@@ -1686,13 +1714,14 @@ func _fit_action_buttons(queue_layout: bool = true) -> void:
 	var area:=capture_hud_item("actions")
 	var width:float=float(area.width)*_safe.size.x
 	var height:float=float(area.height)*_safe.size.y
-	var slots:=maxi(6,count)
+	var slots := maxi(4, count)
+	var sep := 10 if count <= 4 else 8
 	var wanted:float=float(area.get("button_scale",1))*90*_safe.size.y/692.0 if area.has("button_scale") else 90
-	var diameter:=clampf(minf(wanted,minf(height,(width-(slots-1)*8)/slots)),48,180)
+	var diameter := clampf(minf(wanted, minf(height, (width - (slots - 1) * sep) / slots)), 52.0, 120.0)
 	for button in _buttons.get_children(): button.custom_minimum_size=Vector2(diameter,diameter);button.queue_redraw()
-	_buttons.add_theme_constant_override("separation",8)
+	_buttons.add_theme_constant_override("separation", sep)
 	_buttons.offset_right=-8
-	_buttons.offset_left=-8-count*diameter-(count-1)*8
+	_buttons.offset_left=-8-count*diameter-(count-1)*sep
 	_buttons.offset_bottom=-maxf(144,_safe.size.y*0.23)
 	_buttons.offset_top=_buttons.offset_bottom-diameter
 	if queue_layout:_queue_hud_layout()
@@ -1731,7 +1760,7 @@ func capture_hud_item(key: String) -> Dictionary:
 	if key=="actions":
 		var fallback:=_default_action_row()
 		row.width=row.get("width",fallback.width);row.height=row.get("height",fallback.height)
-		row.button_scale=row.get("button_scale",minf(90,minf(row.height*_safe.size.y,(row.width*_safe.size.x-40)/6))/(90*_safe.size.y/692.0))
+		row.button_scale = row.get("button_scale", 692.0 / _safe.size.y)
 	else:
 		row.width=maxf(1,controls[key].size.x)/_safe.size.x
 		row.height=maxf(1,controls[key].size.y)/_safe.size.y
@@ -2032,6 +2061,9 @@ func _pick_action(action: String) -> void:
 	if not choices.get("actions", []).has(action):
 		return
 	if action in ["discard", "ready"]:
+		if _tile_action == action:
+			_clear_tile_action(true)
+			return
 		var ids: Array = choices.get(action + "_ids", [])
 		var selected := int(_order.view().selected_id)
 		if ids.has(selected):
@@ -2039,12 +2071,28 @@ func _pick_action(action: String) -> void:
 		else:
 			_tile_action = action
 			_show_table_notice()
+			if is_instance_valid(_table):
+				_table.set_hint_tiles(ids)
+			if is_instance_valid(_ting_overlay):
+				var hint := "请点击亮起的牌打出并报听（点空白或再点报听取消）" if action == "ready" else "请点击要出打的牌（点空白取消）"
+				_ting_overlay.show_toast(hint, 3.0)
 	else:
 		_submit_action(action, int(choices.get("tile_id", -1)))
 
 
 func _choices() -> Dictionary:
 	return {} if _waiting_for_foreground() or _transition.active else _round_projection.get("choices", {})
+
+
+func _clear_tile_action(show_cancel_toast: bool = false) -> void:
+	if _tile_action.is_empty():
+		return
+	_tile_action = ""
+	_show_table_notice()
+	if is_instance_valid(_table):
+		_table.set_hint_tile(-1)
+	if show_cancel_toast and is_instance_valid(_ting_overlay):
+		_ting_overlay.show_toast("已取消操作")
 
 
 func _submit_action(action: String, tile_id: int, confirmed_swipe: bool = false) -> void:
@@ -2056,12 +2104,17 @@ func _submit_action(action: String, tile_id: int, confirmed_swipe: bool = false)
 	if not _client.submit(int(choices.prompt_id), action, tile_id):
 		_table_message.text = "该操作暂不可用"
 		return
-	_tile_action = ""
-	_show_table_notice()
+	if _tile_action.is_empty():
+		_show_table_notice()
+	else:
+		_clear_tile_action()
 
 
 func _cancel_table_selection() -> void:
-	if _screen == "play" and not is_instance_valid(_leave_overlay) and not _waiting_for_foreground() and _order.view().selected_id >= 0:
+	if _screen != "play" or is_instance_valid(_leave_overlay) or _waiting_for_foreground():
+		return
+	_clear_tile_action(true)
+	if _order.view().selected_id >= 0:
 		_order.clear_selection()
 		_apply_order()
 
@@ -2072,10 +2125,12 @@ func _tile_clicked(tile_id: int) -> void:
 	if _tile_action != "":
 		if _choices().get(_tile_action + "_ids", []).has(tile_id):
 			_submit_action(_tile_action, tile_id)
+		elif is_instance_valid(_ting_overlay):
+			_ting_overlay.show_toast("该牌不能%s，请点击亮起绿光的牌" % ACTION_NAMES[_tile_action], 2.0)
 		return
 	if not _choices().get("discard_ids", []).has(tile_id):
 		return
-	var ready_to_discard := _order.tap(tile_id)
+	var ready_to_discard := tile_id if _table._hold_tap_confirms else _order.tap(tile_id)
 	_apply_order()
 	if _choices().get("discard_ids", []).has(ready_to_discard):
 		_submit_action("discard", ready_to_discard)
@@ -2086,6 +2141,11 @@ func _tile_clicked(tile_id: int) -> void:
 func _swipe_discard(tile_id: int) -> void:
 	if _screen == "play" and _choices().get("discard_ids", []).has(tile_id):
 		_submit_action("discard", tile_id, true)
+
+
+func _on_discard_drag_state_changed(active: bool, ready_to_release: bool) -> void:
+	if is_instance_valid(_ting_overlay) and _ting_overlay.has_method("set_discard_drag_hint"):
+		_ting_overlay.call("set_discard_drag_hint", _screen == "play" and active, _screen == "play" and ready_to_release)
 
 
 func _drag_started(tile_id: int) -> void:
@@ -2345,10 +2405,23 @@ func _constrain_settlement() -> void:
 	var opposite := Seats.opposite(viewer)
 	var left_seat := Seats.previous(viewer)
 	var right_seat := Seats.next(viewer)
+	var meld_bottom := INF
+	var meld_left := -INF
+	var meld_right := INF
 	for node in _table.tiles.values():
-		if node.get_meta("zone", "") != "hand":
-			continue
+		var zone: String = node.get_meta("zone", "")
 		var seat := int(node.get_meta("seat", -1))
+		if zone in ["meld", "chicken"] and seat in [viewer, left_seat, right_seat]:
+			for c in 8:
+				var point := _table_screen_point(node.global_transform * node.get_aabb().get_endpoint(c))
+				if seat == viewer:
+					meld_bottom = minf(meld_bottom, point.y - 6.0)
+				elif seat == left_seat:
+					meld_left = maxf(meld_left, point.x + 8.0)
+				else:
+					meld_right = minf(meld_right, point.x - 8.0)
+		if zone != "hand":
+			continue
 		if seat == opposite:
 			for c in 8:
 				top_limit = maxf(top_limit, _table_screen_point(node.global_transform * node.get_aabb().get_endpoint(c)).y + 6.0)
@@ -2361,10 +2434,17 @@ func _constrain_settlement() -> void:
 		elif seat == right_seat:
 			for c in 8:
 				right_limit = minf(right_limit, _table_screen_point(node.global_transform * node.get_aabb().get_endpoint(c)).x - 8.0)
+	var soft_bottom := minf(bottom_limit, meld_bottom)
+	var soft_left := maxf(left_limit, meld_left)
+	var soft_right := minf(right_limit, meld_right)
+	if soft_bottom - top_limit >= 220.0 and soft_right - soft_left >= 380.0:
+		bottom_limit = soft_bottom
+		left_limit = soft_left
+		right_limit = soft_right
 	var available_w := maxf(320.0, right_limit - left_limit)
 	var target_w := clampf(safe_rect.size.x * 0.54, minf(500.0, available_w), minf(720.0, available_w))
 	var width := maxf(min_w, target_w)
-	var max_h := maxf(180.0, minf(safe_rect.size.y * 0.54, bottom_limit - top_limit))
+	var max_h := maxf(180.0, minf(safe_rect.size.y * 0.52, bottom_limit - top_limit))
 	var natural_h := panel.height_for_width(width)
 	var factor := minf(1.0, minf(available_w / maxf(1.0, width), max_h / maxf(1.0, natural_h)))
 	panel.custom_minimum_size = Vector2(width, natural_h)
@@ -2403,6 +2483,8 @@ func _prepare_next_round() -> void:
 
 func _back_home(destination: String = "home") -> void:
 	if _leaving: return
+	_clear_tile_action()
+	_on_discard_drag_state_changed(false, false)
 	var was_seated := not _view.is_empty()
 	var was_closed := _table_recovery == TableRecovery.CLOSED
 	_table_recovery = TableRecovery.NONE
@@ -2425,7 +2507,6 @@ func _back_home(destination: String = "home") -> void:
 	_action_key = {"reset": true}
 	_shown_cues.clear()
 	_completed_presentation.clear()
-	_tile_action = ""
 	_result_seen = ""
 	_cancel_flip_reveal()
 	_live_ticket.clear()
@@ -2602,7 +2683,7 @@ func _session_ended(reason: String) -> void:
 		_published_display = []
 		_drag_position = []
 		_action_key = {"reset": true}
-		_tile_action = ""
+		_clear_tile_action()
 		_show("home")
 	if reason == "disconnected" and not restoring:
 		_restore_recent_room.call_deferred()

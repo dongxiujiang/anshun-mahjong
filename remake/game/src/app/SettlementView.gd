@@ -7,6 +7,7 @@ const TileArt := preload("res://src/presentation/TileArt.gd")
 const DicePair=preload("res://src/app/DicePairView.gd")
 const POSITIONS := ["我", "下", "对", "上"]
 const WINDS := ["东", "南", "西", "北"]
+const OVERLAY_ROW_SEPARATION := 2
 
 var _body: VBoxContainer
 var _table_overlay:=false
@@ -16,17 +17,21 @@ var ready_hint: Label
 var _footer: HBoxContainer
 var _rows_info:=[]
 var _headings:=[]
+var _fade_in: Tween
 
 
 func show_result(settlement: Dictionary, mode: String, return_to_seats: Callable, next_round: Callable, record: Control = null, table_overlay:bool=false, peek_toggle: Callable = Callable()) -> void:
+	_stop_fade()
+	if _table_overlay and not table_overlay:
+		remove_theme_stylebox_override("panel")
 	_table_overlay=table_overlay
-	if table_overlay:add_theme_stylebox_override("panel",UI.elevated_card(Color("#0d2922f2"),14,10,Color("#cfa95a"),2,10))
+	if table_overlay:add_theme_stylebox_override("panel",UI.elevated_card(Color("#0d2922f2"),12,7,Color("#cfa95a"),2,10))
 	if is_instance_valid(_body):
 		remove_child(_body)
 		_body.queue_free()
 	_body = VBoxContainer.new()
 	_rows_info.clear();_headings.clear()
-	if table_overlay:_body.add_theme_constant_override("separation",4)
+	if table_overlay:_body.add_theme_constant_override("separation",3)
 	add_child(_body)
 	var ledger: Dictionary = settlement.ledger
 	var draw: bool = ledger.winners.is_empty()
@@ -51,7 +56,7 @@ func show_result(settlement: Dictionary, mode: String, return_to_seats: Callable
 		var total:=UI.label("单家 / 增减",14,UI.MUTED);total.custom_minimum_size.x=108;header.add_child(total)
 	else:_body.add_child(UI.label("%s　×%s" % [title, ledger.multiplier], 26))
 	var rows := VBoxContainer.new()
-	if table_overlay:rows.add_theme_constant_override("separation",3)
+	if table_overlay:rows.add_theme_constant_override("separation",OVERLAY_ROW_SEPARATION)
 	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if table_overlay:_body.add_child(rows)
 	else:
@@ -62,6 +67,7 @@ func show_result(settlement: Dictionary, mode: String, return_to_seats: Callable
 		_add_row(rows, settlement, int(seat), viewer)
 	if record != null:
 		_body.add_child(record)
+		if table_overlay: _headings.append(record)
 	var controls := HBoxContainer.new()
 	controls.alignment = BoxContainer.ALIGNMENT_END
 	controls.add_theme_constant_override("separation", 8)
@@ -74,11 +80,11 @@ func show_result(settlement: Dictionary, mode: String, return_to_seats: Callable
 	peek_button = null
 	if table_overlay:
 		var leave_btn := UI.button("离开", return_to_seats)
-		leave_btn.custom_minimum_size = Vector2(74, 38)
+		leave_btn.custom_minimum_size = Vector2(74, 34)
 		controls.add_child(leave_btn)
 		if peek_toggle.is_valid():
 			peek_button = UI.button("查看牌面", peek_toggle)
-			peek_button.custom_minimum_size = Vector2(92, 38)
+			peek_button.custom_minimum_size = Vector2(92, 34)
 			controls.add_child(peek_button)
 	else:
 		controls.add_child(UI.button("离开房间", return_to_seats))
@@ -87,10 +93,37 @@ func show_result(settlement: Dictionary, mode: String, return_to_seats: Callable
 	else:
 		next_button = UI.button("准备下一局", next_round, true)
 		next_button.tooltip_text = "所有在线玩家准备后立即开始下一局"
-	next_button.custom_minimum_size = Vector2(108, 38) if table_overlay else Vector2(128, 46)
+	next_button.custom_minimum_size = Vector2(108, 34) if table_overlay else Vector2(128, 46)
 	controls.add_child(next_button)
 	if table_overlay:
 		_headings.append(controls)
+		for child in controls.get_children():
+			if child is Button:
+				_compact_footer_button(child)
+		if is_inside_tree():
+			modulate.a = 0.0
+			_fade_in = create_tween()
+			_fade_in.tween_property(self, "modulate:a", 1.0, 0.18).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+func _exit_tree() -> void:
+	_stop_fade()
+
+
+func _stop_fade() -> void:
+	if _fade_in:
+		_fade_in.kill()
+		_fade_in = null
+	modulate.a = 1.0
+
+
+func _compact_footer_button(button: Button) -> void:
+	for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		button.remove_theme_stylebox_override(state)
+		var style: StyleBox = button.get_theme_stylebox(state).duplicate()
+		style.content_margin_top = 2.0
+		style.content_margin_bottom = 2.0
+		button.add_theme_stylebox_override(state, style)
 
 
 func update_ready_state(room: Dictionary, viewer_seat: int, mode: String) -> void:
@@ -116,7 +149,11 @@ func update_ready_state(room: Dictionary, viewer_seat: int, mode: String) -> voi
 				waiting_names.append("你" if seat == viewer_seat else str(m.get("nickname", "牌友")))
 	var mine_ready := bool(seats[viewer_seat].get("ready", false))
 	next_button.text = "取消准备" if mine_ready else "准备下一局"
-	next_button.theme_type_variation = "" if mine_ready else "PrimaryButton"
+	var variation := &"" if mine_ready else &"PrimaryButton"
+	if next_button.theme_type_variation != variation:
+		next_button.theme_type_variation = variation
+		if _table_overlay:
+			_compact_footer_button(next_button)
 	if total_humans <= 1:
 		ready_hint.text = "点击准备立即开始下一局"
 	elif ready_humans >= total_humans:
@@ -132,7 +169,7 @@ func _add_row(rows: VBoxContainer, settlement: Dictionary, seat: int, viewer: in
 	var is_winner: bool = ledger.winners.has(seat)
 	var row_fill := (Color("#234334") if is_winner else Color("#123028")) if _table_overlay else (Color("#2f493b") if is_winner else Color("#24392f"))
 	var row_border := Color("#dfba68") if is_winner else (Color("#587564") if _table_overlay else UI.BORDER)
-	card.add_theme_stylebox_override("panel", UI.card(row_fill, 6 if _table_overlay else 9, 4 if _table_overlay else 8, row_border, 2 if is_winner else 1))
+	card.add_theme_stylebox_override("panel", UI.card(row_fill, 6 if _table_overlay else 9, 2 if _table_overlay else 8, row_border, 2 if is_winner else 1))
 	rows.add_child(card)
 	var columns := HBoxContainer.new()
 	card.add_child(columns)
@@ -207,7 +244,7 @@ func _add_item(flow: HFlowContainer, item: Dictionary, owner: int) -> void:
 			face.custom_minimum_size = Vector2(32, 24) if _table_overlay else Vector2(33, 24)
 			face.add_theme_stylebox_override("panel", UI.card(Color("#f3ead3"), 3, 2, Color("#e2b250"), 1))
 		else:
-			face.custom_minimum_size = Vector2(24, 32) if _table_overlay else Vector2(24, 33)
+			face.custom_minimum_size = Vector2(22, 29) if _table_overlay else Vector2(24, 33)
 			face.add_theme_stylebox_override("panel", UI.card(Color("#ede6d3"), 3, 2, Color("#cfbd99")))
 		faces.add_child(face)
 		var texture := TileArt.face_sideways(str(tile_value)) if is_charge else TileArt.face(str(tile_value))
@@ -245,14 +282,16 @@ func height_for_width(width: float) -> float:
 	result+=float(_body.get_theme_constant("separation"))*_headings.size()
 	for row in _rows_info:
 		var available:float=width-style.get_minimum_size().x-row.card.get_theme_stylebox("panel").get_minimum_size().x-row.who.get_combined_minimum_size().x-row.score.get_combined_minimum_size().x-2*row.columns.get_theme_constant("separation")
+		var h_sep: int = row.items.get_theme_constant("h_separation")
+		var v_sep: int = row.items.get_theme_constant("v_separation")
 		var x:=0.0;var line:=0.0;var height:=0.0
 		for group in row.items.get_children():
 			var extent:Vector2=group.get_combined_minimum_size()
-			if x>0 and x+extent.x>available:height+=line+2;x=0;line=0
-			x+=extent.x+3;line=maxf(line,extent.y)
+			if x>0 and x+extent.x>available:height+=line+v_sep;x=0;line=0
+			x+=extent.x+h_sep;line=maxf(line,extent.y)
 		height+=line
 		result+=maxf(height,maxf(row.who.get_combined_minimum_size().y,row.score.get_combined_minimum_size().y))+row.card.get_theme_stylebox("panel").get_minimum_size().y
-	result+=3*maxi(0,_rows_info.size()-1)
+	result+=OVERLAY_ROW_SEPARATION*maxi(0,_rows_info.size()-1)
 	return result
 
 

@@ -630,9 +630,30 @@ static func build_hud(app) -> void:
 	nav.add_theme_constant_override("separation", 6)
 	app._hud.add_child(nav)
 	nav.add_child(UI.button("设置", app._open_settings))
-	nav.add_child(UI.button("离开", app._request_leave))
+	var leave_button := UI.button("离开", app._request_leave)
+	leave_button.add_theme_stylebox_override("normal", UI.card(Color("#2a1619e6"), 11, 12, Color("#8c4a50"), 1))
+	leave_button.add_theme_stylebox_override("hover", UI.card(Color("#3a1d21f2"), 11, 12, Color("#b55c63"), 1))
+	leave_button.add_theme_stylebox_override("pressed", UI.card(Color("#201012f2"), 11, 12, Color("#8c4a50"), 1))
+	leave_button.add_theme_color_override("font_hover_color", UI.INK)
+	nav.add_child(leave_button)
 	app._auto_play_button = UI.button("AI代打", app._toggle_auto_play)
 	nav.add_child(app._auto_play_button)
+	var banner := Button.new()
+	app._auto_play_banner = banner
+	banner.text = "AI 托管中 · 点此恢复手动"
+	banner.z_index = 12
+	banner.add_theme_stylebox_override("normal", UI.elevated_card(Color("#243a25f5"), 20, 6, Color("#d9ad57"), 2, 4))
+	banner.add_theme_stylebox_override("hover", UI.card(Color("#35492af5"), 20, 6, Color("#ffe195"), 2))
+	banner.add_theme_stylebox_override("pressed", UI.card(Color("#172e22f5"), 20, 6, Color("#d9ad57"), 2))
+	banner.add_theme_color_override("font_color", Color("#ffe5a3"))
+	banner.pressed.connect(app._toggle_auto_play)
+	banner.hide()
+	app._hud.add_child(banner)
+	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	banner.offset_left = -148
+	banner.offset_right = 148
+	banner.offset_top = -182
+	banner.offset_bottom = -142
 	app._wall_pill = PanelContainer.new()
 	app._wall_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	app._wall_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER

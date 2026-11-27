@@ -12,16 +12,21 @@ const TileArt := preload("res://src/presentation/TileArt.gd")
 
 var _popup := PanelContainer.new()
 var _popup_label: Label
+var _popup_tenpai_row := HBoxContainer.new()
+var _popup_tenpai_sig := ""
 var _badge := PanelContainer.new()
 var _badge_box := HBoxContainer.new()
 var _toast := PanelContainer.new()
 var _toast_label: Label
 var _toast_tween: Tween
+var _drag_hint := PanelContainer.new()
+var _drag_hint_label: Label
 
 var _cache_key := ""
 var _cache_seen := {}
 var _cache_played := {}
 var _cache_ready_waits := []
+var _cache_discard_analysis := {}
 var _last_ting_waits := []
 var _badge_signature := ""
 var _badge_anchor := Rect2()
@@ -31,12 +36,21 @@ var _lifted_anchor := Vector2(-1.0, -1.0)
 func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_IGNORE
 	z_index = 14
-	# 1. 手牌抬起时的精简已出计数胶囊（仅显示场上已打出张数，绝不在牌桌中央弹出长段出牌建议）
+	# 1. 抬牌显示已出计数，仅在打后进听时补充紧凑预览。
 	_popup.mouse_filter = MOUSE_FILTER_IGNORE
 	_popup.add_theme_stylebox_override("panel", UI.card(Color("#0d2820eb"), 10, 7, Color("#d4b163"), 1))
 	_popup_label = UI.label("", 15, Color("#ffe8b0"))
 	_popup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_popup.add_child(_popup_label)
+	var popup_box := VBoxContainer.new()
+	popup_box.mouse_filter = MOUSE_FILTER_IGNORE
+	popup_box.add_theme_constant_override("separation", 4)
+	_popup.add_child(popup_box)
+	popup_box.add_child(_popup_label)
+	_popup_tenpai_row.mouse_filter = MOUSE_FILTER_IGNORE
+	_popup_tenpai_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_popup_tenpai_row.add_theme_constant_override("separation", 4)
+	_popup_tenpai_row.hide()
+	popup_box.add_child(_popup_tenpai_row)
 	_popup.hide()
 	add_child(_popup)
 	# 2. 常驻叫牌胶囊（固定在玩家名字和分数正上方，摸牌/出牌持续显示，换听实时更新）
@@ -55,6 +69,12 @@ func _ready() -> void:
 	_toast.add_child(_toast_label)
 	_toast.hide()
 	add_child(_toast)
+	_drag_hint.mouse_filter = MOUSE_FILTER_IGNORE
+	_drag_hint_label = UI.label("", 14)
+	_drag_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_drag_hint.add_child(_drag_hint_label)
+	_drag_hint.hide()
+	add_child(_drag_hint)
 	resized.connect(_reposition)
 
 
@@ -69,6 +89,10 @@ func clear_all() -> void:
 	_cache_seen.clear()
 	_cache_played.clear()
 	_cache_ready_waits.clear()
+	_cache_discard_analysis.clear()
+	_popup_tenpai_sig = ""
+	_popup_tenpai_row.hide()
+	_drag_hint.hide()
 	_last_ting_waits.clear()
 	_badge_signature = ""
 	_popup.hide()
@@ -80,14 +104,29 @@ func show_toast(message: String, seconds: float = 1.9) -> void:
 		return
 	_toast_label.text = message
 	_toast.modulate = Color.WHITE
+	_toast.modulate.a = 0.0
 	_toast.show()
 	_reposition()
 	if _toast_tween != null and _toast_tween.is_valid():
 		_toast_tween.kill()
 	_toast_tween = create_tween()
+	_toast_tween.tween_property(_toast, "modulate:a", 1.0, 0.14).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	_toast_tween.tween_interval(seconds)
 	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.28)
 	_toast_tween.tween_callback(_toast.hide)
+
+
+func set_discard_drag_hint(active: bool, ready_to_release: bool) -> void:
+	if not active:
+		_drag_hint.hide()
+		return
+	var fill := Color("#164635ec") if ready_to_release else Color("#0e2a22d8")
+	var border := Color("#f5d276") if ready_to_release else Color("#c9a95c99")
+	_drag_hint.add_theme_stylebox_override("panel", UI.card(fill, 16, 8, border, 2 if ready_to_release else 1))
+	_drag_hint_label.text = "✓ 松手立即打出" if ready_to_release else "▲ 继续上滑松手出牌"
+	_drag_hint_label.add_theme_color_override("font_color", Color("#fff6d6") if ready_to_release else Color("#efe0b8"))
+	_drag_hint.show()
+	_reposition()
 
 
 static func played_counts(round_view: Dictionary, viewer: int) -> Dictionary:
@@ -205,6 +244,7 @@ func sync_state(round_view: Dictionary, viewer: int, selected_id: int, enabled: 
 		_cache_key = key
 		_cache_played = played_counts(round_view, viewer)
 		_cache_seen = visible_counts(round_view, viewer)
+		_cache_discard_analysis = analyze_discards(round_view, viewer) if hand.size() % 3 == 2 else {}
 		if hand.size() % 3 == 1:
 			# 出牌后 / 非摸牌态：重新精确计算当前听牌；若换听则立即刷新，若破听则自动隐藏
 			var vals := hand.map(func(f): return str(f.get("value", "")))
@@ -234,7 +274,7 @@ func sync_state(round_view: Dictionary, viewer: int, selected_id: int, enabled: 
 		_badge_signature = ""
 		_badge.hide()
 
-	# 2. 手牌抬起时仅显示场上已打出该牌的张数，不在牌桌中央弹出出牌建议
+	# 2. 已出计数保持独立文案，打后听预览按选牌与分析结果缓存。
 	var selected_val := ""
 	if selected_id >= 0:
 		for face in hand:
@@ -243,9 +283,19 @@ func sync_state(round_view: Dictionary, viewer: int, selected_id: int, enabled: 
 				break
 	if selected_val.is_empty():
 		_popup.hide()
+		_popup_tenpai_row.hide()
 	else:
 		var count := int(_cache_played.get(selected_val, 0))
 		_popup_label.text = "%s · 已出 %d 张" % [_tile_name(selected_val), count]
+		if _cache_discard_analysis.has(selected_val):
+			var info: Dictionary = _cache_discard_analysis[selected_val]
+			var sig := "%s|%s" % [selected_val, JSON.stringify(info)]
+			if sig != _popup_tenpai_sig:
+				_popup_tenpai_sig = sig
+				_rebuild_popup_tenpai(info)
+			_popup_tenpai_row.show()
+		else:
+			_popup_tenpai_row.hide()
 		_popup.show()
 	_reposition()
 
@@ -254,6 +304,35 @@ func _clear_box(box: Control) -> void:
 	for child in box.get_children():
 		box.remove_child(child)
 		child.queue_free()
+
+
+func _rebuild_popup_tenpai(info: Dictionary) -> void:
+	_clear_box(_popup_tenpai_row)
+	var title := "打后听"
+	if int(info.best_score) > 1 and str(info.best_label) != "平胡":
+		title = "打后听·%s" % str(info.best_label)
+	var lead := UI.label(title, 12, Color("#ffe39b"))
+	lead.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_popup_tenpai_row.add_child(lead)
+	var waits: Array = info.waits
+	var shown := mini(waits.size(), 4)
+	for i in shown:
+		var wait: Dictionary = waits[i]
+		_popup_tenpai_row.add_child(_mini_tile_chip(str(wait.tile), int(wait.remaining)))
+	if waits.size() > shown:
+		var more := UI.label("+%d" % (waits.size() - shown), 11, UI.MUTED)
+		more.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		_popup_tenpai_row.add_child(more)
+	var total := UI.label("余%d张" % int(info.total), 11, Color("#8ceec2"))
+	total.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_popup_tenpai_row.add_child(total)
+
+
+func _mini_tile_chip(tile_value: String, remaining: int) -> VBoxContainer:
+	var chip := _tile_chip(tile_value, remaining)
+	chip.get_child(0).custom_minimum_size = Vector2(22, 30)
+	chip.get_child(1).add_theme_font_size_override("font_size", 10)
+	return chip
 
 
 func _tile_chip(tile_value: String, remaining: int) -> VBoxContainer:
@@ -319,15 +398,18 @@ func _reposition() -> void:
 		var px: float
 		var py: float
 		if _lifted_anchor.x >= 0.0 and _lifted_anchor.y >= 0.0:
-			px = clampf(_lifted_anchor.x - _popup.size.x * 0.5, 12.0, maxf(12.0, size.x - _popup.size.x - 12.0))
+			px = clampf(_lifted_anchor.x - _popup.size.x * 0.5, 16.0, maxf(16.0, size.x - _popup.size.x - 16.0))
 			py = clampf(_lifted_anchor.y - _popup.size.y - 10.0, 64.0, maxf(64.0, size.y - _popup.size.y - 110.0))
 		else:
-			px = clampf((size.x - _popup.size.x) * 0.5, 12.0, maxf(12.0, size.x - _popup.size.x - 12.0))
+			px = clampf((size.x - _popup.size.x) * 0.5, 16.0, maxf(16.0, size.x - _popup.size.x - 16.0))
 			py = maxf(64.0, size.y - _popup.size.y - 146.0)
 		_popup.position = Vector2(px, py)
 	if _toast.visible:
 		_toast.size = _toast.get_combined_minimum_size()
-		_toast.position = Vector2((size.x - _toast.size.x) * 0.5, 10.0)
+		_toast.position = Vector2((size.x - _toast.size.x) * 0.5, clampf(size.y * 0.155, 88.0, 128.0))
+	if _drag_hint.visible:
+		_drag_hint.size = _drag_hint.get_combined_minimum_size()
+		_drag_hint.position = Vector2((size.x - _drag_hint.size.x) * 0.5, clampf(size.y * 0.765 - _drag_hint.size.y * 0.5, 96.0, size.y - 140.0))
 
 
 static func _tile_name(value: String) -> String:

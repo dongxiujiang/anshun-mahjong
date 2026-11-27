@@ -19,8 +19,7 @@ const MOVE_SECONDS := Pace.ACTION_SECONDS
 const ADDED_KONG_SECONDS := Pace.ACTION_SECONDS
 const OpeningDeal = preload("res://src/presentation/OpeningDeal.gd")
 # Candidate input timing and tolerance are presentation parameters.
-const HOLD_SECONDS := 0.22
-const SELECT_SECONDS := 0.09
+const HOLD_SECONDS := 0.30
 const DRAG_SHIFT_SECONDS := 0.11
 const DRAG_SETTLE_SECONDS := 0.12
 const HAND_TOLERANCE := 1.5
@@ -35,6 +34,7 @@ signal drag_slot_changed(slot: int)
 signal drag_finished(slot: int)
 signal hand_drag_position(position: Array)
 signal swipe_discard(tile_id: int)
+signal discard_drag_state_changed(active: bool, ready_to_release: bool)
 signal presentation_finished(prompt_id: int)
 signal hand_stability_changed()
 signal layout_conflict(seat: int, group: String)
@@ -54,6 +54,7 @@ var _table_theme_id := "jade_classic"
 var _tile_back_id := "jade"
 var _match_highlight_value := ""
 var _hint_tile_id := -1
+var _hint_tile_ids := {}
 var _chicken_highlight_ids := {}
 var _shake_amount := 0.0
 var _shake_time := 0.0
@@ -79,11 +80,17 @@ var _deal_start := {}
 var _press_id := -1
 var _press_play_prompt := -1
 var _press_began_stable := false
+var _press_was_selected := false
 var _pointer := -2
 var _press_point := Vector2.ZERO
 var _pointer_point := Vector2.ZERO
 var _dragging := false
 var _discard_dragging := false
+var _drag_from_hold := false
+var _hold_drag_moved := false
+var _hold_tap_confirms := false
+var _drag_hint_active := false
+var _drag_hint_ready := false
 var _last_drag_slot := -1
 var _carry_offset := Vector3.ZERO
 var _settling_id := -1
@@ -188,11 +195,11 @@ func _build_table() -> void:
 	pointer_mesh.height = 0.46
 	pointer_mesh.radial_segments = 16
 	var color := StandardMaterial3D.new()
-	color.albedo_color = Color("#ffad19")
+	color.albedo_color = Color("#ffbd1f")
 	color.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	color.emission_enabled = true
 	color.emission = Color("#ff9b16")
-	color.emission_energy_multiplier = 0.72
+	color.emission_energy_multiplier = 0.85
 	pointer_mesh.material = color
 	_discard_marker.mesh = pointer_mesh
 	_discard_marker.visible = false
@@ -291,10 +298,22 @@ func set_match_highlight(tile_value: String) -> void:
 	_refresh_tile_highlights()
 
 func set_hint_tile(tile_id: int) -> void:
-	if _hint_tile_id == tile_id:
-		return
+	var previous := _hint_tile_id
 	_hint_tile_id = tile_id
-	_refresh_tile_highlights()
+	var ids := {tile_id: true} if tile_id >= 0 else {}
+	if _hint_tile_ids != ids or previous != tile_id:
+		_hint_tile_ids = ids
+		_refresh_tile_highlights()
+
+func set_hint_tiles(tile_ids: Array) -> void:
+	var ids := {}
+	for id in tile_ids:
+		if int(id) >= 0:
+			ids[int(id)] = true
+	_hint_tile_id = int(tile_ids[0]) if tile_ids.size() == 1 else -1
+	if _hint_tile_ids != ids:
+		_hint_tile_ids = ids
+		_refresh_tile_highlights()
 
 func set_chicken_highlights(tile_ids: Array) -> void:
 	_chicken_highlight_ids.clear()
@@ -321,7 +340,7 @@ func _refresh_tile_highlights() -> void:
 			node.material_override = TileArt.highlight_material("chicken")
 		elif not _match_highlight_value.is_empty() and value == _match_highlight_value and zone in ["discard", "chicken", "meld"]:
 			node.material_override = TileArt.highlight_material("match")
-		elif key is int and key == _hint_tile_id and zone == "hand":
+		elif key is int and (_hint_tile_ids.has(key) or key == _hint_tile_id) and zone == "hand":
 			node.material_override = TileArt.highlight_material("hint")
 		else:
 			node.material_override = _material(value)
@@ -806,7 +825,7 @@ func _hand(p: Dictionary, animate: bool) -> void:
 		if (_dragging or _discard_dragging) and id is int and id == _press_id:
 			var carry = _held_point(_pointer_point)
 			if carry != null:
-				pose.origin = carry + _carry_offset
+				pose.origin = carry + _carry_offset + Vector3.UP * (0.22 if _drag_hint_ready else 0.0)
 		elif not private_visible and id is String and id == shared.get("dragged", ""):
 			var point: Array = shared.get("drag_position", [])
 			if point.size() == 2:
@@ -1133,7 +1152,9 @@ func _place(key, value: String, target: Transform3D, zone: String, animate: bool
 	_seen[key] = true
 	var source = _deal_start.get(key, source_id)
 	var node: MeshInstance3D = tiles.get(key)
+	var from_wall: bool = source is int and source >= 0 and (node == null or node.get_meta("zone", "") == "wall")
 	if node == null and tiles.has(source) and not _seen.has(source):
+		from_wall = from_wall and tiles[source].get_meta("zone", "") == "wall"
 		node = _reuse_source(source, key)
 	var fresh := node == null
 	if fresh:
@@ -1221,11 +1242,21 @@ func _place(key, value: String, target: Transform3D, zone: String, animate: bool
 		tween.tween_callback(func():
 			if zone == "chicken":
 				_spawn_landing_ripple(target.origin, Color("#ffb82e"), 1.35)
+				create_tween().tween_callback(_spawn_landing_ripple.bind(target.origin, Color("#ffd76a"), 1.85)).set_delay(0.09)
 				pulse_table_shake(0.11)
 			else:
 				_spawn_landing_ripple(target.origin, Color("#e8d49c"), 0.85))
+	elif zone == "hand" and from_wall and _adding_kong.is_empty():
+		var origin := node.transform
+		var arc_h := 0.55
+		tween.tween_method(func(progress: float):
+			node.transform = origin.interpolate_with(target, progress)
+			node.position.y += arc_h * 4.0 * progress * (1.0 - progress), 0.0, 1.0, MOVE_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	elif zone == "hand" and (not travels or (key is int and key == _settling_id)):
-		tween.tween_property(node, "transform", target, DRAG_SETTLE_SECONDS if key is int and key == _settling_id else SELECT_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		var settling: bool = key is int and key == _settling_id
+		var lifting := not settling and target.origin.y > previous.origin.y + 0.01
+		var duration := DRAG_SETTLE_SECONDS if settling else (0.11 if lifting else 0.085)
+		tween.tween_property(node, "transform", target, duration).set_trans(Tween.TRANS_BACK if lifting else Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	else:
 		tween.tween_property(node, "transform", target, MOVE_SECONDS).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tween.finished.connect(func():
@@ -1394,11 +1425,22 @@ func _cancel_press() -> void:
 	_press_id = -1
 	_press_play_prompt = -1
 	_press_began_stable = false
+	_press_was_selected = false
 	_pointer = -2
 	_dragging = false
 	_discard_dragging = false
+	_drag_from_hold = false
+	_hold_drag_moved = false
 	_last_drag_slot = -1
 	_blank_moved = false
+	_set_discard_drag_hint(false, false)
+
+func _set_discard_drag_hint(active: bool, ready: bool) -> void:
+	if active == _drag_hint_active and ready == _drag_hint_ready:
+		return
+	_drag_hint_active = active
+	_drag_hint_ready = ready
+	discard_drag_state_changed.emit(active, ready)
 
 func _live_playable(id: int, finishing_drag: bool = false) -> bool:
 	var prompt := int(view.get("prompt_id", -1))
@@ -1447,12 +1489,14 @@ func _press(point: Vector2, index: int, double: bool) -> bool:
 		return true
 	_press_play_prompt = int(view.get("prompt_id", -1))
 	_press_began_stable = own_hand_stable()
+	_press_was_selected = hand_order.get("selected_id", -1) == id
 	if not _press_began_stable:
 		return true
 	_hold = create_tween()
 	_hold.tween_interval(HOLD_SECONDS)
 	_hold.tween_callback(func():
 		if _press_id >= 0:
+			_drag_from_hold = true
 			_start_drag(false))
 	return true
 
@@ -1466,6 +1510,7 @@ func _start_drag(discard: bool) -> void:
 	if initial != null and tiles.has(_press_id):
 		tiles[_press_id].position = Vector3(initial) + _carry_offset
 		_destinations.erase(_press_id)
+	if discard: _set_discard_drag_hint(true, false)
 	if _dragging: drag_started.emit(_press_id)
 
 func _motion(point: Vector2) -> void:
@@ -1487,19 +1532,39 @@ func _motion(point: Vector2) -> void:
 		else:
 			if _hold: _hold.kill()
 			return
+	if _drag_from_hold and not _hold_drag_moved:
+		_hold_drag_moved = point.distance_to(_press_point) > _tap_slop()
+		if not _hold_drag_moved:
+			return
 	if _dragging and not _above_discard_line(point):
 		var slot := _slot_at_drag(point)
 		if slot >= 0 and slot != _last_drag_slot:
 			_last_drag_slot = slot
 			drag_slot_changed.emit(slot)
+	var rise := _press_point.y - point.y
+	var hint_active := ((_discard_dragging and rise > 0.0) or (
+		_dragging and rise >= maxf(24.0, _tap_slop() * 1.5))) and _live_playable(_press_id, _dragging)
+	_set_discard_drag_hint(hint_active, hint_active and (_over_discard_line(point) or _upward_discard_flick(point)))
 	if tiles.has(_press_id):
 		var position_on_table = _held_point(point)
 		if position_on_table != null:
-			tiles[_press_id].position = Vector3(position_on_table) + _carry_offset
+			tiles[_press_id].position = Vector3(position_on_table) + _carry_offset + Vector3.UP * (0.22 if _drag_hint_ready else 0.0)
 			_destinations.erase(_press_id)
 			if _dragging:
 				var local: Vector3 = Layout.facing(viewer).inverse() * tiles[_press_id].position
 				hand_drag_position.emit([clampf(local.x, -table_edge(), table_edge()), clampf(local.z, -table_edge(), table_edge())])
+
+func _over_discard_line(point: Vector2) -> bool:
+	if _above_discard_line(point):
+		return true
+	var plane_hit = _world_point(point, 0.0)
+	return plane_hit != null and is_discard_point(Vector3(plane_hit))
+
+func _upward_discard_flick(point: Vector2) -> bool:
+	var rise := _press_point.y - point.y
+	var sideways := absf(point.x - _press_point.x)
+	return (_discard_dragging and rise >= maxf(34.0, _tap_slop() * 2.4) and rise >= sideways * 0.45) or (
+		not _dragging and rise >= maxf(32.0, _tap_slop() * 2.2) and rise >= sideways * 0.65)
 
 func _release(point: Vector2) -> void:
 	var id := _press_id
@@ -1511,19 +1576,22 @@ func _release(point: Vector2) -> void:
 		return
 	var dragged := _dragging
 	var discard_dragged := _discard_dragging
-	var plane_hit = _world_point(point, 0.0)
-	var over_line: bool = _above_discard_line(point) or (plane_hit != null and is_discard_point(Vector3(plane_hit)))
-	var upward_flick: bool = discard_dragged and (_press_point.y - point.y) >= maxf(34.0, _tap_slop() * 2.4) and (_press_point.y - point.y) >= absf(point.x - _press_point.x) * 0.45
-	var fast_flick: bool = not dragged and (_press_point.y - point.y) >= maxf(32.0, _tap_slop() * 2.2) and (_press_point.y - point.y) >= absf(point.x - _press_point.x) * 0.65
 	var can_play := _live_playable(id, dragged)
-	var discard: bool = can_play and (((dragged or discard_dragged) and (over_line or upward_flick)) or fast_flick)
-	var slot := -1 if discard else _slot_at_drag(point)
-	var began_stable := _press_began_stable
+	var discard := can_play and (((dragged or discard_dragged) and _over_discard_line(point)) or _upward_discard_flick(point))
+	var within_tap_slop := traveled <= _tap_slop()
+	var held_tap := dragged and _drag_from_hold and not _hold_drag_moved and within_tap_slop and _last_drag_slot == -1 and not discard
+	var tapped := _press_began_stable and can_play and within_tap_slop and (held_tap or (not dragged and not discard_dragged))
+	var confirms := held_tap and _press_was_selected
+	var slot := -1 if discard or held_tap else _slot_at_drag(point)
 	_cancel_press()
 	_settling_id = id
 	if dragged: drag_finished.emit(slot)
 	if discard: swipe_discard.emit(id)
-	elif began_stable and can_play and not dragged and not discard_dragged and traveled <= _tap_slop(): tile_clicked.emit(id)
+	elif tapped:
+		# Starting a sort drag clears the selection, so carry it through a stationary hold tap.
+		_hold_tap_confirms = confirms
+		tile_clicked.emit(id)
+		_hold_tap_confirms = false
 	if dragged or discard_dragged: _render(true)
 	_settling_id = -1
 

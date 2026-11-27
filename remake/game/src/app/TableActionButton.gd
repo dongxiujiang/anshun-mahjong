@@ -4,9 +4,15 @@ var action := ""
 const COLORS := {
 	"win": "b93232", "self_win": "b93232",
 	"pong": "c98d24", "kong": "c77a1f", "concealed_kong": "227a57", "add_kong": "c77a1f",
-	"pass": "1e6f74", "ready": "2c7250", "discard": "2b6088",
+	"pass": "2a4f52", "ready": "2c7250", "discard": "2b6088",
 }
 var _pulse := 0.0
+var _appear := 0.0
+
+func _ready() -> void:
+	_appear = 0.0
+	visibility_changed.connect(_sync_processing)
+	_sync_processing()
 
 func configure(kind: String, title: String, callback: Callable) -> void:
 	action = kind; text = title; accessibility_name = title; tooltip_text = title
@@ -18,20 +24,29 @@ func configure(kind: String, title: String, callback: Callable) -> void:
 		add_theme_color_override(state, Color.TRANSPARENT)
 	for signal_name in ["mouse_entered", "mouse_exited", "button_down", "button_up", "focus_entered", "focus_exited", "resized", "theme_changed"]:
 		connect(signal_name, queue_redraw)
-	set_process(action in ["win", "self_win"])
+	_sync_processing()
+
+func _sync_processing() -> void:
+	set_process(_appear < 1.0 or (action in ["win", "self_win"] and not disabled and is_visible_in_tree()))
 
 func _process(delta: float) -> void:
-	if not is_visible_in_tree() or disabled:
-		return
-	_pulse += delta * 4.2
+	_appear = minf(1.0, _appear + delta / 0.13)
+	if action in ["win", "self_win"] and not disabled and is_visible_in_tree():
+		_pulse += delta * 4.2
+	_sync_processing()
 	queue_redraw()
 
 func _has_point(point: Vector2) -> bool:
 	return point.distance_to(size * 0.5) <= minf(size.x, size.y) * 0.5
 
 func _draw() -> void:
+	_sync_processing()
 	var center := size * 0.5
-	var radius := minf(size.x, size.y) * 0.5 - 4.0
+	var eased := 1.0 + 2.70158 * pow(_appear - 1.0, 3.0) + 1.70158 * pow(_appear - 1.0, 2.0)
+	var radius := (minf(size.x, size.y) * 0.5 - 4.0) * lerpf(0.78, 1.0, eased)
+	if is_pressed() and not disabled:
+		radius *= 0.93
+		center.y += 1.5
 	var base := Color(COLORS.get(action, "2c7250"))
 	if disabled:
 		base = Color("5a6660")
@@ -46,7 +61,8 @@ func _draw() -> void:
 	# 底部柔影
 	draw_circle(center + Vector2(0, 4.5), radius, Color(0, 0, 0, 0.36))
 	# 外层鎏金金属镶圈
-	draw_circle(center, radius, Color("#9e7939") if not disabled else Color("#4a554f"))
+	var rim := Color("#6e7968") if action == "pass" else Color("#9e7939")
+	draw_circle(center, radius, rim if not disabled else Color("#4a554f"))
 	draw_circle(center, radius - 2.2, base.darkened(0.32))
 	# 玉石温润渐变光泽层
 	for i in range(1, 10):
@@ -55,8 +71,10 @@ func _draw() -> void:
 	# 上半弧温润月牙高光
 	draw_arc(center, radius - 5.5, -PI * 0.82, -PI * 0.18, 28, Color(1.0, 0.96, 0.85, 0.28 if not disabled else 0.10), 2.4, true)
 	# 双层精细鎏金环线
-	draw_arc(center, radius - 0.8, 0, TAU, 64, Color(1.0, 0.90, 0.62, 0.88 if not disabled else 0.35), 1.8, true)
-	draw_arc(center, radius - 4.2, 0, TAU, 56, Color(1.0, 0.94, 0.78, 0.36 if not disabled else 0.15), 1.0, true)
+	var ring_ink := Color("#c5c3a1") if action == "pass" else Color("#ffe69e")
+	ring_ink.a = (0.64 if action == "pass" else 0.88) if not disabled else 0.35
+	draw_arc(center, radius - 0.8, 0, TAU, 64, ring_ink, 1.8, true)
+	draw_arc(center, radius - 4.2, 0, TAU, 56, Color(1.0, 0.94, 0.78, (0.24 if action == "pass" else 0.36) if not disabled else 0.15), 1.0, true)
 	if has_focus():
 		draw_arc(center, radius - 3.0, 0, TAU, 64, Color.WHITE, 2.0, true)
 	var font := get_theme_default_font()

@@ -7,6 +7,7 @@ var _phase := ""
 var _reminder := false
 var _remaining := -1
 var _fraction := 0.0
+var _pulse_time := 0.0
 
 func _init() -> void:
 	custom_minimum_size = Vector2(68, 68)
@@ -21,7 +22,24 @@ func _init() -> void:
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_caption.add_theme_font_size_override("font_size", 13)
 	resized.connect(_fit)
+	visibility_changed.connect(_sync_pulse)
+	set_process(false)
 	_fit()
+
+func _ready() -> void:
+	_sync_pulse()
+
+func _sync_pulse() -> void:
+	var active := is_visible_in_tree() and _reminder
+	set_process(active)
+	if not active:
+		_pulse_time = 0.0
+
+func _process(delta: float) -> void:
+	_pulse_time += delta
+	var wave := 0.5 + 0.5 * sin(_pulse_time * 7.2)
+	_number.add_theme_color_override("font_color", Color("#ffe8ae").lerp(Color("#ffb089"), wave))
+	queue_redraw()
 
 func _fit() -> void:
 	_number.position = Vector2.ZERO; _number.size = size
@@ -59,15 +77,21 @@ func show_clock(clock: Dictionary, round_view: Dictionary, viewer: int, suppress
 	_number.add_theme_color_override("font_color", Color("#ffcf6b") if next[2] else Color("#f7efdc"))
 	if _phase != next[0] or _reminder != next[2] or _remaining != seconds:
 		_phase = next[0]; _reminder = next[2]; _remaining = seconds; queue_redraw()
+	_sync_pulse()
+	queue_redraw()
 
 func _draw() -> void:
 	var center := size * 0.5
 	var radius := maxf(8.0, minf(size.x, size.y) * 0.5 - 3.0)
-	var rim := Color("#f2b84b") if _reminder else Color("#a2beae")
-	var glow := Color(0.96, 0.56, 0.16, 0.28) if _reminder else Color(0.24, 0.62, 0.48, 0.14)
+	var wave := 0.5 + 0.5 * sin(_pulse_time * 7.2)
+	var warning := Color("#ffb94f").lerp(Color("#ff6b4a"), wave)
+	var rim := warning if _reminder else Color("#a2beae")
+	var glow := Color(warning.r, warning.g, warning.b, 0.16 + wave * 0.16) if _reminder else Color(0.24, 0.62, 0.48, 0.14)
 	draw_circle(center + Vector2(0, 2), radius, Color(0, 0, 0, 0.34))
 	draw_circle(center, radius + 2.0, glow)
 	draw_circle(center, radius, Color("#0d2620f2"))
+	if _reminder:
+		draw_arc(center, radius + 1.0, 0.0, TAU, 64, Color(warning.r, warning.g, warning.b, 0.18 + wave * 0.20), 3.5, true)
 	draw_arc(center, radius - 1.0, 0.0, TAU, 56, rim, 2.0, true)
 	draw_arc(center, radius * 0.84, 0.0, TAU, 48, Color(rim.r, rim.g, rim.b, 0.22), 2.5, true)
-	draw_arc(center, radius * 0.84, -PI * 0.5, -PI * 0.5 + TAU * _fraction, 48, Color("#ffb94f") if _reminder else Color("#e2c170"), 3.2, true)
+	draw_arc(center, radius * 0.84, -PI * 0.5, -PI * 0.5 + TAU * _fraction, 48, warning if _reminder else Color("#e2c170"), 3.2, true)
