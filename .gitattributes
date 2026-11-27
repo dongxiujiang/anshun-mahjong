@@ -1,0 +1,4 @@
+# Preserve exact provenance bytes for tile metadata across Windows and Linux checkouts.
+remake/game/assets/tiles/classic/models.json -text
+# Keep POSIX shell scripts LF-only for Linux container images.
+*.sh text eol=lf

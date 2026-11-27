@@ -124,9 +124,17 @@ func _verify() -> void:
 	check(before.round.wall_remaining < 56 and before.round.players[creator_seat].discard_count > 0
 		and before.room.round_number == 1 and before.room.room_instance_id == instance, "observer holds the live wall after the creator's opening draw and discard")
 	check(_private_view(before), "the observer never receives other concealed hands")
+	var killed_pid := creator_pid
 	if not check(OS.is_process_running(creator_pid) and OS.kill(creator_pid) == OK, "kill the creating player process"):
 		return
-	check(await wait_until(func(): return not OS.is_process_running(creator_pid), 3000), "creating process has exited")
+	creator_pid = -1
+	var creator_exited := func() -> bool:
+		if OS.get_name() == "Linux":
+			return not FileAccess.file_exists("/proc/%d/stat" % killed_pid)
+		if OS.get_name() == "Windows":
+			return not OS.is_process_running(killed_pid)
+		return OS.execute("kill", ["-0", str(killed_pid)]) != 0
+	check(await wait_until(creator_exited, 3000), "creating process has exited")
 	if not check(await wait_until(func():
 		return observer.view.round.get("prompt_id") == before.round.prompt_id and observer.view.clock.get("phase") == "countdown" and int(observer.view.clock.get("remaining_ms", 0)) < before.clock.remaining_ms, 1500), "the same observer clock keeps counting after the creator dies"):
 		return
