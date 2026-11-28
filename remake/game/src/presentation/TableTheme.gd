@@ -7,9 +7,9 @@ const TILE_BACK_ORDER := ["jade", "amber", "porcelain", "cinnabar"]
 const TABLE_THEMES := {
 	"jade_classic": {
 		"label": "翠玉雅轩（默认）",
-		"bg": Color("#0e211d"),
-		"felt_center": Color("#0c4f41"),
-		"felt_edge": Color("#062c25"),
+		"bg": Color("#09161e"),
+		"felt_center": Color("#12394a"),
+		"felt_edge": Color("#081d28"),
 		"trim_gold": Color("#c8a862"),
 		"wood": Color("#4d2f1c"),
 		"wood_roughness": 0.44,
@@ -19,15 +19,15 @@ const TABLE_THEMES := {
 		"ambient_energy": 0.56,
 		"key_color": Color("#fffaf0"),
 		"key_energy": 0.52,
-		"hub_plate": Color("#132b24"),
+		"hub_plate": Color("#0e2530"),
 		"hub_rim": Color("#c7a258"),
 		"hub_glow": Color("#ffcf6e"),
 	},
 	"walnut_classic": {
 		"label": "胡桃古韵",
 		"bg": Color("#171512"),
-		"felt_center": Color("#184539"),
-		"felt_edge": Color("#0c2620"),
+		"felt_center": Color("#1a3533"),
+		"felt_edge": Color("#0d1d1c"),
 		"trim_gold": Color("#d0a960"),
 		"wood": Color("#5a321d"),
 		"wood_roughness": 0.40,
@@ -62,8 +62,8 @@ const TABLE_THEMES := {
 	"bamboo_mist": {
 		"label": "松竹清风",
 		"bg": Color("#112321"),
-		"felt_center": Color("#1d5a51"),
-		"felt_edge": Color("#0f3732"),
+		"felt_center": Color("#1a4952"),
+		"felt_edge": Color("#0e2a30"),
 		"trim_gold": Color("#c4c99e"),
 		"wood": Color("#6e4c30"),
 		"wood_roughness": 0.48,
@@ -82,8 +82,8 @@ const TABLE_THEMES := {
 const TILE_BACKS := {
 	"jade": {
 		"label": "翡翠玉背（默认）",
-		"back": Color(0.18, 0.44, 0.29, 1.0),
-		"ivory": Color(0.98, 0.97, 0.92, 1.0),
+		"back": Color(0.18, 0.56, 0.31, 1.0),
+		"ivory": Color(0.99, 0.98, 0.94, 1.0),
 	},
 	"amber": {
 		"label": "琥珀鎏金",

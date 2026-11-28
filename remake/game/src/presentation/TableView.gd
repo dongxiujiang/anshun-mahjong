@@ -25,6 +25,9 @@ const DRAG_SETTLE_SECONDS := 0.12
 const HAND_TOLERANCE := 1.5
 const TAP_SLOP := 14.0
 const OWN_HAND_FORWARD_SHIFT := 3.65
+# The face-up tile's near corner sits lower, so it needs less Z offset on screen.
+const OWN_HAND_FLAT_FORWARD_SHIFT := 3.00
+const OPPOSITE_REVEAL_OUTWARD_SHIFT := 0.45
 
 signal tile_clicked(tile_id: int)
 signal blank_tapped()
@@ -479,7 +482,7 @@ func _frame_saved_table(facing: Basis, viewport_size: Vector2, aspect: float) ->
 				var pose := _pitch_hand(extension.pose,pitch)
 				if seat==viewer:pose=_magnify_own_hand(pose,seat,pitch != 0.0)
 				for corner in 8:points.append(pose*Geometry.BOUNDS.get_endpoint(corner))
-		if view.get("phase", "") == "settled" and seat != viewer:
+		if view.get("phase", "") == "settled":
 			var bounds := Geometry.tile_bounds(float(custom_profile.data.presentation.hand_pitch))
 			for index in 14:
 				var placement: Dictionary = _hand_extension(seat,13) if index == 13 else region_placement.indexed(seat,"hand",index,bounds.size.x,bounds.size.z,bounds.size.y*0.5,deg_to_rad(float(custom_profile.data.presentation.hand_pitch)),13)
@@ -845,10 +848,11 @@ func _hand(p: Dictionary, animate: bool) -> void:
 			var bounds := Geometry.tile_bounds(pitch)
 			var placement: Dictionary = _hand_extension(seat,ids.size()-1,0.0 if use_draw_space else Layout.GAP) if drawing else region_placement.indexed(seat,"hand",i,bounds.size.x,bounds.size.z,bounds.size.y*0.5,deg_to_rad(pitch),ids.size()-int(separate or use_draw_space))
 			pose = _planned_pose(placement, pose, seat, "draw" if drawing else "hand")
-			if settled and seat!=viewer:pose=_settlement_hand(pose,seat)
-			elif flat:pose=_pitch_hand(pose,0.0)
-			elif seat==viewer:pose=_tilt_own_hand(pose,false)
-			if seat==viewer:pose=_magnify_own_hand(pose,seat,not flat)
+			if settled:pose=_settlement_hand(pose,seat)
+			else:
+				if flat:pose=_pitch_hand(pose,0.0)
+				elif seat==viewer:pose=_tilt_own_hand(pose,false)
+				if seat==viewer:pose=_magnify_own_hand(pose,seat,not flat)
 			if selected: pose.origin.y += 0.56
 		var value: String = faces.get(id, "")
 		if flat and value.is_empty():
@@ -980,8 +984,18 @@ func _magnify_own_hand(pose: Transform3D, seat: int, standing: bool = true) -> T
 	return pose
 
 func _settlement_hand(pose: Transform3D, seat: int) -> Transform3D:
-	pose = _pitch_hand(pose, -20.0 if Seats.relative(viewer,seat) == 2 else 0.0)
-	return _magnify_hand(pose,seat,1.24)
+	var opposite := Seats.relative(viewer,seat) == 2
+	# Shift perpendicular to the row so rotated layouts keep their tile centering.
+	var outward := pose.basis.x.cross(Vector3.UP).normalized()
+	pose = _pitch_hand(pose, -20.0 if opposite else 0.0)
+	if seat == viewer:
+		pose = _magnify_own_hand(pose,seat,false)
+		pose.origin += outward * OWN_HAND_FLAT_FORWARD_SHIFT
+		return pose
+	pose = _magnify_hand(pose,seat,1.24)
+	# The far-side reveal tilts toward the viewer. Leave room for the public row in projection.
+	if opposite: pose.origin += outward * OPPOSITE_REVEAL_OUTWARD_SHIFT
+	return pose
 
 func _magnify_hand(pose: Transform3D, seat: int, scale:float) -> Transform3D:
 	if is_equal_approx(scale,1): return pose

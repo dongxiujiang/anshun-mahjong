@@ -3,6 +3,7 @@ const Main=preload("res://scenes/Main.tscn")
 const Profile=preload("res://src/presentation/TableLayoutProfile.gd")
 const Layout=preload("res://src/presentation/TableLayout.gd")
 const Geometry=preload("res://src/presentation/TileGeometry.gd")
+const PHONE_SIZES := [Vector2i(1280, 720), Vector2i(1602, 720), Vector2i(1920, 1080), Vector2i(2400, 1080), Vector2i(2670, 1200)]
 var metrics:=[]
 func _initialize()->void:run.call_deferred()
 func settle()->void:
@@ -24,6 +25,29 @@ func screen_bounds(table,node:MeshInstance3D)->Rect2:
 		var point:Vector2=table.camera.unproject_position(node.global_transform*node.get_aabb().get_endpoint(corner))
 		bounds=Rect2(point,Vector2.ZERO) if corner==0 else bounds.expand(point)
 	return bounds
+func hand_bounds(table) -> Dictionary:
+	var hands := {}
+	for node in table.tiles.values():
+		if node.get_meta("zone", "") != "hand": continue
+		var seat: int = node.get_meta("seat")
+		var bounds := screen_bounds(table, node)
+		hands[seat] = hands[seat].merge(bounds) if hands.has(seat) else bounds
+	return hands
+
+func outer_edge(bounds: Rect2, relative_seat: int) -> float:
+	return [bounds.end.y, bounds.position.x, bounds.position.y, bounds.end.x][relative_seat]
+
+func check_hand_transition(table, before: Dictionary, resolution: Vector2i, viewer: int) -> void:
+	var after := hand_bounds(table)
+	var viewport_scale: float = resolution.y / 720.0
+	for seat in 4:
+		var relative_seat := posmod(seat - viewer, 4)
+		var shift := outer_edge(after[seat], relative_seat) - outer_edge(before[seat], relative_seat)
+		var center_y: float = after[seat].get_center().y - before[seat].get_center().y
+		print("Settlement hand %s viewer %d relative %d: edge %+.2f px, center Y %+.2f px" % [resolution, viewer, relative_seat, shift, center_y])
+		check(absf(shift) <= (3.0 if seat == viewer else 8.0) * viewport_scale,
+			"hand keeps its screen-edge anchor at %s viewer %d seat %d (shift %.2f px)" % [resolution, viewer, seat, shift])
+
 func old_camera(table)->void:
 	var aspect:float=table.get_viewport().get_visible_rect().size.aspect()
 	var pitch:float=table.custom_profile.data.presentation.camera_pitch
@@ -31,23 +55,56 @@ func old_camera(table)->void:
 	table.camera.position=Layout.facing(table.viewer)*Vector3(0,sin(deg_to_rad(pitch)),cos(deg_to_rad(pitch)))*maxf(60,table.table_edge()*4.8)
 	table.camera.look_at(Vector3.ZERO)
 	table._frame_saved_table(Layout.facing(table.viewer),table.get_viewport().get_visible_rect().size,aspect)
-func kong_game(owner:int,provider:int):
+func public_game(owner: int, provider: int, claim: String = "kong"):
 	var probe:=Round.new();probe.start(provider,5,2,Catalog.ordered_values());probe.begin_dealer_turn()
-	var copies:Array=probe.players[owner].hand.slice(0,3);copies.append(probe.players[provider].draw_id)
+	var copies:Array=probe.players[owner].hand.slice(0,3 if claim == "kong" else 2);copies.append(probe.players[provider].draw_id)
 	var pool:=Catalog.values(8427)
 	for id in copies:pool.erase("wan6")
 	var deck:=[]
 	for id in Catalog.COUNT:deck.append("wan6" if copies.has(id) else pool.pop_back())
 	var game:=Round.new();game.start(provider,5,2,deck);game.begin_dealer_turn()
-	_discard(game,game.players[provider].draw_id);check(game.submit(owner,game.prompt_id,"kong"),"public visibility fixture claims a legal exposed kong");_pass_all(game)
+	_discard(game,game.players[provider].draw_id);check(game.submit(owner,game.prompt_id,claim),"public visibility fixture claims a legal " + claim);_pass_all(game)
 	return game
-func _mount_live_table(app, profile, viewer: int, settled: bool) -> void:
+
+func check_public_reveal(table, game, snapshot: Dictionary, owner: int, resolution: Vector2i) -> void:
+	var reveal := snapshot.duplicate(true)
+	reveal.phase = "settled"
+	for row in reveal.players:
+		var p: Dictionary = game.players[row.seat]
+		row.hand = game._faces(p.hand)
+		row.draw_id = p.draw_id
+	for angle in 4:
+		reveal.viewer_seat = posmod(owner + angle, 4)
+		table.apply_view(reveal.duplicate(true))
+		var label := "%s %s owner %d view %d" % [snapshot.players[owner].melds[0].kind, resolution, owner, reveal.viewer_seat]
+		var placed: Dictionary = table.region_placement._public[owner]
+		for key in ["c9999", "m0"]:
+			check(placed.get(key, {}).get("region") == "%d/public_front" % owner, "public_front placement for " + label)
+		var public_bounds: Array[Rect2] = []
+		for node in table.tiles.values():
+			if node.get_meta("seat", -1) == owner and node.get_meta("zone", "") in ["meld", "chicken"]:
+				public_bounds.append(screen_bounds(table, node))
+		check(public_bounds.size() == snapshot.players[owner].melds[0].tile_ids.size() + 1, "visible meld and chicken for " + label)
+		var minimum_gap := INF
+		for node in table.tiles.values():
+			if node.get_meta("seat", -1) != owner or node.get_meta("zone", "") != "hand": continue
+			var bounds := screen_bounds(table, node)
+			check(Rect2(Vector2.ZERO, Vector2(resolution)).encloses(bounds), "revealed hand stays on screen with " + label)
+			for piece in public_bounds:
+				var gap := maxf(maxf(piece.position.x - bounds.end.x, bounds.position.x - piece.end.x),
+					maxf(piece.position.y - bounds.end.y, bounds.position.y - piece.end.y))
+				minimum_gap = minf(minimum_gap, gap)
+		print("Settlement public gap %s: %+.2f px" % [label, minimum_gap])
+		check(is_finite(minimum_gap) and minimum_gap >= 2.0 * resolution.y / 720.0,
+			"settled hand keeps a visible gap from " + label)
+func _mount_live_table(app, profile, viewer: int, settled: bool) -> Dictionary:
 	app._table.custom_profile = profile
 	app._table.region_placement = load("res://src/presentation/RegionPlacement.gd").new(profile)
 	app._table.viewer = viewer
 	app.table_play_only = true
 	app._mode = "solo"
 	var members := []
+	var before := {}
 	for seat in 4:
 		members.append({"nickname": ["东秀", "牌友小明", "麻将搭子", "清风"][seat], "score": 200, "ai_id": seat, "connected": true, "player_id": "cam-" + str(seat), "avatar": seat + 1})
 	if settled:
@@ -63,6 +120,14 @@ func _mount_live_table(app, profile, viewer: int, settled: bool) -> void:
 		var stock := []
 		for idx in 108: stock.append(fixed[idx] if fixed.has(idx) else pool.pop_back())
 		var rs := Round.new(); rs.start(viewer, 4, 2, stock, 1); rs.begin_dealer_turn()
+		var play := rs.snapshot_for(viewer)
+		app._round_projection = play
+		app._view = {"seat": viewer, "room": {"room_instance_id": "cam", "round_number": 1, "seats": members, "mode": "solo"}, "round": play}
+		app._table.apply_view(play)
+		app._show("play")
+		app._table._render(false)
+		await settle()
+		before = hand_bounds(app._table)
 		rs.submit(viewer, rs.prompt_id, "self_win", -1)
 		var snap := rs.snapshot_for(viewer)
 		var facts := rs.settlement_facts()
@@ -85,17 +150,19 @@ func _mount_live_table(app, profile, viewer: int, settled: bool) -> void:
 		app._table.apply_view(snap)
 		app._show("play")
 	await settle()
+	return before
 
 func run()->void:
 	var viewport:=SubViewport.new();viewport.size=Vector2i(1280,720);viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS;root.add_child(viewport)
 	var cfg := "user://cam-read-%d.cfg" % Time.get_ticks_usec()
 	var app=Main.instantiate();app._settings=load("res://src/app/AppSettings.gd").new(cfg);app._settings.save_profile("镜头测",1);app.table_play_only=true;viewport.add_child(app);await settle()
 	var profile:=Profile.new();profile.load_file("res://assets/layouts/table-layout.json")
-	for resolution in [Vector2i(1280,720),Vector2i(1602,720),Vector2i(2670,1200)]:
+	for resolution in PHONE_SIZES:
 		viewport.size=resolution;app.size=Vector2(resolution);await settle()
 		for viewer in [1,0,3,2]:
-			await _mount_live_table(app, profile, viewer, true)
+			var before := await _mount_live_table(app, profile, viewer, true)
 			var table=app._table;var transforms:={};var current:={}
+			check_hand_transition(table, before, resolution, viewer)
 			for key in table.tiles:
 				var node:MeshInstance3D=table.tiles[key];transforms[key]=node.transform
 				if node.get_meta("zone","")=="hand" and node.get_meta("seat",-1)!=viewer:
@@ -117,12 +184,12 @@ func run()->void:
 			check(table.camera.far>table.camera.position.length()+table.table_edge(),"long-lens view retains far-side geometry within the clipping range")
 			var screen:=Rect2(Vector2.ZERO,Vector2(resolution))
 			for node in table.tiles.values():
-				if node.get_meta("zone","")!="hand" or node.get_meta("seat",-1)==viewer:continue
+				if node.get_meta("zone","")!="hand":continue
 				var bounds:=Rect2()
 				for corner in 8:
 					var point:Vector2=app._table_screen_point(node.global_transform*node.get_aabb().get_endpoint(corner))
 					bounds=Rect2(point,Vector2.ZERO) if corner==0 else bounds.expand(point)
-				check(screen.encloses(bounds),"revealed opponent hand stays on screen at %s viewer %d"%[resolution,viewer])
+				check(screen.encloses(bounds),"every revealed hand stays on screen at %s viewer %d seat %d"%[resolution,viewer,node.get_meta("seat")])
 				check(not app._frame.get_child(0).get_global_rect().intersects(bounds),"settlement panel does not cover revealed hand at %s viewer %d"%[resolution,viewer])
 				for badge in app._settlement_names.badges:
 					if badge.visible:check(not badge.get_global_rect().intersects(bounds),"settlement name does not cover revealed hand at %s viewer %d"%[resolution,viewer])
@@ -139,7 +206,7 @@ func run()->void:
 			if resolution in [Vector2i(1602,720),Vector2i(2670,1200)] and viewer==1:await capture(viewport,"settlement-25d-%dx%d"%[resolution.x,resolution.y])
 	viewport.size=Vector2i(1602,720);app.size=Vector2(1602,720);await settle()
 	for owner in [3,2,0]:
-		var game=kong_game(owner,1);var facts:=JSON.stringify(game.export_authority())
+		var game=public_game(owner,1);var facts:=JSON.stringify(game.export_authority())
 		await _mount_live_table(app, profile, 1, false);app._table.apply_view(game.snapshot_for(1));app._table._render(false);await settle()
 		var table=app._table;var public_ids:Array=game.players[owner].melds[0].tile_ids
 		table._frame_camera()
@@ -155,10 +222,10 @@ func run()->void:
 		check(table.tiles.values().all(func(node):return node.get_meta("zone","")!="hand" or node.get_meta("seat",-1)==1 or node.get_meta("value","")==""),"more readable camera never reveals private opponent hand faces during play")
 		check(JSON.stringify(game.export_authority())==facts,"camera framing never alters the actual kong, stock or rule state")
 		await capture(viewport,"public-kong-seat-%s"%owner)
-	for resolution in [Vector2i(1280,720),Vector2i(1602,720),Vector2i(2670,1200)]:
+	for resolution in PHONE_SIZES:
 		viewport.size=resolution;app.size=Vector2(resolution);await settle()
 		for viewer in 4:
-			var game=kong_game(viewer,posmod(viewer+2,4))
+			var game=public_game(viewer,posmod(viewer+2,4))
 			var snapshot:Dictionary=game.snapshot_for(viewer)
 			snapshot.dealer=viewer;snapshot.players[viewer].ready=true
 			snapshot.players[viewer].discards.append({"id":9999,"value":"tiao1"})
@@ -186,6 +253,14 @@ func run()->void:
 					for public_node in public_nodes:
 						check(not screen_bounds(table,hand).grow(1).intersects(screen_bounds(table,public_node)),"selected own hand leaves a visible gap from public pieces at %s viewer %d"%[resolution,viewer])
 			if resolution in [Vector2i(1602,720),Vector2i(2670,1200)] and viewer==1:await capture(viewport,"in-round-own-public-%dx%d"%[resolution.x,resolution.y])
+			check_public_reveal(table, game, snapshot, viewer, resolution)
+			if viewer == 1:
+				var pong = public_game(viewer, posmod(viewer + 2, 4), "pong")
+				var pong_snapshot: Dictionary = pong.snapshot_for(viewer)
+				pong_snapshot.players[viewer].discards.append({"id": 9999, "value": "tiao1"})
+				pong_snapshot.charge_chickens = snapshot.charge_chickens
+				pong_snapshot.players[viewer].public_order = snapshot.players[viewer].public_order
+				check_public_reveal(table, pong, pong_snapshot, viewer, resolution)
 	await load("res://tests/AudioRetirement.gd").release_app(app, self)
 	viewport.free()
 	DirAccess.remove_absolute(cfg)
