@@ -268,9 +268,23 @@ class JoinDialog extends Control:
 		add_child(shade)
 		shade.color = Color.BLACK
 		shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		shade.gui_input.connect(func(event: InputEvent):
+			if opened and ((event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) or (event is InputEventScreenTouch and event.pressed)):
+				close())
+		var holder := MarginContainer.new()
+		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(holder)
+		holder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		# On Android/mobile, float the modal cleanly in the upper band so docked or floating numeric IME never obscures the input.
+		var mobile := OS.has_feature("mobile")
+		holder.add_theme_constant_override("margin_top", 56 if mobile else 0)
+		var align_box := VBoxContainer.new()
+		align_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		align_box.alignment = BoxContainer.ALIGNMENT_BEGIN if mobile else BoxContainer.ALIGNMENT_CENTER
+		holder.add_child(align_box)
 		var center := CenterContainer.new()
-		add_child(center)
-		center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		align_box.add_child(center)
 		center.add_child(panel)
 		panel.add_theme_stylebox_override("panel", UI.elevated_card(UI.PANEL, 16, 18, UI.GOLD_BORDER, 1,
 			10 if MotionConfig.value("panel", "shadow_enabled") else 0))
@@ -320,6 +334,8 @@ class JoinDialog extends Control:
 		if not opened:
 			return
 		opened = false
+		if OS.has_feature("mobile"):
+			DisplayServer.virtual_keyboard_hide()
 		focus_behavior_recursive = FOCUS_BEHAVIOR_DISABLED
 		mouse_behavior_recursive = MOUSE_BEHAVIOR_DISABLED
 		background.mouse_behavior_recursive = MOUSE_BEHAVIOR_INHERITED
