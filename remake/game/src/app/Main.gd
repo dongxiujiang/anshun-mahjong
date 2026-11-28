@@ -379,6 +379,10 @@ func _apply_sound(profile: Dictionary) -> void:
 func _apply_quality(value: String) -> void:
 	_board_world.msaa_3d = Viewport.MSAA_2X if value == "detail" else Viewport.MSAA_DISABLED
 	_table.apply_quality(value)
+	if is_instance_valid(_clock_face): _clock_face.apply_quality(_table.quality)
+	if is_instance_valid(_buttons):
+		for button in _buttons.get_children():
+			if button.has_method("apply_quality"): button.apply_quality(_table.quality)
 	for browser in [_online_results,_lan_results]:
 		if is_instance_valid(browser): browser.apply_quality(value)
 
@@ -1676,11 +1680,14 @@ func _layout_conflict(_seat: int, _group: String) -> void:
 
 
 func _refresh_actions() -> void:
+	if is_instance_valid(_clock_face): _clock_face.apply_quality(_table.quality)
 	var choices := _choices()
 	var key := choices.duplicate(true)
 	key["auto_play"] = _auto_play_active()
 	key["own_hand_moving"] = _own_turn_hand_moving()
 	if key == _action_key:
+		for button in _buttons.get_children():
+			if button.has_method("apply_quality"): button.apply_quality(_table.quality)
 		return
 	_action_key = key
 	var disabled: bool = key.auto_play or key.own_hand_moving
@@ -1695,6 +1702,7 @@ func _refresh_actions() -> void:
 				if not ids.has(face.id):
 					continue
 				var button := TableActionButton.new();button.configure(action,ACTION_NAMES[action], _pick_kong.bind(action, int(face.id), int(choices.prompt_id)))
+				button.apply_quality(_table.quality)
 				button.icon = TileArt.face(face.value)
 				button.add_theme_constant_override("icon_max_width", 24)
 				button.accessibility_name = "%s%s" % [SettlementView.tile_name(face.value), button.text]
@@ -1703,6 +1711,7 @@ func _refresh_actions() -> void:
 				_buttons.add_child(button)
 		elif ACTION_NAMES.has(action):
 			var button := TableActionButton.new();button.configure(action,ACTION_NAMES[action], _pick_action.bind(action))
+			button.apply_quality(_table.quality)
 			button.disabled = disabled
 			_buttons.add_child(button)
 	_fit_action_buttons()

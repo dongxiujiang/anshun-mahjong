@@ -186,7 +186,7 @@ func _build_table() -> void:
 	var key := DirectionalLight3D.new()
 	key.rotation_degrees = Vector3(-61, -30, 0)
 	key.light_energy = 0.52
-	key.shadow_opacity = 0.48
+	key.shadow_opacity = 0.36
 	key.shadow_blur = 1.35
 	key.shadow_enabled = true
 	key.directional_shadow_max_distance = 42.0
@@ -194,8 +194,8 @@ func _build_table() -> void:
 	_key_light = key
 	_rim_light = DirectionalLight3D.new()
 	_rim_light.rotation_degrees = Vector3(-38, 135, 0)
-	_rim_light.light_color = Color("#ffe7bf")
-	_rim_light.light_energy = 0.26
+	_rim_light.light_color = Color("#fff0d4")
+	_rim_light.light_energy = 0.22
 	_rim_light.shadow_enabled = false
 	_rim_light.visible = quality == "detail"
 	add_child(_rim_light)
@@ -396,18 +396,18 @@ func apply_quality(value: String) -> void:
 	var spec: Dictionary = TableTheme.table_data(_table_theme_id)
 	if is_instance_valid(_key_light):
 		_key_light.shadow_enabled = detailed
-		_key_light.shadow_opacity = 0.48
+		_key_light.shadow_opacity = 0.36
 		_key_light.shadow_blur = 1.35
 		_key_light.directional_shadow_max_distance = 42.0
-		_key_light.light_energy = spec.key_energy * (1.12 if detailed else 1.0)
+		_key_light.light_energy = spec.key_energy * (1.06 if detailed else 1.0)
 	if is_instance_valid(_rim_light):
 		_rim_light.visible = detailed
 	if _felt_material != null:
 		_felt_material.set_shader_parameter("detail_mode", 1.0 if detailed else 0.0)
 	if _wood_material != null:
 		_wood_material.clearcoat_enabled = detailed
-		_wood_material.clearcoat = 0.45 if detailed else 0.0
-		_wood_material.roughness = 0.26 if detailed else spec.wood_roughness
+		_wood_material.clearcoat = 0.42 if detailed else 0.0
+		_wood_material.roughness = 0.28 if detailed else spec.wood_roughness
 	if _trim_material != null:
 		_trim_material.roughness = 0.18 if detailed else 0.32
 	if _corner_material != null:
@@ -417,9 +417,9 @@ func apply_quality(value: String) -> void:
 		camera.environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED if quality == "smooth" else Environment.REFLECTION_SOURCE_BG
 		camera.environment.tonemap_mode = Environment.TONE_MAPPER_ACES if detailed else Environment.TONE_MAPPER_LINEAR
 		# Reserve highlight headroom for the glaze under Compatibility's ACES curve.
-		camera.environment.tonemap_white = 6.0 if detailed else 1.0
-		camera.environment.tonemap_exposure = 0.48 if detailed else 1.0
-		camera.environment.ambient_light_energy = spec.ambient_energy * (0.86 if detailed else 1.0)
+		camera.environment.tonemap_white = 2.4 if detailed else 1.0
+		camera.environment.tonemap_exposure = 0.96 if detailed else 1.0
+		camera.environment.ambient_light_energy = spec.ambient_energy * (0.96 if detailed else 1.0)
 
 func _frame_camera() -> void:
 	if not frame_camera_enabled or not camera.is_inside_tree():

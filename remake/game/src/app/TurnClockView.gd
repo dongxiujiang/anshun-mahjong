@@ -1,6 +1,7 @@
 extends Control
 ## 精巧新中式倒计时钟：仅在轮到本家操作（出牌/碰杠胡响应）且有倒计时显示，位置绝对固定不跳动。
 const UI = preload("res://src/app/AppTheme.gd")
+var quality := "detail"
 var _number := Label.new()
 var _caption := Label.new()
 var _phase := ""
@@ -28,6 +29,13 @@ func _init() -> void:
 
 func _ready() -> void:
 	_sync_pulse()
+
+func apply_quality(value: String) -> void:
+	var next := "detail" if value == "detail" else "smooth"
+	if quality == next:
+		return
+	quality = next
+	queue_redraw()
 
 func _sync_pulse() -> void:
 	var active := is_visible_in_tree() and _reminder
@@ -85,13 +93,40 @@ func _draw() -> void:
 	var radius := maxf(8.0, minf(size.x, size.y) * 0.5 - 3.0)
 	var wave := 0.5 + 0.5 * sin(_pulse_time * 7.2)
 	var warning := Color("#ffb94f").lerp(Color("#ff6b4a"), wave)
-	var rim := warning if _reminder else Color("#a2beae")
-	var glow := Color(warning.r, warning.g, warning.b, 0.16 + wave * 0.16) if _reminder else Color(0.24, 0.62, 0.48, 0.14)
-	draw_circle(center + Vector2(0, 2), radius, Color(0, 0, 0, 0.34))
-	draw_circle(center, radius + 2.0, glow)
-	draw_circle(center, radius, Color("#0d2620f2"))
+	var progress := warning if _reminder else Color("#edce83")
+	var end_angle := -PI * 0.5 + TAU * _fraction
+	if quality == "smooth":
+		draw_circle(center, radius, Color("#102e30e6"))
+		draw_arc(center, radius - 0.8, 0, TAU, 48, Color("#71908c"), 1.2, true)
+		draw_arc(center, radius * 0.80, 0, TAU, 48, Color("#38534f"), 2.8, true)
+		if _fraction > 0.0:
+			draw_arc(center, radius * 0.80, -PI * 0.5, end_angle, 48, progress, 2.8, true)
+		return
+	var shadow_center := center + Vector2(0, 3.5)
+	draw_circle(shadow_center, radius + 1.0, Color(0, 0, 0, 0.12))
+	draw_circle(shadow_center, radius - 1.0, Color(0, 0, 0, 0.25))
+	draw_arc(center, radius + 1.0, 0, TAU, 64, Color(1.0, 0.83, 0.47, 0.10), 3.0, true)
+	draw_circle(center, radius, Color("#59401f"))
+	draw_arc(center, radius - 1.3, -PI * 1.25, -PI * 0.25, 40, Color("#fff0b5"), 2.4, true)
+	draw_arc(center, radius - 1.3, -PI * 0.25, PI * 0.75, 40, Color("#6b4b1f"), 2.4, true)
+	draw_circle(center, radius - 3.0, Color("#081c19"))
+	for i in range(6):
+		var fraction := i / 5.0
+		draw_circle(center - Vector2(1, 3) * fraction, (radius - 4.0) * (1.0 - fraction * 0.35), Color("#102d27").lerp(Color("#20483a"), fraction))
+	# 刻度留在进度轨道内侧，不挤占中心数字。
+	for tick in range(12):
+		var direction := Vector2.from_angle(-PI * 0.5 + tick * TAU / 12.0)
+		var major := tick % 3 == 0
+		draw_line(center + direction * (radius - (12.0 if major else 10.5)), center + direction * (radius - 8.0), Color(1.0, 0.90, 0.64, 0.68 if major else 0.30), 1.2 if major else 0.8, true)
+	draw_arc(center, radius - 10.0, -PI * 0.84, -PI * 0.20, 28, Color(1.0, 0.97, 0.85, 0.16), 1.6, true)
+	var progress_radius := radius * 0.81
+	draw_arc(center, progress_radius, 0, TAU, 64, Color(0.71, 0.57, 0.28, 0.24), 3.0, true)
+	if _fraction > 0.0:
+		draw_arc(center, progress_radius, -PI * 0.5, end_angle, 64, Color(progress.r, progress.g, progress.b, 0.12), 5.4, true)
+		draw_arc(center, progress_radius, -PI * 0.5, end_angle, 64, progress, 2.8, true)
+		var bead := center + Vector2.from_angle(end_angle) * progress_radius
+		draw_circle(bead, 4.0, Color(progress.r, progress.g, progress.b, 0.18))
+		draw_circle(bead, 2.2, progress)
+		draw_circle(bead - Vector2(0.4, 0.5), 0.9, Color("#fff8e3"))
 	if _reminder:
-		draw_arc(center, radius + 1.0, 0.0, TAU, 64, Color(warning.r, warning.g, warning.b, 0.18 + wave * 0.20), 3.5, true)
-	draw_arc(center, radius - 1.0, 0.0, TAU, 56, rim, 2.0, true)
-	draw_arc(center, radius * 0.84, 0.0, TAU, 48, Color(rim.r, rim.g, rim.b, 0.22), 2.5, true)
-	draw_arc(center, radius * 0.84, -PI * 0.5, -PI * 0.5 + TAU * _fraction, 48, warning if _reminder else Color("#e2c170"), 3.2, true)
+		draw_arc(center, radius + 1.0, 0, TAU, 64, Color(warning.r, warning.g, warning.b, 0.12 + wave * 0.22), 2.8, true)

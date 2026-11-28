@@ -27,23 +27,18 @@ void fragment() {
 		grain = weave_a * 0.016 + weave_b * 0.010;
 	}
 
-	// 真实牌桌柔和顶灯中心漫射光晕 + 边角收暗
+	// Keep the cloth nearly uniform, with only a subtle natural color transition.
 	float radial = clamp(length(cloth) / max(1.0, half_side * 1.18), 0.0, 1.0);
 	float spotlight = smoothstep(0.0, 1.0, radial);
-	vec3 base = mix(felt_center.rgb, felt_edge.rgb, spotlight * 0.85);
+	vec3 base = mix(felt_center.rgb, felt_edge.rgb, spotlight * 0.35);
 
 	// 紧贴红木围栏内沿的凹槽暗影，增强立体层次
 	float edge_dist = half_side - max(abs(cloth.x), abs(cloth.y));
-	float inner_ao = mix(0.62, 1.0, smoothstep(0.0, 0.55, edge_dist));
+	float inner_ao = mix(0.86, 1.0, smoothstep(0.0, 0.32, edge_dist));
 	if (detail_mode > 0.5) {
-		float warm_pool = 1.0 - smoothstep(0.0, 0.78, radial);
-		base = mix(felt_center.rgb, felt_edge.rgb * 0.78, spotlight);
-		base *= vec3(1.0) + vec3(0.16, 0.09, 0.025) * warm_pool;
 		float sheen = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-		base += felt_center.rgb * vec3(1.12, 1.05, 0.92) * sheen * 0.16;
-		// Keep the cloth midtones readable at the glaze's lower ACES exposure.
-		base *= 2.0;
-		inner_ao = mix(0.44, 1.0, smoothstep(0.0, 0.72, edge_dist));
+		base += felt_center.rgb * vec3(1.12, 1.05, 0.92) * sheen * 0.06;
+		inner_ao = mix(0.80, 1.0, smoothstep(0.0, 0.32, edge_dist));
 	}
 
 	// 新中式极细暗金内收双线（紧贴最外沿，绝不干扰任何牌区）
