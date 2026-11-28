@@ -76,6 +76,7 @@ var _seen := {}
 var _selectable := {}
 var _hand_slots := {}
 var _discard_marker := MeshInstance3D.new()
+var _discard_marker_glow: MeshInstance3D
 var _felt_obstacles: Array[MeshInstance3D] = []
 var _pending_prompt := -1
 var _prompt_motions := {}
@@ -119,7 +120,11 @@ var _wall_pose_cache:={}
 var _wall_pose_signature:=[]
 var _hand_anchor_cache := {}
 var _hand_anchor_profile
+const RIPPLE_POOL_SIZE := 4
 var _ripple_mesh: TorusMesh
+var _ripple_pool: Array[Dictionary] = []
+var _ripple_cursor := 0
+var _delayed_ripples: Array[Tween] = []
 
 func _init(use_saved_layout: bool=true) -> void:
 	_use_saved_layout=use_saved_layout
@@ -143,7 +148,8 @@ func _ready() -> void:
 	visibility_changed.connect(func(): _sync_process_state())
 
 func _sync_process_state() -> void:
-	set_process(is_visible_in_tree() and (_discard_marker.visible or _shake_amount > 0.001 or _drag_follow_smoothing > 0.0))
+	var marker_anim := _discard_marker.visible and bool(MotionConfig.value("fx", "discard_marker_bob", false, quality))
+	set_process(is_visible_in_tree() and (marker_anim or _shake_amount > 0.001 or _drag_follow_smoothing > 0.0))
 
 func _build_table() -> void:
 	var environment := Environment.new()
@@ -241,6 +247,9 @@ func _build_table() -> void:
 	var glow_material := StandardMaterial3D.new(); glow_material.albedo_texture = texture; glow_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; glow_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; glow_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	glow.material_override = glow_material; glow.position.y = 0.08; glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; _discard_marker.add_child(glow)
 	_felt_obstacles.append(_discard_marker)
+	_discard_marker_glow = glow
+	_discard_marker_glow.visible = bool(MotionConfig.value("fx", "discard_marker_bob", false, quality))
+	_ensure_ripple_pool()
 
 func apply_theme(table_theme_id: String, tile_back_id: String = "") -> void:
 	_table_theme_id = table_theme_id if TableTheme.TABLE_THEMES.has(table_theme_id) else "jade_classic"
@@ -270,40 +279,69 @@ func apply_theme(table_theme_id: String, tile_back_id: String = "") -> void:
 	apply_quality(quality)
 
 func pulse_table_shake(intensity: float = 0.14) -> void:
-	_shake_amount = maxf(_shake_amount, clampf(intensity, 0.0, 0.35))
+	var fx := MotionConfig.section("fx", quality)
+	if not bool(fx.shake_enabled) or float(fx.shake_scale) <= 0.0:
+		return
+	_shake_amount = maxf(_shake_amount, clampf(intensity * float(fx.shake_scale), 0.0, 0.35))
 	_shake_time = 0.0
 	_sync_process_state()
 
-func _spawn_landing_ripple(world_pos: Vector3, color: Color = Color("#ffd575"), scale_mult: float = 1.0) -> void:
-	if not is_visible_in_tree():
+func _ensure_ripple_pool() -> void:
+	if not _ripple_pool.is_empty():
 		return
-	if _ripple_mesh == null:
-		_ripple_mesh = TorusMesh.new()
-		_ripple_mesh.inner_radius = 0.42
-		_ripple_mesh.outer_radius = 0.54
-		_ripple_mesh.rings = 20
-		_ripple_mesh.ring_segments = 6
-	var ring := MeshInstance3D.new()
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.emission_enabled = true
+	_ripple_mesh = TorusMesh.new()
+	_ripple_mesh.inner_radius = 0.42
+	_ripple_mesh.outer_radius = 0.54
+	_ripple_mesh.rings = 20
+	_ripple_mesh.ring_segments = 6
+	for i in RIPPLE_POOL_SIZE:
+		var ring := MeshInstance3D.new()
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.emission_enabled = true
+		ring.mesh = _ripple_mesh
+		ring.material_override = mat
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		ring.hide()
+		add_child(ring)
+		_ripple_pool.append({"mesh": ring, "mat": mat, "tween": null})
+
+func _spawn_landing_ripple(world_pos: Vector3, color: Color = Color("#ffd575"), scale_mult: float = 1.0) -> void:
+	var fx := MotionConfig.section("fx", quality)
+	if not is_visible_in_tree() or not bool(fx.ripple_enabled):
+		return
+	_ensure_ripple_pool()
+	var idx := _ripple_cursor
+	for offset in RIPPLE_POOL_SIZE:
+		var candidate := (_ripple_cursor + offset) % RIPPLE_POOL_SIZE
+		if not _ripple_pool[candidate].mesh.visible:
+			idx = candidate
+			break
+	_ripple_cursor = (idx + 1) % RIPPLE_POOL_SIZE
+	var slot := _ripple_pool[idx]
+	if slot.tween:
+		slot.tween.kill()
+	var ring: MeshInstance3D = slot.mesh
+	var mat: StandardMaterial3D = slot.mat
+	mat.albedo_color = Color(color, 0.72)
 	mat.emission = color
-	mat.emission_energy_multiplier = 1.15
-	ring.mesh = _ripple_mesh
-	ring.material_override = mat
-	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mat.emission_energy_multiplier = 0.72 * 1.15
 	ring.position = Vector3(world_pos.x, 0.028, world_pos.z)
 	ring.scale = Vector3(0.45 * scale_mult, 0.12, 0.45 * scale_mult)
-	add_child(ring)
-	var tw := create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(ring, "scale", Vector3(1.55 * scale_mult, 0.05, 1.55 * scale_mult), 0.36).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	ring.show()
+	var duration := float(fx.callout_duration) * 0.4
+	var tw := create_tween().set_parallel(true)
+	slot.tween = tw
+	tw.tween_property(ring, "scale", Vector3(1.55 * scale_mult, 0.05, 1.55 * scale_mult), duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.tween_method(func(a: float):
 		mat.albedo_color.a = a
-		mat.emission_energy_multiplier = a * 1.15, 0.72, 0.0, 0.36).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.chain().tween_callback(ring.queue_free)
+		mat.emission_energy_multiplier = a * 1.15, 0.72, 0.0, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.chain().tween_callback(ring.hide)
+
+func _second_chicken_ripple(pos: Vector3, tween_id: int) -> void:
+	_delayed_ripples.erase(instance_from_id(tween_id))
+	_spawn_landing_ripple(pos, Color("#ffd76a"), 1.85)
 
 func set_match_highlight(tile_value: String) -> void:
 	if _match_highlight_value == tile_value:
@@ -367,9 +405,9 @@ func _process(delta: float) -> void:
 		else:
 			_drag_follow_smoothing = 0.0
 			_sync_process_state()
-	_marker_time += delta
-	if _discard_marker.visible:
-		_discard_marker.position = _marker_origin + Vector3.UP * sin(_marker_time * 3.8) * 0.11
+	if _discard_marker.visible and bool(MotionConfig.value("fx", "discard_marker_bob", false, quality)):
+		_marker_time += delta
+		_discard_marker.position = _marker_origin + Vector3.UP * sin(_marker_time * 3.6) * 0.09
 		_discard_marker.rotation.y = _marker_time * 1.35
 	if _shake_amount > 0.001:
 		_shake_time += delta
@@ -404,12 +442,34 @@ func set_safe_insets(insets: Vector4) -> void:
 	_frame_camera()
 
 func apply_quality(value: String) -> void:
-	quality = "detail" if value == "detail" else "smooth"
+	var previous_quality := quality
+	quality = MotionConfig.normalize_quality(value)
 	if (_dragging or _discard_dragging) and tiles.has(_press_id):
 		_drag_follow_smoothing = MotionConfig.section("tile", quality).drag_follow_smoothing
 		if _drag_follow_smoothing <= 0.0:
 			tiles[_press_id].position = _drag_target_pos
-		_sync_process_state()
+	var fx := MotionConfig.section("fx", quality)
+	var marker_bob := bool(fx.discard_marker_bob)
+	if _discard_marker_glow:
+		_discard_marker_glow.visible = marker_bob
+	if not marker_bob:
+		_marker_time = 0.0
+		_discard_marker.position = _marker_origin
+		_discard_marker.rotation.y = 0.0
+	if not bool(fx.shake_enabled):
+		if (previous_quality != quality or _shake_amount > 0.0) and camera.is_inside_tree() and _camera_base_pos != Vector3.ZERO:
+			camera.position = _camera_base_pos
+		_shake_amount = 0.0
+	if not bool(fx.ripple_enabled):
+		for delayed in _delayed_ripples:
+			delayed.kill()
+		_delayed_ripples.clear()
+		for slot in _ripple_pool:
+			if slot.tween:
+				slot.tween.kill()
+				slot.tween = null
+			slot.mesh.hide()
+	_sync_process_state()
 	var detailed := quality == "detail"
 	var spec: Dictionary = TableTheme.table_data(_table_theme_id)
 	if is_instance_valid(_key_light):
@@ -1337,7 +1397,11 @@ func _place(key, value: String, target: Transform3D, zone: String, animate: bool
 		tween.tween_callback(func():
 			if zone == "chicken":
 				_spawn_landing_ripple(target.origin, Color("#ffb82e"), 1.35)
-				create_tween().tween_callback(_spawn_landing_ripple.bind(target.origin, Color("#ffd76a"), 1.85)).set_delay(0.09)
+				var fx := MotionConfig.section("fx", quality)
+				if bool(fx.ripple_enabled) and is_visible_in_tree():
+					var delayed := create_tween()
+					_delayed_ripples.append(delayed)
+					delayed.tween_callback(_second_chicken_ripple.bind(target.origin, delayed.get_instance_id())).set_delay(float(fx.callout_duration) * 0.1)
 				pulse_table_shake(0.11)
 			else:
 				_spawn_landing_ripple(target.origin, Color("#e8d49c"), 0.85))

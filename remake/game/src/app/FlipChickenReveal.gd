@@ -7,6 +7,9 @@ const TileArt := preload("res://src/presentation/TileArt.gd")
 const Tiles := preload("res://src/anshun/scoring/Tiles.gd")
 const Catalog := preload("res://src/domain/TileCatalog.gd")
 
+const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
+const MotionFX = preload("res://src/presentation/MotionFX.gd")
+
 const REVEAL_SECONDS := 2.6
 
 signal finished(key: String)
@@ -14,6 +17,9 @@ signal finished(key: String)
 var active_key := ""
 var flip_tile_value := ""
 
+var _quality := MotionConfig.current_quality
+var _particles := MotionFX.ParticlePool.new()
+var _fx_overlay: Control
 var _card := PanelContainer.new()
 var _title_label: Label
 var _sub_label: Label
@@ -99,6 +105,35 @@ func _ready() -> void:
 	_skip_btn.add_theme_font_size_override("font_size", 14)
 	footer.add_child(_skip_btn)
 
+	_fx_overlay = Control.new()
+	_fx_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_fx_overlay)
+	_fx_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fx_overlay.draw.connect(_particles.draw.bind(_fx_overlay))
+	apply_quality(_quality)
+	set_process(false)
+
+
+func apply_quality(value: String) -> void:
+	_quality = MotionConfig.normalize_quality(value)
+	if _card.has_theme_stylebox_override("panel"):
+		var box: StyleBoxFlat = _card.get_theme_stylebox("panel")
+		box.shadow_size = 14 if MotionConfig.value("panel", "shadow_enabled", false, _quality) else 0
+	if not MotionConfig.is_detail(_quality):
+		_clear_particles()
+
+
+func _clear_particles() -> void:
+	_particles.clear()
+	set_process(false)
+	if _fx_overlay:
+		_fx_overlay.queue_redraw()
+
+
+func _process(delta: float) -> void:
+	set_process(_particles.step(delta))
+	_fx_overlay.queue_redraw()
+
 
 func is_active_for(key: String) -> bool:
 	return visible and not key.is_empty() and active_key == key
@@ -108,6 +143,10 @@ func present(key: String, result: Dictionary, members: Array) -> bool:
 	var flip_tile := str(result.get("flip_tile", ""))
 	if flip_tile.is_empty() or not Catalog.valid_value(flip_tile):
 		return false
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	_clear_particles()
+	var fx := MotionConfig.section("fx", _quality)
 	active_key = key
 	flip_tile_value = flip_tile
 
@@ -153,18 +192,32 @@ func present(key: String, result: Dictionary, members: Array) -> bool:
 	else:
 		_gold_hint_label.hide()
 
-	if _tween != null and _tween.is_valid():
-		_tween.kill()
+	var duration := float(fx.flip_in_duration)
+	var from_scale := Vector2.ONE * float(fx.flip_from_scale)
+	var stagger := float(fx.flip_related_stagger)
 	modulate = Color(1, 1, 1, 0)
 	_card.pivot_offset = _card.get_combined_minimum_size() * 0.5
-	_card.scale = Vector2(0.88, 0.88)
+	_card.scale = from_scale
 	show()
 	_tween = create_tween().set_ignore_time_scale(true)
-	_tween.set_parallel(true)
-	_tween.tween_property(self, "modulate:a", 1.0, 0.24).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	_tween.tween_property(_card, "scale", Vector2.ONE, 0.30).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	_tween.chain().tween_interval(REVEAL_SECONDS)
-	_tween.tween_property(self, "modulate:a", 0.0, 0.22)
+	_tween.set_trans(fx.flip_trans).set_ease(Tween.EASE_OUT)
+	_tween.tween_property(_card, "scale", Vector2.ONE, duration).from(from_scale)
+	_tween.parallel().tween_property(self, "modulate:a", 1.0, duration).set_trans(Tween.TRANS_QUAD)
+	if stagger > 0.0:
+		for i in _related_row.get_child_count():
+			var item: Control = _related_row.get_child(i)
+			item.pivot_offset = item.get_combined_minimum_size() * 0.5
+			item.modulate.a = 0.0
+			item.scale = Vector2.ONE * 0.88
+			_tween.parallel().tween_property(item, "modulate:a", 1.0, duration).set_delay(i * stagger).set_trans(Tween.TRANS_QUAD)
+			_tween.parallel().tween_property(item, "scale", Vector2.ONE, duration).from(Vector2.ONE * 0.88).set_delay(i * stagger)
+	if has_gold_chicken and int(fx.flip_particles) > 0:
+		# CenterContainer places the card here even before its deferred layout pass.
+		_particles.emit_burst(size * 0.5, fx.flip_particles, [Color("#ffe394"), Color("#eeb84b"), Color("#fff2bf")], 240.0, 450.0, 0.40, 0.65, 110.0)
+		set_process(_particles.active_count > 0)
+		_fx_overlay.queue_redraw()
+	_tween.tween_interval(REVEAL_SECONDS)
+	_tween.tween_property(self, "modulate:a", 0.0, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	_tween.tween_callback(_complete)
 	return true
 
@@ -180,12 +233,14 @@ func finish_now() -> void:
 func cancel() -> void:
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
+	_clear_particles()
 	active_key = ""
 	flip_tile_value = ""
 	hide()
 
 
 func _complete() -> void:
+	_clear_particles()
 	var key := active_key
 	active_key = ""
 	hide()

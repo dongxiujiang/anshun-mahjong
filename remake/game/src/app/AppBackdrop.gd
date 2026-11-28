@@ -1,10 +1,12 @@
 extends Control
 ## 新中式茶馆氛围背景：深翠玉石径向漫光 + 极简暗金回纹边角装饰。零外部贴图、零卡顿。
 const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
+static var _jade_glow: GradientTexture2D
 var _detail: bool = MotionConfig.value("fx", "backdrop_detail")
 
 func _ready() -> void:
 	apply_quality(MotionConfig.current_quality)
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	resized.connect(queue_redraw)
 
@@ -27,15 +29,19 @@ func _draw() -> void:
 		draw_circle(center, max_r * 0.54, Color(0.08, 0.24, 0.19, 0.24))
 		draw_rect(outer, Color(0.78, 0.64, 0.35, 0.18), false, 1.0)
 		return
-	var layers := [
-		[1.00, Color(0.06, 0.18, 0.14, 0.34)],
-		[0.76, Color(0.08, 0.24, 0.19, 0.30)],
-		[0.54, Color(0.10, 0.30, 0.24, 0.24)],
-		[0.34, Color(0.14, 0.34, 0.26, 0.16)],
-		[0.20, Color(0.84, 0.68, 0.32, 0.045)],
-	]
-	for layer in layers:
-		draw_circle(center, max_r * float(layer[0]), layer[1])
+	if _jade_glow == null:
+		var ramp := Gradient.new()
+		ramp.offsets = PackedFloat32Array([0.0, 0.33, 0.67, 1.0])
+		ramp.colors = PackedColorArray([Color("#233e30"), Color("#17372b"), Color("#0e241e"), Color("#081512")])
+		_jade_glow = GradientTexture2D.new()
+		_jade_glow.width = 128
+		_jade_glow.height = 128
+		_jade_glow.use_hdr = true
+		_jade_glow.fill = GradientTexture2D.FILL_RADIAL
+		_jade_glow.fill_from = Vector2(0.5, 0.36)
+		_jade_glow.fill_to = Vector2(0.5, 1.0)
+		_jade_glow.gradient = ramp
+	draw_texture_rect(_jade_glow, Rect2(Vector2.ZERO, size), false)
 	# 3. 底部轻微收暗压重，突出前景卡片层次
 	draw_rect(Rect2(0, size.y * 0.78, size.x, size.y * 0.22), Color(0.02, 0.06, 0.05, 0.28), true)
 	# 4. 极淡中式丝绸竖格暗纹（仅左右留白边缘）

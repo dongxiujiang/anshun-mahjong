@@ -231,17 +231,32 @@ func _test_table_effects(table: Node3D, id: int) -> void:
 	lower.custom_step(float(detail_spec.select_down_duration) + 0.0002)
 	_check(not lower.is_running() and table.tiles[id].transform.is_equal_approx(base), "detail deselection lands at configured duration")
 	var chicken := base.translated(Vector3(0, -0.5, -2))
+	var children := table.get_child_count()
+	table._discard_marker.show()
+	table.apply_quality("smooth")
+	table._place(id, table.tiles[id].get_meta("value"), chicken, "chicken", true)
+	table._motions[id].custom_step(Table.MOVE_SECONDS + 0.0001)
+	_check(_ripple_count(table) == 0 and table.get_child_count() == children and table._delayed_ripples.is_empty(), "smooth chicken landing creates no rings or delayed ripple")
+	_check(table._shake_amount == 0.0 and table._discard_marker.visible and not table.is_processing(), "smooth marker stays visible without shake or idle processing")
+	table._place(id, table.tiles[id].get_meta("value"), base, "hand", false)
+	table.apply_quality("detail")
+	_check(table._ripple_pool.size() == 4 and _ripple_count(table) == 0, "detail starts with four idle ripple slots")
 	table._place(id, table.tiles[id].get_meta("value"), chicken, "chicken", true)
 	var landing: Tween = table._motions[id]
 	landing.custom_step(Table.MOVE_SECONDS + 0.0001)
 	_check(not landing.is_running() and _ripple_count(table) == 1, "first gold ripple starts at landing without extending tile travel")
-	var deadline := Time.get_ticks_msec() + 500
-	while _ripple_count(table) < 2 and Time.get_ticks_msec() < deadline:
-		await process_frame
+	var delayed: Tween = table._delayed_ripples.front()
+	delayed.custom_step(0.089)
+	_check(_ripple_count(table) == 1, "second ring waits for the 90 ms offset")
+	delayed.custom_step(0.002)
 	_check(_ripple_count(table) == 2, "second gold ripple follows the landing")
+	for i in 6:
+		table._spawn_landing_ripple(chicken.origin)
+		_check(table.get_child_count() == children, "burst %d reuses existing ripple nodes" % i)
+	_check(_ripple_count(table) == 4, "overlapping ripples occupy at most four slots")
 
 func _ripple_count(table: Node3D) -> int:
-	return table.get_children().filter(func(node): return node is MeshInstance3D and node.mesh == table._ripple_mesh).size()
+	return table.get_children().filter(func(node): return node is MeshInstance3D and node.visible and node.mesh == table._ripple_mesh).size()
 
 func _test_main() -> void:
 	var path := "user://ux-polish-%d.cfg" % Time.get_ticks_usec()

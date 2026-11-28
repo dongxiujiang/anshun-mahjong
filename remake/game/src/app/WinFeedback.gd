@@ -3,6 +3,13 @@ extends Control
 const Art = preload("res://src/app/CharacterArt.gd")
 const UI = preload("res://src/app/AppTheme.gd")
 
+const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
+const MotionFX = preload("res://src/presentation/MotionFX.gd")
+
+var _quality := MotionConfig.current_quality
+var _particles := MotionFX.ParticlePool.new()
+var _duration := 1.05
+var _last_progress := 0.0
 var last_key := ""
 var progress := 0.0
 var _motion: Tween
@@ -44,6 +51,12 @@ func _ready() -> void:
 	_badge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	resized.connect(_arrange)
 
+func apply_quality(value: String) -> void:
+	_quality = MotionConfig.normalize_quality(value)
+	if not MotionConfig.is_detail(_quality):
+		_particles.clear()
+	_arrange()
+
 func present(key: String, result: Dictionary, members: Array, source: Vector2, badges: PackedStringArray = PackedStringArray()) -> bool:
 	if key == last_key or result.get("winners", []).is_empty():
 		return false
@@ -62,21 +75,36 @@ func present(key: String, result: Dictionary, members: Array, source: Vector2, b
 	_badge_label.visible = not _badges.is_empty()
 	if _motion and _motion.is_valid():
 		_motion.kill()
+	var fx := MotionConfig.section("fx", _quality)
+	_duration = float(fx.win_duration)
+	_last_progress = 0.0
 	progress = 0.0
+	_particles.clear()
+	if int(fx.win_particles) > 0:
+		var origin := _source if _source != Vector2.ZERO else _banner_rect().get_center()
+		_particles.emit_burst(origin, fx.win_particles, [Color("#ffe394"), Color("#ecc16b"), Color("#a3ddbc")])
 	modulate = Color.WHITE
 	show()
 	_arrange()
 	_motion = create_tween().set_ignore_time_scale(true)
-	_motion.tween_method(_advance, 0.0, 1.0, 1.05)
-	_motion.tween_callback(hide)
+	_motion.tween_method(_advance, 0.0, 1.0, _duration)
+	_motion.tween_callback(_finish)
 	return true
 
 func cancel() -> void:
 	if _motion and _motion.is_valid():
 		_motion.kill()
+	_finish()
+
+func _finish() -> void:
+	_particles.clear()
 	hide()
 
 func _advance(value: float) -> void:
+	var dt := maxf(0.0, (value - _last_progress) * _duration)
+	_last_progress = value
+	if dt > 0.0:
+		_particles.step(dt)
 	progress = value
 	modulate.a = clampf(value * 7.5, 0.0, 1.0) * clampf((1.0 - value) * 4.2, 0.0, 1.0)
 	_arrange()
@@ -86,7 +114,8 @@ func _banner_rect() -> Rect2:
 	# 置于左上角留白绿呢区（结算时顶部导航已隐藏），完全不压对家亮牌与居中结算卡
 	var w := clampf(size.x * 0.25, 290.0, 360.0)
 	var h := 68.0
-	var ease_in := 1.0 - pow(1.0 - clampf(progress * 5.0, 0.0, 1.0), 3.0)
+	var enter := clampf(progress * 5.0, 0.0, 1.0)
+	var ease_in := MotionFX.spring_eval(enter) if MotionConfig.is_detail(_quality) else 1.0 - (1.0 - enter) * (1.0 - enter)
 	var slide := lerpf(-16.0, 0.0, ease_in)
 	return Rect2(14.0 + slide, 10.0, w, h)
 
@@ -102,16 +131,23 @@ func _arrange() -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	var fx := MotionConfig.section("fx", _quality)
+	var rings := int(fx.win_ring_count)
 	var fade := clampf((1.0 - progress) * 2.5, 0.0, 1.0)
 	# 1. 胡牌张清晰金环定位（实用聚焦，一眼锁定赢在哪张牌，无夸张光柱和放射刺）
 	if _source != Vector2.ZERO:
 		var ring_r := 18.0 + progress * 24.0
-		draw_circle(_source, 16.0, Color(0.96, 0.78, 0.32, 0.22 * fade))
+		if rings > 1:
+			draw_circle(_source, 16.0, Color(0.96, 0.78, 0.32, 0.22 * fade))
 		draw_arc(_source, ring_r, 0.0, TAU, 48, Color(0.98, 0.84, 0.42, 0.85 * fade), 2.5, true)
-		draw_arc(_source, ring_r * 0.68, 0.0, TAU, 36, Color(1.0, 0.94, 0.72, 0.55 * fade), 1.4, true)
+		if rings > 1:
+			draw_arc(_source, ring_r * 0.68, 0.0, TAU, 36, Color(1.0, 0.94, 0.72, 0.55 * fade), 1.4, true)
 	# 2. 紧凑墨玉鎏金横幅（复用预缓存 StyleBox，零逐帧堆分配）
 	var rect := _banner_rect()
-	draw_style_box(_shadow_box, Rect2(rect.position + Vector2(0, 4), rect.size))
+	if rings > 1:
+		draw_style_box(_shadow_box, Rect2(rect.position + Vector2(0, 4), rect.size))
 	draw_style_box(_zimo_box if _self_draw else _hu_box, rect)
 	draw_style_box(_portrait_box, Rect2(rect.position + Vector2(8.0, 6.0), Vector2(56.0, 56.0)))
 	draw_line(Vector2(rect.position.x + 144.0, rect.position.y + 14.0), Vector2(rect.position.x + 144.0, rect.end.y - 14.0), Color(0.91, 0.76, 0.42, 0.35), 1.0, true)
+	if int(fx.win_particles) > 0:
+		_particles.draw(self)
