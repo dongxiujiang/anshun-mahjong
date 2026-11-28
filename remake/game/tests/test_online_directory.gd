@@ -1,4 +1,5 @@
 extends SceneTree
+const AudioRetirement = preload("res://tests/AudioRetirement.gd")
 ## When launched by remake/server/test_room_directory.py this exercises HTTP and a separate Godot authority.
 const Directory = preload("res://src/network/RoomDirectory.gd")
 const Client = preload("res://src/network/GameClient.gd")
@@ -89,6 +90,11 @@ func _run() -> void:
 	var hand: Array = south.view.round.players[1].hand.duplicate(true)
 	var nonce := Crypto.new().generate_random_bytes(20).hex_encode()
 	var signed: Dictionary = await _voice(url, saved, 1, nonce)
+	# The directory reads membership from the room's 250 ms heartbeat file.
+	var auth_deadline := Time.get_ticks_msec() + 1000
+	while signed.code == 403 and Time.get_ticks_msec() < auth_deadline:
+		await create_timer(0.05).timeout
+		signed = await _voice(url, saved, 1, nonce)
 	check(signed.code == 200 and signed.data.voice_room == "dx-" + str(saved.room_instance_id) and not Marshalls.base64_to_raw(signed.data.auth).is_empty(), "fresh GME buffer bound to this member and instance")
 	check((await _voice(url, saved, 1, nonce)).code == 409, "voice nonce replay rejected")
 	check((await _voice(url, saved, 0, nonce)).code == 403, "other seat cannot use this token")
@@ -237,10 +243,9 @@ func _check_unavailable_resume(url: String, saved: Dictionary) -> void:
 	check(app._recovery_retries == 2 and app._recovery_timer.is_stopped() and app._settings.remembered_room() == cached and app._client._peer == null, "exhausted outage retries preserve ticket and never join the cached endpoint")
 	app._restore_recent_room()
 	check(await until(func(): return not app._recovery_timer.is_stopped()), "retry remains available for a later explicit fresh start")
-	app._choose_mode("lan")
+	app._choose_mode("solo")
 	check(app._recovery_ticket.is_empty() and app._recovery_timer.is_stopped() and app._directory._request == null, "choosing a new game cancels old-room retry")
-	app.queue_free()
-	await process_frame
+	check(await AudioRetirement.release_app(app, self), "new solo game's audio retires before ending directory integration")
 
 func _profile(index: int) -> Dictionary:
 	return {"room_number": "004291", "player_id": "online-integration-" + str(index), "nickname": "南家" if index == 0 else "东家", "mode": "online"}

@@ -87,7 +87,7 @@ func _run() -> void:
 	var rows := []
 	for i in 4:
 		rows.append({"connected": true, "player_id": "player" + str(i), "voice_pack": ["huaqiang", "wangye", "nvyou", "wenrou"][i]})
-	var room := {"mode": "lan", "room_number": "2501", "room_instance_id": "fixed", "round_number": 1, "seats": rows}
+	var room := {"mode": "online", "room_number": "2501", "room_instance_id": "fixed", "round_number": 1, "seats": rows}
 	var state := {"room": room, "seat": 0, "round": {"phase": "turn", "turn": 0, "audio_events": [{"id": 3, "seat": 0, "clip": "wan1"}]}}
 	client.view = state
 	client.view_changed.emit(state)

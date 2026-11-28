@@ -33,7 +33,7 @@ func _run() -> void:
 	var source := Host.new()
 	source.clock_msec = func(): return old_now
 	root.add_child(source)
-	source.configure("123456", "lan", 1, {"external_presentation": true})
+	source.configure("123456", "online", 1, {"external_presentation": true})
 	# This deck gives the dealer a discard that offers pong for every red die face.
 	source._rng.seed = 172
 	var ticket: Dictionary = source.join("member", "南", "old").ticket

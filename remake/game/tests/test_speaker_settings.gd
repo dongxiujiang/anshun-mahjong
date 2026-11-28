@@ -34,14 +34,14 @@ func _run() -> void:
 	var a := _person("target-a", "同名")
 	var b := _person("target-b", "同名")
 	var ai := {"ai_id": 3, "player_id": "", "nickname": "人机", "connected": false}
-	client.show_view(_view("lan-a", "lan", [me,a,b,ai]))
+	client.show_view(_view("lan-a", "online", [me,a,b,ai]))
 	check(voice.set_speaker_enabled(1,false,"target-a"), "name entry can mute an authenticated remote identity")
-	check(not voice.speaker_enabled(1) and voice.speaker_enabled(2) and not voice._backend.speaker_enabled(1), "same-name peers have separate preferences and actual LAN playback")
-	client.show_view(_view("lan-a", "lan", [me,b,a,ai]))
+	check(not voice.speaker_enabled(1) and voice.speaker_enabled(2) and not voice._backend.speaker_enabled(1), "same-name peers have separate preferences and actual network playback")
+	client.show_view(_view("lan-a", "online", [me,b,a,ai]))
 	check(voice.speaker_enabled(1) and not voice.speaker_enabled(2), "mute follows the person after a seat change")
 	check(not voice.set_speaker_enabled(1,false,"target-a") and voice.speaker_enabled(1), "held name context cannot mute a new seat occupant")
 	var renamed := a.duplicate();renamed.nickname="新名字";renamed.avatar=9
-	client.show_view(_view("lan-a", "lan", [me,b,renamed,ai]))
+	client.show_view(_view("lan-a", "online", [me,b,renamed,ai]))
 	check(not voice.speaker_enabled(2), "profile changes do not remove the identity's mute")
 	client.session_ended.emit("left");client.show_view({})
 	check(not voice.speaker_enabled_for("target-a"), "leaving preserves local listening preferences")

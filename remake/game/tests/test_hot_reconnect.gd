@@ -4,6 +4,16 @@ const Main := preload("res://scenes/Main.tscn")
 const Settings := preload("res://src/app/AppSettings.gd")
 const Client := preload("res://src/network/GameClient.gd")
 const AudioRetirement := preload("res://tests/AudioRetirement.gd")
+class TestDirectory extends "res://src/network/RoomDirectory.gd":
+	var authority
+	func verify_room(number: String, instance: String) -> bool:
+		var info: Dictionary = authority.discovery_info()
+		if info.is_empty() or info.get("instance") != instance or info.get("number") != number or authority._host._closed:
+			verification_failed.emit("missing")
+		else:
+			info.host = "127.0.0.1"
+			room_verified.emit(info)
+		return true
 var checks := 0
 var failures := 0
 var now_ms := 1000
@@ -45,16 +55,23 @@ func _run() -> void:
 	root.add_child(app)
 	root.add_child(authority)
 	root.add_child(other)
-	check(authority.start_server("284913", 0, {"difficulty": "low"}, "lan"), "start real LAN authority")
+	app._directory.queue_free()
+	var directory := TestDirectory.new()
+	directory.authority = authority
+	app._directory = directory
+	app.add_child(directory)
+	directory.room_verified.connect(app._recover_online_endpoint)
+	directory.verification_failed.connect(app._recovery_failed)
+	check(authority.start_server("284913", 0, {"difficulty": "low"}, "online"), "start real online authority")
 	authority._host.clock_msec = func(): return now_ms
-	app._mode = "lan"
+	app._mode = "online"
 	var profile: Dictionary = app._profile()
 	profile.room_number = "284913"
 	app._client.connect_room("127.0.0.1", authority.local_port, profile)
 	if not check(await until(func(): return app._screen == "room"), "Main enters original room"):
 		await finish()
 		return
-	other.connect_room("127.0.0.1", authority.local_port, {"mode": "lan", "room_number": profile.room_number, "nickname": "见证", "player_id": "observer"})
+	other.connect_room("127.0.0.1", authority.local_port, {"mode": "online", "room_number": profile.room_number, "nickname": "见证", "player_id": "observer"})
 	if not check(await until(func(): return not other.view.is_empty()), "second live human joins"):
 		await finish()
 		return
@@ -160,7 +177,7 @@ func _run() -> void:
 	await capture("lan-room-closed")
 	app._foreground_shade.go_back.pressed.emit()
 	await until(func():return not app._leaving)
-	check(app._screen == "connect" and app._mode == "lan" and app._view.is_empty() and not app._foreground_shade.visible, "explicit return opens this mode's table list")
+	check(app._screen == "connect" and app._mode == "online" and app._view.is_empty() and not app._foreground_shade.visible, "explicit return opens this mode's table list")
 	await finish()
 
 func finish() -> void:

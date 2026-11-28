@@ -187,9 +187,7 @@ func _creator(port: int, path: String) -> void:
 	quit()
 
 func _client_only(endpoint) -> bool:
-	var key_job: Thread = endpoint._backup_key_job
-	return (endpoint.mode == "online" and endpoint._host == null and endpoint._standby_state.is_empty()
-		and endpoint._backup_private == null and (key_job == null or not key_job.is_started()))
+	return endpoint.mode == "online" and endpoint._host == null and not endpoint.has_method("promote_lan_from_standby")
 
 func _private_view(state: Dictionary) -> bool:
 	for player in state.round.players:

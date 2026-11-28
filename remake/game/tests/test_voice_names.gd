@@ -98,9 +98,9 @@ func _run() -> void:
 	_phone_viewport.add_child(app)
 	authority = Client.new()
 	root.add_child(authority)
-	check(authority.start_server("918264", 0, {"difficulty": "low"}, "lan"), "real ENet LAN authority")
+	check(authority.start_server("918264", 0, {"difficulty": "low"}, "online"), "real ENet online authority")
 	authority._host.clock_msec = func(): return raw_ms
-	app._mode = "lan"
+	app._mode = "online"
 	var profile: Dictionary = app._profile()
 	profile.room_number = "918264"
 	app._client.connect_room("127.0.0.1", authority.local_port, profile)
@@ -108,7 +108,7 @@ func _run() -> void:
 	remote = Client.new()
 	root.add_child(remote)
 	remote.connect_room("127.0.0.1", authority.local_port,
-		{"mode": "lan", "room_number": profile.room_number, "player_id": "name-test-remote", "nickname": profile.nickname})
+		{"mode": "online", "room_number": profile.room_number, "player_id": "name-test-remote", "nickname": profile.nickname})
 	check(await until(func(): return not remote.view.is_empty()), "same-name real player joins separately")
 	remote_voice = Voice.new(folder.path_join("remote.cfg"))
 	root.add_child(remote_voice)

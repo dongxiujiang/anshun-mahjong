@@ -116,11 +116,10 @@ func show_result(settlement: Dictionary, mode: String, return_to_seats: Callable
 				_compact_footer_button(child)
 	if is_inside_tree():
 		var panel := MotionConfig.section("panel")
-		var duration: float = panel.screen_in_duration if MotionConfig.is_detail() else MotionConfig.value("transition", "crossfade_duration")
+		var duration: float = panel.screen_in_duration
 		modulate.a = 0.0
 		_fade_in = create_tween().set_parallel(true).set_trans(panel.ease_trans).set_ease(Tween.EASE_OUT)
-		var fade_duration: float = MotionConfig.value("overlay", "toast_in") if MotionConfig.is_detail() else duration
-		_fade_in.tween_property(self, "modulate:a", 1.0, fade_duration)
+		_fade_in.tween_property(self, "modulate:a", 1.0, duration)
 		if MotionConfig.is_detail():
 			# The outer transform belongs to the safe-area layout.
 			_body.offset_transform_enabled = true
@@ -138,7 +137,7 @@ func set_peeking(peek: bool) -> void:
 	mouse_behavior_recursive = MOUSE_BEHAVIOR_DISABLED if peek else MOUSE_BEHAVIOR_INHERITED
 	focus_behavior_recursive = FOCUS_BEHAVIOR_DISABLED if peek else FOCUS_BEHAVIOR_INHERITED
 	var panel := MotionConfig.section("panel")
-	var duration: float = panel.modal_out_duration if MotionConfig.is_detail() else MotionConfig.value("overlay", "badge_in")
+	var duration: float = panel.modal_out_duration
 	show()
 	_fade_in = create_tween().set_parallel(true).set_trans(panel.ease_trans).set_ease(Tween.EASE_OUT)
 	_fade_in.tween_property(self, "modulate:a", 0.0 if peek else 1.0, duration)

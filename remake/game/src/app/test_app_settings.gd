@@ -23,7 +23,7 @@ func _initialize() -> void:
 	_check(settings.update({"nickname": "晚风1", "difficulty": "high", "suit_order": ["tong", "tiao", "wan"], "draw_style": "random", "novice": true}))
 	_check(not settings.profile_complete() and not settings.save_profile("错误!", 5))
 	var ticket := {"room_instance_id": "room-instance", "room_number": "0042", "address": "127.0.0.1",
-		"port": 7600, "mode": "lan", "member_token": "local-ticket"}
+		"port": 7600, "mode": "online", "member_token": "local-ticket"}
 	_check(settings.remember_room(ticket))
 	var reopened := Settings.new(path)
 	_check(reopened.player_id() == identity and reopened.remembered_room() == ticket)

@@ -2,7 +2,7 @@
 config_version=5
 
 [application]
-config/version="2.4.4"
+config/version="2.4.5"
 config/name="东秀麻将"
 config/icon="res://src/app/assets/android_icon.png"
 run/main_scene="res://scenes/Main.tscn"
@@ -12,8 +12,8 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 PatchBoot="*res://src/app/PatchBoot.gd"
 
 [updates]
-base_id="2.4.4-r1"
-version_code=11
+base_id="2.4.5-r1"
+version_code=12
 auto_check=true
 manifest_path="/v1/updates/manifest"
 

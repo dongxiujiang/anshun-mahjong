@@ -75,7 +75,7 @@ func _view(state: Dictionary) -> void:
 	var mode: String = room.get("mode", "")
 	var seat: int = state.get("seat", -1)
 	var seats: Array = room.get("seats", [])
-	if mode not in ["lan", "online"] or seat not in range(seats.size()) or not seats[seat].get("connected", false):
+	if mode != "online" or seat not in range(seats.size()) or not seats[seat].get("connected", false):
 		if not _key.is_empty():
 			_ended("")
 		return
@@ -251,15 +251,15 @@ func speech_active() -> bool:
 	return _backend != null and _backend.speech_active()
 
 func send_local_voice(packet: PackedByteArray) -> void:
-	if _mode in ["lan", "online"] and _backend is Pcm and recording and not _paused:
+	if _mode == "online" and _backend is Pcm and recording and not _paused:
 		_client.send_local_voice(packet)
 
 func _packet(packet: PackedByteArray) -> void:
-	if _backend is Pcm and _mode in ["lan", "online"] and not _paused and Pcm.packet_seat(packet) != _seat:
+	if _backend is Pcm and _mode == "online" and not _paused and Pcm.packet_seat(packet) != _seat:
 		_backend.play_packet(packet)
 
 func _reset_stream(seat: int) -> void:
-	if _mode in ["lan", "online"] and _backend is Pcm:
+	if _mode == "online" and _backend is Pcm:
 		_backend.reset_seat(seat)
 
 func _notification(what: int) -> void:

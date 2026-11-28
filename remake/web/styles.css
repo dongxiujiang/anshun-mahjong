@@ -569,3 +569,12 @@ footer {
   .release-item { grid-template-columns: 1fr; }
   .field-row { grid-template-columns: 1fr; }
 }
+
+/* Match the two-mode client homepage and startup flow. */
+.mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 30px 0 14px; }
+.mode-grid h2 { margin: 0 0 10px; font-size: 1.25rem; color: var(--gold-bright); }
+.mode-grid p, .startup-note { color: var(--muted); line-height: 1.8; }
+.mode-grid p { margin: 0; }
+.startup-note { margin: 0 0 22px; font-size: .9rem; }
+.startup-note strong { color: var(--gold-bright); }
+@media (max-width: 640px) { .mode-grid { grid-template-columns: 1fr; gap: 12px; } }

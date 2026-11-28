@@ -1,6 +1,7 @@
 extends Control
 
 const MainLobbyBuilder := preload("res://src/app/MainLobbyBuilder.gd")
+const StartupLoading := preload("res://src/app/StartupLoading.gd")
 const LeaveConfirmOverlay := preload("res://src/app/LeaveConfirmOverlay.gd")
 const UpdateManager := preload("res://src/app/UpdateManager.gd")
 const UpdateDialog := preload("res://src/app/UpdateDialog.gd")
@@ -35,7 +36,6 @@ const SettlementPlacement := preload("res://src/presentation/SettlementPlacement
 const Room := preload("res://src/session/RoomSession.gd")
 const Dice := preload("res://src/runtime/DiceRoll.gd")
 const GameClient := preload("res://src/network/GameClient.gd")
-const LanDiscovery := preload("res://src/network/LanDiscovery.gd")
 const RoomDirectory := preload("res://src/network/RoomDirectory.gd")
 const RoomBrowser := preload("res://src/app/RoomBrowser.gd")
 const TableTransition := preload("res://src/presentation/TableTransition.gd")
@@ -45,7 +45,7 @@ const VoiceController := preload("res://src/audio/VoiceController.gd")
 const SoundStage := preload("res://src/audio/SoundStage.gd")
 const TeachingController := preload("res://src/ai/TeachingController.gd")
 const WINDS := ["东", "南", "西", "北"]
-const MODE_NAMES := {"solo": "单机", "lan": "局域网", "online": "在线"}
+const MODE_NAMES := {"solo": "单机", "online": "在线"}
 const RECOVERY_RETRY_SECONDS := [1.0, 3.0]
 const ACTION_NAMES := {
 	"discard": "出牌", "ready": "报听", "concealed_kong": "暗杠", "add_kong": "加杠",
@@ -54,7 +54,6 @@ const ACTION_NAMES := {
 const ACTION_ORDER := ["pong","kong","concealed_kong","add_kong","ready","self_win","win","pass"]
 const HIDDEN_HUD := ["teaching","notice","advice","arrangement"]
 var _client: GameClient
-var _discovery: LanDiscovery
 var _directory: RoomDirectory
 var _update_manager: UpdateManager
 var _update_dialog: UpdateDialog
@@ -181,11 +180,6 @@ var _record_status: Label
 var _room_number: LineEdit
 var _discard_seconds: SpinBox
 var _response_seconds: SpinBox
-var _lan_name: LineEdit
-var _lan_filter: LineEdit
-var _lan_results: RoomBrowser
-var _lan_address: LineEdit
-var _lan_options: MainLobbyBuilder.Drawer
 var _room_inspector: GameClient
 var _transition: TableTransition
 var _board_fade_from := 0.0
@@ -204,11 +198,20 @@ var _lobby_preference := ""
 var _lobby_backdrop: Control
 var _entry_origin := {}
 var _online_rooms: Array = []
+var _startup_loading := false
+var _startup_page: StartupLoading
 
 
 func _ready() -> void:
 	get_tree().auto_accept_quit = false
 	theme = UI.build()
+	_startup_loading = DisplayServer.get_name() != "headless" and not OS.get_cmdline_user_args().has("--skip-startup-loading")
+	if _startup_loading:
+		_screen = "loading"
+		_startup_page = StartupLoading.new()
+		add_child(_startup_page)
+		await get_tree().process_frame
+		if not await _startup_page.load_resources(): return
 	if _settings == null:
 		_settings = Preferences.new()
 	if _progress == null:
@@ -278,14 +281,48 @@ func _ready() -> void:
 	_update_dialog.cancel_download_requested.connect(_update_manager.cancel_download)
 	_update_dialog.apply_requested.connect(_update_manager.apply_and_restart)
 	_update_dialog.rollback_requested.connect(_update_manager.rollback_and_restart)
-	_confirm_patch_boot.call_deferred()
 	resized.connect(_fit_safe_area)
 	_safe.resized.connect(_fit_profile_setup)
 	_fit_safe_area()
+	if _startup_loading:
+		move_child(_startup_page, get_child_count() - 1)
+		await _warm_startup_table()
+		_startup_loading = false
+		_startup_page.queue_free()
+	_confirm_patch_boot.call_deferred()
 	if _settings.profile_complete():
 		_enter_home()
 	else:
 		_show("profile_setup")
+
+func _warm_startup_table() -> void:
+	_startup_page.update_stage(60.0, "正在准备麻将牌…")
+	_table.prewarm_visuals()
+	for batch in 9:
+		_table.prewarm_tiles(12)
+		_startup_page.update_stage(60.0 + float(batch + 1), "正在准备麻将牌…")
+		await get_tree().process_frame
+	_sound.prewarm_effects()
+	for index in range(1, 16):
+		CharacterArt.avatar(index)
+		_startup_page.update_stage(70.0 + index, "正在准备玩家资料…")
+		await get_tree().process_frame
+	_board.show()
+	_board.modulate.a = 1.0
+	_board_world.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_table.show_startup_samples()
+	_dice.show()
+	for quality in ["smooth", "detail"]:
+		_apply_quality(quality)
+		_startup_page.update_stage(88.0 if quality == "smooth" else 94.0, "正在准备画面…")
+		for frame in 3: await RenderingServer.frame_post_draw
+	_apply_quality(_settings.profile().quality)
+	_table.apply_view({})
+	_dice.hide()
+	_board.hide()
+	_board_world.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_startup_page.update_stage(100.0, "准备完成")
+	await RenderingServer.frame_post_draw
 
 
 func _setup_services() -> void:
@@ -296,10 +333,6 @@ func _setup_services() -> void:
 	_update_manager.state_changed.connect(_update_state_changed)
 	_update_manager.check_finished.connect(_update_check_finished)
 	_setup_client()
-	_discovery = LanDiscovery.new()
-	add_child(_discovery)
-	_discovery.rooms_updated.connect(_refresh_lan)
-	_discovery.discovery_error.connect(_set_status)
 	_directory = RoomDirectory.new()
 	add_child(_directory)
 	_directory.rooms_received.connect(_refresh_online)
@@ -395,7 +428,7 @@ func _apply_quality(value: String) -> void:
 	_sound.defer_dice_until_visual_ready = DisplayServer.get_name() != "headless" and bool(MotionConfig.value("transition", "dice_audio_wait_visual", true))
 	_board_world.msaa_3d = Viewport.MSAA_2X if quality == "detail" else Viewport.MSAA_DISABLED
 	var targets := [_table, _backdrop, _clock_face, _buttons, _settlement_names, _fx_stage,
-		_win_feedback, _flip_reveal, _ting_overlay, _online_results, _lan_results]
+		_win_feedback, _flip_reveal, _ting_overlay, _online_results]
 	targets.append_array(_identities)
 	if is_instance_valid(_settlement_names):
 		targets.append_array(_settlement_names.badges)
@@ -478,7 +511,7 @@ func _fit_safe_area() -> void:
 
 func _show(screen: String) -> void:
 	if screen == "settings" and _screen == "connect":
-		var browser: RoomBrowser = _lan_results if _mode=="lan" else _online_results
+		var browser: RoomBrowser = _online_results
 		if is_instance_valid(browser) and browser.is_visible_in_tree() and is_instance_valid(browser._container):
 			_lobby_backdrop = Control.new()
 			_lobby_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -558,8 +591,6 @@ func _show(screen: String) -> void:
 		get_tree().quit_on_go_back = false
 	if is_instance_valid(_directory) and screen != "connect":
 		_directory.cancel()
-	if is_instance_valid(_discovery) and _discovery.searching and (screen != "connect" or _mode != "lan"):
-		_discovery.stop_search()
 	for child in _frame.get_children():
 		_frame.remove_child(child)
 		child.queue_free()
@@ -635,13 +666,13 @@ func _sync_telemetry() -> void:
 
 
 func _telemetry_metrics() -> Dictionary:
-	if is_instance_valid(_client) and _client.mode in ["lan", "online"]:
+	if is_instance_valid(_client) and _client.mode == "online":
 		var metrics := _client.connection_metrics()
 		if _table_recovery != TableRecovery.NONE:
 			metrics.state = "reconnecting"
 			metrics.rtt_ms = -1
 		return metrics
-	if _mode in ["lan", "online"] and not _view.is_empty():
+	if _mode == "online" and not _view.is_empty():
 		var state := "reconnecting" if _table_recovery != TableRecovery.NONE else "disconnected"
 		return {"active": true, "mode": _mode, "state": state, "rtt_ms": -1, "local_host": false}
 	return {"active": false, "mode": _mode, "state": "local", "rtt_ms": -1, "local_host": false}
@@ -804,6 +835,7 @@ func _build_career() -> void:
 	MainLobbyBuilder.build_career(self)
 
 func _choose_mode(mode: String) -> void:
+	if mode not in ["solo", "online"]: return
 	_entry_origin = {}
 	if is_instance_valid(_room_inspector):
 		_room_inspector._reset()
@@ -828,27 +860,6 @@ func _choose_mode(mode: String) -> void:
 func _build_connection() -> void:
 	MainLobbyBuilder.build_connection(self)
 
-func _build_lan_lobby() -> void:
-	MainLobbyBuilder.build_lan_lobby(self)
-
-func _search_lan() -> void:
-	if is_instance_valid(_discovery):
-		_discovery.search()
-	_refresh_lan()
-
-
-func _refresh_lan() -> void:
-	if _screen != "connect" or _mode != "lan" or not is_instance_valid(_lan_results): return
-	var available: Array = _discovery.rooms.values() if is_instance_valid(_discovery) else []
-	var filter := _lan_filter.text.strip_edges()
-	_lan_results.set_rooms(available.filter(func(room):return filter.is_empty() or room.number.contains(filter) or room.name.containsn(filter)))
-	if _page_key=="lan":_register_page(_frame,"lan")
-
-
-func _join_lan(discovered: Dictionary) -> void:
-	_inspect_endpoint(discovered)
-
-
 func _entry(fields: GridContainer, label: String, hint: String) -> LineEdit:
 	return MainLobbyBuilder.entry(self, fields, label, hint)
 
@@ -871,27 +882,6 @@ func _valid_room_number(number: String) -> bool:
 		if code < 48 or code > 57:
 			return false
 	return true
-
-
-func _host_lan() -> void:
-	if not _require_service():
-		return
-	var number := _room_number.text.strip_edges()
-	if number.is_empty():
-		number = "%04d" % (randi() % 10000)
-	if not _valid_room_number(number):
-		_set_status("房间号须为 4–8 位数字。")
-		return
-	if is_instance_valid(_discovery) and _discovery.has_number(number):
-		_set_status("局域网内已有同号房间。")
-		return
-	var profile := _profile()
-	var settings := _host_settings(profile)
-	settings.merge(_room_clocks())
-	var name := _lan_name.text.strip_edges()
-	settings.room_name = name if not name.is_empty() else profile.nickname + "麻将局"
-	if not _client.host_lan(profile, number, 0, settings):
-		_set_status("未能创建局域网房间。")
 
 
 func _configure_directory() -> bool:
@@ -1012,22 +1002,10 @@ func _join_online(room: Dictionary) -> void:
 func _select_room_seat(room: Dictionary, seat: int) -> void:
 	if not _require_service(): return
 	var selection := room.duplicate(true)
-	var browser: RoomBrowser = _lan_results if _mode=="lan" else _online_results
+	var browser: RoomBrowser = _online_results
 	_entry_origin = browser.transition_origin(str(room.number)) if is_instance_valid(browser) else {}
 	selection.requested_seat = seat
 	_join_endpoint(selection)
-
-func _inspect_lan_address() -> void:
-	var address := _lan_address.text.strip_edges()
-	if address.is_empty():
-		_lan_options.set_expanded(true)
-		_lan_address.grab_focus()
-		return
-	var separator := address.rfind(":")
-	if separator < 1 or not address.substr(separator+1).is_valid_int():
-		_set_status("请填写房主显示的地址和端口，例如192.168.1.8:7499。")
-		return
-	_inspect_endpoint({"host":address.left(separator),"port":int(address.substr(separator+1))})
 
 func _inspect_endpoint(room: Dictionary) -> void:
 	if not room.get("host") is String or not room.get("port") is float and not room.get("port") is int: return
@@ -1047,8 +1025,6 @@ func _show_inspected_room(room: Dictionary) -> void:
 		_refresh_online([room])
 		if not _online_results.visible:
 			_set_browser_visible(true)
-	else:
-		_lan_results.set_rooms([room])
 	_set_status("请选择空座；暂离玩家的座位不能加入。")
 
 func _join_endpoint(room: Dictionary) -> void:
@@ -1167,6 +1143,9 @@ func _pause_solo(value: bool) -> void:
 func _notification(what: int) -> void:
 	if not is_node_ready():
 		return
+	if _startup_loading:
+		if what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: get_tree().quit()
+		return
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_go_back()
 	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
@@ -1175,7 +1154,7 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_APPLICATION_PAUSED:
 		if _application_paused: return
 		_application_paused = true
-		if not _view.is_empty() and _mode in ["lan", "online"]:
+		if not _view.is_empty() and _mode == "online":
 			_cancel_table_input()
 		_client.set_application_away(true)
 		_sync_foreground_controls()
@@ -1284,9 +1263,7 @@ func _go_back() -> void:
 				_request_leave()
 		"room": _back_home()
 		"connect":
-			if _mode == "lan":
-				_choose_mode("online")
-			elif is_instance_valid(_online_results) and _online_results.visible:
+			if is_instance_valid(_online_results) and _online_results.visible:
 				_set_browser_visible(false)
 			elif OS.has_feature("mobile"):
 				var now := Time.get_ticks_msec()
@@ -1396,7 +1373,7 @@ func _view_changed(view: Dictionary) -> void:
 		# Each room's authority starts numbering its visible throws from one.
 		_dice.hide()
 		_dice.roll_id = 0
-	var entering_room: bool = _mode in ["lan","online"] and is_instance_valid(_client) and _client.mode in ["lan","online"] and not _client.ticket.is_empty() and not _restoring and _view.get("room",{}).get("room_instance_id") != view.room.room_instance_id
+	var entering_room: bool = _mode == "online" and is_instance_valid(_client) and _client.mode == "online" and not _client.ticket.is_empty() and not _restoring and _view.get("room",{}).get("room_instance_id") != view.room.room_instance_id
 	_view = view.duplicate(true)
 	_sync_room_settings()
 	var was_waiting := _foreground_shade.waiting_for_room
@@ -2746,24 +2723,14 @@ func _restore_recent_room() -> void:
 	var ticket := _settings.remembered_room()
 	if ticket.is_empty() or not _require_service():
 		return
-	_mode = ticket.mode
-	if _mode == "online":
-		_recovery_ticket = ticket
-		_recovery_retries = 0
-		_verify_recent_room()
-		return
-	_connect_recovery(ticket, ticket.address, ticket.port)
+	_mode = "online"
+	_recovery_ticket = ticket
+	_recovery_retries = 0
+	_verify_recent_room()
 
 
 func _verify_recent_room() -> void:
 	if _recovery_ticket.is_empty() or _application_paused or _restoring:
-		return
-	if _table_recovery == TableRecovery.RETRYING and _mode == "lan":
-		if _client.resume_standby_search():
-			_restoring = true
-			return
-		if not _connect_recovery(_recovery_ticket, _recovery_ticket.address, _recovery_ticket.port):
-			_recovery_failed("unavailable")
 		return
 	if _screen not in ["home","connect"] and _table_recovery != TableRecovery.RETRYING:
 		return
@@ -2785,7 +2752,7 @@ func _connect_recovery(ticket: Dictionary, address: String, port: int) -> bool:
 	var profile := _profile()
 	profile.room_number = ticket.room_number
 	_restoring = _client.connect_room(address, port, profile, ticket)
-	if _restoring and _table_recovery == TableRecovery.RETRYING and ticket.mode != "lan":
+	if _restoring and _table_recovery == TableRecovery.RETRYING:
 		# A connected socket can still be waiting for its private state and receipt.
 		_recovery_timer.start(GameClient.CONNECT_TIMEOUT_MS / 1000.0)
 	return _restoring
@@ -2873,10 +2840,10 @@ func _session_ended(reason: String) -> void:
 	var room: Dictionary = _view.get("room", {})
 	var playing: bool = room.get("rolling", false) or room.get("phase") == Room.Phase.IN_ROUND or _transition.active
 	var same_room: bool = not _live_ticket.is_empty() and _live_ticket.room_instance_id == room.get("room_instance_id")
-	if playing and same_room and _mode in ["lan", "online"] and reason in ["disconnected", "room_expired"]:
+	if playing and same_room and _mode == "online" and reason in ["disconnected", "room_expired"]:
 		_table_recovery = TableRecovery.RETRYING
 		_recovery_ticket = _live_ticket.duplicate(true)
-		_restoring = _client.searching_for_lan_authority()
+		_restoring = false
 		_recovery_retries = 0
 		_dismiss_leave()
 		_cancel_table_input()

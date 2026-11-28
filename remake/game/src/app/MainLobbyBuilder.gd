@@ -9,10 +9,9 @@ const CareerPanel := preload("res://src/app/CareerPanel.gd")
 const MotionConfig := preload("res://src/presentation/MotionConfig.gd")
 const TurnClockView := preload("res://src/app/TurnClockView.gd")
 const SettlementView := preload("res://src/app/SettlementView.gd")
-const LanDiscovery := preload("res://src/network/LanDiscovery.gd")
 const RoomBrowser := preload("res://src/app/RoomBrowser.gd")
 const WINDS := ["东", "南", "西", "北"]
-const MODE_NAMES := {"solo": "单机", "lan": "局域网", "online": "在线"}
+const MODE_NAMES := {"solo": "单机", "online": "在线"}
 
 static func menu_theme() -> Theme:
 	var result := UI.menu_theme()
@@ -40,9 +39,6 @@ static func build_career(app) -> void:
 
 
 static func build_connection(app) -> void:
-	if app._mode == "lan":
-		app._build_lan_lobby()
-		return
 	var content := _lobby_page(app)
 	var profile: Dictionary = app._settings.profile()
 	var title := _toolbar(content)
@@ -79,14 +75,11 @@ static func build_connection(app) -> void:
 	links.add_child(UI.button("浏览牌桌", app._set_browser_visible.bind(true)))
 	for action in links.get_children():
 		action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var lan := _mode_card(cards, "局域网约局", "同一 Wi-Fi · 亲友免输地址")
-	lan.add_child(UI.button("局域网", app._choose_mode.bind("lan")))
 
 	var tools := _toolbar(content)
 	app._lobby_tools = tools
 	tools.add_child(UI.button("← 返回首页", app._set_browser_visible.bind(false)))
 	tools.add_child(UI.button("单机", app._choose_mode.bind("solo")))
-	tools.add_child(UI.button("局域网", app._choose_mode.bind("lan")))
 	tools.add_spacer(false)
 	tools.add_child(UI.button("创建房间", app._create_online, true))
 	tools.add_child(UI.button("加入房间", app._open_join_dialog))
@@ -117,37 +110,6 @@ static func build_connection(app) -> void:
 	if center.visible:
 		UI.MotionFX.animate_stagger_children(cards.get_children())
 
-
-
-static func build_lan_lobby(app) -> void:
-	var content := _lobby_page(app)
-	var title := _toolbar(content)
-	title.add_child(UI.button("← 返回", app._choose_mode.bind("online")))
-	_heading(title, "局域网约局")
-	title.add_child(UI.button("设置", app._open_settings))
-	var tools := _toolbar(content)
-	var create := UI.button("创建房间", app._host_lan, true)
-	tools.add_child(create)
-	tools.add_child(UI.button("刷新房间", app._search_lan))
-	tools.add_child(UI.button("查找地址", app._inspect_lan_address))
-	tools.add_spacer(false)
-	var drawer := Drawer.new()
-	app._lan_options = drawer
-	content.add_child(drawer)
-	drawer.add_toggle(tools)
-	var fields := drawer.fields
-	app._lan_filter = app._entry(fields, "筛选房间", "房间号或名称")
-	app._lan_filter.text_changed.connect(func(_text): app._refresh_lan())
-	app._room_number = app._entry(fields, "新房间号", "4–8 位数字")
-	app._lan_name = app._entry(fields, "房间名称", "")
-	app._lan_name.text = app._settings.profile().nickname + "麻将局"
-	app._lan_name.max_length = 24
-	app._lan_address = app._entry(fields, "房间地址", "例如 192.168.1.8:7499")
-	app._add_host_clocks(fields)
-	app._lan_results = _browser(app, content, "连接同一 Wi-Fi，创建房间或刷新附近牌桌")
-	app._add_status(content)
-	app._search_lan()
-	_focus_when_ready.call_deferred(weakref(create))
 
 
 static func _focus_when_ready(target: WeakRef) -> void:
@@ -469,15 +431,6 @@ static func refresh_room(app) -> void:
 		return
 	var mine = int(app._view.seat)
 	var subtitle = "%s · 房间 %s" % [MODE_NAMES.get(app._mode, ""), room.room_number]
-	if app._mode == "lan":
-		var addresses: Array = []
-		if app._client._address == "127.0.0.1":
-			for address in LanDiscovery._interface_addresses(IP.get_local_interfaces()):
-				addresses.append(address + ":" + str(app._client._port))
-		else:
-			addresses.append(app._client._address + ":" + str(app._client._port))
-		if not addresses.is_empty():
-			subtitle += "\n连接地址：" + " / ".join(addresses)
 	app._room_name.text = subtitle
 	var dealer = int(room.get("next_dealer_seat", -1))
 	for seat in 4:

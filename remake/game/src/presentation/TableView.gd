@@ -42,6 +42,7 @@ signal hand_stability_changed()
 signal layout_conflict(seat: int, group: String)
 
 var layout := Layout.new()
+var _tile_pool: Array[MeshInstance3D] = []
 var custom_profile
 var region_placement
 var camera := Camera3D.new()
@@ -436,6 +437,26 @@ func prewarm_visuals() -> void:
 	TileArt.material(true)
 	TileArt.material(false)
 	TileArt.mesh("")
+
+func prewarm_tiles(amount: int = 108) -> void:
+	for i in mini(amount, Wall.COUNT - tiles.size() - _tile_pool.size()):
+		var node := MeshInstance3D.new()
+		node.mesh = TileArt.mesh("")
+		node.material_override = TileArt.material(false)
+		node.hide()
+		add_child(node)
+		_tile_pool.append(node)
+
+func show_startup_samples() -> void:
+	show_full_wall(1)
+	var index := 0
+	for suit in Catalog.SUITS:
+		for rank in range(1, 10):
+			var node: MeshInstance3D = tiles[index]
+			node.mesh = TileArt.mesh(suit + str(rank))
+			node.material_override = TileArt.material(true)
+			node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			index += 1
 
 func set_safe_insets(insets: Vector4) -> void:
 	_safe_insets = insets
@@ -1317,8 +1338,12 @@ func _place(key, value: String, target: Transform3D, zone: String, animate: bool
 		node = _reuse_source(source, key)
 	var fresh := node == null
 	if fresh:
-		node = MeshInstance3D.new()
-		add_child(node)
+		if _tile_pool.is_empty():
+			node = MeshInstance3D.new()
+			add_child(node)
+		else:
+			node = _tile_pool.pop_back()
+			node.show()
 		tiles[key] = node
 	if node.get_meta("value", "unset") != value:
 		node.mesh = TileArt.mesh(value)
@@ -1402,7 +1427,7 @@ func _place(key, value: String, target: Transform3D, zone: String, animate: bool
 				if bool(fx.ripple_enabled) and is_visible_in_tree():
 					var delayed := create_tween()
 					_delayed_ripples.append(delayed)
-					delayed.tween_callback(_second_chicken_ripple.bind(target.origin, delayed.get_instance_id())).set_delay(float(fx.callout_duration) * 0.1)
+					delayed.tween_callback(_second_chicken_ripple.bind(target.origin, delayed.get_instance_id())).set_delay(MotionConfig.CHICKEN_RIPPLE_DELAY)
 				pulse_table_shake(0.11)
 			else:
 				_spawn_landing_ripple(target.origin, Color("#e8d49c"), 0.85))
@@ -1423,8 +1448,10 @@ func _remove(key) -> void:
 	if _motions.has(key):
 		_motions[key].kill()
 		_motions.erase(key)
-	tiles[key].queue_free()
-	tiles[key].visible = false
+	var node: MeshInstance3D = tiles[key]
+	node.hide()
+	for field in node.get_meta_list(): node.remove_meta(field)
+	_tile_pool.append(node)
 	tiles.erase(key)
 	_destinations.erase(key)
 

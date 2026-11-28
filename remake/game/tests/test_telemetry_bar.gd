@@ -25,38 +25,38 @@ func check(ok: bool, note: String) -> void:
 
 func _run() -> void:
 	# 1. Pure formatting & color tier checks
-	var lan_fast := Bar.format_network({"active": true, "mode": "lan", "state": "connected", "rtt_ms": 8})
-	check(lan_fast.text == "局域网 8ms" and lan_fast.color == Bar.COLOR_GOOD, "LAN low latency formatting and green tier")
+	var lan_fast := Bar.format_network({"active": true, "mode": "online", "state": "connected", "rtt_ms": 8})
+	check(lan_fast.text == "服务器 8ms" and lan_fast.color == Bar.COLOR_GOOD, "low latency formatting and green tier")
 	var srv_med := Bar.format_network({"active": true, "mode": "online", "state": "connected", "rtt_ms": 95})
 	check(srv_med.text == "服务器 95ms" and srv_med.color == Bar.COLOR_WARN, "Online medium latency formatting and gold tier")
 	var srv_high := Bar.format_network({"active": true, "mode": "online", "state": "connected", "rtt_ms": 210})
 	check(srv_high.text == "服务器 210ms" and srv_high.color == Bar.COLOR_BAD, "Online high latency formatting and red tier")
 	var srv_conn := Bar.format_network({"active": true, "mode": "online", "state": "connecting", "rtt_ms": -1})
 	check(srv_conn.text == "服务器 连接中" and srv_conn.color == Bar.COLOR_WARN, "Connecting state formatting")
-	var lan_rec := Bar.format_network({"active": true, "mode": "lan", "state": "reconnecting", "rtt_ms": -1})
-	check(lan_rec.text == "局域网 重连中" and lan_rec.color == Bar.COLOR_RECONNECT, "Reconnecting state formatting")
+	var lan_rec := Bar.format_network({"active": true, "mode": "online", "state": "reconnecting", "rtt_ms": -1})
+	check(lan_rec.text == "服务器 重连中" and lan_rec.color == Bar.COLOR_RECONNECT, "Reconnecting state formatting")
 	var srv_disc := Bar.format_network({"active": true, "mode": "online", "state": "disconnected", "rtt_ms": -1})
 	check(srv_disc.text == "服务器 已断开" and srv_disc.color == Bar.COLOR_DISCONNECTED, "Disconnected state formatting")
 
-	# 2. Live ENet LAN RTT measurement via GameClient.connection_metrics()
+	# 2. Live ENet RTT measurement via GameClient.connection_metrics()
 	var client := Client.new()
 	root.add_child(client)
 	check(not client.connection_metrics().active, "Idle client reports inactive network metrics")
-	var hosted := client.host_lan({"nickname": "测延迟", "avatar": 1}, "8866", 0, {})
-	check(hosted, "LAN host starts for live RTT test")
+	var authority := Client.new()
+	root.add_child(authority)
+	check(authority.start_server("8866", 0), "independent authority starts for RTT test")
+	check(client.connect_room("127.0.0.1", authority.local_port, {"nickname":"测延迟", "player_id":"telemetry-player", "room_number":"8866"}), "online client connects")
 	var got_rtt := false
 	for _step in 30:
 		await create_timer(0.05).timeout
 		var m := client.connection_metrics()
-		if m.active and m.mode == "lan" and m.state == "connected" and int(m.rtt_ms) >= 1:
+		if m.active and m.mode == "online" and m.state == "connected" and int(m.rtt_ms) >= 0:
 			got_rtt = true
 			break
-	check(got_rtt, "Live ENet LAN peer reports connected state with real rtt_ms >= 1")
+	check(got_rtt, "Live ENet peer reports a measured RTT, including sub-ms loopback rounding to zero")
 	client._reset()
-	for c in root.get_children():
-		if str(c.name).begins_with("HostedRoom_"):
-			c._reset()
-			c.queue_free()
+	authority._reset()
+	authority.queue_free()
 	client.queue_free()
 
 	# 3. Main HUD visibility & multi-resolution zero-overlap geometry check

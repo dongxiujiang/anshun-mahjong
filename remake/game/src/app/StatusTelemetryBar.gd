@@ -1,5 +1,5 @@
 extends PanelContainer
-## 局内 / 房间 / 结算右上角轻量遥测条：实时显示 FPS，局域网与在线服务器额外显示连接状态与往返延迟（ms）。
+## 局内 / 房间 / 结算右上角轻量遥测条：实时显示 FPS，在线服务器额外显示连接状态与往返延迟（ms）。
 ## 仅在可见时以 2 Hz 刷新，且仅在数值或状态变化时更新文本/配色，零逐帧分配、零点击阻挡。
 
 const UI := preload("res://src/app/AppTheme.gd")
@@ -175,7 +175,7 @@ static func _fps_color(fps: int) -> Color:
 
 static func format_network(metrics: Dictionary) -> Dictionary:
 	var mode := str(metrics.get("mode", ""))
-	var prefix := "局域网" if mode == "lan" else "服务器"
+	var prefix := "服务器"
 	var state := str(metrics.get("state", "disconnected"))
 	var rtt := int(metrics.get("rtt_ms", -1))
 	match state:

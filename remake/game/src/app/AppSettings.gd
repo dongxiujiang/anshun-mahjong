@@ -174,4 +174,4 @@ static func _valid_ticket(ticket: Dictionary) -> bool:
 	if ticket.has("directory_url") and not _valid("directory_url", ticket.directory_url):
 		return false
 	var port = ticket.get("port")
-	return ticket.mode in ["lan", "online"] and port is int and port > 0 and port <= 65535
+	return ticket.mode == "online" and port is int and port > 0 and port <= 65535

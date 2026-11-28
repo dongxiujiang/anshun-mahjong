@@ -36,7 +36,7 @@ func until(predicate: Callable, limit: int = 3000) -> bool:
 	return false
 
 func _run() -> void:
-	var room_mode := "lan" if "--lan" in OS.get_cmdline_user_args() else "online"
+	var room_mode := "online"
 	var server = client("AuthorityEndpoint")
 	check(server.start_server("123456", 0, {"difficulty": "low", "ai_delay_ms": 2,
 		"presentation_ms": {"dealt": 10, "turn": 5, "response": 5, "ready_draw": 5}}, room_mode), "real UDP service starts")
@@ -58,7 +58,7 @@ func _run() -> void:
 		await finish()
 		return
 	check(server._host != null and south._host == null and east._host == null, "only the independent server owns a game authority")
-	check(south._standby_state.is_empty() and east._standby_state.is_empty() and south._backup_private == null and east._backup_private == null, "independent server endpoints receive no authority replica or backup key")
+	check(not south.has_method("promote_lan_from_standby") and not east.has_method("promote_lan_from_standby"), "independent server endpoints receive no authority replica or backup key")
 	check(south.view.seat == 1 and east.view.seat == 0, "network join follows south then east")
 	check(south.ticket.member_token != east.ticket.member_token, "each seat gets private recovery credential")
 	check(await until(func(): return south.view.room.seats[0].avatar == 6), "both players' join profiles reach the other endpoint")

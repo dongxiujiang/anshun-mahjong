@@ -46,7 +46,7 @@ func _run() -> void:
 	_app._settings._path = path
 	var identity: String = _app._settings.player_id()
 	_press("保存")
-	check(_app._screen == "connect" and _app._online_results!=null and [_button("单机"), _button("局域网")].all(func(button): return button != null), "successful first save opens online room selection and retains other modes")
+	check(_app._screen == "connect" and _app._online_results!=null and _button("单机") != null and _button("局域网") == null, "successful first save opens online and solo without the removed mode")
 	check(Settings.new(path).profile_complete() and Settings.new(path).profile().avatar == 9, "completion flag and avatar were written together")
 	await _close()
 	_start(path)
@@ -75,19 +75,19 @@ func _run() -> void:
 	_app._open_settings()
 	check(_app._screen == "settings" and _button("个人资料") == null and _settings_panel()._fields.has("voice_pack"), "room settings allow voice but never profile edits")
 	await _close()
-	await _check_pending_lan_restore(path)
+	await _check_pending_online_restore(path)
 	DirAccess.remove_absolute(path)
 	DirAccess.remove_absolute(folder)
 	print("Profile setup: %d checks, %d failures" % [_checks, _failures])
 	quit(1 if _failures else 0)
 
-func _check_pending_lan_restore(path: String) -> void:
+func _check_pending_online_restore(path: String) -> void:
 	var authority := Client.new()
-	authority.name = "ProfileLanAuthority"
+	authority.name = "ProfileOnlineAuthority"
 	root.add_child(authority)
 	var number := "272601"
-	if not authority.start_server(number, 0, {}, "lan"):
-		check(false, "start real LAN authority")
+	if not authority.start_server(number, 0, {}, "online"):
+		check(false, "start real online authority")
 		authority.queue_free()
 		return
 	var previous := Client.new()
@@ -95,27 +95,30 @@ func _check_pending_lan_restore(path: String) -> void:
 	root.add_child(previous)
 	var prefs := Settings.new(path)
 	var profile := prefs.profile()
-	profile.merge({"player_id": prefs.player_id(), "mode": "lan", "room_number": number})
+	profile.merge({"player_id": prefs.player_id(), "mode": "online", "room_number": number})
 	previous.connect_room("127.0.0.1", authority.local_port, profile)
 	if not await _until(func(): return not previous.view.is_empty()):
-		check(false, "seed an authenticated LAN seat")
+		check(false, "seed an authenticated online seat")
 		previous.queue_free()
 		authority.queue_free()
 		return
 	var ticket := previous.ticket.duplicate(true)
-	check(prefs.remember_room(ticket), "persist actual LAN recovery ticket")
+	check(prefs.remember_room(ticket), "persist actual online recovery ticket")
 	previous._reset() # Preserve the original seat for the authenticated recovery scenario.
-	check(await _until(func(): return authority._host._connections.is_empty()), "original client disconnects while LAN authority stays up")
+	check(await _until(func(): return authority._host._connections.is_empty()), "original client disconnects while online authority stays up")
 	previous.queue_free()
 	multiplayer_poll = false
 	_start(path)
-	check(await _until(func(): return _app._restoring), "startup begins real LAN recovery with ENet polling delayed")
+	# Directory verification has its own integration suite; use its verified endpoint here.
+	_app._recovery_ticket = ticket.duplicate(true)
+	_app._connect_recovery(ticket, "127.0.0.1", authority.local_port)
+	check(await _until(func(): return _app._restoring), "verified online recovery begins with ENet polling delayed")
 	check(_app._screen == "connect" and _app._view.is_empty(), "delayed recovery has no seat projection yet")
 	_press("设置")
 	multiplayer_poll = true
 	for frame in 8:
 		await process_frame
-	check(_app._screen == "settings" and not _app._restoring and _app._client._peer == null and _app._view.is_empty(), "opening lobby settings cancels the LAN connection before a view arrives")
+	check(_app._screen == "settings" and not _app._restoring and _app._client._peer == null and _app._view.is_empty(), "opening lobby settings cancels the online connection before a view arrives")
 	check(_button("个人资料") != null and _app._settings.remembered_room() == ticket, "cancellation keeps the ticket and lobby edit permission")
 	_app._client.connect_room("127.0.0.1", authority.local_port, profile, ticket)
 	check(await _until(func(): return not _app._view.is_empty()), "a later real authenticated snapshot can still arrive while settings are open")

@@ -141,6 +141,11 @@ func _stream(path: String) -> AudioStream:
 		_cache[path] = stream
 	return _cache[path]
 
+func prewarm_effects() -> void:
+	for clip in ["charge_chicken", "chicken_ping", "coin_roll", "dice_roll", "discard", "meld_slam", "ready_chime", "tile_draw", "tile_select", "tile_slide", "ui_click", "win_fanfare"]:
+		_stream("effects/" + clip + ".wav")
+	_stream("music/table.mp3")
+
 func _effect(clip: String) -> void:
 	if _settings.effects_enabled and _settings.effects_volume > 0.0:
 		_effects.stream = _stream("effects/" + clip + ".wav")

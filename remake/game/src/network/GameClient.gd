@@ -2,12 +2,7 @@ extends Node
 ## 同一客户端入口使用本机权威或真正的 ENet 连接；不在客户端重新裁决牌局。
 
 const Protocol = preload("res://src/domain/Protocol.gd")
-const Discovery = preload("res://src/network/LanDiscovery.gd")
-const Seats = preload("res://src/domain/Seats.gd")
 const Host = preload("res://src/runtime/GameHost.gd")
-const Backup = preload("res://src/network/AuthorityBackup.gd")
-const STANDBY_INTERVAL_MS := 250
-const RECOVERY_WINDOW_MS := 5 * 60 * 1000
 const TABLE_COMMANDS := ["action", "hand_display", "auto_play", "center_wall", "ready", "move", "presentation_finished", "start_first"]
 const CONNECT_TIMEOUT_MS := 10000
 signal view_changed(view: Dictionary)
@@ -43,8 +38,6 @@ var _silent_restore := false
 var _latest_dice := {}
 var _room_number := ""
 var _room_instance := ""
-var _owned_service := false
-var _discovery: Node
 var _room_name := ""
 var _voice_limits := {}
 var _voice_epochs := {}
@@ -54,24 +47,7 @@ var _application_away := false
 var _presence_revision := 0
 var _sent_presence_revision := -1
 var _acknowledged_view := -1
-var _host_player_id := ""
-var _host_seat := 1
 var _leave_started := -1
-var _standby_connection := ""
-var _standby_next_send := 0
-var _standby_state := {}
-var _backup_key_job := Thread.new()
-var _backup_private: CryptoKey
-var _backup_public := {}
-var _backup_keys := PackedByteArray()
-var _wrapped_keys := PackedByteArray()
-var _backup_sequence := 0
-var _backup_scheduled := false
-var _received_sequence := 0
-var _pending_publications: Array[Dictionary] = []
-var _lan_recovering := false
-var _recovery_started := -1
-var _promoting := false
 var _inspecting := false
 
 func _ready() -> void:
@@ -107,33 +83,8 @@ func start_solo(profile: Dictionary, settings: Dictionary = {}) -> bool:
 	_host.set_ready(_connection, true)
 	return true
 
-func host_lan(profile: Dictionary, room_number: String, port: int = 0, settings: Dictionary = {}) -> bool:
-	_reset()
-	# LAN authority outlives its creator leaving the seat or returning to the lobby.
-	var service = get_script().new()
-	service.name = "HostedRoom_" + _new_id()
-	get_tree().root.add_child(service)
-	service._owned_service = true
-	var owner_token := _new_id()
-	var host_settings := settings.duplicate()
-	host_settings.owner_token_hash = owner_token.sha256_text()
-	if not service.start_server(room_number, port, host_settings, "lan"):
-		service.queue_free()
-		status_changed.emit("房间未能启动，请检查网络后重试")
-		return false
-	var assigned_port: int = service.local_port
-	var identity := profile.duplicate(true)
-	identity.mode = "lan"
-	identity.room_number = room_number
-	if str(identity.get("player_id", "")).is_empty(): identity.player_id = _new_id()
-	service._host_player_id = identity.player_id
-	identity.owner_token = owner_token
-	var connected := connect_room("127.0.0.1", assigned_port, identity)
-	local_port = assigned_port
-	if not connected: service.queue_free()
-	return connected
-
 func start_server(room_number: String, port: int, settings: Dictionary = {}, host_mode: String = "online") -> bool:
+	if host_mode != "online": return false
 	_reset()
 	mode = host_mode
 	_room_number = room_number
@@ -149,12 +100,6 @@ func start_server(room_number: String, port: int, settings: Dictionary = {}, hos
 	_create_host(host_mode, room_number, options)
 	_room_instance = str(_host.public_room().get("room_instance_id", ""))
 	_room_name = str(settings.get("room_name", "麻将局")).left(24)
-	if host_mode == "lan":
-		_discovery = Discovery.new()
-		add_child(_discovery)
-		if not _discovery.advertise(self):
-			_reset()
-			return false
 	return true
 
 func discovery_info() -> Dictionary:
@@ -167,16 +112,17 @@ func discovery_info() -> Dictionary:
 		"seats": room.seats, "owner_player_id": room.owner_player_id}
 
 func inspect_room(address: String, port: int) -> bool:
-	if not connect_room(address, port, {"mode":"lan"}): return false
+	if not connect_room(address, port, {"mode":"online"}): return false
 	_inspecting = true
 	return true
 
 func connect_room(address: String, port: int, profile: Dictionary, saved_ticket: Dictionary = {}) -> bool:
+	if profile.get("mode", "online") != "online" or (not saved_ticket.is_empty() and saved_ticket.get("mode") != "online"): return false
 	_reset()
 	if address.strip_edges().is_empty() or port < 1 or port > 65535:
 		status_changed.emit("请填写有效的房间地址和端口")
 		return false
-	mode = "lan" if profile.get("mode", "online") == "lan" else "online"
+	mode = "online"
 	_profile = profile.duplicate(true)
 	_address = address.strip_edges()
 	_port = port
@@ -192,8 +138,7 @@ func connect_room(address: String, port: int, profile: Dictionary, saved_ticket:
 	return true
 
 func _create_host(host_mode: String, room_number: String, settings: Dictionary) -> void:
-	var script = load("res://src/runtime/GameHost.gd")
-	_host = script.new()
+	_host = Host.new()
 	_host.name = "Authority"
 	add_child(_host)
 	_host.configure(room_number, host_mode, 1, settings)
@@ -258,13 +203,13 @@ func request_record_submission() -> bool:
 	return _command({"kind": "submit_record", "instance": view.room.room_instance_id, "round": view.room.round_number})
 
 func voice_chat_allowed() -> bool:
-	return mode in ["lan", "online"] and not waiting_for_foreground_view() and _peer != null and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
+	return mode == "online" and not waiting_for_foreground_view() and _peer != null and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
 func set_application_away(away: bool) -> void:
 	if _application_away == away: return
 	_application_away = away
 	_presence_revision += 1
-	if mode in ["lan", "online"] and not view.is_empty():
+	if mode == "online" and not view.is_empty():
 		_send_presence()
 
 func _send_presence() -> void:
@@ -272,12 +217,12 @@ func _send_presence() -> void:
 		_sent_presence_revision = _presence_revision
 
 func waiting_for_foreground_view() -> bool:
-	if mode not in ["lan", "online"]: return false
+	if mode != "online": return false
 	var own: Dictionary = view.get("presence", {})
 	return _application_away or own.get("revision", -1) != _presence_revision or own.get("away", true)
 
 func report_mic_active(instance: String, seat: int, active: bool) -> bool:
-	if mode not in ["lan", "online"] or view.get("room", {}).get("room_instance_id") != instance or view.get("seat") != seat:
+	if mode != "online" or view.get("room", {}).get("room_instance_id") != instance or view.get("seat") != seat:
 		return false
 	return _command({"kind": "mic_active", "instance": instance, "seat": seat, "active": active})
 
@@ -290,7 +235,7 @@ static func _valid_voice(packet: PackedByteArray) -> bool:
 
 @rpc("any_peer", "call_remote", "unreliable", 2)
 func client_voice(packet: PackedByteArray) -> void:
-	if not _server or mode not in ["lan", "online"] or _host == null or not _valid_voice(packet): return
+	if not _server or mode != "online" or _host == null or not _valid_voice(packet): return
 	var sender := _api.get_remote_sender_id()
 	if not _can_send_to(sender): return
 	var connection: String = _peer_connections[sender]
@@ -330,7 +275,7 @@ func finish_presentation(cue: Dictionary) -> void:
 	if _host != null and mode == "solo":
 		_host.finish_presentation(cue.get("room_instance_id", ""), int(cue.get("round_number", -1)),
 			int(cue.get("prompt_id", -1)), int(cue.get("seat", -1)))
-	elif mode in ["lan","online"] and not view.is_empty() and cue.get("seat",-1)==view.seat:
+	elif mode == "online" and not view.is_empty() and cue.get("seat",-1)==view.seat:
 		if not view.has("presentation") or cue.get("room_instance_id")!=view.room.room_instance_id or cue.get("round_number")!=view.room.round_number or cue.get("prompt_id")!=view.round.prompt_id:return
 		var key:="%s/%s/%s" % [cue.get("room_instance_id",""),cue.get("round_number",-1),cue.get("prompt_id",-1)]
 		if key==_finished_cue:return
@@ -402,7 +347,6 @@ func _dispatch(connection_id: String, packet: Dictionary) -> bool:
 			if not _integer(packet.get("seat"), 0, 3): return false
 			if packet.kind == "center_wall": return _host.center_wall(connection_id, packet.seat)
 			var moved: bool = _host.move_to_empty_seat(connection_id, packet.seat)
-			if moved: _refresh_standby()
 			return moved
 		"action":
 			if not packet.get("instance") is String or not packet.get("action") is String: return false
@@ -422,12 +366,10 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	if _server and _peer_connections.has(peer_id):
 		var connection_id: String = _peer_connections[peer_id]
 		_peer_connections.erase(peer_id)
-		_backup_public.erase(connection_id)
 		_last_requests.erase(connection_id)
 		_voice_limits.erase(connection_id)
 		_hand_display_limits.erase(connection_id)
 		_host.disconnect_human(connection_id)
-		_refresh_standby()
 
 func _on_connected() -> void:
 	_request_id = 1
@@ -498,16 +440,10 @@ func client_request(packet: Dictionary) -> void:
 				return
 			server_packet.rpc_id(sender, {"kind": "joined", "ticket": result.ticket, "view": result.view})
 		_host.set_draw_style(connection_id, str(profile.get("draw_style", "a")))
-		if _server and mode == "lan":
-			if not _host_player_id.is_empty() and profile.get("player_id") != _host_player_id:
-				request_backup_key.rpc_id(sender)
-			_refresh_standby()
-		if not _latest_dice.is_empty(): server_packet.rpc_id(sender, {"kind": "dice", "state": _latest_dice})
 	else:
 		var accepted := _dispatch(connection_id, packet)
 		if accepted and packet.get("kind") == "leave":
 			server_packet.rpc_id(sender, {"kind":"left"})
-			_refresh_standby()
 		elif not accepted and packet.get("kind") not in ["hand_display", "presence", "foreground_received"]:
 			server_packet.rpc_id(sender, {"kind": "invalid_action"})
 
@@ -536,7 +472,6 @@ func server_packet(packet: Dictionary) -> void:
 				return
 			_connect_started = -1
 			_profile.erase("owner_token")
-			_recovery_started = -1
 			_take_ticket(packet.ticket)
 			_take_view(packet.view)
 			status_changed.emit("已进入房间")
@@ -555,9 +490,6 @@ func server_packet(packet: Dictionary) -> void:
 			session_ended.emit("room_expired")
 		"rejected":
 			var reason: String = packet.get("reason", "join_failed")
-			if reason == "room_expired" and mode == "lan" and not ticket.is_empty() and packet.get("instance", "") != ticket.get("room_instance_id", "") and _recovery_started < 0:
-				_begin_lan_recovery()
-				return
 			_reset()
 			status_changed.emit("需要相同版本的游戏" if reason == "version_mismatch" else ("" if reason == "room_expired" else "暂时无法加入该房间"))
 			session_ended.emit(reason)
@@ -568,14 +500,15 @@ func _take_ticket(raw: Dictionary) -> void:
 	ticket_changed.emit(ticket.duplicate(true))
 
 func _take_view(state: Dictionary) -> void:
-	if mode in ["lan", "online"] and state.get("room", {}).get("room_instance_id") != ticket.get("room_instance_id"): return
+	if mode == "online" and state.get("room", {}).get("room_instance_id") != ticket.get("room_instance_id"): return
+	if not view.is_empty() and state.get("room", {}).get("room_instance_id") == view.get("room", {}).get("room_instance_id") and int(state.room.round_number) < int(view.room.round_number): return
 	view = state.duplicate(true)
 	var submission: Dictionary = view.get("record_submission", {})
 	if submission != _record_status:
 		_record_status = submission.duplicate(true)
 		record_submission_status.emit(_record_status.duplicate(true))
 	view_changed.emit(view)
-	if mode not in ["lan", "online"] or view.is_empty(): return
+	if mode != "online" or view.is_empty(): return
 	if _sent_presence_revision != _presence_revision:
 		_send_presence()
 	elif not _application_away and view.presence.revision == _presence_revision and view.presence.needs_ack and _acknowledged_view != _presence_revision:
@@ -583,22 +516,7 @@ func _take_view(state: Dictionary) -> void:
 			_acknowledged_view = _presence_revision
 
 func _on_host_view(connection_id: String, state: Dictionary) -> void:
-	if not _standby_connection.is_empty():
-		_queue_publication({"connection": connection_id, "view": state})
-		return
 	_deliver_host_view(connection_id, state)
-
-func _queue_publication(item: Dictionary) -> void:
-	item.sequence = _backup_sequence + 1
-	_pending_publications.append(item)
-	if not _backup_scheduled:
-		_backup_scheduled = true
-		_flush_publications.call_deferred()
-
-func _flush_publications() -> void:
-	_backup_scheduled = false
-	if not _pending_publications.is_empty() and _pending_publications.back().sequence > _backup_sequence:
-		_send_standby_now()
 
 func _deliver_host_view(connection_id: String, state: Dictionary) -> void:
 	if connection_id == _connection:
@@ -621,9 +539,6 @@ func _on_host_dice(state: Dictionary) -> void:
 					server_dice_pose.rpc_id(peer_id, state)
 
 func _on_host_cue(cue: Dictionary) -> void:
-	if not _standby_connection.is_empty():
-		_queue_publication({"cue": cue})
-		return
 	_deliver_host_cue(cue)
 
 func _deliver_host_cue(cue: Dictionary) -> void:
@@ -639,261 +554,30 @@ func _on_room_closed() -> void:
 			if _can_send_to(peer_id): server_packet.rpc_id(peer_id, {"kind": "closed"})
 	view = {}
 	session_ended.emit("room_expired")
-	# Let the reliable close notification leave the socket before destroying an owned LAN service.
-	if _owned_service:
-		await get_tree().create_timer(0.2).timeout
-		queue_free()
 
-func _refresh_standby() -> void:
-	if not _server or mode != "lan" or _host == null or _host_player_id.is_empty():
-		return
-	var room: Dictionary = _host.public_room()
-	if room.is_empty():
-		return
-	var host_seat := -1
-	for seat in 4:
-		if str(room.seats[seat].player_id) == _host_player_id:
-			host_seat = seat
-			break
-	if host_seat < 0:
-		host_seat = _host_seat
-	else:
-		_host_seat = host_seat
-	var candidate: int = host_seat
-	for _step in 4:
-		candidate = Seats.next(candidate)
-		if candidate == host_seat:
-			break
-		var occupant: Dictionary = room.seats[candidate]
-		if str(occupant.player_id) == "" or str(occupant.player_id) == _host_player_id or not occupant.connected:
-			continue
-		for connection_id in _peer_connections.values():
-			if _backup_public.has(connection_id) and _host.authenticated_seat(str(connection_id)) == candidate:
-				_select_standby(str(connection_id))
-				return
-	_select_standby("")
-
+## Reserved no-op RPCs preserve compatibility with existing Protocol 4 online servers.
 @rpc("authority", "call_remote", "reliable", 0)
 func request_backup_key() -> void:
-	if _server or mode != "lan" or ticket.is_empty() or _api.get_remote_sender_id() != 1: return
-	if _backup_private != null:
-		offer_backup_key.rpc_id(1, _backup_private.save_to_string(true))
-	elif not _backup_key_job.is_started():
-		# RSA generation must not stall ENet polling or the microphone stream.
-		_backup_key_job.start(_generate_backup_key)
-
-static func _generate_backup_key() -> CryptoKey:
-	return Crypto.new().generate_rsa(2048)
+	pass
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func offer_backup_key(public_text: String) -> void:
-	var connection: String = _peer_connections.get(_api.get_remote_sender_id(), "")
-	if not _server or mode != "lan" or _host_player_id.is_empty() or connection.is_empty() or _backup_public.has(connection): return
-	if _host.authenticated_seat(connection) < 0 or public_text.length() not in range(1, 1025): return
-	var key := CryptoKey.new()
-	if key.load_from_string(public_text, true) == OK:
-		_backup_public[connection] = key
-		_refresh_standby()
-
-func _select_standby(connection_id: String) -> void:
-	if connection_id == _standby_connection: return
-	for peer_id in _peer_connections:
-		if _peer_connections[peer_id] == _standby_connection and _can_send_to(peer_id):
-			standby_state.rpc_id(peer_id, {})
-	_standby_connection = connection_id
-	_backup_keys.clear()
-	_wrapped_keys.clear()
-	if not connection_id.is_empty():
-		var crypto := Crypto.new()
-		_backup_keys = crypto.generate_random_bytes(64)
-		_wrapped_keys = crypto.encrypt(_backup_public[connection_id], _backup_keys)
-		_send_standby_now()
-	else:
-		_release_publications(_backup_sequence + 1)
-
-func _release_publications(sequence: int) -> void:
-	while not _pending_publications.is_empty() and int(_pending_publications.front().sequence) <= sequence:
-		var item: Dictionary = _pending_publications.pop_front()
-		if item.has("cue"): _deliver_host_cue(item.cue)
-		else: _deliver_host_view(item.connection, item.view)
+	pass
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func backup_received(sequence: int) -> void:
-	if _server and mode == "lan" and sequence <= _backup_sequence and _peer_connections.get(_api.get_remote_sender_id(), "") == _standby_connection and not _standby_connection.is_empty():
-		_release_publications(sequence)
-
-func _send_standby() -> void:
-	if not _server or mode != "lan" or _standby_connection.is_empty() or _host == null:
-		return
-	if Time.get_ticks_msec() - _standby_next_send < STANDBY_INTERVAL_MS:
-		return
-	_send_standby_now()
-
-
-func _send_standby_now() -> int:
-	if not _server or mode != "lan" or _standby_connection.is_empty() or _host == null:
-		return 0
-	_standby_next_send = Time.get_ticks_msec()
-	for peer_id in _peer_connections:
-		if _peer_connections[peer_id] == _standby_connection and _can_send_to(peer_id):
-			var state: Dictionary = _host.export_authority()
-			if state.is_empty() or _wrapped_keys.is_empty(): return 0
-			var packet := Backup.seal({"state": state, "port": local_port, "number": _room_number,
-				"instance": state.instance}, _backup_keys)
-			if packet.is_empty(): return 0
-			_backup_sequence += 1
-			packet.sequence = _backup_sequence
-			packet.wrapped = _wrapped_keys
-			packet.instance = state.instance
-			standby_state.rpc_id(peer_id, packet)
-			return _backup_sequence
-	return 0
+	pass
 
 @rpc("authority", "call_remote", "reliable", 0)
 func standby_state(packet: Dictionary) -> void:
-	if _server or mode != "lan" or _api.get_remote_sender_id() != 1: return
-	if packet.is_empty():
-		_standby_state.clear()
-	elif packet.get("instance", "") == ticket.get("room_instance_id", "") and packet.get("sequence") is int and packet.sequence > _received_sequence:
-		_standby_state = packet.duplicate(true)
-		_received_sequence = packet.sequence
-		backup_received.rpc_id(1, _received_sequence)
+	pass
 
 ## 备用副本所在的真人升级为新服务器。旧房主本人重启后仍凭原票据回来。
-func promote_lan_from_standby(packet: Dictionary, saved_ticket: Dictionary) -> bool:
-	if mode not in ["", "lan"] or saved_ticket.get("mode") != "lan" or packet.get("state", {}).get("mode") != "lan": return false
-	_reset()
-	mode = "lan"
-	_host_player_id = str(saved_ticket.get("player_id", ""))
-	_host_seat = int(saved_ticket.get("seat", 1))
-	if _host_player_id.is_empty() or packet.get("instance") != saved_ticket.get("room_instance_id"): return false
-	_room_number = str(packet.get("number", ""))
-	if _room_number.is_empty():
-		return false
-	_peer = ENetMultiplayerPeer.new()
-	var opened := _peer.create_server(int(packet.get("port", 0)), 8, 3)
-	if opened != OK:
-		_peer.close()
-		_peer = ENetMultiplayerPeer.new()
-		opened = _peer.create_server(0, 8, 3)
-	if opened != OK:
-		_peer = null
-		return false
-	_api.multiplayer_peer = _peer
-	_server = true
-	local_port = _peer.get_host().get_local_port()
-	_host = Host.new()
-	_host.name = "Authority"
-	add_child(_host)
-	_host.view_changed.connect(_on_host_view)
-	_host.dice_updated.connect(_on_host_dice)
-	_host.presentation_required.connect(_on_host_cue)
-	_host.room_closed.connect(_on_room_closed)
-	if not _host.restore_authority(packet.get("state", {}), {}):
-		_reset()
-		return false
-	_room_instance = str(packet.instance)
-	_room_name = _room_number
-	_owned_service = true
-	_discovery = Discovery.new()
-	add_child(_discovery)
-	if not _discovery.advertise(self):
-		_reset()
-		return false
-	status_changed.emit("已接替房主")
-	return true
-
-
-func _promote_from_standby() -> void:
-	if mode != "lan" or _promoting: return
-	_promoting = true
-	var packet := Backup.unseal(_standby_state, _backup_private)
-	var profile := _profile.duplicate(true)
-	var saved := ticket.duplicate(true)
-	_reset()
-	if not packet.is_empty():
-		for attempt in 40:
-			if not is_inside_tree() or not _promoting: return
-			var service = get_script().new()
-			service.name = "PromotedRoom_" + _new_id()
-			get_tree().root.add_child(service)
-			if service.promote_lan_from_standby(packet, saved):
-				_promoting = false
-				connect_room("127.0.0.1", service.local_port, profile, saved)
-				return
-			service.queue_free()
-			await get_tree().create_timer(0.1).timeout
-	_promoting = false
-	status_changed.emit("接管房主失败，正在寻找房间")
-	ticket = saved
-	_begin_lan_recovery()
-
-func _begin_lan_recovery() -> void:
-	_lan_recovering = true
-	if _recovery_started < 0: _recovery_started = Time.get_ticks_msec()
-	_connect_started = -1
-	if _peer != null:
-		_peer.close()
-	_peer = null
-	if _api != null:
-		_api.multiplayer_peer = OfflineMultiplayerPeer.new()
-	if is_instance_valid(_discovery):
-		_discovery.queue_free()
-	_discovery = Discovery.new()
-	add_child(_discovery)
-	_discovery.rooms_updated.connect(_on_recovery_rooms)
-	_discovery.search()
-	status_changed.emit("房主已断开，正在等待新服务器接替")
-
-
-func _on_recovery_rooms() -> void:
-	if not _lan_recovering or not is_instance_valid(_discovery):
-		return
-	var want := str(ticket.get("room_instance_id", ""))
-	for room in _discovery.rooms.values():
-		if str(room.get("instance", "")) != want or str(room.get("host", "")) == "":
-			continue
-		var profile: Dictionary = _profile.duplicate(true)
-		var saved: Dictionary = ticket.duplicate(true)
-		_lan_recovering = false
-		_discovery.rooms_updated.disconnect(_on_recovery_rooms)
-		_discovery.stop_search()
-		_discovery.queue_free()
-		_discovery = null
-		status_changed.emit("已找到接替的房主，正在重新进入")
-		var started := _recovery_started
-		connect_room(str(room.host), int(room.port), profile, saved)
-		_recovery_started = started
-		return
-	# A link loss alone does not establish authority loss. Query the room first.
-	if not _standby_state.is_empty() and Time.get_ticks_msec() - _recovery_started >= 2000:
-		_promote_from_standby()
-		return
-	if Time.get_ticks_msec() - _recovery_started >= RECOVERY_WINDOW_MS:
-		_lan_recovering = false
-		_discovery.stop_search()
-		_discovery.queue_free()
-		_discovery = null
-		_reset()
-		status_changed.emit("暂时无法连接原房间")
-		session_ended.emit("connection_failed")
-
-
 func _process(_delta: float) -> void:
-	if _backup_key_job.is_started() and not _backup_key_job.is_alive():
-		_backup_private = _backup_key_job.wait_to_finish()
-		if mode == "lan" and _backup_private != null and _peer != null and _peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
-			offer_backup_key.rpc_id(1, _backup_private.save_to_string(true))
 	if _connect_started >= 0 and Time.get_ticks_msec() - _connect_started > CONNECT_TIMEOUT_MS:
 		_connection_failed()
-	_send_standby()
-	if _lan_recovering:
-		_on_recovery_rooms()
 
 func _connection_failed() -> void:
-	if mode == "lan" and not ticket.is_empty():
-		if not _lan_recovering: _begin_lan_recovery()
-		return
 	_reset()
 	status_changed.emit("连接暂时不可用，请检查网络后重试")
 	session_ended.emit("connection_failed")
@@ -902,20 +586,12 @@ func _server_disconnected() -> void:
 	if _leave_started >= 0:
 		_complete_leave()
 		return
-	if _lan_recovering or _promoting:
-		return
-	if mode == "lan" and not ticket.is_empty():
-		_begin_lan_recovery()
-		var room: Dictionary = view.get("room", {})
-		if room.get("phase") == 1 or room.get("rolling", false): session_ended.emit("disconnected")
-		return
 	_reset()
 	status_changed.emit("与房间的连接已断开")
 	session_ended.emit("disconnected")
 
 func leave() -> void:
 	if _leave_started >= 0: return
-	_promoting = false
 	if _host != null and not _connection.is_empty():
 		_host.disconnect_human(_connection, true)
 	elif _command({"kind":"leave"}):
@@ -932,19 +608,7 @@ func _complete_leave() -> void:
 	_reset()
 	session_ended.emit("left")
 
-func resume_standby_search() -> bool:
-	if mode != "lan" or _standby_state.is_empty() or _peer != null or not is_instance_valid(_discovery): return false
-	_begin_lan_recovery()
-	return true
-
-func searching_for_lan_authority() -> bool:
-	return _lan_recovering or _promoting
-
 func cancel_recovery_connection() -> void:
-	if _lan_recovering:
-		_lan_recovering = false
-		_discovery.stop_search()
-		return
 	if _silent_restore and not _server:
 		_reset()
 
@@ -953,31 +617,9 @@ func _reset() -> void:
 	_leave_started = -1
 	_connect_started = -1
 	_server = false
-	if is_instance_valid(_discovery):
-		if _discovery.rooms_updated.is_connected(_on_recovery_rooms):
-			_discovery.rooms_updated.disconnect(_on_recovery_rooms)
-		_discovery.stop_search()
-		_discovery.stop_advertise()
-		_discovery.queue_free()
-	_discovery = null
-	_lan_recovering = false
-	_recovery_started = -1
-	_standby_state = {}
-	_received_sequence = 0
-	_backup_sequence = 0
-	_pending_publications.clear()
-	if _backup_key_job.is_started(): _backup_key_job.wait_to_finish()
-	_backup_private = null
-	_backup_public.clear()
-	_backup_keys.clear()
-	_wrapped_keys.clear()
-	_standby_connection = ""
-	_standby_next_send = 0
-	_host_player_id = ""
-	_host_seat = 1
 	if _peer != null: _peer.close()
 	_peer = null
-	if not view.is_empty() and mode in ["lan", "online"]:
+	if not view.is_empty() and mode == "online":
 		voice_connection_ended.emit()
 	if _api != null: _api.multiplayer_peer = OfflineMultiplayerPeer.new()
 	if is_instance_valid(_host):
@@ -1017,28 +659,23 @@ func directory_auth_state() -> Dictionary:
 
 ## 返回当前网络连接的真实状态与 ENet 往返延迟（毫秒）；单机模式返回 active=false。
 func connection_metrics() -> Dictionary:
-	if mode not in ["lan", "online"]:
+	if mode != "online":
 		return {"active": false, "mode": mode, "state": "local", "rtt_ms": -1, "local_host": false}
-	var is_local_host := mode == "lan" and _address in ["127.0.0.1", "localhost", "::1"]
-	if _lan_recovering or _promoting:
-		return {"active": true, "mode": mode, "state": "reconnecting", "rtt_ms": -1, "local_host": is_local_host}
 	if _peer == null:
-		return {"active": true, "mode": mode, "state": "disconnected", "rtt_ms": -1, "local_host": is_local_host}
+		return {"active": true, "mode": mode, "state": "disconnected", "rtt_ms": -1, "local_host": false}
 	var status := _peer.get_connection_status()
 	if status == MultiplayerPeer.CONNECTION_CONNECTING:
-		return {"active": true, "mode": mode, "state": "connecting", "rtt_ms": -1, "local_host": is_local_host}
+		return {"active": true, "mode": mode, "state": "connecting", "rtt_ms": -1, "local_host": false}
 	if status != MultiplayerPeer.CONNECTION_CONNECTED:
-		return {"active": true, "mode": mode, "state": "disconnected", "rtt_ms": -1, "local_host": is_local_host}
+		return {"active": true, "mode": mode, "state": "disconnected", "rtt_ms": -1, "local_host": false}
 	var remote: ENetPacketPeer = _peer.get_peer(1)
 	if remote == null or remote.get_state() != ENetPacketPeer.STATE_CONNECTED:
-		return {"active": true, "mode": mode, "state": "connecting", "rtt_ms": -1, "local_host": is_local_host}
+		return {"active": true, "mode": mode, "state": "connecting", "rtt_ms": -1, "local_host": false}
 	var last_rtt := remote.get_statistic(ENetPacketPeer.PEER_LAST_ROUND_TRIP_TIME)
 	var mean_rtt := remote.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)
 	var rtt_ms := -1
 	if last_rtt > 0.0:
 		rtt_ms = int(round(last_rtt))
-	elif mean_rtt > 0.0 and mean_rtt < 500.0:
+	elif mean_rtt >= 0.0 and mean_rtt < 500.0:
 		rtt_ms = int(round(mean_rtt))
-	elif is_local_host:
-		rtt_ms = 1
-	return {"active": true, "mode": mode, "state": "connected", "rtt_ms": rtt_ms, "local_host": is_local_host}
+	return {"active": true, "mode": mode, "state": "connected", "rtt_ms": rtt_ms, "local_host": false}

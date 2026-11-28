@@ -1,7 +1,7 @@
 extends RefCounted
 ## The actual menu controls are shared by the game and the designer.
 const Hud = preload("res://src/presentation/HudLayout.gd")
-const PAGES := {"home":"大厅", "profile_edit":"个人资料", "online":"在线入口", "lan":"局域网入口", "room":"房间座位", "settings":"设置", "update":"软件更新", "leave":"离开确认", "reconnect":"连接恢复"}
+const PAGES := {"home":"大厅", "profile_edit":"个人资料", "online":"在线入口", "room":"房间座位", "settings":"设置", "update":"软件更新", "leave":"离开确认", "reconnect":"连接恢复"}
 
 static func canonical(page:String)->String:
 	return "profile_edit" if page=="profile_setup" else page

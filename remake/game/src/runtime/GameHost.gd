@@ -62,7 +62,7 @@ var _deal_styles := ["a", "a", "a", "a"]
 var _submitter := Submitter.new()
 
 func configure(room_number: String, mode: String, first_dealer: int, settings: Dictionary = {}) -> bool:
-	if _session != null or room_number.is_empty() or mode not in ["solo", "lan", "online"] or first_dealer not in range(4):
+	if _session != null or room_number.is_empty() or mode not in ["solo", "online"] or first_dealer not in range(4):
 		return false
 	_level = str(settings.get("difficulty", "medium"))
 	_next_level = _level
@@ -237,7 +237,7 @@ func public_room() -> Dictionary:
 	return room
 
 func set_mic_active(connection_id: String, instance: String, seat: int, active: bool) -> bool:
-	if _closed or _mode not in ["lan", "online"] or instance != _instance or seat not in range(4) or authenticated_seat(connection_id) != seat:
+	if _closed or _mode != "online" or instance != _instance or seat not in range(4) or authenticated_seat(connection_id) != seat:
 		return false
 	if active and connection_away(connection_id): return false
 	if _active_mics.has(seat) != active:
@@ -662,7 +662,7 @@ func restore_authority(state: Dictionary, settings: Dictionary = {}) -> bool:
 	if not state.get("clock") is Dictionary or not state.get("dice") is Dictionary:
 		print("[restore] missing clock/dice")
 		return false
-	_mode = str(state.get("mode", "lan"))
+	_mode = str(state.get("mode", "online"))
 	_instance = str(state.get("instance", ""))
 	_first_dealer = int(state.get("first_dealer", -1))
 	_discard_ms = int(state.get("discard_ms", Clock.DISCARD_MS))
@@ -678,7 +678,7 @@ func restore_authority(state: Dictionary, settings: Dictionary = {}) -> bool:
 	_first_start_requested = bool(state.get("first_start_requested", false))
 	for key in _durations:
 		_durations[key] = int(state.get("durations", {}).get(key, _durations[key]))
-	if _mode not in ["solo", "lan", "online"] or _first_dealer not in range(4) or _discard_ms <= 0 or _response_ms <= 0:
+	if _mode not in ["solo", "online"] or _first_dealer not in range(4) or _discard_ms <= 0 or _response_ms <= 0:
 		print("[restore] settings reject mode=", _mode, " dealer=", _first_dealer)
 		return false
 	var delta := _now() - int(state.get("at_ms", _now()))

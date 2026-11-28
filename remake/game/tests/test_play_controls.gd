@@ -169,9 +169,9 @@ func _network_leave() -> void:
 	var authority := Client.new()
 	authority.name = "PlayControlsAuthority"
 	root.add_child(authority)
-	check(authority.start_server("918263", 0, {"difficulty": "low"}, "lan"), "real LAN authority starts")
+	check(authority.start_server("918263", 0, {"difficulty": "low"}, "online"), "real online authority starts")
 	authority._host.clock_msec = func(): return raw_ms
-	app._mode = "lan"
+	app._mode = "online"
 	var profile: Dictionary = app._profile()
 	profile.room_number = "918263"
 	app._client.connect_room("127.0.0.1", authority.local_port, profile)
@@ -210,7 +210,7 @@ func _network_settings_without_speaker_switches(authority: Node, number: String)
 		var peer := Client.new()
 		root.add_child(peer)
 		members.append(peer)
-		peer.connect_room("127.0.0.1", authority.local_port, {"mode": "lan", "room_number": number,
+		peer.connect_room("127.0.0.1", authority.local_port, {"mode": "online", "room_number": number,
 			"player_id": "play-controls-" + nickname, "nickname": nickname})
 		check(await until(func(): return not peer.view.is_empty()), "another real member joins while settings are open")
 	check(app._frame.find_children("*","CheckButton",true,false).all(func(control): return not control.text.contains("收听")), "joining members do not recreate old listener switches")
@@ -224,7 +224,7 @@ func _network_settings_without_speaker_switches(authority: Node, number: String)
 		peer.queue_free()
 	check(await until(func(): return authority._host._connections.size() == 1), "other members leave before opening the LAN game")
 	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
-	check(app._screen == "room" and authority._host._paused_at < 0, "return from settings preserves the LAN authority")
+	check(app._screen == "room" and authority._host._paused_at < 0, "return from settings preserves the online authority")
 
 func finish(folder: String, path: String) -> void:
 	check(await AudioRetirement.release_app(app, self), "stopped application audio is released by the mixer")

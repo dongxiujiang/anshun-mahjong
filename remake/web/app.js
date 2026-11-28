@@ -60,10 +60,10 @@
       $("stat-host").textContent = `${data.public_host} · 协议 ${data.protocol}`;
       $("stat-rooms").textContent = `${data.rooms_active} / ${data.rooms_max}`;
       $("stat-players").textContent = `${data.players_online} 人`;
-      $("stat-voice").textContent = data.voice_configured ? "在线语音已就绪" : "局域网语音可用";
+      $("stat-voice").textContent = data.voice_configured ? "在线语音已就绪" : "基础语音可用";
       $("stat-records").textContent = `${data.records_archived} 局`;
       const bm = data.records_by_mode || {};
-      $("stat-records-sub").textContent = `在线 ${bm.online || 0} · 局域网 ${bm.lan || 0} · 单机 ${bm.solo || 0}`;
+      $("stat-records-sub").textContent = `在线 ${bm.online || 0} · 单机 ${bm.solo || 0} · 历史 ${bm.lan || 0}`;
       $("stat-downloads").textContent = `${data.downloads_total ?? 0} 次`;
       $("stat-uptime").textContent = `运行时长：${formatUptime(data.uptime_seconds)}`;
       if (data.latest_release) applyLatestRelease(data.latest_release);

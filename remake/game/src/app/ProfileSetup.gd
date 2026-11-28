@@ -182,7 +182,7 @@ func _set_picker(names: bool) -> void:
 	var incoming := _name_picker_section if names else _avatar_section
 	var outgoing := _avatar_section if names else _name_picker_section
 	var spec := UI.MotionFX.MotionConfig.section("overlay")
-	var duration: float = spec.toast_in if UI.MotionFX.MotionConfig.is_detail() else spec.badge_in
+	var duration: float = spec.badge_in
 	var curve: int = UI.MotionFX.MotionConfig.value("panel", "ease_trans")
 	UI.MotionFX.stop(outgoing)
 	outgoing.hide()

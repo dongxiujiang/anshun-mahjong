@@ -11,7 +11,7 @@ const Catalog := preload("res://src/domain/TileCatalog.gd")
 const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
 const MotionFX = preload("res://src/presentation/MotionFX.gd")
 
-const REVEAL_SECONDS := 2.4
+const REVEAL_SECONDS := 1.1
 
 signal finished(key: String)
 
@@ -270,8 +270,8 @@ func present(key: String, result: Dictionary, members: Array) -> bool:
 	var duration := float(fx.flip_in_duration)
 	var from_scale := Vector2.ONE * float(fx.flip_from_scale)
 	var stagger := float(fx.flip_related_stagger)
-	var half_flip_in := 0.20 if detailed else 0.15
-	var half_flip_out := 0.26 if detailed else 0.17
+	var half_flip_in := 0.18
+	var half_flip_out := 0.22
 	var lift_y := 1.07 if detailed else 1.0
 
 	modulate = Color(1, 1, 1, 0)
@@ -288,7 +288,7 @@ func present(key: String, result: Dictionary, members: Array) -> bool:
 	_tween.tween_property(_card, "scale", Vector2.ONE, duration).from(from_scale)
 	_tween.parallel().tween_property(self, "modulate:a", 1.0, duration).set_trans(Tween.TRANS_QUAD)
 	# 2. Brief anticipation beat on face-down tile back, then flip 180° horizontally to reveal face
-	_tween.tween_interval(0.14 if detailed else 0.08)
+	_tween.tween_interval(0.10)
 	_tween.tween_property(_flip_tile_card, "scale", Vector2(0.0, lift_y), half_flip_in).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	_tween.tween_callback(func():
 		_set_tile_revealed(true, flip_tile)

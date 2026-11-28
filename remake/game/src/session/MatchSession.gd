@@ -1,5 +1,5 @@
 extends RefCounted
-## 单机房主、局域网房主和在线权威端共用。网络层只分发连接视图。
+## 单机与在线权威端共用。网络层只分发连接视图。
 
 const Room = preload("res://src/session/RoomSession.gd")
 const Round = preload("res://src/domain/Round.gd")

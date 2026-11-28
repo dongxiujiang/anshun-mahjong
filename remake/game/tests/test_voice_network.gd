@@ -43,11 +43,11 @@ func audio_packet(sequence: int) -> PackedByteArray:
 
 func _run() -> void:
 	var service = endpoint("VoiceAuthority")
-	check(service.start_server("678901", 0, {}, "lan"), "LAN authority starts")
+	check(service.start_server("678901", 0, {}, "online"), "online authority starts")
 	var a = endpoint("VoiceSouth")
 	var b = endpoint("VoiceEast")
-	var profile_a := {"player_id": "voice-a", "nickname": "甲", "mode": "lan", "room_number": "678901"}
-	var profile_b := {"player_id": "voice-b", "nickname": "乙", "mode": "lan", "room_number": "678901"}
+	var profile_a := {"player_id": "voice-a", "nickname": "甲", "mode": "online", "room_number": "678901"}
+	var profile_b := {"player_id": "voice-b", "nickname": "乙", "mode": "online", "room_number": "678901"}
 	a.connect_room("127.0.0.1", service.local_port, profile_a)
 	check(await until(func(): return not a.view.is_empty()), "first voice endpoint authenticates")
 	b.connect_room("127.0.0.1", service.local_port, profile_b)
@@ -125,7 +125,7 @@ func _mic_indicators(service, a, b, listener, profile: Dictionary) -> void:
 	check(not source.microphone_requested() and not listener.name_mic_active(seat), "new room starts with microphone off at both ends")
 	check(source.set_microphone(true) and await until(func(): return listener.name_mic_active(seat)), "LAN capture through the dummy driver publishes the authenticated source to a real listener")
 	var third = endpoint("SameNameListener")
-	third.connect_room("127.0.0.1", service.local_port, {"mode": "lan", "room_number": "678901", "player_id": "third", "nickname": profile.nickname})
+	third.connect_room("127.0.0.1", service.local_port, {"mode": "online", "room_number": "678901", "player_id": "third", "nickname": profile.nickname})
 	check(await until(func(): return not third.view.is_empty() and third.view.room.seats[seat].mic_active), "late join receives existing live-capture state before any audio packets")
 	var other: int = third.view.seat
 	third.report_mic_active(instance, other, true)
@@ -143,8 +143,13 @@ func _mic_indicators(service, a, b, listener, profile: Dictionary) -> void:
 	source._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	check(not source.recording and a.waiting_for_foreground_view(), "foreground notification alone cannot restart capture before the authenticated snapshot")
 	check(await until(func(): return listener.name_mic_active(seat)), "new active capture after foreground returns to other players")
+	var capture_retired := []
+	var remote_mic_cleared := []
+	a.voice_connection_ended.connect(func(): capture_retired.append(not source.recording), CONNECT_ONE_SHOT)
+	b.view_changed.connect(func(state):
+		if not state.room.seats[seat].get("mic_active", false): remote_mic_cleared.append(true))
 	service._peer.disconnect_peer(a._api.get_unique_id())
-	check(await until(func(): return a.view.is_empty() and not b.view.room.seats[seat].connected and not listener.name_mic_active(seat)), "real transport loss immediately retires remote capture")
+	check(await until(func(): return not capture_retired.is_empty() and not remote_mic_cleared.is_empty()) and capture_retired[0], "real transport loss immediately retires capture and clears remote microphone state, even with fast same-room recovery")
 	source._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
 	a.set_application_away(true)
 	a.connect_room("127.0.0.1", service.local_port, profile, ticket)

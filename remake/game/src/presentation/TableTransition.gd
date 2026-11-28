@@ -83,7 +83,7 @@ func _warmup_drawn() -> void:
 func _process(delta: float) -> void:
 	if not active or _warmup_left > 0:
 		return
-	_elapsed = minf(_duration, _elapsed + (minf(delta, 0.04) if _rendered else delta))
+	_elapsed = minf(_duration, _elapsed + delta)
 	_apply(_elapsed / _duration)
 	var fade := clampf(_elapsed / float(_spec.crossfade_duration), 0.0, 1.0)
 	if _elapsed >= _duration:

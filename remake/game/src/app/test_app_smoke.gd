@@ -20,7 +20,7 @@ func _run() -> void:
 	if _app._screen == "profile_setup":
 		await _capture("profile-setup")
 		_press("进入大厅")
-	_check(_find_button(_app, "单机") != null and _find_button(_app, "局域网") != null and _find_button(_app, "在线") != null, "All three home entrances are present")
+	_check(_find_button(_app, "单机") != null and _find_button(_app, "创建房间") != null and _find_button(_app, "加入房间") != null, "Solo and online home entrances are present")
 	_app._mode = "online"
 	_app._voice._status(false, "麦克风权限未开启")
 	_app._show_table_notice()
@@ -44,11 +44,6 @@ func _run() -> void:
 	var directory := OS.get_environment("DONGXIU_UI_DIRECTORY_TEST_URL")
 	if not directory.is_empty():
 		await _verify_online(directory)
-	_press("返回")
-	_press("局域网")
-	_check(_find_button(_app, "创建房间") != null, "LAN offers a real host action")
-	if OS.get_environment("DONGXIU_SMOKE_LAN") == "1":
-		await _verify_lan()
 	_press("返回")
 	_press("单机")
 	var until := Time.get_ticks_msec() + 15000
@@ -123,29 +118,6 @@ func _verify_online(address: String) -> void:
 	await _capture("online-preparation")
 	_press("离开房间")
 	_press("在线")
-
-
-func _verify_lan() -> void:
-	_app._room_number.text = "000" + str(randi_range(10000, 99999))
-	_press("创建房间")
-	var until := Time.get_ticks_msec() + 7000
-	while Time.get_ticks_msec() < until and _app._screen != "room":
-		await process_frame
-	_check(_app._screen == "room" and int(_app._view.get("seat", -1)) == 1, "LAN prepares the actual first south seat")
-	if _app._screen != "room":
-		return
-	var number: String = _app._view.room.room_number
-	await _capture("lan-preparation")
-	_app._seat_choices[2].pressed.emit()
-	while Time.get_ticks_msec() < until and int(_app._view.get("seat", -1)) != 2:
-		await process_frame
-	_check(int(_app._view.get("seat", -1)) == 2, "LAN seat move reaches the actual authority")
-	_press("离开房间")
-	_press("局域网")
-	while Time.get_ticks_msec() < until and not _app._discovery.has_number(number):
-		await process_frame
-	_check(_app._discovery.has_number(number), "The hosted room is discoverable after its creator leaves the seat")
-	await _capture("lan-discovery")
 
 
 func _click_pointer(point: Vector2) -> void:
