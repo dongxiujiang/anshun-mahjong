@@ -45,6 +45,7 @@ var region_placement
 var camera := Camera3D.new()
 var frame_camera_enabled := true
 var _key_light: DirectionalLight3D
+var _rim_light: DirectionalLight3D
 var _reflection_probe: ReflectionProbe
 var _felt_material: ShaderMaterial
 var _wood_material: StandardMaterial3D
@@ -182,11 +183,19 @@ func _build_table() -> void:
 	var key := DirectionalLight3D.new()
 	key.rotation_degrees = Vector3(-61, -30, 0)
 	key.light_energy = 0.52
-	key.shadow_opacity = 0.35
+	key.shadow_opacity = 0.48
+	key.shadow_blur = 1.35
 	key.shadow_enabled = true
 	key.directional_shadow_max_distance = 42.0
 	add_child(key)
 	_key_light = key
+	_rim_light = DirectionalLight3D.new()
+	_rim_light.rotation_degrees = Vector3(-38, 135, 0)
+	_rim_light.light_color = Color("#ffe7bf")
+	_rim_light.light_energy = 0.26
+	_rim_light.shadow_enabled = false
+	_rim_light.visible = quality == "detail"
+	add_child(_rim_light)
 	apply_quality(quality)
 	apply_theme(_table_theme_id, _tile_back_id)
 	var pointer_mesh := CylinderMesh.new()
@@ -254,6 +263,7 @@ func apply_theme(table_theme_id: String, tile_back_id: String = "") -> void:
 		_trim_material.albedo_color = spec.inlay
 	if _corner_material != null:
 		_corner_material.albedo_color = spec.corner_metal
+	apply_quality(quality)
 
 func pulse_table_shake(intensity: float = 0.14) -> void:
 	_shake_amount = maxf(_shake_amount, clampf(intensity, 0.0, 0.35))
@@ -379,10 +389,34 @@ func set_safe_insets(insets: Vector4) -> void:
 
 func apply_quality(value: String) -> void:
 	quality = "detail" if value == "detail" else "smooth"
-	if is_instance_valid(_key_light): _key_light.shadow_enabled = quality == "detail"
+	var detailed := quality == "detail"
+	var spec: Dictionary = TableTheme.table_data(_table_theme_id)
+	if is_instance_valid(_key_light):
+		_key_light.shadow_enabled = detailed
+		_key_light.shadow_opacity = 0.48
+		_key_light.shadow_blur = 1.35
+		_key_light.directional_shadow_max_distance = 42.0
+		_key_light.light_energy = spec.key_energy * (1.12 if detailed else 1.0)
+	if is_instance_valid(_rim_light):
+		_rim_light.visible = detailed
+	if _felt_material != null:
+		_felt_material.set_shader_parameter("detail_mode", 1.0 if detailed else 0.0)
+	if _wood_material != null:
+		_wood_material.clearcoat_enabled = detailed
+		_wood_material.clearcoat = 0.45 if detailed else 0.0
+		_wood_material.roughness = 0.26 if detailed else spec.wood_roughness
+	if _trim_material != null:
+		_trim_material.roughness = 0.18 if detailed else 0.32
+	if _corner_material != null:
+		_corner_material.roughness = 0.14 if detailed else 0.28
 	TileArt.apply_quality(quality)
 	if camera.environment:
 		camera.environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED if quality == "smooth" else Environment.REFLECTION_SOURCE_BG
+		camera.environment.tonemap_mode = Environment.TONE_MAPPER_ACES if detailed else Environment.TONE_MAPPER_LINEAR
+		# Reserve highlight headroom for the glaze under Compatibility's ACES curve.
+		camera.environment.tonemap_white = 6.0 if detailed else 1.0
+		camera.environment.tonemap_exposure = 0.48 if detailed else 1.0
+		camera.environment.ambient_light_energy = spec.ambient_energy * (0.86 if detailed else 1.0)
 
 func _frame_camera() -> void:
 	if not frame_camera_enabled or not camera.is_inside_tree():

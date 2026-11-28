@@ -9,6 +9,7 @@ static var _meshes := {}
 static var _faces := {}
 static var _faces_sideways := {}
 static var _artwork: Texture2D
+static var _engraving: Texture2D
 static var _artwork_image: Image
 static var _visible_material: ShaderMaterial
 static var _hidden_material: ShaderMaterial
@@ -24,12 +25,12 @@ static func _load_library() -> void:
 		return
 	var library: MeshLibrary = load(ROOT + "tile_meshes.res")
 	_artwork = load(ROOT + "mahJong.png")
-	var engraving: Texture2D = load(ROOT + "mahJong_NORM.png")
+	_engraving = load(ROOT + "mahJong_NORM.png")
 	_visible_material = ShaderMaterial.new()
 	_visible_material.shader = RESIN
 	_visible_material.set_shader_parameter("printed", true)
 	_visible_material.set_shader_parameter("artwork", _artwork)
-	_visible_material.set_shader_parameter("engraving", engraving)
+	_visible_material.set_shader_parameter("engraving", _engraving)
 	_hidden_material = _visible_material.duplicate()
 	_hidden_material.set_shader_parameter("printed", false)
 	# 池化高亮材质（GL Compatibility 移动端零开销、零驱动限制）
@@ -62,7 +63,7 @@ static func apply_quality(value: String) -> void:
 			if params[key] != null:
 				mat.set_shader_parameter(key, params[key])
 		if _quality == "detail":
-			mat.set_shader_parameter("engraving", load(ROOT + "mahJong_NORM.png"))
+			mat.set_shader_parameter("engraving", _engraving)
 
 
 static func apply_back_theme(id: String) -> void:
