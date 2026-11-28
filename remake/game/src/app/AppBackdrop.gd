@@ -19,16 +19,14 @@ func apply_quality(value: String) -> void:
 func _draw() -> void:
 	if size.x < 2.0 or size.y < 2.0:
 		return
+	var outer := Rect2(Vector2(10.0, 10.0), size - Vector2(20.0, 20.0))
+	if not _detail:
+		draw_rect(Rect2(Vector2.ZERO, size), Color("#0b1c17"), true)
+		draw_rect(outer, Color(0.78, 0.64, 0.35, 0.18), false, 1.0)
+		return
 	# 1. 深墨翠基底
 	draw_rect(Rect2(Vector2.ZERO, size), Color("#081512"), true)
 	# 2. 柔和顶灯径向翡翠漫射晕
-	var center := Vector2(size.x * 0.50, size.y * 0.36)
-	var max_r := maxf(size.x, size.y) * 0.78
-	var outer := Rect2(Vector2(10.0, 10.0), size - Vector2(20.0, 20.0))
-	if not _detail:
-		draw_circle(center, max_r * 0.54, Color(0.08, 0.24, 0.19, 0.24))
-		draw_rect(outer, Color(0.78, 0.64, 0.35, 0.18), false, 1.0)
-		return
 	if _jade_glow == null:
 		var ramp := Gradient.new()
 		ramp.offsets = PackedFloat32Array([0.0, 0.33, 0.67, 1.0])

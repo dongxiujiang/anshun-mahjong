@@ -60,8 +60,13 @@ func _run()->void:
 	check(chosen>=0 and game.submit(1,game.prompt_id,"discard",chosen),"real ordinary discard is accepted")
 	table.apply_view(game.snapshot_for(1));table._render(false)
 	check(table._discard_marker.visible,"orange indicator identifies the current physical discard")
+	check(not table.is_processing(),"smooth discard pointer needs no idle processing")
 	var destination:Transform3D=table.tiles[chosen].transform
 	var old:Vector3=table._discard_marker.position
+	table._process(0.2)
+	check(table._discard_marker.position==old and table.tiles[chosen].transform==destination,"smooth pointer and real discard stay fixed")
+	table.apply_quality("detail")
+	old=table._discard_marker.position
 	table._process(0.2)
 	check(table._discard_marker.position!=old and table.tiles[chosen].transform==destination,"only the pointer bobs; the real discard stays fixed")
 	var material:StandardMaterial3D=table._discard_marker.mesh.material

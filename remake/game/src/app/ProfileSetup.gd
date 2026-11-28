@@ -184,12 +184,14 @@ func _set_picker(names: bool) -> void:
 	var spec := UI.MotionFX.MotionConfig.section("overlay")
 	var duration: float = spec.toast_in if UI.MotionFX.MotionConfig.is_detail() else spec.badge_in
 	var curve: int = UI.MotionFX.MotionConfig.value("panel", "ease_trans")
+	UI.MotionFX.stop(outgoing)
+	outgoing.hide()
+	outgoing.modulate.a = 1.0
 	outgoing.focus_behavior_recursive = FOCUS_BEHAVIOR_DISABLED
 	outgoing.mouse_behavior_recursive = MOUSE_BEHAVIOR_DISABLED
 	incoming.focus_behavior_recursive = FOCUS_BEHAVIOR_INHERITED
 	incoming.mouse_behavior_recursive = MOUSE_BEHAVIOR_INHERITED
-	UI.MotionFX._slide(outgoing, false, Vector2.ZERO, duration, curve)
-	UI.MotionFX._slide(incoming, true, Vector2.ZERO, duration, curve)
+	UI.MotionFX._slide(incoming, true, Vector2.DOWN * (8.0 if UI.MotionFX.MotionConfig.is_detail() else 4.0), duration, curve)
 	_name_picker_btn.text = "选头像" if names else "挑昵称"
 	if names:
 		_refresh_name_picker_selection()

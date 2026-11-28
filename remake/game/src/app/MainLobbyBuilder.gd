@@ -61,16 +61,6 @@ static func build_connection(app) -> void:
 	title.add_child(app._lobby_update_button)
 	app._update_state_changed(app._update_manager.snapshot())
 
-	var tools := _toolbar(content)
-	app._lobby_tools = tools
-	tools.add_child(UI.button("← 返回首页", app._set_browser_visible.bind(false)))
-	tools.add_child(UI.button("单机", app._choose_mode.bind("solo")))
-	tools.add_child(UI.button("局域网", app._choose_mode.bind("lan")))
-	tools.add_spacer(false)
-	tools.add_child(UI.button("创建房间", app._create_online, true))
-	tools.add_child(UI.button("加入房间", app._open_join_dialog))
-	tools.add_child(UI.button("刷新房间", app._search_online))
-
 	var center := CenterContainer.new()
 	app._lobby_home = center
 	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -91,6 +81,16 @@ static func build_connection(app) -> void:
 		action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var lan := _mode_card(cards, "局域网约局", "同一 Wi-Fi · 亲友免输地址")
 	lan.add_child(UI.button("局域网", app._choose_mode.bind("lan")))
+
+	var tools := _toolbar(content)
+	app._lobby_tools = tools
+	tools.add_child(UI.button("← 返回首页", app._set_browser_visible.bind(false)))
+	tools.add_child(UI.button("单机", app._choose_mode.bind("solo")))
+	tools.add_child(UI.button("局域网", app._choose_mode.bind("lan")))
+	tools.add_spacer(false)
+	tools.add_child(UI.button("创建房间", app._create_online, true))
+	tools.add_child(UI.button("加入房间", app._open_join_dialog))
+	tools.add_child(UI.button("刷新房间", app._search_online))
 
 	app._online_results = _browser(app, content, "创建房间邀请好友，或返回首页开始单机对局")
 	var footer := _toolbar(content)
