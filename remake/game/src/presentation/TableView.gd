@@ -386,6 +386,11 @@ func _box(label: String, center: Vector3, size: Vector3, material: Material) -> 
 	add_child(node)
 	return node
 
+func prewarm_visuals() -> void:
+	TileArt.material(true)
+	TileArt.material(false)
+	TileArt.mesh("")
+
 func set_safe_insets(insets: Vector4) -> void:
 	_safe_insets = insets
 	_frame_camera()

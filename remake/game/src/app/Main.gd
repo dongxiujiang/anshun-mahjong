@@ -188,6 +188,8 @@ var _lan_address: LineEdit
 var _lan_options: MainLobbyBuilder.Drawer
 var _room_inspector: GameClient
 var _transition: TableTransition
+var _board_fade_from := 0.0
+var _hud_fade: Tween
 var _directory_url: LineEdit
 var _online_name: LineEdit
 var _online_filter: LineEdit
@@ -214,6 +216,7 @@ func _ready() -> void:
 	_transition = TableTransition.new()
 	add_child(_transition)
 	_transition.finished.connect(_transition_finished)
+	_transition.crossfade_progress.connect(_fade_board)
 	_order.set_suit_order(_settings.profile().suit_order)
 	_teaching_enabled = _settings.profile().get("teaching_enabled", false)
 	_setup_services()
@@ -373,6 +376,7 @@ func _setup_sound() -> void:
 	_voice.set_directory_url(_online_url())
 	_sound = SoundStage.new()
 	add_child(_sound)
+	_sound.dice_visual_requested.connect(_queue_dice_visual_ready)
 	_sound.bind_client(_client, _voice)
 	_apply_sound(_settings.profile())
 
@@ -385,7 +389,9 @@ func _apply_sound(profile: Dictionary) -> void:
 
 
 func _apply_quality(value: String) -> void:
-	var quality := preload("res://src/presentation/MotionConfig.gd").set_quality(value)
+	const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
+	var quality := MotionConfig.set_quality(value)
+	_sound.defer_dice_until_visual_ready = DisplayServer.get_name() != "headless" and bool(MotionConfig.value("transition", "dice_audio_wait_visual", true))
 	_board_world.msaa_3d = Viewport.MSAA_2X if quality == "detail" else Viewport.MSAA_DISABLED
 	var targets := [_table, _backdrop, _clock_face, _buttons, _settlement_names, _fx_stage,
 		_win_feedback, _flip_reveal, _ting_overlay, _online_results, _lan_results]
@@ -565,13 +571,16 @@ func _show(screen: String) -> void:
 		_teaching.cancel()
 	_backdrop.visible = screen != "play" and not (table_play_only and show_table)
 	_board.visible = show_table
-	if is_instance_valid(_board_world):
+	if not _transition.active:
+		_board.modulate.a = 1.0
 		_board_world.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE if show_table else SubViewport.UPDATE_DISABLED
 	_board.anchor_left = 0.0 if table_play_only else (0.59 if screen == "settlement" else 0.0)
 	_frame.anchor_right = 1.0 if table_play_only else (0.59 if screen == "settlement" else 1.0)
 	_frame.anchor_top=0.20 if table_play_only and screen=="settlement" else 0.0
 	_frame.anchor_bottom=0.76 if table_play_only and screen=="settlement" else 1.0
 	_hud.visible = screen == "play" and not table_layout_review
+	if _hud.visible and not _transition.active:
+		_fade_in_hud()
 	_settlement_names.visible = screen == "settlement"
 	if table_play_only:
 		_settlement_names.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -592,6 +601,7 @@ func _show(screen: String) -> void:
 		"career":
 			_build_career()
 		"room":
+			_table.prewarm_visuals()
 			_build_room()
 		"settlement":
 			_build_settlement()
@@ -808,6 +818,8 @@ func _choose_mode(mode: String) -> void:
 		var profile := _profile()
 		if not _client.start_solo(profile, _host_settings(profile)):
 			_set_status("暂时无法开始单机牌局。")
+		else:
+			_start_seating()
 	else:
 		_show("connect")
 
@@ -1171,7 +1183,11 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_APPLICATION_RESUMED:
 		var wake_recovery := _application_paused
 		_application_paused = false
-		_transition.finish_on_resume()
+		if _transition.active:
+			_transition.finish_on_resume()
+			if _hud_fade:
+				_hud_fade.kill()
+			_hud.modulate.a = 1.0
 		_client.set_application_away(false)
 		_sync_foreground_controls()
 		if wake_recovery:
@@ -1376,6 +1392,9 @@ func _view_changed(view: Dictionary) -> void:
 		_table_recovery = TableRecovery.NONE
 	if _view.get("room", {}).get("room_instance_id") != view.room.room_instance_id:
 		_speaker_error = ""
+		# Each room's authority starts numbering its visible throws from one.
+		_dice.hide()
+		_dice.roll_id = 0
 	var entering_room: bool = _mode in ["lan","online"] and is_instance_valid(_client) and _client.mode in ["lan","online"] and not _client.ticket.is_empty() and not _restoring and _view.get("room",{}).get("room_instance_id") != view.room.room_instance_id
 	_view = view.duplicate(true)
 	_sync_room_settings()
@@ -1447,18 +1466,35 @@ func _view_changed(view: Dictionary) -> void:
 
 func _start_seating() -> void:
 	if _view.is_empty() or _transition.active or _application_paused: return
-	_transition.begin(_table,_view.room.seats,int(_view.seat),true,_entry_origin,_board.get_global_rect())
+	_begin_table_transition(true)
 	_cancel_table_input()
 	_sync_foreground_controls()
+
+func _begin_table_transition(entering: bool) -> void:
+	_table.prewarm_visuals()
+	_board_fade_from = 0.0 if entering else _board.modulate.a
+	_transition.begin(_table,_view.room.seats,int(_view.seat),entering,_entry_origin,_board.get_global_rect())
 	_sync_transition_view()
+	_fade_board(0.0)
+
+func _fade_board(amount: float) -> void:
+	_board.modulate.a = lerpf(_board_fade_from, 1.0 if _transition.entering else 0.0, amount)
+	# An entirely transparent container can be culled during its GPU warmup frame.
+	_board_world.render_target_update_mode = SubViewport.UPDATE_ALWAYS if _transition.entering and _board.modulate.a == 0.0 else SubViewport.UPDATE_WHEN_VISIBLE
+	_queue_dice_visual_ready()
+
+func _fade_in_hud() -> void:
+	if _hud_fade:
+		_hud_fade.kill()
+	_hud.modulate.a = 0.0
+	_hud_fade = _hud.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_hud_fade.tween_property(_hud, "modulate:a", 1.0, UI.MotionFX.MotionConfig.section("transition").crossfade_duration)
 
 func _sync_transition_view() -> void:
 	if not is_instance_valid(_transition) or not _transition.active:return
 	_board.show()
-	if is_instance_valid(_board_world):
-		_board_world.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	_table.show()
-	_backdrop.hide()
+	_backdrop.show()
 	_frame.visible = _screen == "settings"
 	_hud.hide()
 	_settlement_names.hide()
@@ -1468,6 +1504,9 @@ func _transition_finished(entering: bool) -> void:
 	_frame.show()
 	_update_screen()
 	_hud.visible = _screen=="play" and not table_layout_review
+	if _hud.visible:
+		_fade_in_hud()
+	_backdrop.visible = _screen != "play" and not table_play_only
 	_sync_foreground_controls()
 
 
@@ -1515,6 +1554,7 @@ func _render_table(round_view: Dictionary) -> void:
 		return
 	if round_view.get("phase") == "dice":
 		_table.show_full_wall(int(_view.seat))
+		_queue_dice_visual_ready()
 		_update_restore_button()
 		return
 	if int(round_view.get("prompt_id", -1)) < 0:
@@ -1556,6 +1596,20 @@ func _dice_changed(pose: Dictionary) -> void:
 	var round_view: Dictionary = _view.get("round", {})
 	var first_discard_pending: bool = round_view.get("last_discard", {}).is_empty() and round_view.get("phase", "") != "settled"
 	_dice.visible = (_screen in ["play","settings"] or _view.get("room", {}).get("rolling", false)) and first_discard_pending and pose.get("phase", "") in ["rolling", "settled"]
+	_queue_dice_visual_ready()
+
+func _dice_drawable() -> bool:
+	return (not _leaving and not _application_paused
+		and _board.is_visible_in_tree() and _board.modulate.a > 0.0
+		and _table.is_visible_in_tree() and _dice.is_visible_in_tree())
+
+func _queue_dice_visual_ready() -> void:
+	if _sound._pending_dice_roll and _dice_drawable() and not RenderingServer.frame_post_draw.is_connected(_dice_frame_drawn):
+		RenderingServer.frame_post_draw.connect(_dice_frame_drawn, CONNECT_ONE_SHOT)
+
+func _dice_frame_drawn() -> void:
+	if _dice_drawable():
+		_sound.notify_dice_visual_ready()
 
 
 func _refresh_hud() -> void:
@@ -2660,8 +2714,7 @@ func _back_home(destination: String = "home") -> void:
 	_stop_room_recovery()
 	_leaving = true
 	if not _view.is_empty() and not _application_paused and not was_closed:
-		_transition.begin(_table,_view.room.seats,int(_view.seat),false,_entry_origin,_board.get_global_rect())
-		_sync_transition_view()
+		_begin_table_transition(false)
 	if is_instance_valid(_client):
 		await _client.leave()
 	if _transition.active: await _transition.finished
@@ -2748,7 +2801,10 @@ func _recovery_failed(reason: String) -> void:
 	if _recovery_ticket.is_empty():
 		return
 	if reason == "missing":
-		_transition.cancel()
+		if _transition.active:
+			_transition.cancel()
+			_board.modulate.a = 1.0
+			_board_world.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 		_recovery_ticket.clear()
 		_remember_ticket({})
 		_set_status("")

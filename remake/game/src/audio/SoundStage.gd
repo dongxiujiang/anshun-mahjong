@@ -1,5 +1,7 @@
 extends Node
 
+signal dice_visual_requested
+
 const Packs = preload("res://src/audio/VoicePacks.gd")
 const Catalog = preload("res://src/domain/TileCatalog.gd")
 const ROOT := "res://assets/audio/"
@@ -27,6 +29,9 @@ var _game_paused := false
 var _restoring := false
 var _ringing := false
 var _next_ring := 0
+var defer_dice_until_visual_ready := false
+var _pending_dice_roll := false
+var _pending_dice_timeout := 0.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -41,7 +46,7 @@ func _ready() -> void:
 
 
 func _sync_process() -> void:
-	set_process(not _instance.is_empty() and not _app_paused and not _game_paused)
+	set_process((_pending_dice_roll or not _instance.is_empty()) and not _app_paused and not _game_paused)
 
 func bind_client(client: Node, voice: Node) -> void:
 	_voice = voice
@@ -87,7 +92,14 @@ func accept_view(view: Dictionary) -> void:
 	var active := not _app_paused and not _game_paused
 	var phase: String = round_view.get("phase", "")
 	if active and not initial and phase == "dice" and _phase != phase:
-		_effect("dice_roll")
+		if defer_dice_until_visual_ready:
+			_pending_dice_roll = true
+			_pending_dice_timeout = 0.65
+			dice_visual_requested.emit()
+		else:
+			_effect("dice_roll")
+	elif phase != "dice":
+		_pending_dice_roll = false
 	_phase = phase
 	for event in round_view.get("audio_events", []):
 		if event.id <= _last_event:
@@ -111,6 +123,11 @@ func accept_view(view: Dictionary) -> void:
 			_bell.stop()
 	_update_music()
 	_sync_process()
+
+func notify_dice_visual_ready() -> void:
+	if _pending_dice_roll and not _app_paused and not _game_paused:
+		_pending_dice_roll = false
+		_effect("dice_roll")
 
 func _stream(path: String) -> AudioStream:
 	if not _cache.has(path):
@@ -192,9 +209,13 @@ func _update_music() -> void:
 		if _music.stream and not _music.playing:
 			_music.play()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if _app_paused or _game_paused or _instance.is_empty():
 		return
+	if _pending_dice_roll:
+		_pending_dice_timeout -= delta
+		if _pending_dice_timeout <= 0.0:
+			notify_dice_visual_ready()
 	var chat: bool = is_instance_valid(_voice) and _voice.speech_active()
 	var duck: bool = _speech.playing or chat
 	if duck != _previous_duck or chat != _chat_duck:
@@ -215,6 +236,7 @@ func _mix(duck: bool, chat: bool = false) -> void:
 	_bell.volume_db = _effects.volume_db - 2.0
 
 func _stop_short_sounds() -> void:
+	_pending_dice_roll = false
 	_queue.clear()
 	_speech.stop()
 	_effects.stop()
