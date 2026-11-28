@@ -1,6 +1,8 @@
 extends RefCounted
 ## 新中式雅致国风主题：深翠玉石 + 紫檀胡桃 + 暖鎏金描边与柔和投影层次。
 
+const MotionFX = preload("res://src/presentation/MotionFX.gd")
+
 const INK := Color("#f7f0df")
 const MUTED := Color("#b8c4b6")
 const GOLD := Color("#efd085")
@@ -113,6 +115,7 @@ static func button(message: String, callback: Callable, primary: bool = false) -
 	if primary:
 		result.theme_type_variation = "PrimaryButton"
 	result.pressed.connect(callback)
+	MotionFX.bind_button(result)
 	return result
 
 

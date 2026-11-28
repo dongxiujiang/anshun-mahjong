@@ -1,23 +1,32 @@
 extends Button
 ## 新中式玉石鎏金圆形操作按钮；合法动作仍严格来自权威下发。
+const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
+const MotionFX = preload("res://src/presentation/MotionFX.gd")
+const BURST_SIZE := 8
+const BURST_COLORS := [Color("#ffe5a3"), Color("#efd085"), Color("#e5ae50")]
+
 var action := ""
-var quality := "detail"
+var quality := MotionConfig.current_quality
 const COLORS := {
 	"win": "b93232", "self_win": "b93232",
 	"pong": "c98d24", "kong": "c77a1f", "concealed_kong": "227a57", "add_kong": "c77a1f",
 	"pass": "2a4f52", "ready": "2c7250", "discard": "2b6088",
 }
 var _pulse := 0.0
-var _appear := 0.0
+var _pose := Vector2.RIGHT
+var _particles: MotionFX.ParticlePool
+var _spec := MotionConfig.section("action_button", quality)
 
 func _ready() -> void:
-	_appear = 0.0
-	visibility_changed.connect(_sync_processing)
+	visibility_changed.connect(_visibility_changed)
 	_sync_processing()
 
 func configure(kind: String, title: String, callback: Callable) -> void:
 	action = kind; text = title; accessibility_name = title; tooltip_text = title
 	custom_minimum_size = Vector2(90, 90)
+	button_down.connect(_set_pressed_pose.bind(true))
+	button_up.connect(_set_pressed_pose.bind(false))
+	pressed.connect(_burst)
 	pressed.connect(callback)
 	for state in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
 		add_theme_stylebox_override(state, StyleBoxEmpty.new())
@@ -28,20 +37,103 @@ func configure(kind: String, title: String, callback: Callable) -> void:
 	_sync_processing()
 
 func apply_quality(value: String) -> void:
-	var next := "detail" if value == "detail" else "smooth"
+	var next := MotionConfig.normalize_quality(value)
 	if quality == next:
 		return
 	quality = next
+	_spec = MotionConfig.section("action_button", quality)
+	MotionFX.stop(self)
+	_apply_pose(Vector2.RIGHT)
+	self_modulate.a = 1.0
+	if not _spec.particles_enabled and _particles:
+		_particles.clear()
+	_sync_processing()
+
+func start_entrance(delay: float = 0.0) -> void:
+	if not MotionFX._running(self):
+		_apply_pose(Vector2(_spec.enter_from_scale, 0.0))
+		self_modulate.a = 0.0
+	_animate_pose(Vector2.RIGHT, _spec.enter_duration, _spec.enter_trans, delay)
+
+func _set_pressed_pose(down: bool) -> void:
+	if disabled or not is_visible_in_tree():
+		return
+	var target := Vector2(_spec.press_scale, _spec.press_y_offset) if down else Vector2.RIGHT
+	var curve: Tween.TransitionType = MotionConfig.value("button", "ease_trans", null, quality) if down else _spec.release_trans
+	_animate_pose(target, _spec.press_duration if down else _spec.release_duration, curve)
+
+func _animate_pose(target: Vector2, duration: float, curve: Tween.TransitionType, delay := 0.0) -> void:
+	var tween := MotionFX._begin(self)
+	if tween == null:
+		_apply_pose(target)
+		self_modulate.a = 1.0
+		return
+	tween.set_trans(curve).set_ease(Tween.EASE_OUT)
+	tween.tween_method(_apply_pose, _pose, target, duration).set_delay(delay)
+	tween.tween_property(self, "self_modulate:a", 1.0, duration).set_delay(delay)
+
+func _apply_pose(value: Vector2) -> void:
+	_pose = value
+	queue_redraw()
+
+func _burst() -> void:
+	if disabled or not is_visible_in_tree() or not _spec.particles_enabled:
+		return
+	if not _particles:
+		_particles = MotionFX.ParticlePool.new()
+	_particles.emit_burst(size * 0.5, BURST_SIZE, BURST_COLORS)
 	_sync_processing()
 	queue_redraw()
 
+# A local authority can retire the action row synchronously inside pressed.
+# Keep the burst at the clicked position when the remaining buttons reflow.
+func _exit_tree() -> void:
+	MotionFX.stop(self)
+	var row := get_parent() as Container
+	if row and _particles and _particles.active_count:
+		var hud := row.get_parent() as CanvasItem
+		if hud:
+			var pose := hud.get_global_transform().affine_inverse() * get_global_transform()
+			BurstTail.finish_on_hud.call_deferred(weakref(hud), pose, _particles)
+			_particles = null
+
+class BurstTail extends Node2D:
+	var pool: MotionFX.ParticlePool
+
+	static func finish_on_hud(owner_ref: WeakRef, pose: Transform2D, particles: MotionFX.ParticlePool) -> void:
+		var hud := owner_ref.get_ref() as CanvasItem
+		if not is_instance_valid(hud) or not hud.is_visible_in_tree() or particles.active_count == 0:
+			return
+		var tail := BurstTail.new()
+		tail.pool = particles
+		tail.transform = pose
+		hud.add_child(tail, false, Node.INTERNAL_MODE_BACK)
+
+	func _draw() -> void:
+		pool.draw(self)
+
+	func _process(delta: float) -> void:
+		if not is_visible_in_tree() or not pool.step(delta):
+			queue_free()
+		queue_redraw()
+
+func _visibility_changed() -> void:
+	if not is_visible_in_tree():
+		MotionFX.stop(self)
+		_apply_pose(Vector2.RIGHT)
+		self_modulate.a = 1.0
+		if _particles:
+			_particles.clear()
+	_sync_processing()
+
 func _sync_processing() -> void:
-	set_process(_appear < 1.0 or (quality == "detail" and action in ["win", "self_win"] and not disabled and is_visible_in_tree()))
+	var pulse: bool = _spec.win_pulse_enabled and action in ["win", "self_win"] and not disabled
+	set_process(is_visible_in_tree() and (pulse or (_particles and _particles.active_count > 0)))
 
 func _process(delta: float) -> void:
-	_appear = minf(1.0, _appear + delta / 0.13)
-	if quality == "detail" and action in ["win", "self_win"] and not disabled and is_visible_in_tree():
-		_pulse += delta * 4.2
+	if _particles and _particles.active_count:
+		_particles.step(delta)
+	_pulse += delta * 4.2
 	_sync_processing()
 	queue_redraw()
 
@@ -51,11 +143,8 @@ func _has_point(point: Vector2) -> bool:
 func _draw() -> void:
 	_sync_processing()
 	var center := size * 0.5
-	var eased := 1.0 + 2.70158 * pow(_appear - 1.0, 3.0) + 1.70158 * pow(_appear - 1.0, 2.0)
-	var radius := (minf(size.x, size.y) * 0.5 - 4.0) * lerpf(0.78, 1.0, eased)
-	if is_pressed() and not disabled:
-		radius *= 0.93
-		center.y += 1.8
+	var radius := minf(size.x, size.y) * 0.5 - 4.0
+	draw_set_transform(center * (1.0 - _pose.x) + Vector2.DOWN * _pose.y, 0.0, Vector2.ONE * _pose.x)
 	var base := Color(COLORS.get(action, "2c7250"))
 	if disabled:
 		base = Color("5a6660")
@@ -69,7 +158,7 @@ func _draw() -> void:
 		draw_arc(center, radius - 0.6, 0, TAU, 48, base.lightened(0.32), 1.2, true)
 	else:
 		# 胡牌印章的暖金光晕留在柔影后方。
-		if not disabled and action in ["win", "self_win"]:
+		if _spec.win_pulse_enabled and not disabled and action in ["win", "self_win"]:
 			var wave := 0.5 + 0.5 * sin(_pulse)
 			draw_circle(center, radius + 3.0 + wave * 1.5, Color(1.0, 0.78, 0.25, 0.10 + 0.08 * wave))
 		var shadow_center := center + Vector2(0, 5.0)
@@ -101,3 +190,6 @@ func _draw() -> void:
 	if icon:
 		var image_size := Vector2(20, 26) * visual_scale
 		draw_texture_rect(icon, Rect2(center + Vector2(-10, 12) * visual_scale, image_size), false)
+	if _particles and _particles.active_count:
+		draw_set_transform(Vector2.ZERO)
+		_particles.draw(self)

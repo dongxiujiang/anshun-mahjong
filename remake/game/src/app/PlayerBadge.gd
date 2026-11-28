@@ -1,10 +1,16 @@
 extends Button
 
 const UI := preload("res://src/app/AppTheme.gd")
+const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
+const MotionFX = preload("res://src/presentation/MotionFX.gd")
 const ACTIVE := Color("#67d891")
 const MUTED := Color("#f04f4f")
 
 signal player_pressed(context: Dictionary)
+
+var quality := MotionConfig.current_quality
+var _spec := MotionConfig.section("player_badge", quality)
+var _turn_scale := 1.0
 
 var name_label: Label
 var score_label: Label
@@ -26,6 +32,7 @@ var _voice_state_key := ""
 
 
 func _init() -> void:
+	MotionFX.bind_button(self, "player_badge")
 	_apply_badge_style(false)
 	_content = VBoxContainer.new()
 	_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -101,13 +108,38 @@ func _ready() -> void:
 	_sync_turn_pulse()
 
 
+func apply_quality(value: String) -> void:
+	quality = MotionConfig.normalize_quality(value)
+	_spec = MotionConfig.section("player_badge", quality)
+	_sync_turn_pulse()
+
+
 func _sync_turn_pulse() -> void:
-	var active := _is_turn and is_visible_in_tree()
+	var active: bool = _is_turn and is_visible_in_tree() and _spec.turn_pulse_enabled
+	var target: float = _spec.turn_scale if active else 1.0
+	if not is_equal_approx(target, _turn_scale):
+		_turn_scale = target
+		var tween := MotionFX._begin(_content) if is_visible_in_tree() and _spec.turn_pulse_enabled else null
+		if tween:
+			var spec := MotionConfig.section("button", quality)
+			tween.tween_method(_set_turn_scale, (get_meta(&"motion_rest_scale") as Vector2).x, target, spec.release_duration) \
+				.set_trans(spec.release_trans).set_ease(Tween.EASE_OUT)
+		else:
+			MotionFX.stop(_content)
+			_set_turn_scale(target)
 	set_process(active)
 	if not active:
 		_pulse_time = 0.0
 	turn_dot.modulate.a = 1.0 if _is_turn else 0.0
 	queue_redraw()
+
+
+# HudLayout owns the HUD offset transform. In that case the press and turn
+# effects share the regular scale, using the same resting scale as MotionFX.
+func _set_turn_scale(value: float) -> void:
+	set_meta(&"motion_rest_scale", Vector2.ONE * value)
+	var pose: Vector2 = get_meta(&"motion_button_pose", Vector2.RIGHT)
+	scale = Vector2.ONE * value * (pose.x if offset_transform_enabled and not offset_transform_visual_only else 1.0)
 
 
 func _process(delta: float) -> void:
@@ -118,7 +150,7 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	if not _is_turn:
 		return
-	var wave := 0.5 + 0.5 * sin(_pulse_time * 3.2)
+	var wave := 0.5 + 0.5 * sin(_pulse_time * 3.2) if _spec.turn_pulse_enabled else 1.0
 	_turn_glow.set_corner_radius_all(9 if _compact else 10)
 	_turn_glow.border_color = Color(1.0, 0.84, 0.45, 0.25 + 0.43 * wave)
 	draw_style_box(_turn_glow, Rect2(Vector2.ZERO, size))
@@ -179,7 +211,10 @@ func show_player(member: Dictionary, flags: PackedStringArray, is_turn: bool, ta
 		_is_turn = is_turn
 		_apply_badge_style(_is_turn)
 	_sync_turn_pulse()
+	var was_interactive := not disabled
 	disabled = not interactive
+	if was_interactive and disabled:
+		MotionFX._button_event(self, "reset")
 	mouse_filter = Control.MOUSE_FILTER_STOP if interactive else Control.MOUSE_FILTER_IGNORE
 	focus_mode = Control.FOCUS_ALL if interactive else Control.FOCUS_NONE
 

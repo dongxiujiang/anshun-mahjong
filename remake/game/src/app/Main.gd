@@ -1455,7 +1455,33 @@ func _refresh_hud() -> void:
 	_auto_play_button.text = "取消代打" if auto_play else "AI代打"
 	_auto_play_button.disabled = not active_round
 	if is_instance_valid(_auto_play_banner):
-		_auto_play_banner.visible = auto_on and _screen == "play"
+		var banner := _auto_play_banner
+		# The passive face finishes fading after the live shortcut has left the HUD.
+		var face := banner.get_parent() as Button
+		if face == null:
+			face = banner.duplicate(0) as Button
+			face.focus_mode = Control.FOCUS_NONE
+			face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_hud.add_child(face)
+			banner.reparent(face, false)
+			banner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			banner.z_index = 0
+			UI.MotionFX.bind_button(banner)
+			_hud.visibility_changed.connect(func():
+				if _screen != "play":
+					UI.MotionFX.stop(face)
+					face.hide())
+		if _screen != "play":
+			UI.MotionFX.stop(face)
+			face.hide()
+			banner.hide()
+		elif auto_on != banner.visible:
+			banner.visible = auto_on
+			face.self_modulate.a = 0.0 if auto_on else 1.0
+			if auto_on:
+				UI.MotionFX.animate_popup_show(face)
+			else:
+				UI.MotionFX.animate_popup_hide(face)
 	if _auto_play_style_active != auto_play:
 		_auto_play_style_active = auto_play
 		if auto_play:
@@ -1725,6 +1751,10 @@ func _refresh_actions() -> void:
 			button.apply_quality(_table.quality)
 			button.disabled = disabled
 			_buttons.add_child(button)
+	const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
+	for index_from_right in _buttons.get_child_count():
+		var button := _buttons.get_child(-1 - index_from_right) as TableActionButton
+		button.start_entrance(index_from_right * float(MotionConfig.value("action_button", "enter_stagger")))
 	_fit_action_buttons()
 
 func _fit_action_buttons(queue_layout: bool = true) -> void:
