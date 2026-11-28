@@ -74,7 +74,7 @@ func _run() -> void:
 	origin = "http://127.0.0.1:%d" % server.get_local_port()
 	var boot := Boot.new(false)
 	boot.enabled = true
-	boot.base_version = "2.4.2"; boot.effective_version = "2.4.2"; boot.base_id = "2.4.2-r1"
+	boot.base_version = "2.4.3"; boot.effective_version = "2.4.3"; boot.base_id = "2.4.3-r1"
 	boot.storage_path = folder.path_join("state.json"); boot.packs_directory = folder.path_join("packs")
 	boot.mount_callback = func(_path): return true
 	root.add_child(boot)
@@ -85,8 +85,8 @@ func _run() -> void:
 	root.add_child(manager)
 	manager.configure(origin)
 	manager.state_changed.connect(func(snap): states.append(snap.state))
-	var patch := {"version": "2.4.3", "base_version": "2.4.2", "base_id": "2.4.2-r1", "engine": Boot.engine_version(), "platform": "all", "filename": "update.pck", "sha256": digest(payload), "size_bytes": payload.size(), "download_url": "/v1/downloads/update.pck", "notes": ["修复显示问题"], "available": true}
-	var full := {"version": "2.4.3", "version_code": 10, "platform": Boot.platform_key(), "filename": "update.zip", "sha256": "a".repeat(64), "size_bytes": 8, "download_url": "/updates/update.zip", "available": true, "changelog": ["更新说明"]}
+	var patch := {"version": "2.4.4", "base_version": "2.4.3", "base_id": "2.4.3-r1", "engine": Boot.engine_version(), "platform": "all", "filename": "update.pck", "sha256": digest(payload), "size_bytes": payload.size(), "download_url": "/v1/downloads/update.pck", "notes": ["修复显示问题"], "available": true}
+	var full := {"version": "2.4.4", "version_code": 11, "platform": Boot.platform_key(), "filename": "update.zip", "sha256": "a".repeat(64), "size_bytes": 8, "download_url": "/updates/update.zip", "available": true, "changelog": ["更新说明"]}
 	for url in ["https://example.com/a", "https://example.com:8443/a", "http://127.0.0.1:123/a", "http://localhost/a", "http://[::1]:8080/a"]:
 		check(Manager.safe_url(url, true), "allow safe URL " + url)
 	for url in ["http://example.com/a", "file:///tmp/a", "https://user@example.com/a", "https://example.com/ a", "https://example.com/\na", "https://example.com/\u00a0a", "http://127.0.0.1.evil/a", "http://localhost.evil/a", "https://example.com:0/a", "https://example.com\\evil/a", "//example.com/a"]:
@@ -98,19 +98,19 @@ func _run() -> void:
 	for version in ["2.5.0", "3.0.0"]:
 		full.version = version
 		check(manager.select_update(manifest, origin).get("kind") == "full", "newer full package wins " + version)
-	full.version = "2.4.3"
+	full.version = "2.4.4"
 	var incompatible := patch.duplicate(); incompatible.base_id = "wrong"
 	check(manager.select_update({"hotpatches": [incompatible], "latest_release": full}, origin).get("kind") == "full", "incompatible patch falls back to full")
 	var current_code := manager.current_version_code()
-	full.version = "2.4.2"; full.version_code = current_code + 1
+	full.version = "2.4.3"; full.version_code = current_code + 1
 	check(manager.select_update({"release": full}, origin).get("kind") == "full", "legacy release response and version code bump")
 	full.version_code = current_code
 	check(manager.select_update({"latest_release": full}, origin).is_empty(), "same version and code up to date")
-	boot.effective_version = "2.4.3"
+	boot.effective_version = "2.4.4"
 	check(manager.select_update({"release": full}, origin).is_empty(), "base package cannot replace newer patched version")
-	boot.effective_version = "2.4.2"
-	var newer_patch := patch.duplicate(); newer_patch.version = "2.4.4"
-	check(manager.select_update({"hotpatches": [patch, newer_patch]}, origin).get("version") == "2.4.4", "highest compatible patch selected")
+	boot.effective_version = "2.4.3"
+	var newer_patch := patch.duplicate(); newer_patch.version = "2.4.5"
+	check(manager.select_update({"hotpatches": [patch, newer_patch]}, origin).get("version") == "2.4.5", "highest compatible patch selected")
 	var unsafe := patch.duplicate(); unsafe.download_url = "http://evil.example/update.pck"
 	check(manager.select_update({"hotpatches": [unsafe]}, origin).is_empty(), "unsafe patch download rejected")
 	var direct := patch.duplicate(); direct.download_url = ""; direct.direct_url = "/updates/update.pck"
@@ -167,15 +167,15 @@ func _run() -> void:
 	check(manager.state == "available" and not FileAccess.file_exists(manager._part_path), "cancel cleans stream and part")
 	# Exercise desktop full-package magic and final-file move via the same HTTP fixture.
 	payload = PackedByteArray([80, 75, 3, 4, 1, 2, 3, 4])
-	full.sha256 = digest(payload); full.version = "2.4.3"
+	full.sha256 = digest(payload); full.version = "2.4.4"
 	manager.latest = manager._normalize(full, "full", origin); manager.state = "available"
 	check(manager.start_download() and await until(func(): return manager.state != "downloading") and manager.state == "ready" and manager.downloaded_path.ends_with("update.zip"), "desktop full package verified and moved")
 	var snap := manager.snapshot(); snap.latest.version = "999.0.0"
-	check(manager.latest.version == "2.4.3", "snapshot is detached from manager state")
+	check(manager.latest.version == "2.4.4", "snapshot is detached from manager state")
 	var dialog := Dialog.new(); root.add_child(dialog)
 	for value in [["available", "patch", "下载热补丁"], ["available", "full", "下载新版安装包"], ["downloading", "patch", "取消下载"], ["ready", "patch", "重启生效"], ["ready", "full", "打开安装包"], ["up_to_date", "", "检查更新"], ["error", "", "检查更新"]]:
 		var entry := patch.duplicate(); entry.kind = value[1]
-		var ui_state := {"state": value[0], "latest": entry if not value[1].is_empty() else {}, "message": "测试状态", "current_version": "2.4.2", "total_bytes": 8, "downloaded_bytes": 4, "can_rollback": true}
+		var ui_state := {"state": value[0], "latest": entry if not value[1].is_empty() else {}, "message": "测试状态", "current_version": "2.4.3", "total_bytes": 8, "downloaded_bytes": 4, "can_rollback": true}
 		dialog.open_dialog(ui_state)
 		await process_frame
 		check(dialog.visible and dialog._primary.text == value[2] and dialog._progress.visible == (value[0] in ["downloading", "ready"]), "dialog renders " + value[0] + " " + value[1])

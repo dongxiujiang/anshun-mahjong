@@ -102,7 +102,7 @@ func apply_snapshot(snap: Dictionary) -> void:
 	_badge.text = "版本检查" if latest.is_empty() else ("热补丁 · 免重装" if patch else "完整新版")
 	_badge.add_theme_color_override("font_color", UI.MUTED if latest.is_empty() else (UI.GOLD if patch else Color("#ffcd83")))
 	_badge.add_theme_stylebox_override("normal", UI.card(Color("#20342b") if latest.is_empty() or patch else Color("#48351b"), 10, 6, UI.BORDER if latest.is_empty() else UI.GOLD_BORDER))
-	_version.text = "当前版本 v%s%s" % [snap.get("current_version", "2.4.3"), " · 热补丁生效中" if snap.get("is_patched", false) else ""]
+	_version.text = "当前版本 v%s%s" % [snap.get("current_version", "2.4.4"), " · 热补丁生效中" if snap.get("is_patched", false) else ""]
 	_message.text = str(snap.get("message", "检查是否有可用更新"))
 	_details.visible = not latest.is_empty()
 	_remote.text = "新版 v%s · %.2f MB" % [latest.get("version", ""), float(latest.get("size_bytes", 0)) / 1048576.0]
