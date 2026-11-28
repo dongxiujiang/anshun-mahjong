@@ -16,6 +16,7 @@ signal cancelled
 var _heading: Control
 var _gallery: VBoxContainer
 var _avatar_section: VBoxContainer
+var _picking_name := false
 var _name_picker_section: VBoxContainer
 var _name_picker_grid: GridContainer
 var _name_picker_btn: Button
@@ -30,7 +31,8 @@ var _character_scroll: ScrollContainer
 
 func build(profile: Dictionary, first: bool) -> void:
 	_first = first
-	add_theme_stylebox_override("panel", UI.elevated_card(Color("#0f261ff2"), 20, 20, UI.GOLD_BORDER, 2, 14))
+	add_theme_stylebox_override("panel", UI.elevated_card(Color("#0f261ff2"), 20, 20, UI.GOLD_BORDER, 2,
+		14 if UI.MotionFX.MotionConfig.value("panel", "shadow_enabled") else 0))
 	var layout := VBoxContainer.new()
 	layout.add_theme_constant_override("separation", 12)
 	add_child(layout)
@@ -46,7 +48,10 @@ func build(profile: Dictionary, first: bool) -> void:
 	_avatar_section.size_flags_vertical = SIZE_EXPAND_FILL
 	var gallery_hint := UI.label("选择牌桌头像（左右滑动浏览全部 15 位形象）", 16, UI.MUTED)
 	_avatar_section.add_child(gallery_hint)
-	_gallery.add_child(_avatar_section)
+	var stack := MarginContainer.new()
+	stack.size_flags_vertical = SIZE_EXPAND_FILL
+	_gallery.add_child(stack)
+	stack.add_child(_avatar_section)
 	var scroll := CharacterScroll.new()
 	_character_scroll=scroll
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
@@ -64,7 +69,7 @@ func build(profile: Dictionary, first: bool) -> void:
 
 	_name_picker_section = _build_name_picker()
 	_name_picker_section.hide()
-	_gallery.add_child(_name_picker_section)
+	stack.add_child(_name_picker_section)
 
 	var footer_card := PanelContainer.new()
 	footer_card.add_theme_stylebox_override("panel", UI.card(Color("#0a1c17cc"), 14, 12, Color("#3a5d4e"), 1))
@@ -109,7 +114,8 @@ func build(profile: Dictionary, first: bool) -> void:
 	save.custom_minimum_size = Vector2(140, 48)
 	save.add_theme_font_size_override("font_size", 21)
 	for state in SAVE_COLORS:
-		save.add_theme_stylebox_override(state, UI.elevated_card(SAVE_COLORS[state], 14, 10, Picker.GOLD, 2, 5))
+		save.add_theme_stylebox_override(state, UI.elevated_card(SAVE_COLORS[state], 14, 10, Picker.GOLD, 2,
+			5 if UI.MotionFX.MotionConfig.value("panel", "shadow_enabled") else 0))
 		save.add_theme_color_override("font_color" if state == "normal" else "font_%s_color" % state, Color("#1b2b22"))
 	buttons.add_child(save)
 	_error = UI.label("", 15, ERROR)
@@ -162,19 +168,31 @@ func _build_name_picker() -> VBoxContainer:
 
 
 func _toggle_name_picker() -> void:
-	if _name_picker_section.visible:
-		_close_name_picker()
-	else:
-		_avatar_section.hide()
-		_name_picker_section.show()
-		_name_picker_btn.text = "选头像"
-		_refresh_name_picker_selection()
+	_set_picker(not _picking_name)
 
 
 func _close_name_picker() -> void:
-	_name_picker_section.hide()
-	_avatar_section.show()
-	_name_picker_btn.text = "挑昵称"
+	_set_picker(false)
+
+
+func _set_picker(names: bool) -> void:
+	if names == _picking_name:
+		return
+	_picking_name = names
+	var incoming := _name_picker_section if names else _avatar_section
+	var outgoing := _avatar_section if names else _name_picker_section
+	var spec := UI.MotionFX.MotionConfig.section("overlay")
+	var duration: float = spec.toast_in if UI.MotionFX.MotionConfig.is_detail() else spec.badge_in
+	var curve: int = UI.MotionFX.MotionConfig.value("panel", "ease_trans")
+	outgoing.focus_behavior_recursive = FOCUS_BEHAVIOR_DISABLED
+	outgoing.mouse_behavior_recursive = MOUSE_BEHAVIOR_DISABLED
+	incoming.focus_behavior_recursive = FOCUS_BEHAVIOR_INHERITED
+	incoming.mouse_behavior_recursive = MOUSE_BEHAVIOR_INHERITED
+	UI.MotionFX._slide(outgoing, false, Vector2.ZERO, duration, curve)
+	UI.MotionFX._slide(incoming, true, Vector2.ZERO, duration, curve)
+	_name_picker_btn.text = "选头像" if names else "挑昵称"
+	if names:
+		_refresh_name_picker_selection()
 
 
 func _pick_preset_name(chosen: String) -> void:
@@ -194,7 +212,7 @@ func _refresh_name_picker_selection() -> void:
 
 func fit(available: Vector2, keyboard_open: bool) -> void:
 	typing=keyboard_open
-	if typing and is_instance_valid(_name_picker_section) and _name_picker_section.visible:
+	if typing and _picking_name:
 		_close_name_picker()
 	_heading.visible = not typing
 	_gallery.visible = not typing
@@ -232,7 +250,7 @@ func _name_changed(value: String) -> void:
 	_count.text = "%d/6" % value.length()
 	_count.add_theme_color_override("font_color", ERROR if value.length() > 6 else UI.MUTED)
 	show_error("")
-	if is_instance_valid(_name_picker_section) and _name_picker_section.visible:
+	if _picking_name:
 		_refresh_name_picker_selection()
 
 func _randomize_nickname() -> void:
@@ -251,7 +269,7 @@ func _submit() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and not _nickname.has_ime_text():
-		if is_instance_valid(_name_picker_section) and _name_picker_section.visible:
+		if _picking_name:
 			get_viewport().set_input_as_handled()
 			_close_name_picker()
 			return

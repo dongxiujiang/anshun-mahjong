@@ -1,6 +1,7 @@
 extends PanelContainer
 
 const UI := preload("res://src/app/AppTheme.gd")
+const MotionConfig := preload("res://src/presentation/MotionConfig.gd")
 const Seats := preload("res://src/domain/Seats.gd")
 const Catalog := preload("res://src/domain/TileCatalog.gd")
 const TileArt := preload("res://src/presentation/TileArt.gd")
@@ -25,7 +26,7 @@ func show_result(settlement: Dictionary, mode: String, return_to_seats: Callable
 	if _table_overlay and not table_overlay:
 		remove_theme_stylebox_override("panel")
 	_table_overlay=table_overlay
-	if table_overlay:add_theme_stylebox_override("panel",UI.elevated_card(Color("#0d2922f2"),12,7,Color("#cfa95a"),2,10))
+	if table_overlay:add_theme_stylebox_override("panel",UI.elevated_card(Color("#0d2922f2"),12,7,Color("#cfa95a"),2,10 if MotionConfig.value("panel", "shadow_enabled") else 0))
 	if is_instance_valid(_body):
 		remove_child(_body)
 		_body.queue_free()
@@ -100,10 +101,39 @@ func show_result(settlement: Dictionary, mode: String, return_to_seats: Callable
 		for child in controls.get_children():
 			if child is Button:
 				_compact_footer_button(child)
-		if is_inside_tree():
-			modulate.a = 0.0
-			_fade_in = create_tween()
-			_fade_in.tween_property(self, "modulate:a", 1.0, 0.18).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	if is_inside_tree():
+		var panel := MotionConfig.section("panel")
+		var duration: float = panel.screen_in_duration if MotionConfig.is_detail() else MotionConfig.value("transition", "crossfade_duration")
+		modulate.a = 0.0
+		_fade_in = create_tween().set_parallel(true).set_trans(panel.ease_trans).set_ease(Tween.EASE_OUT)
+		var fade_duration: float = MotionConfig.value("overlay", "toast_in") if MotionConfig.is_detail() else duration
+		_fade_in.tween_property(self, "modulate:a", 1.0, fade_duration)
+		if MotionConfig.is_detail():
+			# The outer transform belongs to the safe-area layout.
+			_body.offset_transform_enabled = true
+			_body.offset_transform_visual_only = true
+			_body.offset_transform_pivot_ratio = Vector2(0.5, 0.5)
+			_body.pivot_offset = _body.size / 2.0
+			_body.offset_transform_scale = Vector2.ONE * panel.modal_to_scale
+			_fade_in.tween_property(_body, "offset_transform_scale", Vector2.ONE, duration).set_trans(panel.modal_in_trans)
+		UI.MotionFX.animate_stagger_children(rows.get_children(), floorf(float(panel.card_stagger) * 100.0) / 100.0)
+
+
+func set_peeking(peek: bool) -> void:
+	if _fade_in:
+		_fade_in.kill()
+	mouse_behavior_recursive = MOUSE_BEHAVIOR_DISABLED if peek else MOUSE_BEHAVIOR_INHERITED
+	focus_behavior_recursive = FOCUS_BEHAVIOR_DISABLED if peek else FOCUS_BEHAVIOR_INHERITED
+	var panel := MotionConfig.section("panel")
+	var duration: float = panel.modal_out_duration if MotionConfig.is_detail() else MotionConfig.value("overlay", "badge_in")
+	show()
+	_fade_in = create_tween().set_parallel(true).set_trans(panel.ease_trans).set_ease(Tween.EASE_OUT)
+	_fade_in.tween_property(self, "modulate:a", 0.0 if peek else 1.0, duration)
+	if _body.offset_transform_enabled:
+		_fade_in.tween_property(_body, "offset_transform_scale", Vector2.ONE, duration)
+		_fade_in.tween_property(_body, "offset_transform_position:y", panel.screen_in_offset_y if peek else 0.0, duration)
+	if peek:
+		_fade_in.finished.connect(hide)
 
 
 func _exit_tree() -> void:

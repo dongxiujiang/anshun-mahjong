@@ -9,6 +9,8 @@ signal rollback_requested
 
 const UI := preload("res://src/app/AppTheme.gd")
 var _snapshot: Dictionary = {}
+var _surface := Control.new()
+var _shade := ColorRect.new()
 var _panel: PanelContainer
 var _badge: Label
 var _version: Label
@@ -25,15 +27,15 @@ var _rollback: Button
 var _previous_focus: WeakRef
 
 func _ready() -> void:
-	theme = UI.menu_theme()
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var shade := ColorRect.new()
-	shade.color = Color(0.02, 0.06, 0.05, 0.72)
-	add_child(shade)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_surface)
+	_surface.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_shade.color = Color(0.02, 0.06, 0.05)
+	_surface.add_child(_shade)
+	_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_panel = PanelContainer.new()
 	_panel.add_theme_stylebox_override("panel", UI.elevated_card(Color("#102821f6"), 18, 22, UI.GOLD_BORDER, 2, 16))
-	add_child(_panel)
+	_surface.add_child(_panel)
 	var content := VBoxContainer.new()
 	content.add_theme_constant_override("separation", 12)
 	_panel.add_child(content)
@@ -148,19 +150,56 @@ func _primary_action() -> void:
 		_: check_requested.emit()
 
 func open_dialog(snap: Dictionary) -> void:
-	if not visible:
+	var entering := not visible
+	if entering:
+		_surface.theme = preload("res://src/app/MainLobbyBuilder.gd").menu_theme()
+		if _surface.get_parent() != self:
+			_surface.reparent(self, false)
+			_surface.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_surface.show()
+		_surface.focus_behavior_recursive = FOCUS_BEHAVIOR_INHERITED
+		_surface.mouse_behavior_recursive = MOUSE_BEHAVIOR_INHERITED
 		var focused := get_viewport().gui_get_focus_owner()
-		_previous_focus = weakref(focused) if focused != null else null
+		if focused != null:
+			_previous_focus = weakref(focused)
+		elif not _panel.has_meta("motion"):
+			_previous_focus = null
 	apply_snapshot(snap)
 	show()
-	UI.focus_later(_secondary if _primary.disabled else _primary)
+	if entering:
+		_panel.get_theme_stylebox("panel").shadow_size = 16 if UI.MotionFX.MotionConfig.value("panel", "shadow_enabled") else 0
+		_fit()
+		UI.MotionFX.animate_modal_in(_panel, _shade)
+	_focus_action.call_deferred()
+
+func _focus_action() -> void:
+	if visible:
+		var action := _secondary if _primary.disabled else _primary
+		action.grab_focus()
 
 func close_dialog() -> void:
+	if not visible:
+		return
+	# The logical dialog closes now. Its noninteractive surface finishes in the same canvas.
+	_surface.reparent(get_parent(), false)
+	_surface.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_surface.focus_behavior_recursive = FOCUS_BEHAVIOR_DISABLED
+	_surface.mouse_behavior_recursive = MOUSE_BEHAVIOR_DISABLED
 	hide()
+	UI.MotionFX.animate_modal_out(_panel, _shade, _surface.hide)
 	closed.emit()
 	if _previous_focus != null:
-		var control = _previous_focus.get_ref()
-		if is_instance_valid(control): UI.focus_later(control)
+		_restore_focus.call_deferred(_previous_focus)
+
+func _restore_focus(previous: WeakRef) -> void:
+	var control: Control = previous.get_ref()
+	if not visible and is_instance_valid(control) and control.is_visible_in_tree() and control.get_focus_mode_with_override() != FOCUS_NONE:
+		control.grab_focus()
+
+func _exit_tree() -> void:
+	if is_instance_valid(_surface) and _surface.get_parent() != self:
+		_surface.queue_free()
+
 
 func _input(event: InputEvent) -> void:
 	if not visible or not event.is_action_pressed("ui_cancel"): return

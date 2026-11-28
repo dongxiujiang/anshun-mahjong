@@ -5,11 +5,12 @@ signal inspection_requested(room: Dictionary)
 const UI = preload("res://src/app/AppTheme.gd")
 const Table = preload("res://src/presentation/TableView.gd")
 const Art = preload("res://src/app/CharacterArt.gd")
-const TitleTile = preload("res://src/app/TitleTile.gd")
+const MotionConfig := preload("res://src/presentation/MotionConfig.gd")
 const Layout = preload("res://src/presentation/TableLayout.gd")
 const WINDS := ["东", "南", "西", "北"]
 var rooms: Array = []
 var page := 0
+var _page_motion: Tween
 var _pending: Array = []
 var _has_pending := false
 var _pressed := false
@@ -24,7 +25,7 @@ var _labels: Array = []
 var _counter := Label.new()
 var _pager: HBoxContainer
 var quality := "smooth"
-var empty_hint := "点击左侧「创建房间」邀请好友开桌\n或点击「单机」随时来一把安顺捉鸡"
+var empty_hint := "创建房间邀请好友开桌"
 
 func apply_quality(value: String) -> void:
 	quality = "detail" if value == "detail" else "smooth"
@@ -36,7 +37,7 @@ func apply_quality(value: String) -> void:
 		_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 func _ready() -> void:
-	_stage.custom_minimum_size.y = 400
+	_stage.custom_minimum_size.y = 180
 	_stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(_stage)
 	_stage.add_child(_container)
@@ -79,6 +80,11 @@ func set_rooms(rows: Array) -> void:
 		_pending = rows.duplicate(true)
 		_has_pending = true
 		return
+	if _page_motion:
+		_page_motion.kill()
+		_stage.modulate.a = 1.0
+		UI.MotionFX.stop(_stage)
+		_stage.offset_transform_position = Vector2.ZERO
 	rooms = rows.duplicate(true)
 	rooms.sort_custom(func(a, b):
 		if (int(a.players) < 4) != (int(b.players) < 4):
@@ -103,25 +109,16 @@ func _rebuild() -> void:
 	if rooms.is_empty():
 		var empty_card := PanelContainer.new()
 		empty_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		empty_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#0f2821e6"), 16, 18, Color("#567e6a"), 1, 8))
-		var row := HBoxContainer.new()
-		row.alignment = BoxContainer.ALIGNMENT_CENTER
-		row.add_theme_constant_override("separation", 18)
-		empty_card.add_child(row)
-		var left_tile := TitleTile.new(); left_tile.value = "tiao1"; left_tile.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(left_tile)
+		empty_card.add_theme_stylebox_override("panel", UI.card(Color("#102920aa"), 14, 14, Color("#57705b78")))
 		var col := VBoxContainer.new()
 		col.alignment = BoxContainer.ALIGNMENT_CENTER
-		col.add_theme_constant_override("separation", 6)
-		row.add_child(col)
-		var headline := UI.label("茶馆虚席以待", 23, UI.GOLD_BRIGHT)
+		empty_card.add_child(col)
+		var headline := UI.label("暂无开放牌桌", 22, UI.GOLD_BRIGHT)
 		headline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(headline)
-		var hint := UI.label(empty_hint, 15, UI.MUTED)
+		var hint := UI.label(empty_hint, 16, UI.MUTED)
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(hint)
-		var right_tile := TitleTile.new(); right_tile.value = "tong8"; right_tile.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(right_tile)
 		_stage.add_child(empty_card)
 		_labels.append({"control": empty_card, "point": Vector3.ZERO, "size": Vector2(460, 128), "centered": true})
 		_container.visible = false
@@ -193,7 +190,7 @@ func _position_labels() -> void:
 	for item in _labels:
 		var point: Vector2 = _stage.size * 0.5 if item.get("centered", false) else _camera.unproject_position(item.point)
 		if item.get("heading", false):
-			point = Vector2(_stage.size.x * (0.25 if item.point.x < 0 else 0.75), _stage.size.y - 24)
+			point.y = _stage.size.y - 24
 		item.control.size = item.size.max(item.control.get_combined_minimum_size())
 		item.control.position = point - item.control.size / 2
 		item.control.position = item.control.position.clamp(Vector2(4, 4), (_stage.size - item.control.size - Vector2(4, 4)).max(Vector2(4, 4)))
@@ -240,11 +237,32 @@ func _select(room: Dictionary, seat: int, known: bool) -> void:
 		inspection_requested.emit(room)
 
 func _turn(delta: int) -> void:
-	page = clampi(page + delta, 0, maxi(0, ceili(rooms.size() / 2.0) - 1))
-	_rebuild()
+	var next := clampi(page + delta, 0, maxi(0, ceili(rooms.size() / 2.0) - 1))
+	if next == page:
+		return
+	page = next
+	if _page_motion:
+		_page_motion.kill()
+	var overlay := MotionConfig.section("overlay")
+	var curve: int = MotionConfig.value("panel", "ease_trans")
+	if MotionConfig.is_detail():
+		_rebuild()
+		_stage.offset_transform_enabled = true
+		_stage.offset_transform_visual_only = true
+		_stage.offset_transform_position = Vector2.RIGHT * delta * float(overlay.popup_offset_y)
+		_stage.modulate.a = 0.0
+		_page_motion = create_tween().set_parallel(true).set_trans(curve).set_ease(Tween.EASE_OUT)
+		_page_motion.tween_property(_stage, "offset_transform_position", Vector2.ZERO, overlay.toast_in)
+		_page_motion.tween_property(_stage, "modulate:a", 1.0, overlay.toast_in)
+	else:
+		var half: float = overlay.badge_in * 0.5
+		_page_motion = create_tween().set_trans(curve).set_ease(Tween.EASE_IN_OUT)
+		_page_motion.tween_property(_stage, "modulate:a", 0.0, half)
+		_page_motion.tween_callback(_rebuild)
+		_page_motion.tween_property(_stage, "modulate:a", 1.0, half)
 
 func _input(event: InputEvent) -> void:
-	if not is_visible_in_tree():
+	if not is_visible_in_tree() or get_mouse_filter_with_override() == MOUSE_FILTER_IGNORE:
 		return
 	var down: bool = event is InputEventScreenTouch and event.pressed or event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed
 	var up: bool = event is InputEventScreenTouch and not event.pressed or event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed

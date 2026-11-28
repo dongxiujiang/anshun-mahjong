@@ -6,7 +6,7 @@ const SettingsPanel := preload("res://src/app/SettingsPanel.gd")
 const ProfileSetup := preload("res://src/app/ProfileSetup.gd")
 const PlayerBadge := preload("res://src/app/PlayerBadge.gd")
 const CareerPanel := preload("res://src/app/CareerPanel.gd")
-const TitleTile := preload("res://src/app/TitleTile.gd")
+const MotionConfig := preload("res://src/presentation/MotionConfig.gd")
 const TurnClockView := preload("res://src/app/TurnClockView.gd")
 const SettlementView := preload("res://src/app/SettlementView.gd")
 const LanDiscovery := preload("res://src/network/LanDiscovery.gd")
@@ -14,41 +14,20 @@ const RoomBrowser := preload("res://src/app/RoomBrowser.gd")
 const WINDS := ["东", "南", "西", "北"]
 const MODE_NAMES := {"solo": "单机", "lan": "局域网", "online": "在线"}
 
+static func menu_theme() -> Theme:
+	var result := UI.menu_theme()
+	if not MotionConfig.value("panel", "shadow_enabled"):
+		for type in result.get_type_list():
+			for key in result.get_stylebox_list(type):
+				var box := result.get_stylebox(key, type) as StyleBoxFlat
+				if box:
+					box.shadow_size = 0
+	return result
+
+
 static func build_home(app) -> void:
-	var content = app._panel(860)
-	var hero = HBoxContainer.new()
-	hero.alignment = BoxContainer.ALIGNMENT_CENTER
-	hero.add_theme_constant_override("separation", 18)
-	content.add_child(hero)
-	var left_tile = TitleTile.new(); left_tile.value = "tiao1"; hero.add_child(left_tile)
-	var title_col = VBoxContainer.new()
-	title_col.alignment = BoxContainer.ALIGNMENT_CENTER
-	title_col.add_theme_constant_override("separation", 4)
-	var h1 = UI.label("东秀麻将", 46, UI.GOLD_BRIGHT)
-	h1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var h2 = UI.label("安顺捉鸡 · 新中式 2.5D 实感牌桌", 20, UI.MUTED)
-	h2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_col.add_child(h1)
-	title_col.add_child(h2)
-	hero.add_child(title_col)
-	var right_tile = TitleTile.new(); right_tile.value = "tong8"; hero.add_child(right_tile)
-	var modes = HBoxContainer.new()
-	content.add_child(modes)
-	for mode in ["solo", "lan", "online"]:
-		var button = UI.button(MODE_NAMES[mode], app._choose_mode.bind(mode), mode == "solo")
-		button.custom_minimum_size.y = 82
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		modes.add_child(button)
-	UI.focus_later(modes.get_child(0))
-	var bottom = HBoxContainer.new()
-	content.add_child(bottom)
-	var streak_note = " · 🔥%d连胜" % int(app._progress.stats.streak) if int(app._progress.stats.streak) >= 2 else ""
-	var nickname = UI.label("%s · %s%s" % [app._settings.profile().nickname, app._progress.rank_title(), streak_note], 18, UI.GOLD)
-	nickname.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom.add_child(nickname)
-	bottom.add_child(UI.button("战绩", app._open_career))
-	bottom.add_child(UI.button("设置", app._open_settings))
-	app._add_status(content)
+	app._mode = "online"
+	build_connection(app)
 
 
 static func build_career(app) -> void:
@@ -64,317 +43,300 @@ static func build_connection(app) -> void:
 	if app._mode == "lan":
 		app._build_lan_lobby()
 		return
-	var content = app._panel(1500)
-	var profile = app._settings.profile()
-	var title = HBoxContainer.new()
+	var content := _lobby_page(app)
+	var profile: Dictionary = app._settings.profile()
+	var title := _toolbar(content)
 	title.set_meta("page_id", "lobby_navigation")
-	title.add_theme_constant_override("separation", 12)
-	content.add_child(title)
-
-	# 左侧玩家身份铭牌（2D 头像 + 昵称 + 段位连胜）
-	var id_card = PanelContainer.new()
-	id_card.add_theme_stylebox_override("panel", UI.card(Color("#0c201be8"), 12, 8, Color("#4c7462"), 1))
-	title.add_child(id_card)
-	var id_row = HBoxContainer.new()
-	id_row.add_theme_constant_override("separation", 10)
-	id_card.add_child(id_row)
-	var avatar_frame = PanelContainer.new()
-	avatar_frame.custom_minimum_size = Vector2(42, 42)
-	avatar_frame.add_theme_stylebox_override("panel", UI.card(Color("#122a22"), 9, 2, UI.GOLD_BORDER, 1))
-	id_row.add_child(avatar_frame)
-	var avatar_rect = TextureRect.new()
-	avatar_rect.texture = CharacterArt.avatar(int(profile.avatar))
-	avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	avatar_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	avatar_frame.add_child(avatar_rect)
-	var id_col = VBoxContainer.new()
-	id_col.alignment = BoxContainer.ALIGNMENT_CENTER
-	id_col.add_theme_constant_override("separation", 1)
-	id_row.add_child(id_col)
-	var nick_label = UI.label(str(profile.nickname), 17, UI.INK)
-	id_col.add_child(nick_label)
-	var streak_note = " · %d连胜" % int(app._progress.stats.streak) if int(app._progress.stats.streak) >= 2 else ""
-	var rank_label = UI.label("%s%s" % [app._progress.rank_title(), streak_note], 13, UI.GOLD)
-	id_col.add_child(rank_label)
-
-	# 中央茶馆匾额标题
-	var brand = HBoxContainer.new()
-	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	brand.alignment = BoxContainer.ALIGNMENT_CENTER
-	brand.add_theme_constant_override("separation", 10)
-	title.add_child(brand)
-	brand.add_child(UI.label("东秀麻将", 28, UI.GOLD_BRIGHT))
-	brand.add_child(UI.label("·  安顺捉鸡茶馆", 16, UI.MUTED))
-
-	# 右侧精简功能入口
-	var nav_right = HBoxContainer.new()
-	nav_right.add_theme_constant_override("separation", 8)
-	title.add_child(nav_right)
-	for pair in [["战绩", app._open_career], ["资料", app._open_profile_from_lobby], ["设置", app._open_settings]]:
-		var btn = UI.button(pair[0], pair[1])
-		btn.custom_minimum_size = Vector2(74, 42)
-		nav_right.add_child(btn)
+	var streak := int(app._progress.stats.streak)
+	var identity := UI.button("%s · %s%s" % [profile.nickname, app._progress.rank_title(),
+		" · %d连胜" % streak if streak >= 2 else ""], app._open_profile_from_lobby)
+	identity.icon = CharacterArt.avatar(profile.avatar)
+	identity.add_theme_constant_override("icon_max_width", 28)
+	identity.add_theme_font_size_override("font_size", 16)
+	title.add_child(identity)
+	_heading(title, "东秀麻将 · 安顺捉鸡")
+	title.add_child(UI.button("战绩", app._open_career))
+	title.add_child(UI.button("设置", app._open_settings))
 	app._lobby_update_button = UI.button("更新", app._open_update_dialog.bind(true))
-	app._lobby_update_button.custom_minimum_size = Vector2(74, 42)
-	nav_right.add_child(app._lobby_update_button)
+	title.add_child(app._lobby_update_button)
 	app._update_state_changed(app._update_manager.snapshot())
 
-	var divider = ColorRect.new()
-	divider.custom_minimum_size.y = 1
-	divider.color = Color("#b9954c44")
-	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_child(divider)
+	var tools := _toolbar(content)
+	app._lobby_tools = tools
+	tools.add_child(UI.button("← 返回首页", app._set_browser_visible.bind(false)))
+	tools.add_child(UI.button("单机", app._choose_mode.bind("solo")))
+	tools.add_child(UI.button("局域网", app._choose_mode.bind("lan")))
+	tools.add_spacer(false)
+	tools.add_child(UI.button("创建房间", app._create_online, true))
+	tools.add_child(UI.button("加入房间", app._open_join_dialog))
+	tools.add_child(UI.button("刷新房间", app._search_online))
 
-	# 主体双栏：左侧模式与开桌操作卡片 + 右侧实时 3D 茶馆桌台
-	var body = HBoxContainer.new()
-	body.add_theme_constant_override("separation", 16)
-	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	content.add_child(body)
+	var center := CenterContainer.new()
+	app._lobby_home = center
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_child(center)
+	var cards := HBoxContainer.new()
+	cards.add_theme_constant_override("separation", 20)
+	center.add_child(cards)
+	var solo := _mode_card(cards, "单机开局", "随时开搓 · 完整安顺捉鸡", true)
+	var solo_button := UI.button("单机", app._choose_mode.bind("solo"), true)
+	solo.add_child(solo_button)
+	var online := _mode_card(cards, "在线茶馆", "当前开放 0 桌")
+	app._online_count = online.get_child(1)
+	online.add_child(UI.button("创建房间", app._create_online, true))
+	var links := _toolbar(online)
+	links.add_child(UI.button("加入房间", app._open_join_dialog))
+	links.add_child(UI.button("浏览牌桌", app._set_browser_visible.bind(true)))
+	for action in links.get_children():
+		action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var lan := _mode_card(cards, "局域网约局", "同一 Wi-Fi · 亲友免输地址")
+	lan.add_child(UI.button("局域网", app._choose_mode.bind("lan")))
 
-	var left_deck = VBoxContainer.new()
-	left_deck.custom_minimum_size.x = 256
-	left_deck.add_theme_constant_override("separation", 12)
-	body.add_child(left_deck)
-
-	# 卡片 1：单机主打入口
-	var solo_card = PanelContainer.new()
-	solo_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#18372cf2"), 14, 14, UI.GOLD_BORDER, 1, 6))
-	left_deck.add_child(solo_card)
-	var solo_col = VBoxContainer.new()
-	solo_col.add_theme_constant_override("separation", 6)
-	solo_card.add_child(solo_col)
-	var solo_head = HBoxContainer.new()
-	solo_col.add_child(solo_head)
-	var solo_title = UI.label("单机开局", 20, UI.GOLD_BRIGHT)
-	solo_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	solo_head.add_child(solo_title)
-	solo_head.add_child(UI.label("随时开搓", 12, UI.GOLD))
-	var solo_desc = UI.label("智能 AI 对局 · 完整安顺捉鸡与冲锋鸡规则", 13, UI.MUTED)
-	solo_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	solo_col.add_child(solo_desc)
-	var solo_btn = UI.button("单机", app._choose_mode.bind("solo"), true)
-	solo_btn.custom_minimum_size.y = 48
-	solo_col.add_child(solo_btn)
-
-	# 卡片 2：局域网约局入口
-	var lan_card = PanelContainer.new()
-	lan_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#122a23eb"), 14, 14, Color("#49705e"), 1, 4))
-	left_deck.add_child(lan_card)
-	var lan_col = VBoxContainer.new()
-	lan_col.add_theme_constant_override("separation", 6)
-	lan_card.add_child(lan_col)
-	lan_col.add_child(UI.label("局域网约局", 18, UI.INK))
-	var lan_desc = UI.label("同 Wi-Fi 自动发现 · 亲友面对面零延迟", 13, UI.MUTED)
-	lan_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lan_col.add_child(lan_desc)
-	var lan_btn = UI.button("局域网", app._choose_mode.bind("lan"))
-	lan_btn.custom_minimum_size.y = 44
-	lan_col.add_child(lan_btn)
-
-	# 卡片 3：在线茶馆房间工具箱（2×2）
-	var room_card = PanelContainer.new()
-	room_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#10251fe6"), 14, 12, Color("#3f6454"), 1, 4))
-	left_deck.add_child(room_card)
-	var room_col = VBoxContainer.new()
-	room_col.add_theme_constant_override("separation", 8)
-	room_card.add_child(room_col)
-	room_col.add_child(UI.label("在线开桌", 15, UI.GOLD))
-	var actions = GridContainer.new()
-	actions.columns = 2
-	actions.add_theme_constant_override("h_separation", 8)
-	actions.add_theme_constant_override("v_separation", 8)
-	actions.set_meta("page_id", "lobby_actions")
-	room_col.add_child(actions)
-
-	# 右侧：折叠选项区 + 3D 茶馆房间台面
-	var right_hall = VBoxContainer.new()
-	right_hall.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_hall.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right_hall.add_theme_constant_override("separation", 10)
-	body.add_child(right_hall)
-
-	var options_card = PanelContainer.new()
-	options_card.add_theme_stylebox_override("panel", UI.card(Color("#0c1f1ae8"), 12, 12, Color("#567e6a"), 1))
-	options_card.set_meta("page_id", "lobby_options")
-	options_card.visible = false
-	right_hall.add_child(options_card)
-	app._online_options = options_card
-	var fields = GridContainer.new()
-	fields.columns = 4
-	fields.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	fields.add_theme_constant_override("h_separation", 10)
-	fields.add_theme_constant_override("v_separation", 8)
-	options_card.add_child(fields)
-	app._directory_url = app._entry(fields, "服务地址", "HTTPS 在线房间服务")
-	app._directory_url.text = app._online_url()
-	app._room_number = app._entry(fields, "房间号", "4–8 位数字")
+	app._online_results = _browser(app, content, "创建房间邀请好友，或返回首页开始单机对局")
+	var footer := _toolbar(content)
+	app._add_status(footer)
+	var drawer := Drawer.new()
+	app._online_options = drawer
+	content.add_child(drawer)
+	drawer.add_toggle(tools)
+	drawer.add_toggle(footer)
+	var fields := drawer.fields
 	app._online_name = app._entry(fields, "新房间名称", "")
 	app._online_name.text = profile.nickname + "麻将局"
 	app._online_name.max_length = 24
 	app._online_filter = app._entry(fields, "筛选房间", "房间号或名称")
 	app._online_filter.text_changed.connect(func(_text): app._draw_online_rooms())
+	app._room_number = app._entry(fields, "房间号", "4–8 位数字")
+	app._directory_url = app._entry(fields, "服务地址", "HTTPS 在线房间服务")
+	app._directory_url.text = app._online_url()
 	app._add_host_clocks(fields)
-
-	for spec in [
-		["创建房间", app._create_online, true],
-		["加入房间", app._find_online, false],
-		["刷新房间", app._search_online, false],
-		["房间选项", func(): options_card.visible = not options_card.visible; app._fit_menu_panel(), false],
-	]:
-		var b = UI.button(spec[0], spec[1], spec[2])
-		b.custom_minimum_size.y = 42
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		actions.add_child(b)
-
-	var stage_card = PanelContainer.new()
-	stage_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stage_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	stage_card.add_theme_stylebox_override("panel", UI.card(Color("#0a1c17d8"), 14, 8, Color("#3a5d4f"), 1))
-	right_hall.add_child(stage_card)
-	app._online_results = RoomBrowser.new()
-	app._online_results.set_meta("page_id", "room_browser")
-	app._online_results.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	app._online_results.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	app._online_results.set_meta("page_label", "房间列表")
-	app._online_results.seat_selected.connect(app._select_room_seat)
-	app._online_results.inspection_requested.connect(app._inspect_endpoint)
-	stage_card.add_child(app._online_results)
-	app._online_results.apply_quality(profile.quality)
-	app._add_status(right_hall)
+	app._set_browser_visible(false, false)
 	app._refresh_online(app._online_rooms)
 	if not app._directory_url.text.is_empty():
 		app._search_online()
-	UI.focus_later(solo_btn)
+	if center.visible:
+		UI.MotionFX.animate_stagger_children(cards.get_children())
 
 
 
 static func build_lan_lobby(app) -> void:
-	var content = app._panel(1500)
-	var profile = app._settings.profile()
-	var title = HBoxContainer.new()
-	title.add_theme_constant_override("separation", 12)
-	content.add_child(title)
-	var back_btn = UI.button("返回", app._choose_mode.bind("online"))
-	back_btn.custom_minimum_size = Vector2(82, 42)
-	title.add_child(back_btn)
-	var head_col = VBoxContainer.new()
-	head_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head_col.add_theme_constant_override("separation", 2)
-	title.add_child(head_col)
-	head_col.add_child(UI.label("局域网约局", 26, UI.GOLD_BRIGHT))
-	head_col.add_child(UI.label("连接同一 Wi-Fi 自动发现附近牌桌，点击空座即可入桌", 14, UI.MUTED))
-	var set_btn = UI.button("设置", app._open_settings)
-	set_btn.custom_minimum_size = Vector2(74, 42)
-	title.add_child(set_btn)
-
-	var divider = ColorRect.new()
-	divider.custom_minimum_size.y = 1
-	divider.color = Color("#b9954c44")
-	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_child(divider)
-
-	var body = HBoxContainer.new()
-	body.add_theme_constant_override("separation", 16)
-	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	content.add_child(body)
-
-	var left_deck = VBoxContainer.new()
-	left_deck.custom_minimum_size.x = 256
-	left_deck.add_theme_constant_override("separation", 12)
-	body.add_child(left_deck)
-
-	var host_card = PanelContainer.new()
-	host_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#18372cf2"), 14, 14, UI.GOLD_BORDER, 1, 6))
-	left_deck.add_child(host_card)
-	var host_col = VBoxContainer.new()
-	host_col.add_theme_constant_override("separation", 6)
-	host_card.add_child(host_col)
-	host_col.add_child(UI.label("做房主开桌", 20, UI.GOLD_BRIGHT))
-	var host_desc = UI.label("在本机开启局域网牌桌，同网亲友可免输地址直接加入", 13, UI.MUTED)
-	host_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	host_col.add_child(host_desc)
-	var create_btn = UI.button("创建房间", app._host_lan, true)
-	create_btn.custom_minimum_size.y = 48
-	host_col.add_child(create_btn)
-
-	var tools_card = PanelContainer.new()
-	tools_card.add_theme_stylebox_override("panel", UI.elevated_card(Color("#10251fe6"), 14, 14, Color("#49705e"), 1, 4))
-	left_deck.add_child(tools_card)
-	var tools_col = VBoxContainer.new()
-	tools_col.add_theme_constant_override("separation", 8)
-	tools_card.add_child(tools_col)
-	tools_col.add_child(UI.label("搜索与直连", 15, UI.GOLD))
-	var refresh_btn = UI.button("刷新房间", app._search_lan)
-	refresh_btn.custom_minimum_size.y = 44
-	tools_col.add_child(refresh_btn)
-	var find_btn = UI.button("查找地址", app._inspect_lan_address)
-	find_btn.custom_minimum_size.y = 44
-	tools_col.add_child(find_btn)
-
-	var right_hall = VBoxContainer.new()
-	right_hall.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_hall.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right_hall.add_theme_constant_override("separation", 10)
-	body.add_child(right_hall)
-
-	var options_card = PanelContainer.new()
-	options_card.add_theme_stylebox_override("panel", UI.card(Color("#0c1f1ae8"), 12, 12, Color("#567e6a"), 1))
-	options_card.visible = false
-	right_hall.add_child(options_card)
-	app._lan_options = options_card
-	var options = VBoxContainer.new()
-	options.add_theme_constant_override("separation", 8)
-	options_card.add_child(options)
-
-	var opt_btn = UI.button("房间选项", func(): options_card.visible = not options_card.visible; app._fit_menu_panel())
-	opt_btn.custom_minimum_size.y = 42
-	tools_col.add_child(opt_btn)
-
-	var filter_row = GridContainer.new()
-	filter_row.columns = 2
-	filter_row.add_theme_constant_override("h_separation", 10)
-	options.add_child(filter_row)
-	app._lan_filter = app._entry(filter_row, "查找房间", "房间号或名称")
+	var content := _lobby_page(app)
+	var title := _toolbar(content)
+	title.add_child(UI.button("← 返回", app._choose_mode.bind("online")))
+	_heading(title, "局域网约局")
+	title.add_child(UI.button("设置", app._open_settings))
+	var tools := _toolbar(content)
+	var create := UI.button("创建房间", app._host_lan, true)
+	tools.add_child(create)
+	tools.add_child(UI.button("刷新房间", app._search_lan))
+	tools.add_child(UI.button("查找地址", app._inspect_lan_address))
+	tools.add_spacer(false)
+	var drawer := Drawer.new()
+	app._lan_options = drawer
+	content.add_child(drawer)
+	drawer.add_toggle(tools)
+	var fields := drawer.fields
+	app._lan_filter = app._entry(fields, "筛选房间", "房间号或名称")
 	app._lan_filter.text_changed.connect(func(_text): app._refresh_lan())
-	var fields = GridContainer.new()
-	fields.columns = 4
-	fields.add_theme_constant_override("h_separation", 10)
-	fields.add_theme_constant_override("v_separation", 8)
-	options.add_child(fields)
 	app._room_number = app._entry(fields, "新房间号", "4–8 位数字")
 	app._lan_name = app._entry(fields, "房间名称", "")
-	app._lan_name.text = profile.nickname + "麻将局"
+	app._lan_name.text = app._settings.profile().nickname + "麻将局"
 	app._lan_name.max_length = 24
+	app._lan_address = app._entry(fields, "房间地址", "例如 192.168.1.8:7499")
 	app._add_host_clocks(fields)
-	var manual = GridContainer.new()
-	manual.columns = 2
-	manual.add_theme_constant_override("h_separation", 10)
-	options.add_child(manual)
-	app._lan_address = app._entry(manual, "房间地址", "例如 192.168.1.8:7499")
-	options.add_child(UI.label("需连接同一局域网；输入房主显示的地址，查到房间后选择空座。", 14, UI.MUTED))
-
-	var stage_card = PanelContainer.new()
-	stage_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stage_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	stage_card.add_theme_stylebox_override("panel", UI.card(Color("#0a1c17d8"), 14, 8, Color("#3a5d4f"), 1))
-	right_hall.add_child(stage_card)
-	app._lan_results = RoomBrowser.new()
-	app._lan_results.empty_hint = "点击左侧「创建房间」做房主开桌\n或点击「刷新房间」搜索同网牌桌"
-	app._lan_results.set_meta("page_id", "room_browser")
-	app._lan_results.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	app._lan_results.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	app._lan_results.set_meta("page_label", "房间列表")
-	app._lan_results.seat_selected.connect(app._select_room_seat)
-	app._lan_results.inspection_requested.connect(app._inspect_endpoint)
-	stage_card.add_child(app._lan_results)
-	app._lan_results.apply_quality(profile.quality)
-	app._add_status(right_hall)
+	app._lan_results = _browser(app, content, "连接同一 Wi-Fi，创建房间或刷新附近牌桌")
+	app._add_status(content)
 	app._search_lan()
-	UI.focus_later(create_btn)
+	_focus_when_ready.call_deferred(weakref(create))
 
+
+static func _focus_when_ready(target: WeakRef) -> void:
+	var control: Control = target.get_ref()
+	if is_instance_valid(control) and control.is_visible_in_tree() and control.get_focus_mode_with_override() != Control.FOCUS_NONE:
+		control.grab_focus()
+
+
+static func _lobby_page(app) -> VBoxContainer:
+	var margin := MarginContainer.new()
+	margin.theme = menu_theme()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 22 if side in ["left", "right"] else 10)
+	app._frame.add_child(margin)
+	var content := VBoxContainer.new()
+	margin.add_child(content)
+	app._page_content = content
+	app._fit_menu_panel()
+	return content
+
+
+static func _toolbar(parent: Control) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	parent.add_child(row)
+	return row
+
+
+static func _heading(row: HBoxContainer, caption: String) -> void:
+	var heading := UI.label(caption, 24, UI.GOLD_BRIGHT)
+	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	row.add_child(heading)
+
+
+static func _mode_card(parent: Control, caption: String, hint: String, featured := false) -> VBoxContainer:
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(320, 248)
+	var shadow := 7 if MotionConfig.value("panel", "shadow_enabled") else 0
+	panel.add_theme_stylebox_override("panel", UI.elevated_card(
+		Color("#28382aeb") if featured else Color("#112d25e8"), 16, 18,
+		UI.GOLD_BORDER if featured else UI.BORDER, 1, shadow))
+	parent.add_child(panel)
+	var column := VBoxContainer.new()
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_theme_constant_override("separation", 10)
+	panel.add_child(column)
+	column.add_child(UI.label(caption, 26, UI.GOLD_BRIGHT if featured else UI.INK))
+	column.add_child(UI.label(hint, 16, UI.MUTED))
+	column.add_spacer(false)
+	return column
+
+
+static func _browser(app, parent: Control, hint: String) -> RoomBrowser:
+	var browser := RoomBrowser.new()
+	browser.empty_hint = hint
+	browser.set_meta("page_id", "room_browser")
+	browser.set_meta("page_label", "房间列表")
+	browser.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	browser.seat_selected.connect(app._select_room_seat)
+	browser.inspection_requested.connect(app._inspect_endpoint)
+	parent.add_child(browser)
+	browser.apply_quality(MotionConfig.current_quality)
+	return browser
+
+
+class Drawer extends Control:
+	var fields := GridContainer.new()
+	var expanded := false
+	var toggles: Array[Button] = []
+	var motion: Tween
+
+	func _ready() -> void:
+		clip_contents = true
+		fields.columns = 4
+		add_child(fields)
+		fields.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+		hide()
+
+	func add_toggle(row: Control) -> void:
+		var button := UI.button("详细设置 ▾", func(): set_expanded(not expanded))
+		toggles.append(button)
+		row.add_child(button)
+
+	func set_expanded(open: bool) -> void:
+		if expanded == open:
+			return
+		expanded = open
+		if motion:
+			motion.kill()
+		for button in toggles:
+			button.text = "收起设置 ▴" if open else "详细设置 ▾"
+		var spec := MotionConfig.section("panel")
+		focus_behavior_recursive = FOCUS_BEHAVIOR_INHERITED if open else FOCUS_BEHAVIOR_DISABLED
+		mouse_behavior_recursive = MOUSE_BEHAVIOR_INHERITED if open else MOUSE_BEHAVIOR_DISABLED
+		if not visible:
+			modulate.a = 0.0
+		show()
+		motion = create_tween().set_parallel(true).set_trans(spec.ease_trans).set_ease(Tween.EASE_OUT)
+		motion.tween_property(self, "custom_minimum_size:y", fields.get_combined_minimum_size().y if open else 0.0, spec.drawer_duration)
+		motion.tween_property(self, "modulate:a", 1.0 if open else 0.0, spec.drawer_duration)
+		if not open:
+			motion.finished.connect(hide)
+
+
+class JoinDialog extends Control:
+	signal submitted(number: String)
+	var panel := PanelContainer.new()
+	var shade := ColorRect.new()
+	var number := LineEdit.new()
+	var opened := false
+	var previous_focus: Control
+	var background: Control
+	var valid_number: Callable
+
+	func _ready() -> void:
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		add_child(shade)
+		shade.color = Color.BLACK
+		shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var center := CenterContainer.new()
+		add_child(center)
+		center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		center.add_child(panel)
+		panel.add_theme_stylebox_override("panel", UI.elevated_card(UI.PANEL, 16, 18, UI.GOLD_BORDER, 1,
+			10 if MotionConfig.value("panel", "shadow_enabled") else 0))
+		var row := HBoxContainer.new()
+		panel.add_child(row)
+		number.placeholder_text = "4–8 位数字房间号"
+		number.accessibility_name = "房间号"
+		number.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+		number.max_length = 8
+		number.custom_minimum_size = Vector2(220, 54)
+		row.add_child(number)
+		var cancel := UI.button("取消", close)
+		var join := UI.button("立即加入", func(): submit(number.text), true)
+		join.disabled = true
+		number.text_changed.connect(func(value): join.disabled = not valid_number.call(value))
+		row.add_child(cancel)
+		row.add_child(join)
+		number.text_submitted.connect(submit)
+		for pair in [[number, cancel], [cancel, join], [join, number]]:
+			pair[0].focus_next = pair[0].get_path_to(pair[1])
+			pair[1].focus_previous = pair[1].get_path_to(pair[0])
+
+	func open() -> void:
+		if not opened:
+			previous_focus = get_viewport().gui_get_focus_owner()
+		opened = true
+		background.mouse_behavior_recursive = MOUSE_BEHAVIOR_DISABLED
+		background.focus_behavior_recursive = FOCUS_BEHAVIOR_DISABLED
+		mouse_behavior_recursive = MOUSE_BEHAVIOR_INHERITED
+		focus_behavior_recursive = FOCUS_BEHAVIOR_INHERITED
+		show()
+		UI.MotionFX.animate_modal_in(panel, shade)
+		number.grab_focus()
+
+	func submit(value: String) -> void:
+		if not opened:
+			return
+		if not valid_number.call(value):
+			number.select_all()
+			number.placeholder_text = "请输入 4–8 位数字"
+			number.grab_focus()
+			return
+		close()
+		submitted.emit(value)
+
+	func close() -> void:
+		if not opened:
+			return
+		opened = false
+		focus_behavior_recursive = FOCUS_BEHAVIOR_DISABLED
+		mouse_behavior_recursive = MOUSE_BEHAVIOR_DISABLED
+		background.mouse_behavior_recursive = MOUSE_BEHAVIOR_INHERITED
+		background.focus_behavior_recursive = FOCUS_BEHAVIOR_INHERITED
+		if is_instance_valid(previous_focus) and previous_focus.is_visible_in_tree():
+			previous_focus.grab_focus()
+		else:
+			for action in background.find_children("*", "Button", true, false):
+				if action.text == "加入房间" and action.is_visible_in_tree():
+					action.grab_focus()
+					break
+		UI.MotionFX.animate_modal_out(panel, shade, hide)
+
+	func _input(event: InputEvent) -> void:
+		if opened and event.is_action_pressed("ui_cancel"):
+			get_viewport().set_input_as_handled()
+			close()
 
 
 static func entry(app, fields: GridContainer, label: String, hint: String) -> LineEdit:
@@ -515,7 +477,7 @@ static func refresh_room(app) -> void:
 		button.icon = CharacterArt.avatar(int(member.get("avatar", 1))) if occupied else null
 		button.disabled = occupied
 		if seat == mine:
-			button.add_theme_stylebox_override("disabled", UI.elevated_card(Color("#193b30"), 12, 10, UI.GOLD_BORDER, 2, 4))
+			button.add_theme_stylebox_override("disabled", UI.elevated_card(Color("#193b30"), 12, 10, UI.GOLD_BORDER, 2, 4 if MotionConfig.value("panel", "shadow_enabled") else 0))
 		elif occupied and member.ready:
 			button.add_theme_stylebox_override("disabled", UI.card(Color("#16352b"), 12, 10, Color("#6e9e84"), 1))
 		elif occupied:
@@ -536,7 +498,7 @@ static func refresh_room(app) -> void:
 
 static func build_profile_setup(app, first: bool) -> void:
 	var editor = ProfileSetup.new()
-	editor.theme=UI.menu_theme()
+	editor.theme=menu_theme()
 	app._frame.add_child(editor)
 	editor.resized.connect(app._queue_hud_layout)
 	editor.build(app._settings.profile(), first)
@@ -774,11 +736,13 @@ static func build_settlement(app) -> void:
 		final_view.resized.connect(app._queue_hud_layout)
 		app._peek_return_button = UI.button("返回结算", app._toggle_settlement_peek, true)
 		app._peek_return_button.custom_minimum_size = Vector2(124, 42)
-		app._safe.add_child(app._peek_return_button)
-		app._peek_return_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-		app._peek_return_button.offset_left = -62; app._peek_return_button.offset_right = 62
-		app._peek_return_button.offset_top = -54; app._peek_return_button.offset_bottom = -12
-		app._peek_return_button.hide()
+		var holder := MarginContainer.new()
+		app._safe.add_child(holder)
+		holder.add_child(app._peek_return_button)
+		holder.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+		holder.offset_left = -62; holder.offset_right = 62
+		holder.offset_top = -54; holder.offset_bottom = -12
+		holder.hide()
 	app._fit_settlement()
 	app._refresh_settlement_names()
 	if is_instance_valid(app._progress) and not app._view.get("room", {}).is_empty():

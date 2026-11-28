@@ -72,3 +72,14 @@ func build(progress: Progress, nickname: String) -> void:
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		vbox.add_child(desc)
 		grid.add_child(badge)
+	UI.MotionFX.animate_stagger_children(metrics.get_children())
+	var panel := UI.MotionFX.MotionConfig.section("panel")
+	if panel.card_stagger > 0.0:
+		for badge in grid.get_children():
+			badge.modulate.a = 0.0
+		# Start the gallery as the first metric lands, leaving room for the page entrance.
+		var sequence := create_tween()
+		sequence.tween_interval(panel.screen_in_duration)
+		sequence.tween_callback(UI.MotionFX.animate_stagger_children.bind(grid.get_children()))
+	else:
+		UI.MotionFX.animate_stagger_children(grid.get_children())

@@ -3,6 +3,7 @@ extends Control
 ## 严格仅基于本家可见手牌与场上已公开牌计算，复用权威 RuleEngine / WinScoring / Shanten，绝不读取暗手或牌墙。
 
 const UI := preload("res://src/app/AppTheme.gd")
+const MotionConfig := preload("res://src/presentation/MotionConfig.gd")
 const Rules := preload("res://src/anshun/scoring/RuleEngine.gd")
 const Win := preload("res://src/anshun/scoring/WinScoring.gd")
 const Shanten := preload("res://src/anshun/scoring/Shanten.gd")
@@ -21,6 +22,9 @@ var _toast_label: Label
 var _toast_tween: Tween
 var _drag_hint := PanelContainer.new()
 var _drag_hint_label: Label
+var _drag_ready := false
+var _ready_tween: Tween
+var _overlay_spec := MotionConfig.section("overlay")
 
 var _cache_key := ""
 var _cache_seen := {}
@@ -75,7 +79,30 @@ func _ready() -> void:
 	_drag_hint.add_child(_drag_hint_label)
 	_drag_hint.hide()
 	add_child(_drag_hint)
+	apply_quality(MotionConfig.current_quality)
 	resized.connect(_reposition)
+
+
+func apply_quality(value: String) -> void:
+	_overlay_spec = MotionConfig.section("overlay", value)
+	var style := _badge.get_theme_stylebox("panel") as StyleBoxFlat
+	if style:
+		style.shadow_size = 5 if MotionConfig.value("panel", "shadow_enabled", false, value) else 0
+	if _ready_tween:
+		_ready_tween.kill()
+	_drag_hint.scale = Vector2.ONE
+
+
+func _set_pill(pill: Control, active: bool, duration: float, offset := Vector2.ZERO) -> void:
+	if pill.get_meta("presented", false) == active:
+		return
+	pill.set_meta("presented", active)
+	if not active and is_zero_approx(pill.modulate.a):
+		UI.MotionFX.stop(pill)
+		pill.hide()
+		return
+	UI.MotionFX._slide(pill, active, offset, duration if active else _overlay_spec.popup_out,
+		MotionConfig.value("panel", "ease_trans"))
 
 
 func _exit_tree() -> void:
@@ -92,41 +119,59 @@ func clear_all() -> void:
 	_cache_discard_analysis.clear()
 	_popup_tenpai_sig = ""
 	_popup_tenpai_row.hide()
-	_drag_hint.hide()
+	set_discard_drag_hint(false, false)
 	_last_ting_waits.clear()
 	_badge_signature = ""
-	_popup.hide()
-	_badge.hide()
+	for pill in [_popup, _badge]:
+		UI.MotionFX.stop(pill)
+		pill.set_meta("presented", false)
+		pill.hide()
 
 
 func show_toast(message: String, seconds: float = 1.9) -> void:
 	if message.is_empty():
 		return
-	_toast_label.text = message
-	_toast.modulate = Color.WHITE
-	_toast.modulate.a = 0.0
-	_toast.show()
-	_reposition()
-	if _toast_tween != null and _toast_tween.is_valid():
+	if _toast_tween:
 		_toast_tween.kill()
+	_toast_label.text = message
+	UI.MotionFX._slide(_toast, true, Vector2.DOWN * float(_overlay_spec.toast_offset_y), _overlay_spec.toast_in,
+		MotionConfig.value("panel", "modal_in_trans"))
+	_reposition()
 	_toast_tween = create_tween()
-	_toast_tween.tween_property(_toast, "modulate:a", 1.0, 0.14).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	_toast_tween.tween_interval(seconds)
-	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.28)
-	_toast_tween.tween_callback(_toast.hide)
+	_toast_tween.tween_interval(seconds + float(_overlay_spec.toast_in))
+	_toast_tween.tween_callback(func():
+		UI.MotionFX._slide(_toast, false, Vector2.ZERO, _overlay_spec.toast_out, MotionConfig.value("panel", "ease_trans")))
 
 
 func set_discard_drag_hint(active: bool, ready_to_release: bool) -> void:
 	if not active:
+		if _ready_tween:
+			_ready_tween.kill()
+		UI.MotionFX.stop(_drag_hint)
+		_drag_hint.scale = Vector2.ONE
 		_drag_hint.hide()
+		_drag_ready = false
 		return
+	if _drag_hint.visible and ready_to_release == _drag_ready:
+		return
+	_drag_ready = ready_to_release
 	var fill := Color("#164635ec") if ready_to_release else Color("#0e2a22d8")
 	var border := Color("#f5d276") if ready_to_release else Color("#c9a95c99")
 	_drag_hint.add_theme_stylebox_override("panel", UI.card(fill, 16, 8, border, 2 if ready_to_release else 1))
 	_drag_hint_label.text = "✓ 松手立即打出" if ready_to_release else "▲ 继续上滑松手出牌"
 	_drag_hint_label.add_theme_color_override("font_color", Color("#fff6d6") if ready_to_release else Color("#efe0b8"))
-	_drag_hint.show()
+	if not _drag_hint.visible:
+		UI.MotionFX._slide(_drag_hint, true, Vector2.ZERO, _overlay_spec.drag_hint_in, MotionConfig.value("panel", "ease_trans"))
 	_reposition()
+	if _ready_tween:
+		_ready_tween.kill()
+	if ready_to_release and _overlay_spec.drag_ready_scale > 1.0:
+		_drag_hint.pivot_offset = _drag_hint.size / 2.0
+		_ready_tween = create_tween().set_trans(MotionConfig.value("panel", "ease_trans")).set_ease(Tween.EASE_OUT)
+		_ready_tween.tween_property(_drag_hint, "scale", Vector2.ONE * _overlay_spec.drag_ready_scale, _overlay_spec.drag_hint_in * 0.5)
+		_ready_tween.tween_property(_drag_hint, "scale", Vector2.ONE, _overlay_spec.drag_hint_in * 0.5)
+	else:
+		_drag_hint.scale = Vector2.ONE
 
 
 static func played_counts(round_view: Dictionary, viewer: int) -> Dictionary:
@@ -236,7 +281,8 @@ func sync_state(round_view: Dictionary, viewer: int, selected_id: int, enabled: 
 		clear_all()
 		return
 	_badge_anchor = badge_anchor
-	_lifted_anchor = lifted_point
+	if selected_id >= 0:
+		_lifted_anchor = lifted_point
 	var own: Dictionary = players[viewer]
 	var hand: Array = own.get("hand", [])
 	var key := "%s|%d|%d|%d|%d" % [str(round_view.get("prompt_id", -1)), viewer, hand.size(), own.get("melds", []).size(), int(own.get("discard_count", 0))]
@@ -269,10 +315,10 @@ func sync_state(round_view: Dictionary, viewer: int, selected_id: int, enabled: 
 		if sig != _badge_signature:
 			_badge_signature = sig
 			_rebuild_badge(_cache_ready_waits, is_ready)
-		_badge.show()
+		_set_pill(_badge, true, _overlay_spec.badge_in)
 	else:
 		_badge_signature = ""
-		_badge.hide()
+		_set_pill(_badge, false, _overlay_spec.badge_in)
 
 	# 2. 已出计数保持独立文案，打后听预览按选牌与分析结果缓存。
 	var selected_val := ""
@@ -282,8 +328,7 @@ func sync_state(round_view: Dictionary, viewer: int, selected_id: int, enabled: 
 				selected_val = str(face.get("value", ""))
 				break
 	if selected_val.is_empty():
-		_popup.hide()
-		_popup_tenpai_row.hide()
+		_set_pill(_popup, false, _overlay_spec.popup_in, Vector2.DOWN * float(_overlay_spec.popup_offset_y))
 	else:
 		var count := int(_cache_played.get(selected_val, 0))
 		_popup_label.text = "%s · 已出 %d 张" % [_tile_name(selected_val), count]
@@ -296,7 +341,7 @@ func sync_state(round_view: Dictionary, viewer: int, selected_id: int, enabled: 
 			_popup_tenpai_row.show()
 		else:
 			_popup_tenpai_row.hide()
-		_popup.show()
+		_set_pill(_popup, true, _overlay_spec.popup_in, Vector2.DOWN * float(_overlay_spec.popup_offset_y))
 	_reposition()
 
 

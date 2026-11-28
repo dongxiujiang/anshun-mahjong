@@ -22,6 +22,7 @@ var _room_difficulty := ""
 var _can_edit_difficulty := true
 var tabs: TabContainer
 var _operation_notice: Control
+var _previous_tab := 0
 
 
 func build(profile: Dictionary, can_edit_profile: bool) -> void:
@@ -128,7 +129,19 @@ func build(profile: Dictionary, can_edit_profile: bool) -> void:
 	var save_btn := UI.button("保存", func(): saved.emit(values()), true)
 	save_btn.custom_minimum_size = Vector2(128, 44)
 	buttons.add_child(save_btn)
+	tabs.tab_changed.connect(_tab_changed)
 	UI.focus_later(profile_button if can_edit_profile else theme_opt)
+
+
+func _tab_changed(index: int) -> void:
+	var page := tabs.get_tab_control(index)
+	var config := UI.MotionFX.MotionConfig.section("overlay")
+	var detail := UI.MotionFX.MotionConfig.is_detail()
+	var direction := signi(index - _previous_tab)
+	UI.MotionFX.stop(tabs.get_tab_control(_previous_tab))
+	UI.MotionFX._slide(page, true, Vector2.RIGHT * direction * float(config.popup_offset_y) if detail else Vector2.ZERO,
+		config.toast_in if detail else config.badge_in, UI.MotionFX.MotionConfig.value("panel", "ease_trans"))
+	_previous_tab = index
 
 
 func _page(title: String, id: String) -> VBoxContainer:

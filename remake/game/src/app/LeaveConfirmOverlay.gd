@@ -5,22 +5,37 @@ signal leave_requested
 
 const UI := preload("res://src/app/AppTheme.gd")
 
+var panel := PanelContainer.new()
+var shade := ColorRect.new()
+
+
+func dismiss() -> void:
+	mouse_behavior_recursive = MOUSE_BEHAVIOR_DISABLED
+	focus_behavior_recursive = FOCUS_BEHAVIOR_DISABLED
+	UI.MotionFX.animate_modal_out(panel, shade, queue_free)
+
+
 static func build(app) -> void:
 	var overlay = new()
+	overlay.theme = app.MainLobbyBuilder.menu_theme()
 	overlay.stay_requested.connect(app._dismiss_leave)
-	overlay.leave_requested.connect(app._back_home)
+	overlay.leave_requested.connect(func():
+		app._dismiss_leave()
+		app._back_home())
 	app._leave_overlay = overlay
 	app.add_child(overlay)
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var shade := ColorRect.new()
-	shade.color = Color(0, 0, 0, 0.55)
+	var shade: ColorRect = overlay.shade
+	shade.color = Color.BLACK
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(shade)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var center := CenterContainer.new()
 	overlay.add_child(center)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var panel := PanelContainer.new()
+	var panel: PanelContainer = overlay.panel
+	panel.add_theme_stylebox_override("panel", UI.elevated_card(UI.PANEL, 16, 18, UI.GOLD_BORDER, 1,
+		10 if UI.MotionFX.MotionConfig.value("panel", "shadow_enabled") else 0))
 	center.add_child(panel)
 	var content := VBoxContainer.new()
 	content.add_theme_constant_override("separation", 20)
@@ -42,7 +57,8 @@ static func build(app) -> void:
 		pair[0].focus_previous = pair[1].get_path()
 		pair[0].focus_neighbor_left = pair[1].get_path()
 		pair[0].focus_neighbor_right = pair[1].get_path()
-	UI.focus_later(stay)
+	UI.MotionFX.animate_modal_in(panel, shade)
+	stay.grab_focus()
 	app._register_modal(overlay,"leave")
 
 

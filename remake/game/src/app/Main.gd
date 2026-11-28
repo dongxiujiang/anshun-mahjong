@@ -106,6 +106,8 @@ var _round_projection := {}
 var _clock := {}
 var _result_seen := ""
 var _before_settings := "home"
+var _settings_shade: ColorRect
+var _settings_exit: Control
 var _settings_draft := {}
 var _room_settings_panel: SettingsPanel
 var _profile_setup: ProfileSetup
@@ -183,14 +185,20 @@ var _lan_name: LineEdit
 var _lan_filter: LineEdit
 var _lan_results: RoomBrowser
 var _lan_address: LineEdit
-var _lan_options: Control
+var _lan_options: MainLobbyBuilder.Drawer
 var _room_inspector: GameClient
 var _transition: TableTransition
 var _directory_url: LineEdit
 var _online_name: LineEdit
 var _online_filter: LineEdit
 var _online_results: RoomBrowser
-var _online_options: Control
+var _online_options: MainLobbyBuilder.Drawer
+var _lobby_home: CenterContainer
+var _lobby_tools: HBoxContainer
+var _online_count: Label
+var _join_dialog: MainLobbyBuilder.JoinDialog
+var _closing_leave: Control
+var _lobby_preference := ""
 var _lobby_backdrop: Control
 var _entry_origin := {}
 var _online_rooms: Array = []
@@ -464,7 +472,7 @@ func _fit_safe_area() -> void:
 func _show(screen: String) -> void:
 	if screen == "settings" and _screen == "connect":
 		var browser: RoomBrowser = _lan_results if _mode=="lan" else _online_results
-		if is_instance_valid(browser) and is_instance_valid(browser._container):
+		if is_instance_valid(browser) and browser.is_visible_in_tree() and is_instance_valid(browser._container):
 			_lobby_backdrop = Control.new()
 			_lobby_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			_safe.add_child(_lobby_backdrop)
@@ -482,12 +490,33 @@ func _show(screen: String) -> void:
 		_room_inspector._reset()
 		_room_inspector.queue_free()
 		_room_inspector = null
+	if is_instance_valid(_settings_exit):
+		_settings_exit.hide()
+		_settings_exit.queue_free()
+		_settings_exit = null
+	if _screen == "settings" and is_instance_valid(_settings_shade):
+		if screen == "settings":
+			_settings_shade.hide()
+			_settings_shade.queue_free()
+			_settings_shade = null
+		else:
+			_retire_settings_panel()
 	_retire_next_round()
 	if screen != "play":
 		_cancel_sort()
 		_sort_wait_ack = false
 	_cancel_identity_presses()
-	_dismiss_leave()
+	_dismiss_leave(true)
+	if is_instance_valid(_closing_leave):
+		_closing_leave.hide()
+		_closing_leave.queue_free()
+	if is_instance_valid(_join_dialog):
+		_frame.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
+		_frame.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_INHERITED
+		_join_dialog.hide()
+		_join_dialog.queue_free()
+		_join_dialog = null
+	_lobby_preference = ""
 	_screen = screen
 	if screen != "play":
 		_clear_tile_action()
@@ -566,6 +595,17 @@ func _show(screen: String) -> void:
 			_build_room()
 		"settlement":
 			_build_settlement()
+	if screen in ["home", "connect", "room", "career", "profile_setup", "profile_edit", "settings"]:
+		if screen == "settings":
+			_settings_shade = ColorRect.new()
+			_settings_shade.color = Color.BLACK
+			_safe.add_child(_settings_shade)
+			_safe.move_child(_settings_shade, _frame.get_index())
+			_settings_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			UI.MotionFX.animate_modal_in(_page_panel, _settings_shade)
+			UI.MotionFX.animate_screen_in(_page_content)
+		else:
+			UI.MotionFX.animate_screen_in(_frame.get_child(0))
 	if screen not in ["play","settlement"] and not (table_play_only and screen in ["home","room","connect"]):
 		_page_key = _mode if screen=="connect" else PageLayout.canonical(screen)
 		if PageLayout.PAGES.has(_page_key):
@@ -620,8 +660,9 @@ func _restore_modal_page()->void:
 func _panel(width: float) -> VBoxContainer:
 	var panel := PanelContainer.new()
 	_page_panel=panel;_page_width=width
-	panel.theme=UI.menu_theme()
-	panel.add_theme_stylebox_override("panel", UI.elevated_card(Color("#102821f2"), 18, 22, Color("#b8954c"), 2, 12))
+	panel.theme = MainLobbyBuilder.menu_theme()
+	panel.add_theme_stylebox_override("panel", UI.elevated_card(Color("#102821f2"), 18, 22, Color("#b8954c"), 2,
+		12 if UI.MotionFX.MotionConfig.value("panel", "shadow_enabled") else 0))
 	_frame.add_child(panel)
 	var scroll:=ScrollContainer.new()
 	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
@@ -636,8 +677,24 @@ func _panel(width: float) -> VBoxContainer:
 	_fit_menu_panel.call_deferred()
 	return content
 
+func _retire_settings_panel() -> void:
+	_settings_exit = Control.new()
+	_safe.add_child(_settings_exit)
+	_settings_exit.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_settings_exit.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_DISABLED
+	_settings_exit.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
+	_settings_shade.reparent(_settings_exit)
+	_page_panel.reparent(_settings_exit)
+	UI.MotionFX.animate_modal_out(_page_panel, _settings_shade, _settings_exit.queue_free)
+	_settings_shade = null
+
+
 func _fit_menu_panel() -> void:
-	if not is_instance_valid(_page_panel) or not is_instance_valid(_page_content):return
+	if not is_instance_valid(_page_content):
+		return
+	if not is_instance_valid(_page_panel):
+		_page_content.get_parent().custom_minimum_size = _safe.size
+		return
 	var extent:=Vector2(minf(_page_width,_safe.size.x),minf(_page_content.get_combined_minimum_size().y+56,_safe.size.y))
 	if not _page_panel.custom_minimum_size.is_equal_approx(extent):_page_panel.custom_minimum_size=extent
 	_queue_hud_layout()
@@ -659,9 +716,12 @@ func _confirm_patch_boot() -> void:
 			_set_status(str(boot.boot_message))
 
 func _open_update_dialog(check_now: bool = false) -> void:
+	if is_instance_valid(_join_dialog) and _join_dialog.opened:
+		_join_dialog.close()
 	_update_manager.configure(_online_url(), str(_settings.profile().get("update_manifest_url", "")))
 	_update_dialog.open_dialog(_update_manager.snapshot())
 	_frame.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
+	_frame.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_DISABLED
 	_register_modal(_update_dialog, "update")
 	if check_now and _update_manager.state not in ["available", "downloading", "ready"]:
 		_update_manager.check_updates()
@@ -671,6 +731,7 @@ func _close_update_dialog() -> void:
 		_update_dialog.close_dialog()
 		return
 	_frame.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
+	_frame.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_INHERITED
 	if _page_key == "update": _restore_modal_page()
 
 func _update_state_changed(snap: Dictionary) -> void:
@@ -857,13 +918,45 @@ func _create_online() -> void:
 		_directory.create_room(name if not name.is_empty() else profile.nickname + "麻将局", settings, number)
 
 
+func _open_join_dialog() -> void:
+	if not _room_number.text.strip_edges().is_empty():
+		_find_online()
+		return
+	if not is_instance_valid(_join_dialog):
+		_join_dialog = MainLobbyBuilder.JoinDialog.new()
+		_join_dialog.theme = MainLobbyBuilder.menu_theme()
+		_join_dialog.background = _frame
+		_join_dialog.valid_number = _valid_room_number
+		_join_dialog.submitted.connect(func(number):
+			_room_number.text = number
+			_find_online())
+		_safe.add_child(_join_dialog)
+	_join_dialog.open()
+
+
+func _set_browser_visible(active: bool, manual := true) -> void:
+	if manual:
+		_lobby_preference = "tables" if active else ("home" if not _online_rooms.is_empty() else "")
+	_lobby_home.visible = not active
+	_lobby_tools.visible = active
+	_online_results.visible = active
+	_online_options.toggles.back().visible = not active
+	if active:
+		UI.MotionFX.animate_screen_in(_online_results)
+		if _lobby_tools.get_child(0).get_focus_mode_with_override() != Control.FOCUS_NONE:
+			_lobby_tools.get_child(0).grab_focus()
+	else:
+		var solo: Button = _lobby_home.find_children("*", "Button", true, false)[0]
+		if solo.get_focus_mode_with_override() != Control.FOCUS_NONE:
+			solo.grab_focus()
+
+
 func _find_online() -> void:
 	if not _configure_directory():
 		return
 	var number := _room_number.text.strip_edges()
-	if number.is_empty() and not _online_options.visible:
-		_online_options.show()
-		_room_number.grab_focus()
+	if number.is_empty():
+		_open_join_dialog()
 		return
 	if not _valid_room_number(number):
 		_set_status("请填写 4–8 位数字房间号。")
@@ -873,9 +966,15 @@ func _find_online() -> void:
 
 
 func _refresh_online(rooms: Array) -> void:
-	if _screen != "connect" or _mode != "online" or not is_instance_valid(_online_results):
+	if _screen not in ["home", "connect"] or _mode != "online" or not is_instance_valid(_online_results):
 		return
 	_online_rooms = rooms.duplicate(true)
+	_online_count.text = "当前开放 %d 桌" % rooms.size()
+	if rooms.is_empty() and _lobby_preference == "home":
+		_lobby_preference = ""
+	var browse := _lobby_preference == "tables" or (_lobby_preference != "home" and not rooms.is_empty())
+	if browse != _online_results.visible:
+		_set_browser_visible(browse, false)
 	_draw_online_rooms()
 	_set_status("")
 
@@ -888,7 +987,7 @@ func _draw_online_rooms() -> void:
 
 
 func _join_online(room: Dictionary) -> void:
-	if _screen != "connect" or _mode != "online" or not _require_service(): return
+	if _screen not in ["home", "connect"] or _mode != "online" or not _require_service(): return
 	if room.has("owner_token"):
 		_entry_origin = {}
 		var own := room.duplicate(true)
@@ -907,8 +1006,8 @@ func _select_room_seat(room: Dictionary, seat: int) -> void:
 
 func _inspect_lan_address() -> void:
 	var address := _lan_address.text.strip_edges()
-	if address.is_empty() and not _lan_options.visible:
-		_lan_options.show()
+	if address.is_empty():
+		_lan_options.set_expanded(true)
 		_lan_address.grab_focus()
 		return
 	var separator := address.rfind(":")
@@ -929,11 +1028,12 @@ func _inspect_endpoint(room: Dictionary) -> void:
 	_room_inspector.inspect_room(room.host,int(room.port))
 
 func _show_inspected_room(room: Dictionary) -> void:
-	if _screen != "connect": return
+	if _screen not in ["home", "connect"]: return
 	room.room_instance_id = room.get("instance", "")
 	if _mode == "online":
-		_online_rooms = [room]
-		_draw_online_rooms()
+		_refresh_online([room])
+		if not _online_results.visible:
+			_set_browser_visible(true)
 	else:
 		_lan_results.set_rooms([room])
 	_set_status("请选择空座；暂离玩家的座位不能加入。")
@@ -986,9 +1086,10 @@ func _require_service() -> bool:
 	return true
 
 
-func _add_status(parent: VBoxContainer) -> void:
+func _add_status(parent: Container) -> void:
 	_status = UI.label(_status_text, 17, UI.MUTED)
 	_status.set_meta("page_label","页面提示")
+	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	parent.add_child(_status)
 
@@ -1100,7 +1201,8 @@ func _cancel_table_input() -> void:
 
 func _sync_foreground_controls() -> void:
 	var waiting := _waiting_for_foreground()
-	_foreground_shade.display(waiting, _table_recovery != TableRecovery.NONE, _table_recovery == TableRecovery.CLOSED)
+	_foreground_shade.display(waiting, _table_recovery != TableRecovery.NONE, _table_recovery == TableRecovery.CLOSED,
+		_screen in ["home", "connect"] and _view.is_empty())
 	if waiting:_register_modal(_foreground_shade,"reconnect")
 	elif _page_key=="reconnect":_restore_modal_page()
 	_safe.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED if waiting else Control.FOCUS_BEHAVIOR_INHERITED
@@ -1120,6 +1222,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _go_back() -> void:
+	if is_instance_valid(_join_dialog) and _join_dialog.opened:
+		_join_dialog.close()
+		return
 	if is_instance_valid(_update_dialog) and _update_dialog.visible:
 		_close_update_dialog()
 		return
@@ -1164,6 +1269,8 @@ func _go_back() -> void:
 		"connect":
 			if _mode == "lan":
 				_choose_mode("online")
+			elif is_instance_valid(_online_results) and _online_results.visible:
+				_set_browser_visible(false)
 			elif OS.has_feature("mobile"):
 				var now := Time.get_ticks_msec()
 				if now - _last_back_ms < 2000:
@@ -1198,20 +1305,28 @@ func _request_leave() -> void:
 	_build_leave_overlay()
 
 func _build_leave_overlay()->void:
+	if is_instance_valid(_closing_leave):
+		_closing_leave.hide()
+		_closing_leave.queue_free()
 	LeaveConfirmOverlay.build(self)
 
-func _dismiss_leave() -> void:
+func _dismiss_leave(immediate := false) -> void:
 	if not is_instance_valid(_leave_overlay):
 		return
-	remove_child(_leave_overlay)
-	_leave_overlay.queue_free()
+	_closing_leave = _leave_overlay
+	if immediate:
+		_closing_leave.hide()
+		_closing_leave.queue_free()
+	else:
+		_leave_overlay.dismiss()
 	_leave_overlay = null
 	if _page_key=="leave":_restore_modal_page()
 	_board.mouse_filter = _board_mouse_filter
 	_hud.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_INHERITED
 	_sync_foreground_controls()
-	var previous_focus := _leave_focus
+	var focus_ref: WeakRef = weakref(_leave_focus) if is_instance_valid(_leave_focus) else null
 	(func():
+		var previous_focus: Control = focus_ref.get_ref() if focus_ref else null
 		if _screen == "play" and not is_instance_valid(_leave_overlay) and is_instance_valid(previous_focus) and previous_focus.is_inside_tree() and previous_focus.is_visible_in_tree():
 			if not previous_focus is BaseButton or not previous_focus.disabled:
 				previous_focus.grab_focus()
@@ -1264,7 +1379,7 @@ func _view_changed(view: Dictionary) -> void:
 	var entering_room: bool = _mode in ["lan","online"] and is_instance_valid(_client) and _client.mode in ["lan","online"] and not _client.ticket.is_empty() and not _restoring and _view.get("room",{}).get("room_instance_id") != view.room.room_instance_id
 	_view = view.duplicate(true)
 	_sync_room_settings()
-	var was_waiting := _foreground_shade.visible
+	var was_waiting := _foreground_shade.waiting_for_room
 	_sync_foreground_controls()
 	if _waiting_for_foreground(): return
 	if was_waiting:
@@ -2312,13 +2427,17 @@ func _build_settlement() -> void:
 	MainLobbyBuilder.build_settlement(self)
 
 func _toggle_settlement_peek() -> void:
-	if _screen != "settlement" or _frame.get_child_count() != 1:
+	if _screen != "settlement" or _frame.get_child_count() != 1 or not is_instance_valid(_peek_return_button):
 		return
 	_settlement_peeking = not _settlement_peeking
-	var panel: Control = _frame.get_child(0)
-	panel.visible = not _settlement_peeking
-	if is_instance_valid(_peek_return_button):
-		_peek_return_button.visible = _settlement_peeking
+	var panel: SettlementView = _frame.get_child(0)
+	panel.set_peeking(_settlement_peeking)
+	if _settlement_peeking:
+		UI.MotionFX.animate_popup_show(_peek_return_button.get_parent())
+		UI.focus_later(_peek_return_button)
+	else:
+		UI.MotionFX.animate_popup_hide(_peek_return_button.get_parent())
+		UI.focus_later(panel.peek_button)
 
 
 func _settlement_viewer() -> int:
@@ -2397,9 +2516,9 @@ func _retire_next_round() -> void:
 		_safe.remove_child(_next_round_button); _next_round_button.queue_free()
 	_next_round_button = null
 	if is_instance_valid(_peek_return_button):
-		if _peek_return_button.get_parent() != null:
-			_peek_return_button.get_parent().remove_child(_peek_return_button)
-		_peek_return_button.queue_free()
+		var holder := _peek_return_button.get_parent()
+		holder.hide()
+		holder.queue_free()
 	_peek_return_button = null
 	_settlement_peeking = false
 
