@@ -195,7 +195,7 @@ func _build_table() -> void:
 	_rim_light = DirectionalLight3D.new()
 	_rim_light.rotation_degrees = Vector3(-38, 135, 0)
 	_rim_light.light_color = Color("#fff0d4")
-	_rim_light.light_energy = 0.22
+	_rim_light.light_energy = 0.16
 	_rim_light.shadow_enabled = false
 	_rim_light.visible = quality == "detail"
 	add_child(_rim_light)
@@ -399,7 +399,7 @@ func apply_quality(value: String) -> void:
 		_key_light.shadow_opacity = 0.36
 		_key_light.shadow_blur = 1.35
 		_key_light.directional_shadow_max_distance = 42.0
-		_key_light.light_energy = spec.key_energy * (1.06 if detailed else 1.0)
+		_key_light.light_energy = spec.key_energy * (0.96 if detailed else 1.0)
 	if is_instance_valid(_rim_light):
 		_rim_light.visible = detailed
 	if _felt_material != null:
@@ -417,9 +417,9 @@ func apply_quality(value: String) -> void:
 		camera.environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED if quality == "smooth" else Environment.REFLECTION_SOURCE_BG
 		camera.environment.tonemap_mode = Environment.TONE_MAPPER_ACES if detailed else Environment.TONE_MAPPER_LINEAR
 		# Reserve highlight headroom for the glaze under Compatibility's ACES curve.
-		camera.environment.tonemap_white = 2.4 if detailed else 1.0
-		camera.environment.tonemap_exposure = 0.96 if detailed else 1.0
-		camera.environment.ambient_light_energy = spec.ambient_energy * (0.96 if detailed else 1.0)
+		camera.environment.tonemap_white = 2.8 if detailed else 1.0
+		camera.environment.tonemap_exposure = 0.72 if detailed else 1.0
+		camera.environment.ambient_light_energy = spec.ambient_energy * (0.88 if detailed else 1.0)
 
 func _frame_camera() -> void:
 	if not frame_camera_enabled or not camera.is_inside_tree():
