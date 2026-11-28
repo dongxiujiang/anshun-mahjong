@@ -2,6 +2,7 @@ extends RefCounted
 ## One world-space track per player. The clock for an insertion stops during that player's pickup.
 const Layout = preload("res://src/presentation/TableLayout.gd")
 const Pace = preload("res://src/presentation/GamePace.gd")
+const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
 const CADENCE := 0.23
 const CARRY := 0.20
 const SPREAD := 0.12
@@ -41,6 +42,7 @@ func cancel() -> void:
 	keys.clear()
 
 func play(table, groups: Array, destinations: Dictionary) -> void:
+	var opening_trans: Tween.TransitionType = MotionConfig.value("tile", "opening_trans", Tween.TRANS_SINE, table.quality)
 	dealer = int(groups[0].seat)
 	if table.custom_profile:
 		for seat in 4:
@@ -52,7 +54,7 @@ func play(table, groups: Array, destinations: Dictionary) -> void:
 			for i in cards.size(): _ranks[cards[i]] = i
 	for turn in 4:
 		var seat: int = groups[turn].seat
-		var track: Tween = table.create_tween()
+		var track: Tween = table.create_tween().set_trans(opening_trans).set_ease(Tween.EASE_OUT)
 		tracks[seat] = track
 		if turn > 0:
 			track.tween_interval(turn * CADENCE)
@@ -68,7 +70,7 @@ func play(table, groups: Array, destinations: Dictionary) -> void:
 			track.tween_callback(_received.bind(seat, row.size()))
 			_queue_insertions(seat, group.cards.size(), row, poses, destinations, backlog)
 			var budget := INF if pass_index == 3 else 4 * CADENCE - spent
-			var left := _sort_during(track, table.tiles, backlog, budget)
+			var left := _sort_during(track, table.tiles, backlog, budget, opening_trans)
 			if pass_index < 3 and left > 0.00001:
 				track.tween_interval(left)
 		track.finished.connect(_finish.bind(seat))
@@ -100,7 +102,7 @@ static func _move(track: Tween, tiles: Dictionary, poses: Dictionary, goals: Dic
 		if not first:
 			track.parallel()
 		first = false
-		track.tween_property(tiles[key], "transform", goals[key], duration).from(poses[key]).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		track.tween_property(tiles[key], "transform", goals[key], duration).from(poses[key])
 		poses[key] = goals[key]
 
 # Carry both stacks together, preserving their centre spacing while changing seat orientation.
@@ -145,7 +147,7 @@ func _pickup(track: Tween, tiles: Dictionary, group: Dictionary, row: Array, pos
 	if cards.size() == 4:
 		var source_axis: Vector3 = starts[2].origin - starts[0].origin
 		turn = source_axis.signed_angle_to(stacks[2].origin - stacks[0].origin, Vector3.UP)
-	track.tween_method(_carry.bind(nodes, starts, stacks, turn), 0.0, 1.0, CARRY*timing).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	track.tween_method(_carry.bind(nodes, starts, stacks, turn), 0.0, 1.0, CARRY*timing)
 	var pairs := [bottom]
 	var spent := CARRY*timing
 	if cards.size() == 4 and group.style == "a":
@@ -212,19 +214,20 @@ static func _queue_move(queue: Array, poses: Dictionary, goals: Dictionary, dura
 		poses[key] = goals[key]
 	queue.append({"starts": starts, "goals": goals, "duration": duration, "elapsed": 0.0})
 
-static func _sort_frame(t: float, tiles: Dictionary, step: Dictionary) -> void:
-	var eased := (1.0 - cos(PI * t)) * 0.5
+static func _sort_frame(t: float, tiles: Dictionary, step: Dictionary, trans: Tween.TransitionType) -> void:
+	var eased: float = Tween.interpolate_value(0.0, 1.0, t, 1.0, trans, Tween.EASE_IN_OUT)
 	for key in step.goals:
 		tiles[key].transform = step.starts[key].interpolate_with(step.goals[key], eased)
 
-static func _sort_during(track: Tween, tiles: Dictionary, queue: Array, budget: float) -> float:
+static func _sort_during(track: Tween, tiles: Dictionary, queue: Array, budget: float, trans: Tween.TransitionType) -> float:
 	while not queue.is_empty() and budget > 0.00001:
 		var step: Dictionary = queue.front()
 		var duration: float = step.duration
 		var from: float = step.elapsed
 		var time := minf(duration - from, budget)
 		step.elapsed += time
-		track.tween_method(_sort_frame.bind(tiles, step), from / duration, step.elapsed / duration, time)
+		# Advance the clock uniformly so a pickup can pause and resume the same eased curve.
+		track.tween_method(_sort_frame.bind(tiles, step, trans), from / duration, step.elapsed / duration, time).set_trans(Tween.TRANS_LINEAR)
 		budget -= time
 		if step.elapsed >= duration - 0.00001:
 			queue.pop_front()

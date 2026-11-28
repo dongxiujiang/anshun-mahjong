@@ -343,6 +343,7 @@ func _setup_table() -> void:
 			_fit_settlement.call_deferred()
 			_queue_hud_layout())
 	_table = TableView.new()
+	_table.animate_settlement_reveal = not table_play_only
 	_board_world.add_child(_table)
 	_table.tile_clicked.connect(_tile_clicked)
 	_table.blank_tapped.connect(_cancel_table_selection)

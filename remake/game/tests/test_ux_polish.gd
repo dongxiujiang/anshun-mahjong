@@ -12,6 +12,7 @@ const UI = preload("res://src/app/AppTheme.gd")
 const AudioRetirement = preload("res://tests/AudioRetirement.gd")
 const Assist = preload("res://src/app/TingAssistantOverlay.gd")
 const ActionFX = preload("res://src/app/ActionEffectsStage.gd")
+const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
 
 var _checks := 0
 var _failures := 0
@@ -113,12 +114,14 @@ func _test_table() -> void:
 	var draw_tween: Tween = table._motions[draw_id]
 	var target: Transform3D = table._destinations[draw_id]
 	_check(table.tiles[draw_id] == wall_node, "the actual draw reuses the physical wall tile")
-	draw_tween.custom_step(Table.MOVE_SECONDS * 0.25)
-	var progress := 1.0 - pow(0.75, 3.0)
-	var arc_y := lerpf(origin.origin.y, target.origin.y, progress) + 0.55 * 4.0 * progress * (1.0 - progress)
-	_check(is_equal_approx(wall_node.position.y, arc_y), "normal draw follows the eased arc from the wall")
-	draw_tween.custom_step(Table.MOVE_SECONDS * 0.75 + 0.0001)
-	_check(not draw_tween.is_running() and wall_node.transform.is_equal_approx(target), "draw lands at the existing action duration")
+	var draw_spec := MotionConfig.section("tile", table.quality)
+	var draw_duration: float = float(draw_spec.draw_duration)
+	draw_tween.custom_step(draw_duration * 0.25)
+	var progress: float = Tween.interpolate_value(0.0, 1.0, 0.25, 1.0, draw_spec.sort_trans, Tween.EASE_OUT)
+	var arc_y := lerpf(origin.origin.y, target.origin.y, progress) + float(draw_spec.draw_arc_h) * 4.0 * progress * (1.0 - progress)
+	_check(is_equal_approx(wall_node.position.y, arc_y), "normal draw follows the MotionConfig eased arc from the wall")
+	draw_tween.custom_step(draw_duration * 0.75 + 0.0001)
+	_check(not draw_tween.is_running() and wall_node.transform.is_equal_approx(target), "draw lands at the configured action duration")
 	table._render(false)
 
 	var id: int = view.choices.discard_ids[0]
@@ -201,16 +204,32 @@ func _test_table() -> void:
 func _test_table_effects(table: Node3D, id: int) -> void:
 	var base: Transform3D = table._destinations[id]
 	var raised := base.translated(Vector3.UP * 0.56)
+	# Smooth tier: crisp no-overshoot lift and quick settle from MotionConfig.
+	table.apply_quality("smooth")
+	var smooth_spec := MotionConfig.section("tile", "smooth")
+	table._place(id, table.tiles[id].get_meta("value"), raised, "hand", true)
+	var smooth_lift: Tween = table._motions[id]
+	smooth_lift.custom_step(float(smooth_spec.select_up_duration) * 0.6)
+	_check(table.tiles[id].position.y <= raised.origin.y + 0.0001, "smooth selection lifts cleanly without overshoot")
+	smooth_lift.custom_step(float(smooth_spec.select_up_duration) * 0.4 + 0.0002)
+	_check(not smooth_lift.is_running() and table.tiles[id].transform.is_equal_approx(raised), "smooth selection settles at configured duration")
+	table._place(id, table.tiles[id].get_meta("value"), base, "hand", true)
+	var smooth_lower: Tween = table._motions[id]
+	smooth_lower.custom_step(float(smooth_spec.select_down_duration) + 0.0002)
+	_check(not smooth_lower.is_running() and table.tiles[id].transform.is_equal_approx(base), "smooth deselection lands at configured duration")
+	# Detail tier: iOS BACK spring overshoot on lift and smooth cubic settle.
+	table.apply_quality("detail")
+	var detail_spec := MotionConfig.section("tile", "detail")
 	table._place(id, table.tiles[id].get_meta("value"), raised, "hand", true)
 	var lift: Tween = table._motions[id]
-	lift.custom_step(0.07)
-	_check(table.tiles[id].position.y > raised.origin.y, "selection lifts with a light overshoot")
-	lift.custom_step(0.0401)
-	_check(not lift.is_running() and table.tiles[id].transform.is_equal_approx(raised), "selection settles in 0.11 seconds")
+	lift.custom_step(float(detail_spec.select_up_duration) * 0.65)
+	_check(table.tiles[id].position.y > raised.origin.y, "detail selection lifts with a light overshoot")
+	lift.custom_step(float(detail_spec.select_up_duration) * 0.35 + 0.0002)
+	_check(not lift.is_running() and table.tiles[id].transform.is_equal_approx(raised), "detail selection settles at configured duration")
 	table._place(id, table.tiles[id].get_meta("value"), base, "hand", true)
 	var lower: Tween = table._motions[id]
-	lower.custom_step(0.0851)
-	_check(not lower.is_running() and table.tiles[id].transform.is_equal_approx(base), "deselection lands in 0.085 seconds")
+	lower.custom_step(float(detail_spec.select_down_duration) + 0.0002)
+	_check(not lower.is_running() and table.tiles[id].transform.is_equal_approx(base), "detail deselection lands at configured duration")
 	var chicken := base.translated(Vector3(0, -0.5, -2))
 	table._place(id, table.tiles[id].get_meta("value"), chicken, "chicken", true)
 	var landing: Tween = table._motions[id]
