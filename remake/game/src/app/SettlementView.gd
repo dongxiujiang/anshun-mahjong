@@ -4,6 +4,7 @@ const UI := preload("res://src/app/AppTheme.gd")
 const MotionConfig := preload("res://src/presentation/MotionConfig.gd")
 const Seats := preload("res://src/domain/Seats.gd")
 const Catalog := preload("res://src/domain/TileCatalog.gd")
+const Tiles := preload("res://src/anshun/scoring/Tiles.gd")
 const TileArt := preload("res://src/presentation/TileArt.gd")
 const DicePair=preload("res://src/app/DicePairView.gd")
 const POSITIONS := ["我", "下", "对", "上"]
@@ -37,6 +38,9 @@ func show_result(settlement: Dictionary, mode: String, return_to_seats: Callable
 	var ledger: Dictionary = settlement.ledger
 	var draw: bool = ledger.winners.is_empty()
 	var title := "流局" if draw else "本局结算"
+	var flip_tile := str(settlement.get("round_meta", {}).get("flip_tile", ""))
+	if draw or not Catalog.valid_value(flip_tile):
+		flip_tile = ""
 	if table_overlay:
 		var heading:=HBoxContainer.new();_body.add_child(heading)
 		_headings.append(heading)
@@ -49,13 +53,22 @@ func show_result(settlement: Dictionary, mode: String, return_to_seats: Callable
 		for winner in ledger.winners:names.append("你" if int(winner)==int(settlement.get("viewer_seat",-1)) else str(settlement.seats[int(winner)].nickname))
 		var winner_title:=UI.label("流局" if draw else ("、".join(names)+("自摸" if settlement.round_meta.get("self_draw",false) else "胡牌")),21,Color("#f3d98e"))
 		winner_title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;winner_title.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;heading.add_child(winner_title)
-		var balance:=Control.new();balance.custom_minimum_size.x=100;heading.add_child(balance)
+		var balance:=HBoxContainer.new();balance.alignment=BoxContainer.ALIGNMENT_END;balance.custom_minimum_size.x=100;heading.add_child(balance)
+		if not flip_tile.is_empty():
+			_populate_flip_badge(balance, flip_tile, true)
 		var header:=HBoxContainer.new();_body.add_child(header)
 		_headings.append(header)
 		var player:=UI.label("玩家",14,UI.MUTED);player.custom_minimum_size.x=92;header.add_child(player)
 		var items:=UI.label("得分项",14,UI.MUTED);items.size_flags_horizontal=Control.SIZE_EXPAND_FILL;header.add_child(items)
 		var total:=UI.label("单家 / 增减",14,UI.MUTED);total.custom_minimum_size.x=108;header.add_child(total)
-	else:_body.add_child(UI.label("%s　×%s" % [title, ledger.multiplier], 26))
+	else:
+		var top:=HBoxContainer.new();_body.add_child(top)
+		var title_lbl:=UI.label("%s　×%s" % [title, ledger.multiplier], 26)
+		title_lbl.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		top.add_child(title_lbl)
+		if not flip_tile.is_empty():
+			var top_right:=HBoxContainer.new();top_right.alignment=BoxContainer.ALIGNMENT_END;top.add_child(top_right)
+			_populate_flip_badge(top_right, flip_tile, false)
 	var rows := VBoxContainer.new()
 	if table_overlay:rows.add_theme_constant_override("separation",OVERLAY_ROW_SEPARATION)
 	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -154,6 +167,42 @@ func _compact_footer_button(button: Button) -> void:
 		style.content_margin_top = 2.0
 		style.content_margin_bottom = 2.0
 		button.add_theme_stylebox_override(state, style)
+
+
+func _populate_flip_badge(container: HBoxContainer, flip_tile: String, compact: bool) -> void:
+	var related: Array = Tiles.flip_related(flip_tile)
+	var is_gold := Tiles.is_chicken(flip_tile) or related.any(func(v): return Tiles.is_chicken(str(v)))
+	var pill := PanelContainer.new()
+	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var border := Color("#f2c24e") if is_gold else Color("#b79b58")
+	var pad := 2 if compact else 4
+	pill.add_theme_stylebox_override("panel", UI.card(Color("#123329ee"), 6, pad, border, 1))
+	var related_names := PackedStringArray()
+	for v in related:
+		related_names.append(tile_name(str(v)))
+	pill.tooltip_text = "本局翻鸡：%s（关联：%s）" % [tile_name(flip_tile), " / ".join(related_names)]
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 4 if compact else 6)
+	pill.add_child(row)
+	var lbl := UI.label("翻鸡", 12 if compact else 14, Color("#ffe394") if is_gold else Color("#dfd0a2"))
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(lbl)
+	var face := PanelContainer.new()
+	face.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	face.custom_minimum_size = Vector2(20, 26) if compact else Vector2(24, 33)
+	face.add_theme_stylebox_override("panel", UI.card(Color("#f4ecd8"), 3, 1, Color("#e8be59") if is_gold else Color("#cfbd99"), 1))
+	var texture := TileArt.face(flip_tile)
+	if texture != null:
+		var icon := TextureRect.new()
+		icon.texture = texture
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		face.add_child(icon)
+	else:
+		face.add_child(UI.label(tile_name(flip_tile), 11, Color("#22332a")))
+	row.add_child(face)
+	container.add_child(pill)
 
 
 func update_ready_state(room: Dictionary, viewer_seat: int, mode: String) -> void:

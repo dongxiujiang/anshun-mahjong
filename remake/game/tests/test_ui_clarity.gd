@@ -102,7 +102,11 @@ func run() -> void:
 			var heading = panel._headings[0]
 			var reason = heading.get_child(0)
 			check(heading.get_child(1).text == "你自摸", "middle heading shows round outcome")
-			check(heading.get_child(2).get_child_count() == 0, "upper-right flip tile removed")
+			var expected_flip: String = str(app._view.get("settlement", {}).get("round_meta", {}).get("flip_tile", ""))
+			if expected_flip.is_empty():
+				check(heading.get_child(2).get_child_count() == 0, "upper-right stays clear when no flip tile")
+			else:
+				check(heading.get_child(2).get_child_count() == 1, "upper-right shows the compact flip chicken badge")
 			if white == 4:
 				var pair = reason.get_child(0)
 				check(pair.values == [4, 4] and pair.dice.size() == 2, "double dice take priority")

@@ -103,7 +103,7 @@ func _run() -> void:
 	root.add_child(sv)
 	var settlement := {
 		"viewer_seat": 1,
-		"round_meta": {"self_draw": true, "die": 3, "die_white": 5},
+		"round_meta": {"self_draw": true, "die": 3, "die_white": 5, "flip_tile": "tiao2"},
 		"scores": [182, 254, 182, 182],
 		"seats": [
 			{"nickname": MahjongNames.POOL[1]},
@@ -134,6 +134,7 @@ func _run() -> void:
 	for lbl in sv.find_children("*", "Label", true, false):
 		texts.append((lbl as Label).text)
 	check(texts.has("大对子+14"), "settlement overlay explicitly renders win pattern label 大对子+14 next to winning tile (found: %s)" % ", ".join(texts))
+	check(sv._headings[0].get_child(2).get_child_count() == 1 and texts.has("翻鸡"), "settlement overlay renders the flip chicken badge in the top-right header")
 	var found_sideways := false
 	for p in sv.find_children("*", "PanelContainer", true, false):
 		var c := p as PanelContainer
@@ -151,9 +152,10 @@ func _run() -> void:
 	await process_frame
 	check(presented and reveal.visible and reveal.flip_tile_value == "tiao2", "FlipChickenReveal presents valid flip tile")
 	check(reveal._related_row.get_child_count() == 3 and reveal._gold_hint_label.visible, "FlipChickenReveal displays 3 related tiles and gold chicken highlight when tiao1 is included")
-	reveal.finish_now()
+	check(reveal.find_children("*", "Button", true, false).is_empty(), "FlipChickenReveal auto-advances without requiring a manual button click")
+	reveal._tween.custom_step(5.0)
 	await process_frame
-	check(not reveal.visible and finished_keys == ["r1/1"], "FlipChickenReveal hides and emits finished with exact key")
+	check(not reveal.visible and finished_keys == ["r1/1"], "FlipChickenReveal auto-completes after flip animation and emits finished with exact key")
 	reveal.queue_free()
 
 	# 6. GameClient allows PCM voice relay over real connected online & LAN sessions, never solo.
