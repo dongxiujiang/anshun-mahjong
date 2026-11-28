@@ -36,7 +36,7 @@ func build(profile: Dictionary, can_edit_profile: bool) -> void:
 	header.add_child(title_col)
 	title_col.add_child(UI.label("设置", 28, UI.GOLD_BRIGHT))
 	var boot := get_node_or_null("/root/PatchBoot")
-	var version := str(boot.effective_version) if boot != null else str(ProjectSettings.get_setting("application/config/version", "2.4.2"))
+	var version := str(boot.effective_version) if boot != null else str(ProjectSettings.get_setting("application/config/version", "2.4.3"))
 	title_col.add_child(UI.label("牌桌外观、理牌偏好与语音音效 · v" + version, 14, UI.MUTED))
 	var update_button := UI.button("检查更新", func(): check_update_requested.emit())
 	update_button.custom_minimum_size = Vector2(116, 42)

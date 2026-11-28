@@ -37,7 +37,7 @@ func configure(directory_base_url: String, custom_manifest_url: String = "") -> 
 
 func current_version() -> String:
 	var boot := _boot()
-	return str(boot.effective_version) if boot != null else str(ProjectSettings.get_setting("application/config/version", "2.4.2"))
+	return str(boot.effective_version) if boot != null else str(ProjectSettings.get_setting("application/config/version", "2.4.3"))
 
 func current_version_code() -> int:
 	return int(ProjectSettings.get_setting("updates/version_code", 0))
