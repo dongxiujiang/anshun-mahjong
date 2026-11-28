@@ -377,14 +377,25 @@ func _apply_sound(profile: Dictionary) -> void:
 
 
 func _apply_quality(value: String) -> void:
-	_board_world.msaa_3d = Viewport.MSAA_2X if value == "detail" else Viewport.MSAA_DISABLED
-	_table.apply_quality(value)
-	if is_instance_valid(_clock_face): _clock_face.apply_quality(_table.quality)
+	var quality := preload("res://src/presentation/MotionConfig.gd").set_quality(value)
+	_board_world.msaa_3d = Viewport.MSAA_2X if quality == "detail" else Viewport.MSAA_DISABLED
+	var targets := [_table, _backdrop, _clock_face, _buttons, _settlement_names, _fx_stage,
+		_win_feedback, _flip_reveal, _ting_overlay, _online_results, _lan_results]
+	targets.append_array(_identities)
+	if is_instance_valid(_settlement_names):
+		targets.append_array(_settlement_names.badges)
 	if is_instance_valid(_buttons):
-		for button in _buttons.get_children():
-			if button.has_method("apply_quality"): button.apply_quality(_table.quality)
-	for browser in [_online_results,_lan_results]:
-		if is_instance_valid(browser): browser.apply_quality(value)
+		targets.append_array(_buttons.get_children())
+	if is_instance_valid(_frame):
+		for child in _frame.find_children("*", "", true, false):
+			if child.has_method("apply_quality") and not targets.has(child):
+				targets.append(child)
+	for target in targets:
+		if is_instance_valid(target) and not target.is_queued_for_deletion() and target.has_method("apply_quality"):
+			# RoomBrowser already updates each of its preview tables.
+			if target is TableView and target != _table and target.quality == quality:
+				continue
+			target.apply_quality(quality)
 
 
 func _apply_power_save(enabled: bool) -> void:

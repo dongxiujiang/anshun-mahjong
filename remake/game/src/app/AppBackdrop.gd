@@ -1,9 +1,18 @@
 extends Control
 ## 新中式茶馆氛围背景：深翠玉石径向漫光 + 极简暗金回纹边角装饰。零外部贴图、零卡顿。
+const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
+var _detail: bool = MotionConfig.value("fx", "backdrop_detail")
 
 func _ready() -> void:
+	apply_quality(MotionConfig.current_quality)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	resized.connect(queue_redraw)
+
+func apply_quality(value: String) -> void:
+	var detail: bool = MotionConfig.value("fx", "backdrop_detail", false, value)
+	if detail != _detail:
+		_detail = detail
+		queue_redraw()
 
 func _draw() -> void:
 	if size.x < 2.0 or size.y < 2.0:
@@ -13,6 +22,11 @@ func _draw() -> void:
 	# 2. 柔和顶灯径向翡翠漫射晕
 	var center := Vector2(size.x * 0.50, size.y * 0.36)
 	var max_r := maxf(size.x, size.y) * 0.78
+	var outer := Rect2(Vector2(10.0, 10.0), size - Vector2(20.0, 20.0))
+	if not _detail:
+		draw_circle(center, max_r * 0.54, Color(0.08, 0.24, 0.19, 0.24))
+		draw_rect(outer, Color(0.78, 0.64, 0.35, 0.18), false, 1.0)
+		return
 	var layers := [
 		[1.00, Color(0.06, 0.18, 0.14, 0.34)],
 		[0.76, Color(0.08, 0.24, 0.19, 0.30)],
@@ -29,7 +43,6 @@ func _draw() -> void:
 	for side_x in [36.0, 56.0, size.x - 56.0, size.x - 36.0]:
 		draw_line(Vector2(side_x, 22.0), Vector2(side_x, size.y - 22.0), silk, 1.0, true)
 	# 5. 极细鎏金双边框
-	var outer := Rect2(Vector2(10.0, 10.0), size - Vector2(20.0, 20.0))
 	var inner := Rect2(Vector2(15.0, 15.0), size - Vector2(30.0, 30.0))
 	draw_rect(outer, Color(0.78, 0.64, 0.35, 0.18), false, 1.2)
 	draw_rect(inner, Color(0.78, 0.64, 0.35, 0.08), false, 1.0)

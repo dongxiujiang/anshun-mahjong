@@ -1,13 +1,16 @@
 extends SubViewportContainer
 ## The opening dice meshes, shown at the authoritative result without running physics again.
 const Dice=preload("res://src/runtime/DiceRoll.gd")
+const MotionConfig = preload("res://src/presentation/MotionConfig.gd")
+var viewport: SubViewport
 var values:=[1,1]
 var dice:Array[Node3D]=[]
 func _ready()->void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
 	custom_minimum_size=Vector2(88,42);stretch=true
-	var viewport:=SubViewport.new();viewport.size=Vector2i(176,84);viewport.own_world_3d=true
-	viewport.transparent_bg=true;viewport.msaa_3d=Viewport.MSAA_2X
+	viewport=SubViewport.new();viewport.size=Vector2i(176,84);viewport.own_world_3d=true
+	viewport.transparent_bg=true
+	apply_quality(MotionConfig.current_quality)
 	add_child(viewport)
 	var world:=Node3D.new();viewport.add_child(world)
 	var environment:=WorldEnvironment.new();environment.environment=Environment.new()
@@ -24,3 +27,9 @@ func _ready()->void:
 		dice.append(die)
 	viewport.render_target_update_mode=SubViewport.UPDATE_ONCE
 	resized.connect(func():viewport.render_target_update_mode=SubViewport.UPDATE_ONCE)
+
+func apply_quality(value: String) -> void:
+	var msaa: Viewport.MSAA = MotionConfig.value("fx", "decorative_msaa", Viewport.MSAA_DISABLED, value)
+	if is_instance_valid(viewport) and viewport.msaa_3d != msaa:
+		viewport.msaa_3d = msaa
+		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
